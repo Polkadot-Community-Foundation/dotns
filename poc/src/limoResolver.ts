@@ -34,16 +34,28 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
       const url = new URL(request.url);
-      const reqPath = url.pathname;
+      let reqPath = url.pathname;
       let host = request.headers.get('host') || url.hostname;
+      let nameFromPath = '';
 
       if (host.includes('localhost') || host === 'paritytech.io') {
         const parts = reqPath.split('/').filter(Boolean);
         if (parts.length === 0) {
-          return new Response('Usage: http://localhost:8787/<name>', { status: 400 });
+          return new Response('Usage: http://localhost:{port}/<name>', { status: 400 });
         }
-        const name = parts[0];
-        host = `${name}.paseo-dotns.paritytech.io`;
+        nameFromPath = parts[0];
+        host = `${nameFromPath}.paseo-dotns.paritytech.io`;
+        reqPath = '/' + parts.slice(1).join('/');
+      }
+
+      if (host === 'paseo-dotns.paritytech.io') {
+        const parts = reqPath.split('/').filter(Boolean);
+        if (parts.length === 0) {
+          return new Response('Usage: https://paseo-dotns.paritytech.io/<name>', { status: 400 });
+        }
+        nameFromPath = parts[0];
+        host = `${nameFromPath}.paseo-dotns.paritytech.io`;
+        reqPath = '/' + parts.slice(1).join('/');
       }
 
       if (!host.endsWith('.paseo-dotns.paritytech.io')) {
@@ -86,14 +98,56 @@ export default {
       const fileUrl = `${base}${reqPath}`;
       const head = await fetch(fileUrl, { method: 'HEAD' });
 
-      if (head.ok) return fetch(fileUrl);
-      return fetch(`${base}/index.html`);
+      if (head.ok) {
+        const response = await fetch(fileUrl);
+        const contentType = response.headers.get('content-type') || '';
+
+        if (contentType.includes('text/html')) {
+          const html = await response.text();
+          const rewritten = rewriteHTML(html, base, nameFromPath);
+          return new Response(rewritten, {
+            headers: {
+              'content-type': 'text/html',
+              'access-control-allow-origin': '*',
+            },
+          });
+        }
+
+        return response;
+      }
+
+      const indexResponse = await fetch(`${base}/index.html`);
+      if (indexResponse.ok) {
+        const html = await indexResponse.text();
+        const rewritten = rewriteHTML(html, base, nameFromPath);
+        return new Response(rewritten, {
+          headers: {
+            'content-type': 'text/html',
+            'access-control-allow-origin': '*',
+          },
+        });
+      }
+
+      return indexResponse;
     } catch (e) {
       const error = e as Error;
       return new Response(`Error: ${error.message}`, { status: 500 });
     }
   },
 };
+
+function rewriteHTML(html: string, ipfsBase: string, nameFromPath: string): string {
+  let rewritten = html;
+
+  rewritten = rewritten.replace(/((?:src|href)=["'])\/(?!\/)/g, `$1${ipfsBase}/`);
+
+  if (nameFromPath) {
+    const baseTag = `<base href="${ipfsBase}/">`;
+    rewritten = rewritten.replace(/<head>/i, `<head>${baseTag}`);
+  }
+
+  return rewritten;
+}
 
 function decodeContentHash(bytes: Uint8Array): string | null {
   if (bytes[0] === 0xe3 && bytes[1] === 0x01) return base58Encode(bytes.slice(2));
