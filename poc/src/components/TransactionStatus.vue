@@ -77,7 +77,7 @@
               </p>
 
               <div v-if="elapsed > 15" class="text-sm text-gray-600">
-                Taking longer than usual?
+                It looks like this is taking longer than usual. Please be patient
                 <a
                   v-if="explorerUrl"
                   :href="explorerUrl"
@@ -111,10 +111,12 @@
 
               <h2 class="text-2xl font-extrabold text-gray-900 mb-2">Congratulations!</h2>
               <p class="text-gray-600 text-sm mb-6">
-                You successfully registered
-                <span class="font-semibold text-gray-900">{{ handle }}</span
+                Transaction successful!
+                <span v-if="handle.length > 0" class="font-semibold text-gray-900">{{
+                  handle
+                }}</span
                 >.<br />
-                It will expire ~ {{ expiryDate }}
+                <span v-if="handle.length > 0"> It will expire ~ {{ expiryDate }}</span>
               </p>
 
               <div class="flex flex-col space-y-3">

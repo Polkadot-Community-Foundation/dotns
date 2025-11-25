@@ -74,7 +74,7 @@
 
 <script setup lang="ts">
 import { useWalletStore } from '../store/useWalletStore';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 defineProps<{ isOpen: boolean }>();
@@ -99,4 +99,20 @@ const navItems = ref(
 const isActive = (path: string) => route.path === path;
 
 const currentYear = new Date().getFullYear();
+
+watch(
+  () => wallet.isConnected,
+  (isConnected: boolean) => {
+    navItems.value = isConnected
+      ? [
+          { name: 'Search', path: '/' },
+          { name: 'Lookup', path: '/lookup' },
+          { name: 'Profile', path: '/profile' },
+        ]
+      : [
+          { name: 'Search', path: '/' },
+          { name: 'Lookup', path: '/lookup' },
+        ];
+  }
+);
 </script>

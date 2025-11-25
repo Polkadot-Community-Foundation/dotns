@@ -18,7 +18,7 @@
           <input
             v-model="hash"
             type="text"
-            placeholder="bafybeib... or https://....ipfs.dweb.link/"
+            placeholder="Qm... or bafy... or https://....ipfs.dweb.link/"
             :class="[
               'w-full border rounded-lg px-3 py-2 focus:ring-2 mb-1 transition',
               isInvalid && hash.length > 0
@@ -35,8 +35,9 @@
           >
             Extracted: {{ extractedHash }}
           </p>
+          <p v-else-if="extractedHash" class="text-green-600 text-xs mb-4">Valid IPFS hash</p>
           <p v-else class="text-gray-500 text-xs mb-4">
-            Enter a CID (Qm... or bafy...) or paste a gateway URL
+            Enter a CID directly or paste a gateway URL
           </p>
 
           <div class="flex justify-between mt-6">
@@ -76,42 +77,48 @@ const emit = defineEmits(['close', 'save']);
 
 const hash = ref('');
 
-function extractCIDFromURL(input: string): string | null {
+function extractIPFSHash(input: string): string | null {
   const trimmed = input.trim();
+
+  const rawCID = validateRawCID(trimmed);
+  if (rawCID) return rawCID;
 
   try {
     const url = new URL(trimmed);
 
     const subdomainMatch = url.hostname.match(
-      /^(bafy[a-z2-7]{50,}|bafk[a-z2-7]{50,}|Qm[1-9A-HJ-NP-Za-km-z]{44})\.ipfs\./
+      /^(bafy[a-z2-7]+|bafk[a-z2-7]+|bafz[a-z2-7]+|Qm[1-9A-HJ-NP-Za-km-z]{44})\.ipfs\./i
     );
-    if (subdomainMatch) {
-      return subdomainMatch[1] ?? null;
+    if (subdomainMatch?.[1]) {
+      return validateRawCID(subdomainMatch[1]);
     }
 
     const pathMatch = url.pathname.match(
-      /\/ipfs\/(bafy[a-z2-7]{50,}|bafk[a-z2-7]{50,}|Qm[1-9A-HJ-NP-Za-km-z]{44})/
+      /\/ipfs\/(bafy[a-z2-7]+|bafk[a-z2-7]+|bafz[a-z2-7]+|Qm[1-9A-HJ-NP-Za-km-z]{44})/i
     );
-    if (pathMatch) {
-      return pathMatch[1] ?? null;
+    if (pathMatch?.[1]) {
+      return validateRawCID(pathMatch[1]);
     }
-  } catch (error: any) {
-    console.error('Error extracting IPFS Hash: ', error.toString());
-    return null;
+  } catch (error) {
+    console.error('Invalid URL:', error);
   }
 
-  const cidv0Regex = /^Qm[1-9A-HJ-NP-Za-km-z]{44}$/;
-  if (cidv0Regex.test(trimmed)) return trimmed;
+  return null;
+}
 
-  const cidv1Regex = /^(bafy|bafk|bafz|bafy2|bafk2)[a-z2-7]{50,}$/;
-  if (cidv1Regex.test(trimmed)) return trimmed;
+function validateRawCID(cid: string): string | null {
+  const cidv0Regex = /^Qm[1-9A-HJ-NP-Za-km-z]{44}$/;
+  if (cidv0Regex.test(cid)) return cid;
+
+  const cidv1Regex = /^(bafy|bafk|bafz|bafy2|bafk2|bafm|bagq)[a-z2-7]{10,}$/i;
+  if (cidv1Regex.test(cid)) return cid;
 
   return null;
 }
 
 const extractedHash = computed(() => {
   if (hash.value.length === 0) return null;
-  return extractCIDFromURL(hash.value);
+  return extractIPFSHash(hash.value);
 });
 
 const isValid = computed(() => extractedHash.value !== null);

@@ -8,7 +8,6 @@ const routes = [
   { path: '/', name: 'Home', component: LandingView },
   { path: '/profile', name: 'Profile', component: ProfileView },
   { path: '/lookup', name: 'Lookup', component: ReverseResolver },
-
   {
     path: '/whois/:name',
     name: 'Whois',
@@ -20,18 +19,6 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
-});
-
-const navigationEntries = performance?.getEntriesByType(
-  'navigation'
-) as PerformanceNavigationTiming[];
-const isReload =
-  navigationEntries.length > 0 && navigationEntries[0] && navigationEntries[0].type === 'reload';
-
-router.isReady().then(() => {
-  if (isReload && location.pathname !== '/') {
-    router.replace('/');
-  }
 });
 
 export default router;

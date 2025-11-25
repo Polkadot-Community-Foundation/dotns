@@ -18,7 +18,7 @@
 
 <script setup lang="ts">
 import { useWalletStore } from '../store/useWalletStore';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 const route = useRoute();
@@ -36,6 +36,20 @@ const navItems = ref(
         { name: 'Lookup', path: '/lookup' },
       ]
 );
-
+watch(
+  () => wallet.isConnected,
+  isConnected => {
+    navItems.value = isConnected
+      ? [
+          { name: 'Search', path: '/' },
+          { name: 'Lookup', path: '/lookup' },
+          { name: 'Profile', path: '/profile' },
+        ]
+      : [
+          { name: 'Search', path: '/' },
+          { name: 'Lookup', path: '/lookup' },
+        ];
+  }
+);
 const isActive = (path: string) => route.path === path;
 </script>
