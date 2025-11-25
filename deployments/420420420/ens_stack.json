@@ -1,0 +1,20 @@
+{
+  "ENSRegistry": "0xc5014a8066dbCD31E4f54Df2e5fF3fA0D57535e3",
+  "Root": "0x4Fc5ef090439372b4805b10811359257Cf364214",
+  "ReverseRegistrar": "0xe356057D8DD53A4e944108D897715e14fF9E531C",
+  "BaseRegistrarImplementation": "0xcE7E653D7981a8A99164cF2591d3db10c1F2E531",
+  "DummyOracle": "0x75BAd73c2D696A3f63f1e8D6cdd3df0797d67780",
+  "ExponentialPremiumPriceOracle": "0x6E682488565Cabf954818957F323c6019482b017",
+  "StaticMetadataService": "0x89643ae9557A014e376fA2bfe7873ab242AB352d",
+  "NameWrapper": "0xEF6C56072750ac7F518727189Ae1bC1b9Bf8ae01",
+  "DefaultReverseRegistrar": "0x6Fdb2f34352923B8429DAb446816efCbB1744663",
+  "ETHRegistrarController": "0x901B20472988Db08F96acd1Ddcfc89E9dAfDEA7a",
+  "StaticBulkRenewal": "0x092b689ed3c08F194EbcB7Fcc7c63d482AaEf2c9",
+  "PublicResolver": "0x9423df24B51edb5c2CfF513dCE5d8cdDf7966f8d",
+  "GatewayProvider": "0xDD73805AB2F7f7F7869eF22e3a69AE391bd9BBb5",
+  "UniversalResolver": "0xD2Ad6d3d9f5749137A74E80B694a9616B6e64588",
+  "StoreFactory": "0x82726d8e34E105d82C9f4d898ffD561481486e01",
+  "DotnsRegistrar": "0x292F496351D81E8E75b94CeC22ebee89Fce6AdDa"
+}
+
+cast code 0xe356057D8DD53A4e944108D897715e14fF9E531C  --rpc-url "https://testnet-passet-hub-eth-rpc.polkadot.io"

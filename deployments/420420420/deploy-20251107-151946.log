@@ -1,0 +1,105 @@
+[15:19:46] [🔨] Building contracts...
+Nothing to compile
+[15:19:47] [✅] Build done.
+--------------------------------------------
+[15:19:47] [⏳] Deploying ENSRegistry...
+[15:19:47] No args
+[15:19:47] [⚙️] forge create contracts/registry/ENSRegistry.sol:ENSRegistry --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x079d65B1dC496951575EE1c98215494f07AFE180
+Transaction hash: 0x6a07c3d7a0ec8a9fcb6747d8ac9fd1f9077fc636d4c3c1633f5ef8d3780203cd
+[15:19:48] [✅] ENSRegistry at 0x079d65B1dC496951575EE1c98215494f07AFE180
+[15:19:48] [🔎] ENS root current owner: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+--------------------------------------------
+[15:19:48] [⏳] Deploying Root...
+[15:19:48] Args: 0x079d65B1dC496951575EE1c98215494f07AFE180
+[15:19:48] [⚙️] forge create contracts/root/Root.sol:Root --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 0x079d65B1dC496951575EE1c98215494f07AFE180
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xe1c6f69E984b89cefeA725c69047B798E6d94a67
+Transaction hash: 0xb5530ac5a6a92964bbdb00d68d3641b2718078d7f3ccee1dd944176c0159aeec
+[15:19:49] [✅] Root at 0xe1c6f69E984b89cefeA725c69047B798E6d94a67
+[15:19:49] [🔗] TX: 0x079d65B1dC496951575EE1c98215494f07AFE180 :: setOwner(bytes32,address)(0x0000000000000000000000000000000000000000000000000000000000000000 0xe1c6f69E984b89cefeA725c69047B798E6d94a67)
+
+blockHash            0x62221ec1a53af3258f7be7626757b3e587b055d4cafd289fab487bfdb1317d77
+blockNumber          91
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    998314
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              20235062185
+logs                 [{"address":"0x079d65b1dc496951575ee1c98215494f07afe180","topics":["0xd4735d920b0f87494915f556dd9b54c8f309026070caea5c737245152564d266","0x0000000000000000000000000000000000000000000000000000000000000000"],"data":"0x000000000000000000000000e1c6f69e984b89cefea725c69047b798e6d94a67","blockHash":"0x62221ec1a53af3258f7be7626757b3e587b055d4cafd289fab487bfdb1317d77","blockNumber":"0x5b","transactionHash":"0xa8c08f466fd057961bc089effb2f4e30bba5a588b4eb50648ed424885b556064","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000020000000000000000000100000020000000000000000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100020000000000000000000800000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0xa8c08f466fd057961bc089effb2f4e30bba5a588b4eb50648ed424885b556064
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x079d65B1dC496951575EE1c98215494f07AFE180
+[15:19:49] [🔗] TX: 0xe1c6f69E984b89cefeA725c69047B798E6d94a67 :: setController(address,bool)(0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac true)
+
+blockHash            0x1651622d2b52c91f326183248ac05eb1742be16adcf68795f745ee3a08ed5cba
+blockNumber          92
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    998296
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              20199342029
+logs                 [{"address":"0xe1c6f69e984b89cefea725c69047b798e6d94a67","topics":["0x4c97694570a07277810af7e5669ffd5f6a2d6b74b6e9a274b8b870fd5114cf87","0x000000000000000000000000f24ff3a9cf04c71dbc94d0b566f7a27b94566cac"],"data":"0x0000000000000000000000000000000000000000000000000000000000000001","blockHash":"0x1651622d2b52c91f326183248ac05eb1742be16adcf68795f745ee3a08ed5cba","blockNumber":"0x5c","transactionHash":"0x2aba7f9507e9db3998a35699592468adf60c92e387c283a55e7825f43d79a646","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000040000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000008000000000000008000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000001000000000000000020000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x2aba7f9507e9db3998a35699592468adf60c92e387c283a55e7825f43d79a646
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0xe1c6f69E984b89cefeA725c69047B798E6d94a67
+--------------------------------------------
+[15:19:50] [⏳] Deploying ReverseRegistrar...
+[15:19:50] Args: 0x079d65B1dC496951575EE1c98215494f07AFE180
+[15:19:50] [⚙️] forge create contracts/reverseRegistrar/ReverseRegistrar.sol:ReverseRegistrar --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 0x079d65B1dC496951575EE1c98215494f07AFE180
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xD5Cd1ea4E9874FfB7d553c517Cec812B3069e322
+Transaction hash: 0xd15bdf954e222829fef13bcf2e828810b308eb98e8a511fc15965d2c88ab132e
+[15:19:51] [✅] ReverseRegistrar at 0xD5Cd1ea4E9874FfB7d553c517Cec812B3069e322
+--------------------------------------------
+[15:19:51] [⏳] Deploying BaseRegistrarImplementation...
+[15:19:51] Args: 0x079d65B1dC496951575EE1c98215494f07AFE180 0x646f740000000000000000000000000000000000000000000000000000000000
+[15:19:51] [⚙️] forge create contracts/ethregistrar/BaseRegistrarImplementation.sol:BaseRegistrarImplementation --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 0x079d65B1dC496951575EE1c98215494f07AFE180 0x646f740000000000000000000000000000000000000000000000000000000000
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x2C5960Df97CfFa4480763D77cA68F0B8384bf7dc
+Transaction hash: 0x223f590c7af58a47b293721d3cd83ee098e69d366d6c3f5ffabe8cfcf370ece5
+[15:19:52] [✅] BaseRegistrarImplementation at 0x2C5960Df97CfFa4480763D77cA68F0B8384bf7dc
+--------------------------------------------
+[15:19:52] [⏳] Deploying DummyOracle...
+[15:19:52] Args: 160000000000
+[15:19:52] [⚙️] forge create contracts/ethregistrar/DummyOracle.sol:DummyOracle --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 160000000000
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x064ac64dC0675E160159a7d803D97699f2693696
+Transaction hash: 0x1c9ca03871aa80953f0e7124feacddfb2b10c1ae1cdfa5617bfca08764b5f915
+[15:19:53] [✅] DummyOracle at 0x064ac64dC0675E160159a7d803D97699f2693696
+--------------------------------------------
+[15:19:53] [⏳] Deploying ExponentialPremiumPriceOracle...
+[15:19:53] Args: 0x064ac64dC0675E160159a7d803D97699f2693696 [0,0,20294266869609,5073566717402,158548959919] 100000000000000000000000000 21
+[15:19:53] [⚙️] forge create contracts/ethregistrar/ExponentialPremiumPriceOracle.sol:ExponentialPremiumPriceOracle --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 0x064ac64dC0675E160159a7d803D97699f2693696 [0,0,20294266869609,5073566717402,158548959919] 100000000000000000000000000 21
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x018323Be84ca0e84FbFD65dD0991BD1f0eb3cB61
+Transaction hash: 0xdf9677368f902dda2a2acd08e943b978b2ba1217f7cd7d67811092d4a34ca24d
+[15:19:54] [✅] ExponentialPremiumPriceOracle at 0x018323Be84ca0e84FbFD65dD0991BD1f0eb3cB61
+--------------------------------------------
+[15:19:54] [⏳] Deploying StaticMetadataService...
+[15:19:54] Args: http://localhost:8080/name/0x{id}
+[15:19:54] [⚙️] forge create contracts/wrapper/StaticMetadataService.sol:StaticMetadataService --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args http://localhost:8080/name/0x{id}
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xAdD0E4aD78B01048027154c7a432a1cB6711178f
+Transaction hash: 0x4a9df36f511bc30698acb99c0d3d45a8c01abd7b12030fb6fccd78d34769dbcb
+[15:19:55] [✅] StaticMetadataService at 0xAdD0E4aD78B01048027154c7a432a1cB6711178f

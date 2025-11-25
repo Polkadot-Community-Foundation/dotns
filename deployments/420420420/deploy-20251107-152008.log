@@ -1,0 +1,179 @@
+[15:20:08] [🔨] Building contracts...
+Nothing to compile
+[15:20:08] [✅] Build done.
+--------------------------------------------
+[15:20:08] [⏳] Deploying ENSRegistry...
+[15:20:08] No args
+[15:20:08] [⚙️] forge create contracts/registry/ENSRegistry.sol:ENSRegistry --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x3500bD4aF104F68Cbe004A7362C54311e1C7F7F4
+Transaction hash: 0x3724f0df4c7efca9fa472c4aa42ea801e556bfb33522b466ff9ca37e5eff4d6e
+[15:20:09] [✅] ENSRegistry at 0x3500bD4aF104F68Cbe004A7362C54311e1C7F7F4
+[15:20:09] [🔎] ENS root current owner: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+--------------------------------------------
+[15:20:09] [⏳] Deploying Root...
+[15:20:09] Args: 0x3500bD4aF104F68Cbe004A7362C54311e1C7F7F4
+[15:20:09] [⚙️] forge create contracts/root/Root.sol:Root --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 0x3500bD4aF104F68Cbe004A7362C54311e1C7F7F4
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x8F7F3ACA83953fa7912F9de35f7F83d15e0c4727
+Transaction hash: 0x767ad524d7933d31c062b0d7148f6755cad493daf337b1103c049b819d7aa259
+[15:20:10] [✅] Root at 0x8F7F3ACA83953fa7912F9de35f7F83d15e0c4727
+[15:20:10] [🔗] TX: 0x3500bD4aF104F68Cbe004A7362C54311e1C7F7F4 :: setOwner(bytes32,address)(0x0000000000000000000000000000000000000000000000000000000000000000 0x8F7F3ACA83953fa7912F9de35f7F83d15e0c4727)
+
+blockHash            0x31f98f054ecd0a60f11f5e8b8ee31f3d4dc7305a62f94e634fba925c8cc4fced
+blockNumber          100
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    998148
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              20238194963
+logs                 [{"address":"0x3500bd4af104f68cbe004a7362c54311e1c7f7f4","topics":["0xd4735d920b0f87494915f556dd9b54c8f309026070caea5c737245152564d266","0x0000000000000000000000000000000000000000000000000000000000000000"],"data":"0x0000000000000000000000008f7f3aca83953fa7912f9de35f7f83d15e0c4727","blockHash":"0x31f98f054ecd0a60f11f5e8b8ee31f3d4dc7305a62f94e634fba925c8cc4fced","blockNumber":"0x64","transactionHash":"0x94ef7eb6a5ae62edf789ad06b4f2663086a1b819fc685cb59f084dc6431566f3","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000020000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000008000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000020000000000000000000000000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x94ef7eb6a5ae62edf789ad06b4f2663086a1b819fc685cb59f084dc6431566f3
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x3500bD4aF104F68Cbe004A7362C54311e1C7F7F4
+[15:20:10] [🔗] TX: 0x8F7F3ACA83953fa7912F9de35f7F83d15e0c4727 :: setController(address,bool)(0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac true)
+
+blockHash            0xa68f55afc2c00a60e7a02629d4a9d328c6810c6a6eb8a141f60bc8bdad5824dc
+blockNumber          101
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    998129
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              20202495175
+logs                 [{"address":"0x8f7f3aca83953fa7912f9de35f7f83d15e0c4727","topics":["0x4c97694570a07277810af7e5669ffd5f6a2d6b74b6e9a274b8b870fd5114cf87","0x000000000000000000000000f24ff3a9cf04c71dbc94d0b566f7a27b94566cac"],"data":"0x0000000000000000000000000000000000000000000000000000000000000001","blockHash":"0xa68f55afc2c00a60e7a02629d4a9d328c6810c6a6eb8a141f60bc8bdad5824dc","blockNumber":"0x65","transactionHash":"0x82c5f649b881e87cb41fa53d5ec130ba7556f7e7122b5a21d9c8c8e7b2678084","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000040000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000020000000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000001000000000000000020000000000000000000000800000
+root                 
+status               1 (success)
+transactionHash      0x82c5f649b881e87cb41fa53d5ec130ba7556f7e7122b5a21d9c8c8e7b2678084
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x8F7F3ACA83953fa7912F9de35f7F83d15e0c4727
+--------------------------------------------
+[15:20:10] [⏳] Deploying ReverseRegistrar...
+[15:20:10] Args: 0x3500bD4aF104F68Cbe004A7362C54311e1C7F7F4
+[15:20:10] [⚙️] forge create contracts/reverseRegistrar/ReverseRegistrar.sol:ReverseRegistrar --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 0x3500bD4aF104F68Cbe004A7362C54311e1C7F7F4
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xA76a27C7F89AE2D6518F0c19B4339cC6E3fCDE1E
+Transaction hash: 0xcb9707f0b23591d9be0e0ac9030346d890211f1977ad033506dbbffeb23633d5
+[15:20:11] [✅] ReverseRegistrar at 0xA76a27C7F89AE2D6518F0c19B4339cC6E3fCDE1E
+--------------------------------------------
+[15:20:11] [⏳] Deploying BaseRegistrarImplementation...
+[15:20:11] Args: 0x3500bD4aF104F68Cbe004A7362C54311e1C7F7F4 0x646f740000000000000000000000000000000000000000000000000000000000
+[15:20:11] [⚙️] forge create contracts/ethregistrar/BaseRegistrarImplementation.sol:BaseRegistrarImplementation --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 0x3500bD4aF104F68Cbe004A7362C54311e1C7F7F4 0x646f740000000000000000000000000000000000000000000000000000000000
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x4a5B5B52CcF8f8bdcD7aCc39985aE1479108d55b
+Transaction hash: 0x4e29dc8d9f4529080028267e815c5ff54e3a6164ec5d6f90d6297d4f05633d5a
+[15:20:12] [✅] BaseRegistrarImplementation at 0x4a5B5B52CcF8f8bdcD7aCc39985aE1479108d55b
+--------------------------------------------
+[15:20:12] [⏳] Deploying DummyOracle...
+[15:20:12] Args: 160000000000
+[15:20:12] [⚙️] forge create contracts/ethregistrar/DummyOracle.sol:DummyOracle --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 160000000000
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x7EccFE55882350191746d47C888A9978ed5Ea916
+Transaction hash: 0x4704a88d19c4988c9cd619c02b8fa8976830ed5786469e01bd2caa0064f91beb
+[15:20:13] [✅] DummyOracle at 0x7EccFE55882350191746d47C888A9978ed5Ea916
+--------------------------------------------
+[15:20:13] [⏳] Deploying ExponentialPremiumPriceOracle...
+[15:20:13] Args: 0x7EccFE55882350191746d47C888A9978ed5Ea916 [0,0,20294266869609,5073566717402,158548959919] 100000000000000000000000000 21
+[15:20:13] [⚙️] forge create contracts/ethregistrar/ExponentialPremiumPriceOracle.sol:ExponentialPremiumPriceOracle --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 0x7EccFE55882350191746d47C888A9978ed5Ea916 [0,0,20294266869609,5073566717402,158548959919] 100000000000000000000000000 21
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xD78DdE1Ecc234335A06a1047263c3101f47B7959
+Transaction hash: 0xb6ace5513fa916deadb7e36863b8934aa34f5dddd5164163c1b260b76f27ca05
+[15:20:14] [✅] ExponentialPremiumPriceOracle at 0xD78DdE1Ecc234335A06a1047263c3101f47B7959
+--------------------------------------------
+[15:20:14] [⏳] Deploying StaticMetadataService...
+[15:20:14] Args: http://localhost:8080/name/0x{id}
+[15:20:14] [⚙️] forge create contracts/wrapper/StaticMetadataService.sol:StaticMetadataService --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args http://localhost:8080/name/0x{id}
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xc094E96871C18C1DA2f27dF36bF63C8aefA4778d
+Transaction hash: 0xad55542778d9a4bf01d5b3f3ea2119a6da33c3dc4e48902aacd9f6d96eb64caa
+[15:20:15] [✅] StaticMetadataService at 0xc094E96871C18C1DA2f27dF36bF63C8aefA4778d
+[15:20:15] [⚙️] Performing ENS pre-setup...
+[15:20:15] [🔗] TX: 0x8F7F3ACA83953fa7912F9de35f7F83d15e0c4727 :: setController(address,bool)(0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac true)
+
+blockHash            0x0e26e756d08f8ae572df44d92fc03717f2e3474e72afa9297464d80533f5e541
+blockNumber          107
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    998019
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              20204650712
+logs                 [{"address":"0x8f7f3aca83953fa7912f9de35f7f83d15e0c4727","topics":["0x4c97694570a07277810af7e5669ffd5f6a2d6b74b6e9a274b8b870fd5114cf87","0x000000000000000000000000f24ff3a9cf04c71dbc94d0b566f7a27b94566cac"],"data":"0x0000000000000000000000000000000000000000000000000000000000000001","blockHash":"0x0e26e756d08f8ae572df44d92fc03717f2e3474e72afa9297464d80533f5e541","blockNumber":"0x6b","transactionHash":"0xef982678632807cacabb23968b39aea44f44f460cf9a00030fa2149c0d441359","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000040000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000020000000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000001000000000000000020000000000000000000000800000
+root                 
+status               1 (success)
+transactionHash      0xef982678632807cacabb23968b39aea44f44f460cf9a00030fa2149c0d441359
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x8F7F3ACA83953fa7912F9de35f7F83d15e0c4727
+[15:20:16] [🔗] TX: 0x8F7F3ACA83953fa7912F9de35f7F83d15e0c4727 :: setSubnodeOwner(bytes32,address)(0xdec08c9dbbdd0890e300eb5062089b2d4b1c40e3673bbccb5423f7b37dcf9a9c 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac)
+
+blockHash            0xf6b0b82e571a412b6987c70c4495f080e4a9bb10c1fb63bd62d9691676c459b6
+blockNumber          108
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    998000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              20957735053
+logs                 [{"address":"0x3500bd4af104f68cbe004a7362c54311e1c7f7f4","topics":["0xce0457fe73731f824cc272376169235128c118b49d344817417c6d108d155e82","0x0000000000000000000000000000000000000000000000000000000000000000","0xdec08c9dbbdd0890e300eb5062089b2d4b1c40e3673bbccb5423f7b37dcf9a9c"],"data":"0x000000000000000000000000f24ff3a9cf04c71dbc94d0b566f7a27b94566cac","blockHash":"0xf6b0b82e571a412b6987c70c4495f080e4a9bb10c1fb63bd62d9691676c459b6","blockNumber":"0x6c","transactionHash":"0x2daaf6f202b81ec4ff001fa00b4ae05ca7c0d1218b862f3fd851a73bea36dfb8","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000008000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000004000000000000000000000000004000020000000000000000000000000000000000000000000000000000000000000000400
+root                 
+status               1 (success)
+transactionHash      0x2daaf6f202b81ec4ff001fa00b4ae05ca7c0d1218b862f3fd851a73bea36dfb8
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x8F7F3ACA83953fa7912F9de35f7F83d15e0c4727
+[15:20:16] [🔗] TX: 0x3500bD4aF104F68Cbe004A7362C54311e1C7F7F4 :: setSubnodeOwner(bytes32,bytes32,address)(0xdec08c9dbbdd0890e300eb5062089b2d4b1c40e3673bbccb5423f7b37dcf9a9c 0xe5e14487b78f85faa6e1808e89246cf57dd34831548ff2e6097380d98db2504a 0xA76a27C7F89AE2D6518F0c19B4339cC6E3fCDE1E)
+Error: Failed to estimate gas: server returned an error response: error code 3: execution reverted: , data: "0x"
+[15:20:16] [⚠️] TX failed: setSubnodeOwner(bytes32,bytes32,address)
+[15:20:16] [🔗] TX: 0x8F7F3ACA83953fa7912F9de35f7F83d15e0c4727 :: setSubnodeOwner(bytes32,address)(0xce159cf34380757d1932a8e4a74e85e85957b0a7a52d9c566c0a3c8d6133d0f7 0x4a5B5B52CcF8f8bdcD7aCc39985aE1479108d55b)
+
+blockHash            0xb03539e7d96981f28fba98bf7c04677da365fe52e40e19bd4d70e3973d387bb8
+blockNumber          109
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    997982
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              20958073925
+logs                 [{"address":"0x3500bd4af104f68cbe004a7362c54311e1c7f7f4","topics":["0xce0457fe73731f824cc272376169235128c118b49d344817417c6d108d155e82","0x0000000000000000000000000000000000000000000000000000000000000000","0xce159cf34380757d1932a8e4a74e85e85957b0a7a52d9c566c0a3c8d6133d0f7"],"data":"0x0000000000000000000000004a5b5b52ccf8f8bdcd7acc39985ae1479108d55b","blockHash":"0xb03539e7d96981f28fba98bf7c04677da365fe52e40e19bd4d70e3973d387bb8","blockNumber":"0x6d","transactionHash":"0x4478985312226ec250b8d2fd2050eaa16b89e055a5018a420af7fdc07055fa6f","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000008000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000004000000000000000000000000004000020000000000000000000000000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x4478985312226ec250b8d2fd2050eaa16b89e055a5018a420af7fdc07055fa6f
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x8F7F3ACA83953fa7912F9de35f7F83d15e0c4727
+[15:20:16] [🧩] Owner of .dot before NameWrapper: 0x0000000000000000000000000000000000000000
+[15:20:16] [⚠️] .dot ownership not set by Root, retrying directly on ENSRegistry...
+[15:20:16] [🔗] TX: 0x3500bD4aF104F68Cbe004A7362C54311e1C7F7F4 :: setSubnodeOwner(bytes32,bytes32,address)(0x0000000000000000000000000000000000000000000000000000000000000000 0xce159cf34380757d1932a8e4a74e85e85957b0a7a52d9c566c0a3c8d6133d0f7 0x4a5B5B52CcF8f8bdcD7aCc39985aE1479108d55b)
+Error: Failed to estimate gas: server returned an error response: error code 3: execution reverted: , data: "0x"
+[15:20:16] [⚠️] TX failed: setSubnodeOwner(bytes32,bytes32,address)
+[15:20:16] [✅] .dot ownership after retry: 0x0000000000000000000000000000000000000000
+--------------------------------------------
+[15:20:16] [⏳] Deploying NameWrapper...
+[15:20:16] Args: 0x3500bD4aF104F68Cbe004A7362C54311e1C7F7F4 0x4a5B5B52CcF8f8bdcD7aCc39985aE1479108d55b 0xc094E96871C18C1DA2f27dF36bF63C8aefA4778d
+[15:20:16] [⚙️] forge create contracts/wrapper/NameWrapper.sol:NameWrapper --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 0x3500bD4aF104F68Cbe004A7362C54311e1C7F7F4 0x4a5B5B52CcF8f8bdcD7aCc39985aE1479108d55b 0xc094E96871C18C1DA2f27dF36bF63C8aefA4778d
+No files changed, compilation skipped
+Error: server returned an error response: error code 3: execution reverted: , data: "0x"
+[15:20:17] [❌] NameWrapper failed

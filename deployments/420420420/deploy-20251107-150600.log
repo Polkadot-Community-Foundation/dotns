@@ -1,0 +1,388 @@
+[15:06:00] [🔨] Building contracts...
+Nothing to compile
+[15:06:01] [✅] Build done.
+--------------------------------------------
+[15:06:01] [⏳] Deploying ENSRegistry...
+[15:06:01] No args
+[15:06:01] [⚙️] forge create contracts/registry/ENSRegistry.sol:ENSRegistry --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc
+Compiling 2 files with Resolc v0.5.0, Solc v0.8.30
+Resolc 0.5.0, Solc 0.8.30 finished in 591.38ms
+Compiler run successful with warnings:
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:18:9:
+   |
+18 |         address owner = records[node].owner;
+   |         ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:35:9:
+   |
+35 |         address owner,
+   |         ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:36:9:
+   |
+36 |         address resolver,
+   |         ^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:137:5:
+    |
+137 |     function resolver(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:37:9:
+   |
+37 |         uint64 ttl
+   |         ^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:144:5:
+    |
+144 |     function ttl(bytes32 node) public view virtual override returns (uint64) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:56:9:
+   |
+56 |         address owner,
+   |         ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:57:9:
+   |
+57 |         address resolver,
+   |         ^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:137:5:
+    |
+137 |     function resolver(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:58:9:
+   |
+58 |         uint64 ttl
+   |         ^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:144:5:
+    |
+144 |     function ttl(bytes32 node) public view virtual override returns (uint64) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:71:37:
+   |
+71 |     function setOwner(bytes32 node, address owner) public virtual override authorised(node) {
+   |                                     ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:83:9:
+   |
+83 |         address owner
+   |         ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:100:40:
+    |
+100 |     function setResolver(bytes32 node, address resolver) public virtual override authorised(node) {
+    |                                        ^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:137:5:
+    |
+137 |     function resolver(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:108:35:
+    |
+108 |     function setTTL(bytes32 node, uint64 ttl) public virtual override authorised(node) {
+    |                                   ^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:144:5:
+    |
+144 |     function ttl(bytes32 node) public view virtual override returns (uint64) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:160:9:
+    |
+160 |         address owner,
+    |         ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:172:38:
+    |
+172 |     function _setOwner(bytes32 node, address owner) internal virtual {
+    |                                      ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:176:47:
+    |
+176 |     function _setResolverAndTTL(bytes32 node, address resolver, uint64 ttl) internal {
+    |                                               ^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:137:5:
+    |
+137 |     function resolver(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:176:65:
+    |
+176 |     function _setResolverAndTTL(bytes32 node, address resolver, uint64 ttl) internal {
+    |                                                                 ^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:144:5:
+    |
+144 |     function ttl(bytes32 node) public view virtual override returns (uint64) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2462): Visibility for constructor is ignored. If you want the contract to be non-deployable, making it "abstract" is sufficient.
+  --> contracts/registry/ENSRegistry.sol:24:5:
+   |
+24 |     constructor() public {
+   |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x85b108660f47caDfAB9e0503104C08C1c96e0DA9
+Transaction hash: 0x81b77289a091794cc9482322d66de7af447c6713bb93bb71faf0b36c3b7309c4
+[15:06:03] [✅] ENSRegistry at 0x85b108660f47caDfAB9e0503104C08C1c96e0DA9
+--------------------------------------------
+[15:06:03] [⏳] Deploying Root...
+[15:06:03] Args: 0x85b108660f47caDfAB9e0503104C08C1c96e0DA9
+[15:06:03] [⚙️] forge create contracts/root/Root.sol:Root --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 0x85b108660f47caDfAB9e0503104C08C1c96e0DA9
+Compiling 4 files with Resolc v0.5.0, Solc v0.8.30
+Resolc 0.5.0, Solc 0.8.30 finished in 386.18ms
+Compiler run successful with warnings:
+Warning (2462): Visibility for constructor is ignored. If you want the contract to be non-deployable, making it "abstract" is sufficient.
+  --> contracts/root/Root.sol:17:5:
+   |
+17 |     constructor(ENS _ens) public {
+   |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x9Aaaf5ef347F1f1aF5377dB81500Db2Aa4c5a216
+Transaction hash: 0x804dc196fb327d380bad6043678b55d6418f45e49f21fca0caee8dd8d9f88e17
+[15:06:04] [✅] Root at 0x9Aaaf5ef347F1f1aF5377dB81500Db2Aa4c5a216
+--------------------------------------------
+[15:06:04] [⏳] Deploying ReverseRegistrar...
+[15:06:04] Args: 0x85b108660f47caDfAB9e0503104C08C1c96e0DA9
+[15:06:04] [⚙️] forge create contracts/reverseRegistrar/ReverseRegistrar.sol:ReverseRegistrar --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 0x85b108660f47caDfAB9e0503104C08C1c96e0DA9
+Compiling 2 files with Resolc v0.5.0, Solc v0.8.30
+Resolc 0.5.0, Solc 0.8.30 finished in 537.98ms
+Compiler run successful with warnings:
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/reverseRegistrar/ReverseRegistrar.sol:121:9:
+    |
+121 |         bytes32 node = claimForAddr(addr, owner, resolver);
+    |         ^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/reverseRegistrar/ReverseRegistrar.sol:129:5:
+    |
+129 |     function node(address addr) public pure override returns (bytes32) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xF0e46847c8bFD122C4b5EEE1D4494FF7C5FC5104
+Transaction hash: 0x99d869db99b00bdc9529ec67a5771b666f6506f7513b69db04571cf9c0ab74d8
+[15:06:06] [✅] ReverseRegistrar at 0xF0e46847c8bFD122C4b5EEE1D4494FF7C5FC5104
+--------------------------------------------
+[15:06:06] [⏳] Deploying BaseRegistrarImplementation...
+[15:06:06] Args: 0x85b108660f47caDfAB9e0503104C08C1c96e0DA9 0x646f740000000000000000000000000000000000000000000000000000000000
+[15:06:06] [⚙️] forge create contracts/ethregistrar/BaseRegistrarImplementation.sol:BaseRegistrarImplementation --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 0x85b108660f47caDfAB9e0503104C08C1c96e0DA9 0x646f740000000000000000000000000000000000000000000000000000000000
+Compiling 12 files with Resolc v0.5.0, Solc v0.8.30
+Resolc 0.5.0, Solc 0.8.30 finished in 1.68s
+Compiler run successful with warnings:
+Warning (2018): Function state mutability can be restricted to pure
+   --> contracts/ethregistrar/BaseRegistrarImplementation.sol:181:5:
+    |
+181 |     function supportsInterface(bytes4 interfaceID)
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xe78A45427B4797ae9b1852427476A956037B5bC2
+Transaction hash: 0x7343c0d09bfc52a9836818020992e83ebd861ade4759069e817ef1753d88a787
+[15:06:08] [✅] BaseRegistrarImplementation at 0xe78A45427B4797ae9b1852427476A956037B5bC2
+--------------------------------------------
+[15:06:08] [⏳] Deploying DummyOracle...
+[15:06:08] Args: 160000000000
+[15:06:08] [⚙️] forge create contracts/ethregistrar/DummyOracle.sol:DummyOracle --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 160000000000
+Compiling 1 files with Resolc v0.5.0, Solc v0.8.30
+Resolc 0.5.0, Solc 0.8.30 finished in 131.82ms
+Compiler run successful with warnings:
+Warning (2462): Visibility for constructor is ignored. If you want the contract to be non-deployable, making it "abstract" is sufficient.
+ --> contracts/ethregistrar/DummyOracle.sol:6:5:
+  |
+6 |     constructor(int256 _value) public {
+  |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xb91C2eeaA0c475115069a6ED4bc601337a22788E
+Transaction hash: 0xd82085ea15dd836e2292f7297de183cf1890371333f80a674a8c844b251846cd
+[15:06:09] [✅] DummyOracle at 0xb91C2eeaA0c475115069a6ED4bc601337a22788E
+--------------------------------------------
+[15:06:09] [⏳] Deploying StaticMetadataService...
+[15:06:09] Args: http://localhost:8080/name/0x{id}
+[15:06:09] [⚙️] forge create contracts/wrapper/StaticMetadataService.sol:StaticMetadataService --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args http://localhost:8080/name/0x{id}
+Compiling 1 files with Resolc v0.5.0, Solc v0.8.30
+Resolc 0.5.0, Solc 0.8.30 finished in 216.26ms
+Compiler run successful!
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xad856F238CBeafd064b80D12EadAea3981fB21B5
+Transaction hash: 0x89516ff59766c36628c53210c1434c644c08e1d18aefddc3401068ab75b18c02
+[15:06:10] [✅] StaticMetadataService at 0xad856F238CBeafd064b80D12EadAea3981fB21B5
+--------------------------------------------
+[15:06:11] [⏳] Deploying NameWrapper...
+[15:06:11] Args: 0x85b108660f47caDfAB9e0503104C08C1c96e0DA9 0xe78A45427B4797ae9b1852427476A956037B5bC2 0xad856F238CBeafd064b80D12EadAea3981fB21B5
+[15:06:11] [⚙️] forge create contracts/wrapper/NameWrapper.sol:NameWrapper --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 0x85b108660f47caDfAB9e0503104C08C1c96e0DA9 0xe78A45427B4797ae9b1852427476A956037B5bC2 0xad856F238CBeafd064b80D12EadAea3981fB21B5
+Compiling 15 files with Resolc v0.5.0, Solc v0.8.30
+Resolc 0.5.0, Solc 0.8.30 finished in 3.27s
+Compiler run successful with warnings:
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:340:19:
+    |
+340 |     function wrap(bytes calldata name, address wrappedOwner, address resolver) public {
+    |                   ^^^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:473:22:
+    |
+473 |     function upgrade(bytes calldata name, bytes calldata extraData) public {
+    |                      ^^^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:558:9:
+    |
+558 |         bytes memory name = _saveLabel(parentNode, node, label);
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:717:9:
+    |
+717 |         bytes memory name = names[node];
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:830:9:
+    |
+830 |         bytes memory name
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:858:9:
+    |
+858 |         bytes memory name,
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:879:9:
+    |
+879 |         bytes memory name = _addLabel(label, names[parentNode]);
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:891:9:
+    |
+891 |         bytes memory name = _addLabel(label, names[parentNode]);
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:907:9:
+    |
+907 |         bytes memory name = _addLabel(label, names[parentNode]);
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:980:9:
+    |
+980 |         bytes memory name = _addLabel(label, "\x03eth\x00");
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Error: server returned an error response: error code 3: execution reverted: , data: "0x"
+[15:06:15] [❌] NameWrapper failed

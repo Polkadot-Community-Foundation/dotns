@@ -1,0 +1,704 @@
+[15:28:10] [🔨] Building contracts...
+Nothing to compile
+[15:28:11] [✅] Build done.
+[15:28:11] [📋] Labels and nodes:
+[15:28:11]   reverse label: 0xdec08c9dbbdd0890e300eb5062089b2d4b1c40e3673bbccb5423f7b37dcf9a9c
+[15:28:11]   reverse node:  0xa097f6721ce401e757d1223a763fef49b8b5f90bb18567ddb86fd205dff71d34
+[15:28:11]   addr label:    0xe5e14487b78f85faa6e1808e89246cf57dd34831548ff2e6097380d98db2504a
+[15:28:11]   dot label:     0xce159cf34380757d1932a8e4a74e85e85957b0a7a52d9c566c0a3c8d6133d0f7
+[15:28:11]   dot node:      0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce
+============================================
+[15:28:11] [🏗️] Deploying core ENS infrastructure...
+--------------------------------------------
+[15:28:11] [⏳] Deploying ENSRegistry...
+[15:28:11] No args
+[15:28:11] [⚙️] forge create contracts/registry/ENSRegistry.sol:ENSRegistry --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast
+Compiling 2 files with Solc 0.8.30
+Solc 0.8.30 finished in 233.41ms
+Compiler run successful with warnings:
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:18:9:
+   |
+18 |         address owner = records[node].owner;
+   |         ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:35:9:
+   |
+35 |         address owner,
+   |         ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:36:9:
+   |
+36 |         address resolver,
+   |         ^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:137:5:
+    |
+137 |     function resolver(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:37:9:
+   |
+37 |         uint64 ttl
+   |         ^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:144:5:
+    |
+144 |     function ttl(bytes32 node) public view virtual override returns (uint64) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:56:9:
+   |
+56 |         address owner,
+   |         ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:57:9:
+   |
+57 |         address resolver,
+   |         ^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:137:5:
+    |
+137 |     function resolver(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:58:9:
+   |
+58 |         uint64 ttl
+   |         ^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:144:5:
+    |
+144 |     function ttl(bytes32 node) public view virtual override returns (uint64) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:71:37:
+   |
+71 |     function setOwner(bytes32 node, address owner) public virtual override authorised(node) {
+   |                                     ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:83:9:
+   |
+83 |         address owner
+   |         ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:100:40:
+    |
+100 |     function setResolver(bytes32 node, address resolver) public virtual override authorised(node) {
+    |                                        ^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:137:5:
+    |
+137 |     function resolver(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:108:35:
+    |
+108 |     function setTTL(bytes32 node, uint64 ttl) public virtual override authorised(node) {
+    |                                   ^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:144:5:
+    |
+144 |     function ttl(bytes32 node) public view virtual override returns (uint64) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:160:9:
+    |
+160 |         address owner,
+    |         ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:172:38:
+    |
+172 |     function _setOwner(bytes32 node, address owner) internal virtual {
+    |                                      ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:176:47:
+    |
+176 |     function _setResolverAndTTL(bytes32 node, address resolver, uint64 ttl) internal {
+    |                                               ^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:137:5:
+    |
+137 |     function resolver(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:176:65:
+    |
+176 |     function _setResolverAndTTL(bytes32 node, address resolver, uint64 ttl) internal {
+    |                                                                 ^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:144:5:
+    |
+144 |     function ttl(bytes32 node) public view virtual override returns (uint64) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2462): Visibility for constructor is ignored. If you want the contract to be non-deployable, making it "abstract" is sufficient.
+  --> contracts/registry/ENSRegistry.sol:24:5:
+   |
+24 |     constructor() public {
+   |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130
+Transaction hash: 0xb592afee190674c13aef235007d269be3846ed2597c042c9179fb75717857c5d
+[15:28:12] [✅] ENSRegistry at 0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130
+--------------------------------------------
+[15:28:12] [⏳] Deploying Root...
+[15:28:12] Args: 0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130
+[15:28:12] [⚙️] forge create contracts/root/Root.sol:Root --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --constructor-args 0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130
+Compiling 4 files with Solc 0.8.30
+Solc 0.8.30 finished in 241.83ms
+Compiler run successful with warnings:
+Warning (2462): Visibility for constructor is ignored. If you want the contract to be non-deployable, making it "abstract" is sufficient.
+  --> contracts/root/Root.sol:17:5:
+   |
+17 |     constructor(ENS _ens) public {
+   |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x05f668B7c0189D5555A9D813FdD02ECDd899Ca70
+Transaction hash: 0x767af0da2be5d2af560af3a6c0f74d7f0148bc501d01beba5ff637794028c2b8
+[15:28:13] [✅] Root at 0x05f668B7c0189D5555A9D813FdD02ECDd899Ca70
+[15:28:13] [🔗] TX: 0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130 :: setOwner(bytes32,address)(0x0000000000000000000000000000000000000000000000000000000000000000 0x05f668B7c0189D5555A9D813FdD02ECDd899Ca70)
+
+blockHash            0x89127419e18adb23db3433a3c1a7f44f65461d8ff2f5b1427552edda48fef495
+blockNumber          141
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    997391
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              20252150163
+logs                 [{"address":"0xf9927a1812c7bf2521e64a6114b3a9d1c3a52130","topics":["0xd4735d920b0f87494915f556dd9b54c8f309026070caea5c737245152564d266","0x0000000000000000000000000000000000000000000000000000000000000000"],"data":"0x00000000000000000000000005f668b7c0189d5555a9d813fdd02ecdd899ca70","blockHash":"0x89127419e18adb23db3433a3c1a7f44f65461d8ff2f5b1427552edda48fef495","blockNumber":"0x8d","transactionHash":"0xc4d9e6adae3215fc90441f0aee9a18d9b104b869f010a6272bd9658642d3ecce","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000020000000000000000000100000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000100000040000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0xc4d9e6adae3215fc90441f0aee9a18d9b104b869f010a6272bd9658642d3ecce
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130
+[15:28:13] [🔗] TX: 0x05f668B7c0189D5555A9D813FdD02ECDd899Ca70 :: setController(address,bool)(0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac true)
+
+blockHash            0xee92d70e5c529667f8a6f388847610e1bf299d35da8bff1ed0e6258456bcba1c
+blockNumber          142
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    997372
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              20240650786
+logs                 [{"address":"0x05f668b7c0189d5555a9d813fdd02ecdd899ca70","topics":["0x4c97694570a07277810af7e5669ffd5f6a2d6b74b6e9a274b8b870fd5114cf87","0x000000000000000000000000f24ff3a9cf04c71dbc94d0b566f7a27b94566cac"],"data":"0x0000000000000000000000000000000000000000000000000000000000000001","blockHash":"0xee92d70e5c529667f8a6f388847610e1bf299d35da8bff1ed0e6258456bcba1c","blockNumber":"0x8e","transactionHash":"0x53fdddaf09bc42d4a1ab677a7e8dbec9a9db3effd623eca93de6b0e6304bb85c","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000001000000000001000000000000000020000200000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x53fdddaf09bc42d4a1ab677a7e8dbec9a9db3effd623eca93de6b0e6304bb85c
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x05f668B7c0189D5555A9D813FdD02ECDd899Ca70
+--------------------------------------------
+[15:28:13] [⏳] Deploying ReverseRegistrar...
+[15:28:13] Args: 0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130
+[15:28:13] [⚙️] forge create contracts/reverseRegistrar/ReverseRegistrar.sol:ReverseRegistrar --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --constructor-args 0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130
+Compiling 2 files with Solc 0.8.30
+Solc 0.8.30 finished in 262.50ms
+Compiler run successful with warnings:
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/reverseRegistrar/ReverseRegistrar.sol:121:9:
+    |
+121 |         bytes32 node = claimForAddr(addr, owner, resolver);
+    |         ^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/reverseRegistrar/ReverseRegistrar.sol:129:5:
+    |
+129 |     function node(address addr) public pure override returns (bytes32) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x279Fb8f70a48047d0aADD28e40DEe6f0e9BD9F02
+Transaction hash: 0xcb9a3ca5958608940fed6a6c9e1e76aad2fc938ba8eee70e9e95e3e0d7e6c424
+[15:28:14] [✅] ReverseRegistrar at 0x279Fb8f70a48047d0aADD28e40DEe6f0e9BD9F02
+[15:28:14] [🔗] TX: 0x05f668B7c0189D5555A9D813FdD02ECDd899Ca70 :: setSubnodeOwner(bytes32,address)(0xdec08c9dbbdd0890e300eb5062089b2d4b1c40e3673bbccb5423f7b37dcf9a9c 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac)
+
+blockHash            0xd861083cd5e8bd2472d787b52fd213ff7ce2001c487ed3c3841cc3b56ec9eb94
+blockNumber          144
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    997335
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              20796369473
+logs                 [{"address":"0xf9927a1812c7bf2521e64a6114b3a9d1c3a52130","topics":["0xce0457fe73731f824cc272376169235128c118b49d344817417c6d108d155e82","0x0000000000000000000000000000000000000000000000000000000000000000","0xdec08c9dbbdd0890e300eb5062089b2d4b1c40e3673bbccb5423f7b37dcf9a9c"],"data":"0x000000000000000000000000f24ff3a9cf04c71dbc94d0b566f7a27b94566cac","blockHash":"0xd861083cd5e8bd2472d787b52fd213ff7ce2001c487ed3c3841cc3b56ec9eb94","blockNumber":"0x90","transactionHash":"0x7aabf635bc47396f507924d86effcc8ff83731e1741992d70eb080cef7a14381","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000020010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000002000000000040000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000040000000000000000000000000000000000004000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000400
+root                 
+status               1 (success)
+transactionHash      0x7aabf635bc47396f507924d86effcc8ff83731e1741992d70eb080cef7a14381
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x05f668B7c0189D5555A9D813FdD02ECDd899Ca70
+[15:28:14] [🔗] TX: 0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130 :: setSubnodeOwner(bytes32,bytes32,address)(0xa097f6721ce401e757d1223a763fef49b8b5f90bb18567ddb86fd205dff71d34 0xe5e14487b78f85faa6e1808e89246cf57dd34831548ff2e6097380d98db2504a 0x279Fb8f70a48047d0aADD28e40DEe6f0e9BD9F02)
+
+blockHash            0x765eb84dc349f26799d47e392da8252c8b00b219ec4afea300be5691262aedcb
+blockNumber          145
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    997317
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              23474954371
+logs                 [{"address":"0xf9927a1812c7bf2521e64a6114b3a9d1c3a52130","topics":["0xce0457fe73731f824cc272376169235128c118b49d344817417c6d108d155e82","0xa097f6721ce401e757d1223a763fef49b8b5f90bb18567ddb86fd205dff71d34","0xe5e14487b78f85faa6e1808e89246cf57dd34831548ff2e6097380d98db2504a"],"data":"0x000000000000000000000000279fb8f70a48047d0aadd28e40dee6f0e9bd9f02","blockHash":"0x765eb84dc349f26799d47e392da8252c8b00b219ec4afea300be5691262aedcb","blockNumber":"0x91","transactionHash":"0x69095c5dd023648a48dfa116095accb6009380f5038f289c5877ec4921dd90a1","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000020010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000001000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000040000000000000000000000000000000000004000001000000000000000000000000000000000000000000040000000000000000000000000000000000000000010000000
+root                 
+status               1 (success)
+transactionHash      0x69095c5dd023648a48dfa116095accb6009380f5038f289c5877ec4921dd90a1
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130
+--------------------------------------------
+[15:28:14] [⏳] Deploying BaseRegistrarImplementation...
+[15:28:14] Args: 0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130 0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce
+[15:28:14] [⚙️] forge create contracts/ethregistrar/BaseRegistrarImplementation.sol:BaseRegistrarImplementation --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --constructor-args 0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130 0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce
+Compiling 12 files with Solc 0.8.30
+Solc 0.8.30 finished in 1.13s
+Compiler run successful with warnings:
+Warning (2018): Function state mutability can be restricted to pure
+   --> contracts/ethregistrar/BaseRegistrarImplementation.sol:181:5:
+    |
+181 |     function supportsInterface(bytes4 interfaceID)
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x832b91075350cF4125fbe78c017722Bd59C6320d
+Transaction hash: 0x66abe08a489da81e94cdb4d9af861192440ba8afb3ef1007595aae6196749093
+[15:28:16] [✅] BaseRegistrarImplementation at 0x832b91075350cF4125fbe78c017722Bd59C6320d
+[15:28:16] [🔗] TX: 0x05f668B7c0189D5555A9D813FdD02ECDd899Ca70 :: setSubnodeOwner(bytes32,address)(0xce159cf34380757d1932a8e4a74e85e85957b0a7a52d9c566c0a3c8d6133d0f7 0x832b91075350cF4125fbe78c017722Bd59C6320d)
+
+blockHash            0x501f8995ec9206103d76bc47964185000378a19b0baba5d6976d13b392fb7834
+blockNumber          147
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    997280
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              20797414151
+logs                 [{"address":"0xf9927a1812c7bf2521e64a6114b3a9d1c3a52130","topics":["0xce0457fe73731f824cc272376169235128c118b49d344817417c6d108d155e82","0x0000000000000000000000000000000000000000000000000000000000000000","0xce159cf34380757d1932a8e4a74e85e85957b0a7a52d9c566c0a3c8d6133d0f7"],"data":"0x000000000000000000000000832b91075350cf4125fbe78c017722bd59c6320d","blockHash":"0x501f8995ec9206103d76bc47964185000378a19b0baba5d6976d13b392fb7834","blockNumber":"0x93","transactionHash":"0xd9b51ab2667d443306da3b9bad2f532acc307a02a4b604cbfb5e10aff08c417b","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000020030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000040080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000040000000000000000000000000000000000004000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0xd9b51ab2667d443306da3b9bad2f532acc307a02a4b604cbfb5e10aff08c417b
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x05f668B7c0189D5555A9D813FdD02ECDd899Ca70
+[15:28:16] [🔎] Owner of .dot node: 0x832b91075350cF4125fbe78c017722Bd59C6320d
+[15:28:16] [✅] .dot ownership verified
+============================================
+[15:28:16] [💰] Deploying pricing and metadata...
+--------------------------------------------
+[15:28:16] [⏳] Deploying DummyOracle...
+[15:28:16] Args: 160000000000
+[15:28:16] [⚙️] forge create contracts/ethregistrar/DummyOracle.sol:DummyOracle --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --constructor-args 160000000000
+Compiling 1 files with Solc 0.8.30
+Solc 0.8.30 finished in 50.31ms
+Compiler run successful with warnings:
+Warning (2462): Visibility for constructor is ignored. If you want the contract to be non-deployable, making it "abstract" is sufficient.
+ --> contracts/ethregistrar/DummyOracle.sol:6:5:
+  |
+6 |     constructor(int256 _value) public {
+  |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xfbe9Efb6Fbee0037756218436E29840510390b18
+Transaction hash: 0x042518663fe3faeb195458a15ddddfb83da254e49219f5ab6de8aa522d82b8c8
+[15:28:17] [✅] DummyOracle at 0xfbe9Efb6Fbee0037756218436E29840510390b18
+--------------------------------------------
+[15:28:17] [⏳] Deploying ExponentialPremiumPriceOracle...
+[15:28:17] Args: 0xfbe9Efb6Fbee0037756218436E29840510390b18 [0,0,20294266869609,5073566717402,158548959919] 100000000000000000000000000 21
+[15:28:17] [⚙️] forge create contracts/ethregistrar/ExponentialPremiumPriceOracle.sol:ExponentialPremiumPriceOracle --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --constructor-args 0xfbe9Efb6Fbee0037756218436E29840510390b18 [0,0,20294266869609,5073566717402,158548959919] 100000000000000000000000000 21
+Compiling 4 files with Solc 0.8.30
+Solc 0.8.30 finished in 460.98ms
+Compiler run successful with warnings:
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/ethregistrar/ExponentialPremiumPriceOracle.sol:68:29:
+   |
+68 |     function decayedPremium(uint256 startPremium, uint256 elapsed) public pure returns (uint256) {
+   |                             ^^^^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+ --> contracts/ethregistrar/ExponentialPremiumPriceOracle.sol:8:5:
+  |
+8 |     uint256 immutable startPremium;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (5667): Unused function parameter. Remove or comment out the variable name to silence this warning.
+  --> contracts/ethregistrar/StablePriceOracle.sol:84:9:
+   |
+84 |         string memory name,
+   |         ^^^^^^^^^^^^^^^^^^
+
+Warning (5667): Unused function parameter. Remove or comment out the variable name to silence this warning.
+  --> contracts/ethregistrar/StablePriceOracle.sol:85:9:
+   |
+85 |         uint256 expires,
+   |         ^^^^^^^^^^^^^^^
+
+Warning (5667): Unused function parameter. Remove or comment out the variable name to silence this warning.
+  --> contracts/ethregistrar/StablePriceOracle.sol:86:9:
+   |
+86 |         uint256 duration
+   |         ^^^^^^^^^^^^^^^^
+
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x8A9FbFC45cCaF6d9480a3D5354d3D4d930ECfe01
+Transaction hash: 0x3eb296f61e40815298a274bdb7ec6c900d192c1f8656765b86f381a7bb5651ef
+[15:28:18] [✅] ExponentialPremiumPriceOracle at 0x8A9FbFC45cCaF6d9480a3D5354d3D4d930ECfe01
+--------------------------------------------
+[15:28:18] [⏳] Deploying StaticMetadataService...
+[15:28:18] Args: http://localhost:8080/name/0x{id}
+[15:28:18] [⚙️] forge create contracts/wrapper/StaticMetadataService.sol:StaticMetadataService --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --constructor-args http://localhost:8080/name/0x{id}
+Compiling 1 files with Solc 0.8.30
+Solc 0.8.30 finished in 100.63ms
+Compiler run successful!
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xbDDadd47DC0D15947a86d186A7a3b283949469Fd
+Transaction hash: 0x65ee623ab4274e243eeb33a54fc86c8d7c00a46dd8dc433ca1fe7368ad89172d
+[15:28:18] [✅] StaticMetadataService at 0xbDDadd47DC0D15947a86d186A7a3b283949469Fd
+============================================
+[15:28:18] [📦] Deploying NameWrapper and controllers...
+--------------------------------------------
+[15:28:18] [⏳] Deploying NameWrapper...
+[15:28:18] Args: 0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130 0x832b91075350cF4125fbe78c017722Bd59C6320d 0xbDDadd47DC0D15947a86d186A7a3b283949469Fd
+[15:28:18] [⚙️] forge create contracts/wrapper/NameWrapper.sol:NameWrapper --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --constructor-args 0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130 0x832b91075350cF4125fbe78c017722Bd59C6320d 0xbDDadd47DC0D15947a86d186A7a3b283949469Fd
+Compiling 15 files with Solc 0.8.30
+Solc 0.8.30 finished in 2.13s
+Compiler run successful with warnings:
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:340:19:
+    |
+340 |     function wrap(bytes calldata name, address wrappedOwner, address resolver) public {
+    |                   ^^^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:473:22:
+    |
+473 |     function upgrade(bytes calldata name, bytes calldata extraData) public {
+    |                      ^^^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:558:9:
+    |
+558 |         bytes memory name = _saveLabel(parentNode, node, label);
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:717:9:
+    |
+717 |         bytes memory name = names[node];
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:830:9:
+    |
+830 |         bytes memory name
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:858:9:
+    |
+858 |         bytes memory name,
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:879:9:
+    |
+879 |         bytes memory name = _addLabel(label, names[parentNode]);
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:891:9:
+    |
+891 |         bytes memory name = _addLabel(label, names[parentNode]);
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:907:9:
+    |
+907 |         bytes memory name = _addLabel(label, names[parentNode]);
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:980:9:
+    |
+980 |         bytes memory name = _addLabel(label, "\x03eth\x00");
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xf4b67128C4b3Ef207884C733FeF7Ec4c89C528B4
+Transaction hash: 0x79ce8622be79912e838268295d3165df872ba7ad34878f70f653ee4b292a2096
+[15:28:21] [✅] NameWrapper at 0xf4b67128C4b3Ef207884C733FeF7Ec4c89C528B4
+[15:28:21] [🔗] TX: 0x832b91075350cF4125fbe78c017722Bd59C6320d :: addController(address)(0xf4b67128C4b3Ef207884C733FeF7Ec4c89C528B4)
+
+blockHash            0xe535f3653d2fbde951e375b6f2a65b38d3d948a87ddde2ccdb809892f51da690
+blockNumber          152
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    997187
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              16935587540
+logs                 [{"address":"0x832b91075350cf4125fbe78c017722bd59c6320d","topics":["0x0a8bb31534c0ed46f380cb867bd5c803a189ced9a764e30b3a4991a9901d7474","0x000000000000000000000000f4b67128c4b3ef207884c733fef7ec4c89c528b4"],"data":"0x","blockHash":"0xe535f3653d2fbde951e375b6f2a65b38d3d948a87ddde2ccdb809892f51da690","blockNumber":"0x98","transactionHash":"0xb6ecd2b15aec030b1a21df0c901c8bd4ffec95375f47c4560d7cd5a4c62d1168","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000400200400000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000
+root                 
+status               1 (success)
+transactionHash      0xb6ecd2b15aec030b1a21df0c901c8bd4ffec95375f47c4560d7cd5a4c62d1168
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x832b91075350cF4125fbe78c017722Bd59C6320d
+--------------------------------------------
+[15:28:21] [⏳] Deploying DefaultReverseRegistrar...
+[15:28:21] No args
+[15:28:21] [⚙️] forge create contracts/reverseRegistrar/DefaultReverseRegistrar.sol:DefaultReverseRegistrar --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast
+Compiling 18 files with Solc 0.8.30
+Solc 0.8.30 finished in 512.87ms
+Compiler run successful!
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x80acB7D94212DC3fFc2662268887CB7c553726ab
+Transaction hash: 0x3140ef481a2828b274f41141be6a09eb750d50dc990e156b60e3e09d5457a500
+[15:28:22] [✅] DefaultReverseRegistrar at 0x80acB7D94212DC3fFc2662268887CB7c553726ab
+--------------------------------------------
+[15:28:22] [⏳] Deploying ETHRegistrarController...
+[15:28:23] Args: 0x832b91075350cF4125fbe78c017722Bd59C6320d 0x8A9FbFC45cCaF6d9480a3D5354d3D4d930ECfe01 60 86400 0x279Fb8f70a48047d0aADD28e40DEe6f0e9BD9F02 0x80acB7D94212DC3fFc2662268887CB7c553726ab 0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130
+[15:28:23] [⚙️] forge create contracts/ethregistrar/ETHRegistrarController.sol:ETHRegistrarController --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --constructor-args 0x832b91075350cF4125fbe78c017722Bd59C6320d 0x8A9FbFC45cCaF6d9480a3D5354d3D4d930ECfe01 60 86400 0x279Fb8f70a48047d0aADD28e40DEe6f0e9BD9F02 0x80acB7D94212DC3fFc2662268887CB7c553726ab 0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130
+Compiling 14 files with Solc 0.8.30
+Solc 0.8.30 finished in 663.73ms
+Compiler run successful with warnings:
+Warning (2018): Function state mutability can be restricted to pure
+   --> contracts/ethregistrar/BaseRegistrarImplementation.sol:181:5:
+    |
+181 |     function supportsInterface(bytes4 interfaceID)
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xAbFF0f2A4BE4F85B905a51A01D76a9689d18714D
+Transaction hash: 0xdfd3fe10d8e946fd880fb35e12abf7b0a3a96fc1c9cab3c51a3a2e4a4c4a9762
+[15:28:24] [✅] ETHRegistrarController at 0xAbFF0f2A4BE4F85B905a51A01D76a9689d18714D
+[15:28:24] [🔗] TX: 0x832b91075350cF4125fbe78c017722Bd59C6320d :: addController(address)(0xAbFF0f2A4BE4F85B905a51A01D76a9689d18714D)
+
+blockHash            0x4c50f2dd50a3dcd04e4ca4cbc29be5fe447a5da0ee15b37289216b5aa61c017f
+blockNumber          155
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    997132
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              16936450138
+logs                 [{"address":"0x832b91075350cf4125fbe78c017722bd59c6320d","topics":["0x0a8bb31534c0ed46f380cb867bd5c803a189ced9a764e30b3a4991a9901d7474","0x000000000000000000000000abff0f2a4be4f85b905a51a01d76a9689d18714d"],"data":"0x","blockHash":"0x4c50f2dd50a3dcd04e4ca4cbc29be5fe447a5da0ee15b37289216b5aa61c017f","blockNumber":"0x9b","transactionHash":"0xab4ceb1032dab7b36e7891ba332d27b5aa012a95797393d28837754521536194","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000410000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000800000000000000
+root                 
+status               1 (success)
+transactionHash      0xab4ceb1032dab7b36e7891ba332d27b5aa012a95797393d28837754521536194
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x832b91075350cF4125fbe78c017722Bd59C6320d
+[15:28:24] [🔗] TX: 0xf4b67128C4b3Ef207884C733FeF7Ec4c89C528B4 :: setController(address,bool)(0xAbFF0f2A4BE4F85B905a51A01D76a9689d18714D true)
+
+blockHash            0xd3e2f76e15e9e954b67c3bb49f5ec71ce43b7dd88ebe0ce38c2639366e8284b6
+blockNumber          156
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    997113
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              20250127741
+logs                 [{"address":"0xf4b67128c4b3ef207884c733fef7ec4c89c528b4","topics":["0x4c97694570a07277810af7e5669ffd5f6a2d6b74b6e9a274b8b870fd5114cf87","0x000000000000000000000000abff0f2a4be4f85b905a51a01d76a9689d18714d"],"data":"0x0000000000000000000000000000000000000000000000000000000000000001","blockHash":"0xd3e2f76e15e9e954b67c3bb49f5ec71ce43b7dd88ebe0ce38c2639366e8284b6","blockNumber":"0x9c","transactionHash":"0xfc15fe96397118d35ff20d5de9fda5770bc45cfdb76b4784fb7f70bb8ebbc0ee","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000020000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000004000000000000000000800001000000000000000080000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0xfc15fe96397118d35ff20d5de9fda5770bc45cfdb76b4784fb7f70bb8ebbc0ee
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0xf4b67128C4b3Ef207884C733FeF7Ec4c89C528B4
+[15:28:24] [🔗] TX: 0x279Fb8f70a48047d0aADD28e40DEe6f0e9BD9F02 :: setController(address,bool)(0xAbFF0f2A4BE4F85B905a51A01D76a9689d18714D true)
+
+blockHash            0xad8bb7fd69bad616585b29c49854a972ad861652f8f2117f080f946b3afdac8e
+blockNumber          157
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    997095
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              20246491287
+logs                 [{"address":"0x279fb8f70a48047d0aadd28e40dee6f0e9bd9f02","topics":["0x4c97694570a07277810af7e5669ffd5f6a2d6b74b6e9a274b8b870fd5114cf87","0x000000000000000000000000abff0f2a4be4f85b905a51a01d76a9689d18714d"],"data":"0x0000000000000000000000000000000000000000000000000000000000000001","blockHash":"0xad8bb7fd69bad616585b29c49854a972ad861652f8f2117f080f946b3afdac8e","blockNumber":"0x9d","transactionHash":"0x71603b2ca624d6185d26c468407540ee38a7255fa734ee9fcf5df81bd18816b0","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400008000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000004000000000000000004800001000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x71603b2ca624d6185d26c468407540ee38a7255fa734ee9fcf5df81bd18816b0
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x279Fb8f70a48047d0aADD28e40DEe6f0e9BD9F02
+============================================
+[15:28:24] [🔧] Deploying additional contracts...
+--------------------------------------------
+[15:28:24] [⏳] Deploying StaticBulkRenewal...
+[15:28:24] Args: 0xAbFF0f2A4BE4F85B905a51A01D76a9689d18714D
+[15:28:24] [⚙️] forge create contracts/ethregistrar/StaticBulkRenewal.sol:StaticBulkRenewal --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --constructor-args 0xAbFF0f2A4BE4F85B905a51A01D76a9689d18714D
+Compiling 2 files with Solc 0.8.30
+Solc 0.8.30 finished in 179.22ms
+Compiler run successful with warnings:
+Warning (2018): Function state mutability can be restricted to pure
+   --> contracts/ethregistrar/BaseRegistrarImplementation.sol:181:5:
+    |
+181 |     function supportsInterface(bytes4 interfaceID)
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x41612fa3efc91dBDB5de9B98985460442b79649D
+Transaction hash: 0xcbb2deb5f5c2c49fb37764c8e40b14fdbe9555f012e6cf7d8083e0974157c71a
+[15:28:25] [✅] StaticBulkRenewal at 0x41612fa3efc91dBDB5de9B98985460442b79649D
+--------------------------------------------
+[15:28:25] [⏳] Deploying PublicResolver...
+[15:28:25] Args: 0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130 0xf4b67128C4b3Ef207884C733FeF7Ec4c89C528B4 0xAbFF0f2A4BE4F85B905a51A01D76a9689d18714D 0x279Fb8f70a48047d0aADD28e40DEe6f0e9BD9F02
+[15:28:25] [⚙️] forge create contracts/resolvers/PublicResolver.sol:PublicResolver --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --constructor-args 0xF9927A1812c7bf2521e64a6114b3A9d1c3A52130 0xf4b67128C4b3Ef207884C733FeF7Ec4c89C528B4 0xAbFF0f2A4BE4F85B905a51A01D76a9689d18714D 0x279Fb8f70a48047d0aADD28e40DEe6f0e9BD9F02
+Compiling 19 files with Solc 0.8.30
+Solc 0.8.30 finished in 1.27s
+Compiler run successful!
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x08C430f4D08AbaBB120e28f12a846C50D203f35e
+Transaction hash: 0xf7bb8b79037185cbc5694b01252b742d73c4662267c13493b78d787628ca08ff
+[15:28:27] [✅] PublicResolver at 0x08C430f4D08AbaBB120e28f12a846C50D203f35e
+[15:28:27] [🔗] TX: 0x279Fb8f70a48047d0aADD28e40DEe6f0e9BD9F02 :: setDefaultResolver(address)(0x08C430f4D08AbaBB120e28f12a846C50D203f35e)
+
+blockHash            0xacb0a9bd3a952a57312911046af0bdcc3c0ed9014a5a9c8a9cc4abfcd7eb9541
+blockNumber          160
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    997039
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              16924611986
+logs                 [{"address":"0x279fb8f70a48047d0aadd28e40dee6f0e9bd9f02","topics":["0xeae17a84d9eb83d8c8eb317f9e7d64857bc363fa51674d996c023f4340c577cf","0x00000000000000000000000008c430f4d08ababb120e28f12a846c50d203f35e"],"data":"0x","blockHash":"0xacb0a9bd3a952a57312911046af0bdcc3c0ed9014a5a9c8a9cc4abfcd7eb9541","blockNumber":"0xa0","transactionHash":"0x75e54e568cb528a6e7cd2710e4f14ebfbe7a1e3968fc25ba2b999eec303f7089","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000000000000000080004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000800000000000000000000000000000000004000080000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x75e54e568cb528a6e7cd2710e4f14ebfbe7a1e3968fc25ba2b999eec303f7089
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x279Fb8f70a48047d0aADD28e40DEe6f0e9BD9F02
+--------------------------------------------
+[15:28:27] [⏳] Deploying GatewayProvider...
+[15:28:27] Args: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac http://universal-offchain-resolver.local/
+[15:28:27] [⚙️] forge create contracts/ccipRead/GatewayProvider.sol:GatewayProvider --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --constructor-args 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac http://universal-offchain-resolver.local/
+Compiling 2 files with Solc 0.8.30
+Solc 0.8.30 finished in 350.36ms
+Compiler run successful!
+Error: parser error:
+http://universal-offchain-resolver.local/
+^
+expected `[`
+[15:28:28] [❌] GatewayProvider failed

@@ -1,0 +1,13 @@
+node_modules
+artifacts
+cache
+gasreport-*
+generated
+.env
+*.DS_Store
+build
+forge-cache
+out
+deployments/**/.pendingSafeTransactions
+deployments/localhost
+broadcast/*

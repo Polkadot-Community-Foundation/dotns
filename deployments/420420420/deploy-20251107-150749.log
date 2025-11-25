@@ -1,0 +1,102 @@
+[15:07:49] [🔨] Building contracts...
+Nothing to compile
+[15:07:50] [✅] Build done.
+--------------------------------------------
+[15:07:50] [⏳] Deploying ENSRegistry...
+[15:07:50] No args
+[15:07:50] [⚙️] forge create contracts/registry/ENSRegistry.sol:ENSRegistry --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xD45E290062Bd0D1C640D59C350cA03CC291b37FA
+Transaction hash: 0xe79d68b03b9c94940e0f2007fc8bdb94ce8322c02f2e79eca5eb1c6002db4d22
+[15:07:51] [✅] ENSRegistry at 0xD45E290062Bd0D1C640D59C350cA03CC291b37FA
+--------------------------------------------
+[15:07:51] [⏳] Deploying Root...
+[15:07:51] Args: 0xD45E290062Bd0D1C640D59C350cA03CC291b37FA
+[15:07:51] [⚙️] forge create contracts/root/Root.sol:Root --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 0xD45E290062Bd0D1C640D59C350cA03CC291b37FA
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x6eA3524AD29729b10F324fD2aF967beed9cc4E68
+Transaction hash: 0xcbfa774fbe35a118169e8915fcfc14fa934a7f7908fc8543974856ebdc5f6e78
+[15:07:52] [✅] Root at 0x6eA3524AD29729b10F324fD2aF967beed9cc4E68
+--------------------------------------------
+[15:07:52] [⏳] Deploying ReverseRegistrar...
+[15:07:52] Args: 0xD45E290062Bd0D1C640D59C350cA03CC291b37FA
+[15:07:52] [⚙️] forge create contracts/reverseRegistrar/ReverseRegistrar.sol:ReverseRegistrar --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 0xD45E290062Bd0D1C640D59C350cA03CC291b37FA
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x115f277e8fcE437B1F513A293057D2E396Ac2EC1
+Transaction hash: 0xcac8a6086882d7372bc3e482f93bd2e00f8843433ef54f63f8d5dee29e423959
+[15:07:53] [✅] ReverseRegistrar at 0x115f277e8fcE437B1F513A293057D2E396Ac2EC1
+--------------------------------------------
+[15:07:53] [⏳] Deploying BaseRegistrarImplementation...
+[15:07:53] Args: 0xD45E290062Bd0D1C640D59C350cA03CC291b37FA 0x646f740000000000000000000000000000000000000000000000000000000000
+[15:07:53] [⚙️] forge create contracts/ethregistrar/BaseRegistrarImplementation.sol:BaseRegistrarImplementation --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 0xD45E290062Bd0D1C640D59C350cA03CC291b37FA 0x646f740000000000000000000000000000000000000000000000000000000000
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x71d5a92A9056aB2Ee81811aF045439e059Dd6FBc
+Transaction hash: 0x6508e93327fe99320ac4ba51fffd17ea5388d8f35ec9427d71cf7cad691b7ee1
+[15:07:54] [✅] BaseRegistrarImplementation at 0x71d5a92A9056aB2Ee81811aF045439e059Dd6FBc
+[15:07:54] [⚙️] Performing ENS pre-setup before NameWrapper...
+[15:07:54] [🔗] TX: 0xD45E290062Bd0D1C640D59C350cA03CC291b37FA :: setOwner(bytes32,address)(0x0000000000000000000000000000000000000000000000000000000000000000 0x6eA3524AD29729b10F324fD2aF967beed9cc4E68)
+
+blockHash            0x580d03ec5f9d327f1f3587334d7bba080c2cda1aee13bd462e495d0a9969c8a5
+blockNumber          41
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    999239
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              20217622001
+logs                 [{"address":"0xd45e290062bd0d1c640d59c350ca03cc291b37fa","topics":["0xd4735d920b0f87494915f556dd9b54c8f309026070caea5c737245152564d266","0x0000000000000000000000000000000000000000000000000000000000000000"],"data":"0x0000000000000000000000006ea3524ad29729b10f324fd2af967beed9cc4e68","blockHash":"0x580d03ec5f9d327f1f3587334d7bba080c2cda1aee13bd462e495d0a9969c8a5","blockNumber":"0x29","transactionHash":"0x2bb5bcd01215d61f9a1e3017ee708f281f016bc9628c10467820bc44005f0847","transactionIndex":"0x1","logIndex":"0x3","removed":false}]
+logsBloom            0x00000000000000000000020000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000020000000000000000000880000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000020000000000000000000000000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x2bb5bcd01215d61f9a1e3017ee708f281f016bc9628c10467820bc44005f0847
+transactionIndex     1
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0xD45E290062Bd0D1C640D59C350cA03CC291b37FA
+[15:07:54] [🔗] TX: 0x6eA3524AD29729b10F324fD2aF967beed9cc4E68 :: setController(address,bool)(revive true)
+Error: parser error:
+revive
+^
+expected hex digits or the `0x` prefix for an empty hex string
+[15:07:54] [⚠️] TX failed: setController(address,bool)
+[15:07:54] [🔗] TX: 0x6eA3524AD29729b10F324fD2aF967beed9cc4E68 :: setSubnodeOwner(bytes32,address)(0xdec08c9dbbdd0890e300eb5062089b2d4b1c40e3673bbccb5423f7b37dcf9a9c revive)
+Error: parser error:
+revive
+^
+expected hex digits or the `0x` prefix for an empty hex string
+[15:07:54] [⚠️] TX failed: setSubnodeOwner(bytes32,address)
+[15:07:54] [🔗] TX: 0xD45E290062Bd0D1C640D59C350cA03CC291b37FA :: setSubnodeOwner(bytes32,bytes32,address)(0xdec08c9dbbdd0890e300eb5062089b2d4b1c40e3673bbccb5423f7b37dcf9a9c 0xe5e14487b78f85faa6e1808e89246cf57dd34831548ff2e6097380d98db2504a 0x115f277e8fcE437B1F513A293057D2E396Ac2EC1)
+Error: Failed to estimate gas: server returned an error response: error code 3: execution reverted: , data: "0x"
+[15:07:55] [⚠️] TX failed: setSubnodeOwner(bytes32,bytes32,address)
+[15:07:55] [🔗] TX: 0x6eA3524AD29729b10F324fD2aF967beed9cc4E68 :: setSubnodeOwner(bytes32,address)(0xce159cf34380757d1932a8e4a74e85e85957b0a7a52d9c566c0a3c8d6133d0f7 0x71d5a92A9056aB2Ee81811aF045439e059Dd6FBc)
+Error: Failed to estimate gas: server returned an error response: error code 3: execution reverted: revert: Controllable: Caller is not a controller, data: "0x08c379a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000028436f6e74726f6c6c61626c653a2043616c6c6572206973206e6f74206120636f6e74726f6c6c6572000000000000000000000000000000000000000000000000": Error("Controllable: Caller is not a controller")
+[15:07:55] [⚠️] TX failed: setSubnodeOwner(bytes32,address)
+--------------------------------------------
+[15:07:55] [⏳] Deploying DummyOracle...
+[15:07:55] Args: 160000000000
+[15:07:55] [⚙️] forge create contracts/ethregistrar/DummyOracle.sol:DummyOracle --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 160000000000
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x651D52054c8ac4b19191d7427C2633797567D39c
+Transaction hash: 0xfc1f79e46e1ef9aae92c9944107a221709b584c463870abcfdd36b1fb47a615a
+[15:07:56] [✅] DummyOracle at 0x651D52054c8ac4b19191d7427C2633797567D39c
+--------------------------------------------
+[15:07:56] [⏳] Deploying StaticMetadataService...
+[15:07:56] Args: http://localhost:8080/name/0x{id}
+[15:07:56] [⚙️] forge create contracts/wrapper/StaticMetadataService.sol:StaticMetadataService --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args http://localhost:8080/name/0x{id}
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x07aa061c3d7E291348Ea2Df3C33ccFe61c926AcB
+Transaction hash: 0xfdac81917599987d36b03021a6e13ab92b91e740965d36e87f4e4236575057aa
+[15:07:57] [✅] StaticMetadataService at 0x07aa061c3d7E291348Ea2Df3C33ccFe61c926AcB
+--------------------------------------------
+[15:07:57] [⏳] Deploying NameWrapper...
+[15:07:57] Args: 0xD45E290062Bd0D1C640D59C350cA03CC291b37FA 0x71d5a92A9056aB2Ee81811aF045439e059Dd6FBc 0x07aa061c3d7E291348Ea2Df3C33ccFe61c926AcB
+[15:07:57] [⚙️] forge create contracts/wrapper/NameWrapper.sol:NameWrapper --account revive --password 123456 --rpc-url http://localhost:8545 --broadcast --resolc --constructor-args 0xD45E290062Bd0D1C640D59C350cA03CC291b37FA 0x71d5a92A9056aB2Ee81811aF045439e059Dd6FBc 0x07aa061c3d7E291348Ea2Df3C33ccFe61c926AcB
+No files changed, compilation skipped
+Error: server returned an error response: error code 3: execution reverted: , data: "0x"
+[15:07:58] [❌] NameWrapper failed

@@ -1,0 +1,73 @@
+{
+  "chain_id": "420420420",
+  "contracts": {
+    "ENSRegistry": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+    "Root": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+    "ReverseRegistrar": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
+    "BaseRegistrarImplementation": "0xa513E6E4b8f2a923D98304ec87F64353C4D5C853",
+    "DummyOracle": "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318",
+    "ExponentialPremiumPriceOracle": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788",
+    "StaticMetadataService": "0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e",
+    "NameWrapper": "0xA51c1fc2f0D1a1b8494Ed1FE312d7C3a78Ed91C0",
+    "DefaultReverseRegistrar": "0x9A676e781A523b5d0C0e43731313A708CB607508",
+    "ETHRegistrarController": "0x0B306BF915C4d645ff596e518fAf3F9669b97016",
+    "StaticBulkRenewal": "0x3Aa5ebB10DC797CAC828524e59A333d0A371443c",
+    "PublicResolver": "0xc6e7DF5E7b4f2A278906862b61205850344D4e7d",
+    "GatewayProvider": "0x4ed7c70F96B99c776995fB64377f0d4aB3B0e1C1",
+    "UniversalResolver": "0x322813Fd9A801c5507c9de605d63CEA4f2CE6c44",
+    "StoreFactory": "0x09635F643e140090A9A8Dcd712eD6285858ceBef"
+  }
+}
+
+
+
+```
+{
+  "ENSRegistry": "0xe2fB8d393D3A257F709A3a96d234950d00626fa5",
+  "Root": "0x6a515227BdBA8728a146F1b9e5DA4171FF5Db52e",
+  "ReverseRegistrar": "0xFf61Ee76A91b9cbCf74cE142B1b89b778D924e97",
+  "BaseRegistrarImplementation": "0xaD5EE06411D18A1Cd1051ED87eAebEE9CD154C64",
+  "DummyOracle": "0x313d4B1c0e4C487A61da6F8ebf00AA01f56be145",
+  "ExponentialPremiumPriceOracle": "0xD3Cd45D86F3C318c1d3F6358aa836ce604f46580",
+  "StaticMetadataService": "0xd7322C9552B323802C278bdeB80681336c4d24BF",
+  "NameWrapper": "0x58b4928Cb95aD9fc668616C78c78f84B6ebf5596",
+  "DefaultReverseRegistrar": "0x7547f128d60e8DFcefE2517Bc55176b860933644",
+  "ETHRegistrarController": "0xfc9FC0f9C67271a84d5Ee1Bd6f14D8527533Bb64",
+  "StaticBulkRenewal": "0xcF4c2c86096257201a7CA4B367ca680C4ECd1f07",
+  "PublicResolver": "0x41df0d983C94ff742811649278faAa7fBfeb923D",
+  "GatewayProvider": "0xbdCd5A93148A445A9DA98Ef073bAEbe6F657048c",
+  "UniversalResolver": "0xBf0604484853649B7A110f17DDd6af651fC3617D",
+  "StoreFactory": "0xD1ba8f9dD2218859b4113Fb7eF5C2Ac6D46794f4",
+  "DotnsRegistrar": "0xa312DA532a0da1F843b09a0172611c2538944b16"
+}
+
+```
+
+cast call \
+0xFf61Ee76A91b9cbCf74cE142B1b89b778D924e97 \
+'node(address)' 0x41df0d983C94ff742811649278faAa7fBfeb923DNo \
+--rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io
+
+
+cast send 0xfc9FC0f9C67271a84d5Ee1Bd6f14D8527533Bb64 \
+"renew(string,uint256,bytes32)" "spha" 86400 "0x0000000000000000000000000000000000000000000000000000000000000000" \
+--value 580000000000000 \
+--rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io \
+--private-key 0x5fb92d6e98884f76de468fa3f6278f8807c48bebc13595d45af5bdc4da702133
+
+cast call 0xe2fB8d393D3A257F709A3a96d234950d00626fa5 \
+"ownerOf(uint256)" \
+58433534525325686798640436611517527864812007933237575238479288963326404862149 \
+--rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io
+
+
+cast call 0xaD5EE06411D18A1Cd1051ED87eAebEE9CD154C64 \
+"expiries(uint256)" \
+58433534525325686798640436611517527864812007933237575238479288963326404862149 \
+--rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io
+
+
+ast call 0xaD5EE06411D18A1Cd1051ED87eAebEE9CD154C64 \
+"expiries(uint256)" \
+58433534525325686798640436611517527864812007933237575238479288963326404862149 \
+--rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io
