@@ -41,7 +41,7 @@ export default {
       if (host.includes('localhost') || host === 'paritytech.io') {
         const parts = reqPath.split('/').filter(Boolean);
         if (parts.length === 0) {
-          return new Response('Usage: http://localhost:{port}/<name>', { status: 400 });
+          return new Response('Usage: http://localhost:{PORT}/<name>.dot', { status: 400 });
         }
         nameFromPath = parts[0];
         host = `${nameFromPath}.paseo-dotns.paritytech.io`;
@@ -51,7 +51,10 @@ export default {
       if (host === 'paseo-dotns.paritytech.io') {
         const parts = reqPath.split('/').filter(Boolean);
         if (parts.length === 0) {
-          return new Response('Usage: https://paseo-dotns.paritytech.io/<name>', { status: 400 });
+          return new Response(
+            'Usage: https://paseo-dotns.paritytech.io/<name>.dot or https://<name>.dot.paseo-dotns.paritytech.io/',
+            { status: 400 }
+          );
         }
         nameFromPath = parts[0];
         host = `${nameFromPath}.paseo-dotns.paritytech.io`;
@@ -63,7 +66,12 @@ export default {
       }
 
       const name = host.replace('.paseo-dotns.paritytech.io', '');
-      const node = namehash(`${name}.dot`);
+
+      if (!name.endsWith('.dot')) {
+        return new Response(`Invalid DotNS name: ${name} (must end with .dot)`, { status: 400 });
+      }
+
+      const node = namehash(name);
 
       const client = createPublicClient({
         transport: http(env.RPC_URL),
@@ -77,7 +85,7 @@ export default {
       });
 
       if (!resolver || resolver === zeroAddress) {
-        return new Response(`No resolver set for ${name}.dot`, { status: 404 });
+        return new Response(`No resolver set for ${name}`, { status: 404 });
       }
 
       const rawContenthash = await client.readContract({
@@ -88,7 +96,7 @@ export default {
       });
 
       if (!rawContenthash || rawContenthash === '0x') {
-        return new Response(`No contenthash found for ${name}.dot`, { status: 404 });
+        return new Response(`No contenthash found for ${name}`, { status: 404 });
       }
 
       const decoded = decodeContentHash(hexToBytes(rawContenthash));
@@ -96,36 +104,16 @@ export default {
 
       const base = `${env.GATEWAY_URL}${decoded}`;
       const fileUrl = `${base}${reqPath}`;
-      const head = await fetch(fileUrl, { method: 'HEAD' });
 
-      if (head.ok) {
-        const response = await fetch(fileUrl);
-        const contentType = response.headers.get('content-type') || '';
+      const response = await fetch(fileUrl);
 
-        if (contentType.includes('text/html')) {
-          const html = await response.text();
-          const rewritten = rewriteHTML(html, base, nameFromPath);
-          return new Response(rewritten, {
-            headers: {
-              'content-type': 'text/html',
-              'access-control-allow-origin': '*',
-            },
-          });
-        }
-
-        return response;
+      if (response.ok) {
+        return handleResponse(response, base, nameFromPath);
       }
 
-      const indexResponse = await fetch(`${base}/index.html`);
+      const indexResponse = await fetch(`${base}/index.html/`);
       if (indexResponse.ok) {
-        const html = await indexResponse.text();
-        const rewritten = rewriteHTML(html, base, nameFromPath);
-        return new Response(rewritten, {
-          headers: {
-            'content-type': 'text/html',
-            'access-control-allow-origin': '*',
-          },
-        });
+        return handleResponse(indexResponse, base, nameFromPath);
       }
 
       return indexResponse;
@@ -135,6 +123,32 @@ export default {
     }
   },
 };
+
+async function handleResponse(
+  response: Response,
+  ipfsBase: string,
+  nameFromPath: string
+): Promise<Response> {
+  const contentType = response.headers.get('content-type') || '';
+
+  if (contentType.includes('text/html')) {
+    const html = await response.text();
+    const rewritten = rewriteHTML(html, ipfsBase, nameFromPath);
+
+    return new Response(rewritten, {
+      status: response.status,
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        'access-control-allow-origin': '*',
+      },
+    });
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    headers: response.headers,
+  });
+}
 
 function rewriteHTML(html: string, ipfsBase: string, nameFromPath: string): string {
   let rewritten = html;
