@@ -1,5 +1,5 @@
-name = "dotns-resolver"
-main = "src/index.ts"
+name = "dotns"
+main = "src/limoResolver.ts"
 compatibility_date = "2025-11-01"
 
 [vars]
