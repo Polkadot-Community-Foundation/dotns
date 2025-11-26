@@ -16,10 +16,15 @@
     "worker:deploy": "wrangler deploy src/limoResolver.ts"
   },
   "dependencies": {
+    "@polkadot/api": "^16.4.3",
+    "@polkadot/api-contract": "^16.5.3",
+    "@polkadot/extension-dapp": "^0.62.5",
+    "@polkadot/keyring": "^13.5.4",
     "ethereum-blockies-base64": "^1.0.2",
     "multiformats": "^13.4.1",
     "pinia": "^2.1.4",
     "pinia-plugin-persistedstate": "^4.7.1",
+    "viem": "^2.40.3",
     "vue": "^3.5.22",
     "vue-router": "^4.0.3",
     "vue-toastification": "^2.0.0-rc.5"
