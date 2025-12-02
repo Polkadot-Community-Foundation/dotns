@@ -154,15 +154,16 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { useWalletStore } from '@/store/useWalletStore';
 import RegisterModal from './RegisterModal.vue';
 import WaitingPeriod from './WaitingPeriod.vue';
 import TransactionStatus from './TransactionStatus.vue';
 import type { DotNSStatus, TransactionResult } from '../type';
 import { zeroHash } from 'viem';
+import { useDomainStore } from '@/store/useDomainStore';
+import { useUserStoreManager } from '@/store/useUserStoreManager';
 
-const wallet = useWalletStore();
-
+const storeManager = useUserStoreManager();
+const domainStore = useDomainStore();
 const searchQuery = ref('');
 const isFocused = ref(false);
 const isLoading = ref(false);
@@ -195,7 +196,7 @@ function openWaitingModal(duration: number, waitTime: bigint, registration: any)
 
 async function finalizeRegistration() {
   try {
-    const hash = await wallet.finalizeRegistration(pendingRegistration.value);
+    const hash = await domainStore.finalizeRegistration(pendingRegistration.value);
     return hash;
   } catch (err) {
     console.error('Finalize registration failed:', err);
@@ -229,8 +230,8 @@ function handleBlur() {
 
 async function checkHandleAvailability() {
   try {
-    const available = await wallet.checkHandleAvailability(searchQuery.value);
-    status.value = available ? 'available' : 'taken';
+    const available = await storeManager.checkHandleAvailability(searchQuery.value);
+    status.value = available.available ? 'available' : 'taken';
   } catch (err) {
     console.error('Handle availability check failed:', err);
     status.value = 'taken';

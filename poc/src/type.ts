@@ -1,3 +1,4 @@
+import type { SpWeightsWeightV2Weight } from '@dedot/chaintypes/substrate';
 import type { Address, Hash } from 'viem';
 
 export type NetworkConfig = {
@@ -22,6 +23,7 @@ export type Deployment = {
   storeFactory: Address;
   dotnsRegistrar: Address;
   multicall: Address;
+  defaultReverseRegistrar: Address;
 };
 export type Registration = {
   label: string;
@@ -56,7 +58,81 @@ export type MyDomain = {
   isOwner: boolean;
   needsResolver: boolean;
 };
+
+export type EthCallResult = {
+  gasConsumed: SpWeightsWeightV2Weight;
+  gasRequired: SpWeightsWeightV2Weight;
+  storageDeposit: {
+    type: 'Charge' | 'Refund';
+    value: bigint;
+  };
+  result: Result;
+};
+
+export type Result = {
+  success: boolean;
+  isErr: boolean;
+  isOk: boolean;
+  value?: {
+    data: `0x${string}` | any;
+    flags?: any;
+  };
+};
+export type GenericTransaction = {
+  accessList?: AccessList | null;
+  authorizationList?: AuthorizationListEntry[];
+  blobVersionedHashes?: `0x${string}`[];
+  blobs?: `0x${string}`[];
+  chainId?: bigint | null;
+  from?: Address | null;
+  gas?: bigint | null;
+  gasPrice?: bigint | null;
+  input?: `0x${string}`;
+  maxFeePerBlobGas?: bigint | null;
+  maxFeePerGas?: bigint | null;
+  maxPriorityFeePerGas?: bigint | null;
+  nonce?: bigint | null;
+  to?: Address | null;
+  type?: number | null;
+  value?: bigint | null;
+  data: `0x${string}` | null;
+};
+
+export type AccessList = {
+  address: Address;
+  storageKeys: `0x${string}`[];
+}[];
+
+export type AuthorizationListEntry = {
+  address: Address;
+  nonce: bigint;
+  chainId: bigint;
+  r: `0x${string}`;
+  s: `0x${string}`;
+  yParity: number;
+};
+
+export type MulticallCall = {
+  target: Address;
+  callData: `0x${string}`;
+};
+
+export type DotnsAvailability = {
+  owner: Address;
+  available: boolean;
+  name: string | null;
+};
+export type RenewHandle = { handle: string; duration: bigint; unit: Unit };
+export type GasLimit = { ref_time: bigint; proof_size: bigint };
+export type ENSPrice = { base: BigInt; premium: BigInt };
 export type TransactionState = 'pending' | 'success' | 'failed';
 export type Unit = 'minutes' | 'hours' | 'days' | 'years' | 'months';
 export type DotNSStatus = 'taken' | 'available';
-export type ENSPrice = { base: BigInt; premium: BigInt };
+export type TransactionStatus =
+  | 'idle'
+  | 'signing'
+  | 'broadcasting'
+  | 'included'
+  | 'finalized'
+  | 'failed';
+export type SignerMode = 'papi' | 'legacy';

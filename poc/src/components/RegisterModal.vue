@@ -9,7 +9,7 @@
       <div
         v-if="open"
         class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50"
-        @click.self="$emit('close')"
+        @click.self="closeModal"
       >
         <Transition
           enter-active-class="transform transition duration-300 ease-out"
@@ -19,16 +19,36 @@
           leave-from-class="scale-100 opacity-100 translate-y-0"
           leave-to-class="scale-95 opacity-0 translate-y-4"
         >
-          <div v-if="open" class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
+          <div
+            v-if="open"
+            class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center relative"
+          >
+            <button
+              v-if="wallet.transactionStatus === 'idle'"
+              class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+              @click="closeModal"
+              aria-label="Close registration modal"
+            >
+              <svg
+                class="w-5 h-5"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
             <h2 class="text-2xl font-bold text-gray-900 mb-2">{{ handle }}.dot</h2>
 
             <p class="text-gray-500 text-sm mb-6">
-              The registration process involves two transactions. The first opens the waiting period
-              to ensure no other user has tried to register the same name.
+              The registration process involves two transactions.
             </p>
 
             <div class="text-left mb-6">
-              <label class="text-sm font-semibold text-gray-700"> Registration Duration </label>
+              <label class="text-sm font-semibold text-gray-700">Registration Duration</label>
 
               <div
                 class="flex items-center gap-0 mt-3 border border-gray-200 rounded-lg overflow-hidden w-full"
@@ -43,9 +63,9 @@
 
                 <input
                   v-model.number="amount"
-                  @input="onManualInput"
+                  @input="onAmountInput"
                   type="number"
-                  min="5"
+                  :min="minValue"
                   class="w-full text-center text-gray-700 py-2 focus:outline-none hide-arrows"
                   :disabled="isFetching"
                 />
@@ -62,7 +82,7 @@
                   <select
                     v-model="selectedUnit"
                     @change="onUnitChange"
-                    class="appearance-none bg-white text-gray-700 px-4 py-2 pr-10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#E6007A]/40 rounded-r-lg border-l border-gray-200 transition [&>option]:bg-white [&>option]:text-gray-700 [&>option]:hover:bg-[#FCE5EF]"
+                    class="appearance-none bg-white text-gray-700 px-4 py-2 pr-10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#E6007A]/40 rounded-r-lg border-l border-gray-200 transition"
                     :disabled="isFetching"
                   >
                     <option value="minutes">minutes</option>
@@ -141,94 +161,122 @@ import { ref, watch, computed } from 'vue';
 import { useWalletStore } from '../store/useWalletStore';
 import type { Unit } from '../type';
 import { getSecondsForUnit } from '@/utils';
+import { useDomainStore } from '@/store/useDomainStore';
+import { zeroHash } from 'viem';
+import { useToast } from 'vue-toastification';
 
 const props = defineProps<{ open: boolean; handle: string }>();
 const emit = defineEmits<{ close: []; confirm: [number]; wait: [number, bigint, any] }>();
 
+const toaster = useToast();
 const wallet = useWalletStore();
+const domainStore = useDomainStore();
 
 const selectedUnit = ref<Unit>('minutes');
 const amount = ref(5);
-const price = ref<string>('0');
-const isFetching = ref(true);
+const price = ref('0');
+const isFetching = ref(false);
 const isRegistering = ref(false);
 
-const owner = computed(() => wallet.address ?? null);
+const minValue = computed(() => (selectedUnit.value === 'minutes' ? 5 : 1));
 
-async function fetchPriceFromStore() {
+async function fetchPrice() {
   try {
     isFetching.value = true;
-    const duration = getSecondsForUnit(selectedUnit.value) * BigInt(amount.value);
-    const cost = await wallet.fetchRegistrationCost(props.handle, duration);
+    const duration = BigInt(amount.value) * getSecondsForUnit(selectedUnit.value);
+    const cost = await domainStore.fetchRegistrationCost(props.handle, duration);
     price.value = cost as string;
-  } catch (err) {
-    console.error('Failed to fetch price:', err);
+  } catch {
     price.value = '0';
   } finally {
     isFetching.value = false;
   }
 }
 
+function enforceMin() {
+  if (selectedUnit.value === 'minutes') {
+    amount.value = Math.max(amount.value, 5);
+  } else {
+    amount.value = Math.max(amount.value, 1);
+  }
+}
+
+async function onUnitChange() {
+  enforceMin();
+  await fetchPrice();
+}
+
+async function increaseDuration() {
+  amount.value += 1;
+  await fetchPrice();
+}
+
+async function decreaseDuration() {
+  if (selectedUnit.value === 'minutes') {
+    amount.value = Math.max(amount.value - 1, 5);
+  } else {
+    amount.value = Math.max(amount.value - 1, 1);
+  }
+  await fetchPrice();
+}
+
+async function onAmountInput() {
+  if (Number.isNaN(amount.value)) {
+    amount.value = minValue.value;
+  }
+  enforceMin();
+  await fetchPrice();
+}
+
 async function startRegistration() {
   try {
     isRegistering.value = true;
 
-    if (!wallet.isConnected || !owner.value) {
-      throw new Error('Wallet not connected.');
-    }
+    const owner = wallet.address;
+    if (!wallet.isConnected || !owner) throw new Error();
 
-    const duration = BigInt(getSecondsForUnit(selectedUnit.value)) * BigInt(amount.value);
-    const { commitment, registration } = await wallet.makeCommitment(
+    const duration = BigInt(amount.value) * getSecondsForUnit(selectedUnit.value);
+    const { commitment, registration } = await domainStore.makeCommitment(
       props.handle,
-      owner.value,
+      owner,
       duration
     );
 
-    await wallet.commitRegistration(commitment);
-    const waitTime = await wallet.getMinCommitmentAge();
+    const result = await domainStore.commitRegistration(commitment);
+    if (result === zeroHash) {
+      toaster.error('Unable to register name');
+      isRegistering.value = false;
+      return;
+    }
 
+    const waitTime = await domainStore.getMinCommitmentAge();
     emit('wait', amount.value, BigInt(waitTime), registration);
 
     isRegistering.value = false;
     emit('close');
-  } catch (err) {
-    console.error('Registration failed:', err);
+  } catch {
     isRegistering.value = false;
   }
 }
 
-async function increaseDuration() {
-  amount.value++;
-  await fetchPriceFromStore();
-}
-
-async function decreaseDuration() {
-  if (amount.value > 5) {
-    amount.value--;
+function closeModal() {
+  if (wallet.transactionStatus === 'idle') {
+    emit('close');
   }
-  await fetchPriceFromStore();
-}
-
-async function onManualInput() {
-  if (amount.value < 5) amount.value = 5;
-  await fetchPriceFromStore();
-}
-
-async function onUnitChange() {
-  await fetchPriceFromStore();
 }
 
 watch(
   () => props.open,
-  async isOpen => {
-    if (isOpen && props.handle.trim() !== '') {
-      await fetchPriceFromStore();
+  async open => {
+    if (open) {
+      enforceMin();
+      await fetchPrice();
     }
   },
   { immediate: true }
 );
 
-watch([amount, selectedUnit], fetchPriceFromStore);
+watch([amount, selectedUnit], enforceMin);
 </script>
 
 <style scoped>

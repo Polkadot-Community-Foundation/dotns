@@ -3,7 +3,9 @@
     <div
       class="w-full flex items-center justify-between h-16 px-6 sm:px-8 lg:px-10 font-sans text-gray-800"
     >
-      <Logo />
+      <RouterLink to="/" class="inline-flex items-center">
+        <Logo />
+      </RouterLink>
 
       <div class="hidden md:block">
         <Navigation />
@@ -35,6 +37,7 @@
 import Logo from './Logo.vue';
 import Navigation from './Navigation.vue';
 import WalletButton from './WalletButton.vue';
+import { RouterLink } from 'vue-router';
 
 defineEmits<{ 'toggle-menu': [] }>();
 </script>

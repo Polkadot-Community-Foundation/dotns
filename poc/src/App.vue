@@ -1,6 +1,8 @@
 <template>
   <div class="min-h-screen bg-white">
     <AppHeader @toggle-menu="toggleMobileMenu" />
+    <TopProgress />
+    <TransactionTimeline />
 
     <main class="transition-all duration-300">
       <RouterView />
@@ -18,6 +20,10 @@ import AppHeader from './components/AppHeader.vue';
 import AppFooter from './components/AppFooter.vue';
 import MobileMenu from './components/MobileMenu.vue';
 import { useWalletStore } from './store/useWalletStore';
+// @ts-ignore: no declaration file for .vue SFC
+import TopProgress from './components/LoadingBar.vue';
+// @ts-ignore: no declaration file for .vue SFC
+import TransactionTimeline from './components/TransactionTimeline.vue';
 
 const walletStore = useWalletStore();
 const isMobileMenuOpen = ref(false);

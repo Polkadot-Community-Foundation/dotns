@@ -129,7 +129,7 @@
           <div>
             <p class="text-gray-500 text-sm">Owner</p>
             <a
-              :href="`${explorer}/address/${owner}`"
+              :href="`${explorer}/account/${owner}`"
               target="_blank"
               rel="noopener noreferrer"
               class="font-mono text-[#E6007A] text-sm break-all mt-1 hover:underline"
@@ -240,10 +240,18 @@ import TransactionStatus from '../components/TransactionStatus.vue';
 import DomainTable from '../components/DomainTable.vue';
 import SetupDomainModal from '../components/SetupDomainModal.vue';
 import type { ProfileRecord, TransactionResult, MyDomain, ResolverStatus } from '@/type';
+import { useNetworkStore } from '@/store/useNetworkStore';
+import { useDomainStore } from '@/store/useDomainStore';
+import { useUserStoreManager } from '@/store/useUserStoreManager';
+import { useResolverStore } from '@/store/useResolverStore';
 
 const route = useRoute();
 const router = useRouter();
 const wallet = useWalletStore();
+const networkStore = useNetworkStore();
+const domainStore = useDomainStore();
+const userStore = useUserStoreManager();
+const resolverStore = useResolverStore();
 
 const name = ref(route.params.name as string);
 if (name.value && !name.value.includes('.dot')) {
@@ -269,7 +277,7 @@ const showSetupModal = ref(false);
 const setupDomain = ref('');
 const setupNeeds = ref<ResolverStatus>({ needsReclaim: false, needsResolver: false, fixed: false });
 
-const explorer = computed(() => wallet.currentNetwork?.blockExplorerUrls?.[0] || '');
+const explorer = computed(() => networkStore.currentNetwork?.blockExplorerUrls?.[0] || '');
 
 const isOwner = computed(
   () => wallet.address && owner.value && getAddress(wallet.address) === getAddress(owner.value)
@@ -316,8 +324,8 @@ function formatExpiry(ts: bigint, isTLD: boolean) {
 
 async function loadDomains(ownerAddress: Address) {
   try {
-    gracePeriod.value = await wallet.getGracePeriod();
-    const names = await wallet.getSubdomainsForAddress(ownerAddress);
+    gracePeriod.value = await domainStore.getGracePeriod();
+    const names = await userStore.getSubdomainsForAddress(ownerAddress);
 
     const results = await Promise.all(
       names.map(async name => {
@@ -326,11 +334,11 @@ async function loadDomains(ownerAddress: Address) {
         let expiry = 0n;
 
         if (isTLD) {
-          expiry = await wallet.nameExpires(name);
+          expiry = await domainStore.nameExpires(name);
         }
 
         const status = calculateStatus(expiry, isTLD);
-        const domainOwner = await wallet.getUser(name);
+        const domainOwner = await userStore.getUser(name);
         const isOwner = !!(
           ownerAddress &&
           domainOwner &&
@@ -341,7 +349,7 @@ async function loadDomains(ownerAddress: Address) {
         let needsResolver = false;
         if (isOwner) {
           try {
-            const setup = await wallet.checkDomainSetup(name);
+            const setup = await resolverStore.checkDomainSetup(name);
             needsReclaim = setup.needsReclaim ?? false;
             needsResolver = setup.needsResolver;
           } catch (e) {
@@ -373,7 +381,7 @@ async function loadDomains(ownerAddress: Address) {
 
 async function handleSetup(domain: string) {
   try {
-    const setup = await wallet.checkDomainSetup(domain);
+    const setup = await resolverStore.checkDomainSetup(domain);
     setupDomain.value = domain;
     setupNeeds.value = setup;
     showSetupModal.value = !setupNeeds.value.fixed;
@@ -396,8 +404,8 @@ onBeforeMount(async () => {
     isLoading.value = true;
 
     const [ownerAddress, expiryTimestamp] = await Promise.all([
-      wallet.getUser(name.value),
-      wallet.nameExpires(name.value),
+      userStore.getUser(name.value),
+      domainStore.nameExpires(name.value),
     ]);
 
     owner.value = ownerAddress;
@@ -405,7 +413,7 @@ onBeforeMount(async () => {
 
     if (ownerAddress !== zeroAddress) {
       const keys = ['com.x', 'com.github', 'description', 'url'];
-      const values = await Promise.all(keys.map(k => wallet.getText(name.value, k)));
+      const values = await Promise.all(keys.map(k => resolverStore.getText(name.value, k)));
 
       twitter.value = values[0]!;
       github.value = values[1]!;
@@ -442,7 +450,7 @@ async function handleSave(updated: ProfileRecord) {
   if (!isOwner.value) return;
 
   try {
-    const setup = await wallet.checkDomainSetup(name.value);
+    const setup = await resolverStore.checkDomainSetup(name.value);
 
     if (setup.needsReclaim || setup.needsResolver) {
       setupDomain.value = name.value;
@@ -462,7 +470,7 @@ async function handleSave(updated: ProfileRecord) {
       { key: 'url', value: updated.url },
     ];
 
-    const tx = await wallet.setProfileRecordsMulticall(name.value, data);
+    const tx = await resolverStore.setProfileRecordsMulticall(name.value, data);
     transaction.value = tx;
 
     if (tx.status) {

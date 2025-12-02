@@ -153,12 +153,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { useWalletStore } from '@/store/useWalletStore';
 import type { DotNSStatus } from '@/type';
+import { useUserStoreManager } from '@/store/useUserStoreManager';
 
 const router = useRouter();
-const wallet = useWalletStore();
-
+const storeManager = useUserStoreManager();
 const searchQuery = ref('');
 const status = ref<DotNSStatus | null>(null);
 const isLoading = ref(false);
@@ -184,10 +183,11 @@ function handleBlur() {
 
 async function checkName() {
   try {
-    const available = await wallet.checkHandleAvailability(searchQuery.value);
-    status.value = available ? 'available' : 'taken';
-  } catch (err) {
-    console.error('Whois check failed:', err);
+    const available = await storeManager.checkHandleAvailability(searchQuery.value);
+    status.value = available.available ? 'available' : 'taken';
+    searchQuery.value = available.name ?? searchQuery.value;
+  } catch (error) {
+    console.error('Whois check failed:', error);
     status.value = null;
   } finally {
     isLoading.value = false;

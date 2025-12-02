@@ -65,7 +65,7 @@
       <h3 class="text-lg font-medium text-gray-900 mb-2">No domains found</h3>
       <p class="text-gray-500 mb-6">Register your first domain to get started</p>
       <button
-        @click="openRegisterModal('')"
+        @click="router.replace('/')"
         class="px-5 py-2 rounded-lg bg-[#E6007A] hover:bg-[#d1006f] text-white font-medium transition"
       >
         Register Domain
@@ -167,10 +167,13 @@ import RegisterModal from '../components/RegisterModal.vue';
 import WaitingPeriod from '../components/WaitingPeriod.vue';
 import TransactionStatus from '../components/TransactionStatus.vue';
 import DomainTable from '../components/DomainTable.vue';
-import type { MyDomain, TransactionResult } from '@/type';
+import type { MyDomain, RenewHandle, TransactionResult } from '@/type';
 import { getAddress, zeroHash } from 'viem';
 import { formatTimestamp } from '@/utils';
 import { useRouter } from 'vue-router';
+import { useDomainStore } from '@/store/useDomainStore';
+import { useResolverStore } from '@/store/useResolverStore';
+import { useUserStoreManager } from '@/store/useUserStoreManager';
 
 const wallet = useWalletStore();
 const isLoading = ref(true);
@@ -193,7 +196,10 @@ const tlds = ref<string[]>([]);
 const router = useRouter();
 const showResolveModal = ref(false);
 const selectedDomain = ref('');
-
+const domainStore = useDomainStore();
+const resolverStore = useResolverStore();
+const userStoreManager = useUserStoreManager();
+const storeManager = useUserStoreManager();
 function openRecordEditor(name: string) {
   router.push(`/whois/${name}`);
 }
@@ -269,7 +275,7 @@ function openWaitingModal(duration: number, waitTime: bigint, registration: any)
 }
 async function finalizeRegistration() {
   try {
-    const hash = await wallet.finalizeRegistration(pendingRegistration.value);
+    const hash = await domainStore.finalizeRegistration(pendingRegistration.value);
     return hash;
   } catch (err) {
     console.error('Finalize registration failed:', err);
@@ -280,11 +286,11 @@ function handleFinalized(txResults: TransactionResult) {
   transaction.value = txResults;
   showTransaction.value = true;
 }
-async function confirmRenew(confirmation: any) {
+async function confirmRenew(confirmation: RenewHandle) {
   showRenewModal.value = false;
   transaction.value = { hash: zeroHash, status: undefined };
   showTransaction.value = true;
-  const txResults = await wallet.renewDomain(selectedHandle.value, confirmation.duration);
+  const txResults = await domainStore.renewDomain(selectedHandle.value, confirmation.duration);
   transaction.value = txResults;
   await loadDomains();
 }
@@ -300,7 +306,7 @@ async function saveResolve(hash: string) {
   transaction.value = { hash: zeroHash, status: undefined };
 
   try {
-    const tx = await wallet.setContentHash(selectedDomain.value, hash);
+    const tx = await resolverStore.setContentHash(selectedDomain.value, hash);
     transaction.value = tx;
   } catch {
     transaction.value = { hash: zeroHash, status: false };
@@ -309,8 +315,8 @@ async function saveResolve(hash: string) {
 async function loadDomains() {
   isLoading.value = true;
 
-  gracePeriod.value = await wallet.getGracePeriod();
-  const names = await wallet.getSubdomains();
+  gracePeriod.value = await domainStore.getGracePeriod();
+  const names = await userStoreManager.getSubdomains();
   const results = (await Promise.all(
     names.map(async name => {
       const type = getType(name);
@@ -318,11 +324,11 @@ async function loadDomains() {
       let expiry = 0n;
 
       if (isTLD) {
-        expiry = await wallet.nameExpires(name);
+        expiry = await domainStore.nameExpires(name);
       }
 
       const status = calculateStatus(expiry, isTLD);
-      const ownerOfDomain = await wallet.getUser(name);
+      const ownerOfDomain = await storeManager.getUser(name);
       const isOwner = !!(
         wallet.address &&
         ownerOfDomain &&
@@ -332,7 +338,7 @@ async function loadDomains() {
       let needsResolver = false;
       if (isOwner) {
         try {
-          const setup = await wallet.checkDomainSetup(name);
+          const setup = await resolverStore.checkDomainSetup(name);
           needsResolver = setup.needsResolver;
         } catch (e) {
           console.error('Failed to check domain setup:', e);
@@ -362,7 +368,7 @@ async function fixResolver(domain: string) {
   transaction.value = { hash: zeroHash, status: undefined };
 
   try {
-    const result = await wallet.setResolverForName(domain);
+    const result = await resolverStore.setResolverForName(domain);
     transaction.value = result;
     await loadDomains();
   } catch (e) {

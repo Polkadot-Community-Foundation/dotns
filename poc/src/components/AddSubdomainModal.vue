@@ -160,13 +160,13 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { useWalletStore } from '../store/useWalletStore';
 import type { DotNSStatus } from '../type';
+import { useUserStoreManager } from '@/store/useUserStoreManager';
 
 const props = defineProps<{ open: boolean; tlds: string[] }>();
 const emit = defineEmits<{ close: []; confirm: [{ txHash: string | null }] }>();
 
-const wallet = useWalletStore();
+const storeManager = useUserStoreManager();
 const subdomain = ref('');
 const selectedTLD = ref<string | undefined>('');
 const status = ref<DotNSStatus | null>(null);
@@ -189,7 +189,7 @@ const fullDomain = computed(() =>
   subdomain.value.trim() && selectedTLD.value ? `${subdomain.value}.${selectedTLD.value}.dot` : ''
 );
 
-let debounceTimer: number;
+let debounceTimer: number | NodeJS.Timeout;
 const debouncedCheck = () => {
   clearTimeout(debounceTimer);
   status.value = null;
@@ -205,7 +205,7 @@ async function checkAvailability() {
     return;
   }
   name = `${name}.${selectedTLD.value}`;
-  const taken = await wallet.handleTaken(name);
+  const taken = await storeManager.checkHandleAvailability(name);
   status.value = taken ? 'taken' : 'available';
   isLoading.value = false;
 }
@@ -213,7 +213,10 @@ async function checkAvailability() {
 async function confirmAdd() {
   try {
     isSubmitting.value = true;
-    const txHash = await wallet.registerSubdomain(selectedTLD.value as string, subdomain.value);
+    const txHash = await storeManager.registerSubdomain(
+      selectedTLD.value as string,
+      subdomain.value
+    );
     emit('confirm', { txHash });
   } catch (err) {
     console.error('Subdomain registration failed:', err);

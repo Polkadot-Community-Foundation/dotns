@@ -31,7 +31,7 @@
     </span>
 
     <span v-else-if="wallet.isConnected" class="flex items-center gap-2">
-      <span class="w-2.5 h-2.5 bg-green-400 rounded-full animate-pulse"></span>
+      <span class="w-2.5 h-2.5 rounded-full animate-pulse" style="background-color: #4caf50"></span>
       {{ truncatedAddress }}
     </span>
 
@@ -90,8 +90,6 @@ async function connect() {
 function disconnect() {
   wallet.$patch({
     isConnected: false,
-    address: null,
-    chainId: null,
   });
   toast.info('Wallet disconnected');
 }

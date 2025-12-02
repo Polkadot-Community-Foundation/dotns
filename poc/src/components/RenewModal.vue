@@ -58,7 +58,7 @@
 
                 <input
                   v-model.number="amount"
-                  @input="updatePrice"
+                  @input="onAmountInput"
                   type="number"
                   :min="minValue"
                   class="w-full text-center py-2 text-gray-800 focus:outline-none hide-arrows"
@@ -71,7 +71,7 @@
                 <div class="relative border-l border-gray-200">
                   <select
                     v-model="selectedUnit"
-                    @change="updatePrice"
+                    @change="onUnitChange"
                     class="appearance-none bg-white text-gray-700 px-4 py-2 pr-8 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#E6007A]/40 rounded-r-lg"
                   >
                     <option value="minutes">minutes</option>
@@ -124,6 +124,7 @@ import { ref, computed, watch } from 'vue';
 import { useWalletStore } from '../store/useWalletStore';
 import type { Unit } from '../type';
 import { getSecondsForUnit } from '../utils';
+import { useDomainStore } from '@/store/useDomainStore';
 
 const props = defineProps<{ open: boolean; handle: string }>();
 const emit = defineEmits<{
@@ -132,18 +133,21 @@ const emit = defineEmits<{
 }>();
 
 const wallet = useWalletStore();
+const domainStore = useDomainStore();
 
 const selectedUnit = ref<Unit>('minutes');
 const amount = ref(5);
 const price = ref('0');
 const isLoading = ref(true);
-const minValue = ref<number>(5);
+
+const minValue = computed(() => (selectedUnit.value === 'minutes' ? 5 : 1));
+
 async function fetchPrice() {
   try {
     isLoading.value = true;
     const seconds = getSecondsForUnit(selectedUnit.value);
     const duration = BigInt(amount.value) * seconds;
-    const cost = await wallet.fetchRegistrationCost(props.handle, duration, true);
+    const cost = await domainStore.fetchRegistrationCost(props.handle, duration, true);
     price.value = cost as string;
   } catch (err) {
     console.error('Failed to fetch price', err);
@@ -155,46 +159,67 @@ async function fetchPrice() {
 
 const formattedPrice = computed(() => `${price.value}`);
 
-function updatePrice() {
-  if (amount.value < minValue.value) {
-    return;
+function enforceMinOnUnit() {
+  if (selectedUnit.value === 'minutes') {
+    amount.value = Math.max(amount.value, 5);
+  } else {
+    if (amount.value === 5) {
+      amount.value = 1;
+    }
+    amount.value = Math.max(amount.value, 1);
   }
-  clearTimeout((updatePrice as any)._debounce);
-  (updatePrice as any)._debounce = setTimeout(fetchPrice, 300);
+}
+
+function onUnitChange() {
+  enforceMinOnUnit();
+  if (wallet.isConnected) fetchPrice();
 }
 
 function increaseDuration() {
-  amount.value++;
-  updatePrice();
+  amount.value += 1;
+  if (wallet.isConnected) fetchPrice();
 }
 
 function decreaseDuration() {
-  if (amount.value > minValue.value) amount.value--;
-  updatePrice();
+  if (selectedUnit.value === 'minutes') {
+    amount.value = Math.max(amount.value - 1, 5);
+  } else {
+    console.log('decreaseDuration: ', amount.value);
+    amount.value = Math.max(amount.value - 1, 1);
+  }
+  if (wallet.isConnected) fetchPrice();
+}
+
+function onAmountInput() {
+  if (Number.isNaN(amount.value)) {
+    amount.value = selectedUnit.value === 'minutes' ? 5 : 1;
+  }
+  enforceMinOnUnit();
+  if (wallet.isConnected) fetchPrice();
 }
 
 function submit() {
+  enforceMinOnUnit();
   const seconds = getSecondsForUnit(selectedUnit.value);
   const duration = BigInt(amount.value) * seconds;
   emit('confirm', { handle: props.handle, duration, unit: selectedUnit.value });
   emit('close');
 }
+
 watch(
-  selectedUnit,
-  (newValue, _) => {
-    if (newValue !== 'minutes') {
-      minValue.value = 1;
-    } else {
-      minValue.value = 5;
+  () => props.open,
+  isOpen => {
+    if (isOpen) {
+      enforceMinOnUnit();
+      if (wallet.isConnected) fetchPrice();
     }
   },
-  { deep: true, immediate: true }
+  { immediate: true }
 );
 
-watch(amount, () => {
-  if (wallet.isConnected) {
-    fetchPrice();
-  }
+watch(selectedUnit, () => {
+  enforceMinOnUnit();
+  if (wallet.isConnected) fetchPrice();
 });
 </script>
 

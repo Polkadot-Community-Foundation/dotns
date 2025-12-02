@@ -1,6 +1,12 @@
-import { zeroAddress } from 'viem';
+import { formatUnits, keccak256, zeroAddress } from 'viem';
 import type { Deployment, NetworkConfig, Unit } from './type';
 import { normalize } from 'viem/ens';
+import { hexToU8a, isHex } from '@polkadot/util';
+import type { Paseo } from '@polkadot-api/descriptors';
+import { type TypedApi, type SS58String, AccountId, Binary } from 'polkadot-api';
+import type { PaseoAssetHubApi } from '@dedot/chaintypes';
+import type { DedotClient } from 'dedot';
+import { decodeAddress, encodeAddress } from '@polkadot/util-crypto';
 
 export const SUPPORTED_NETWORKS: Record<number, NetworkConfig & Partial<Deployment>> = {
   420420422: {
@@ -11,8 +17,12 @@ export const SUPPORTED_NETWORKS: Record<number, NetworkConfig & Partial<Deployme
       symbol: 'PAS',
       decimals: 18,
     },
-    rpcUrls: ['https://testnet-passet-hub-eth-rpc.polkadot.io'],
-    blockExplorerUrls: ['https://blockscout-passet-hub.parity-testnet.parity.io/'],
+    rpcUrls: [
+      'wss://passet-hub-paseo.dotters.network',
+      'wss://testnet-passet-hub.polkadot.io',
+      'wss://passet-hub-paseo.ibp.network',
+    ],
+    blockExplorerUrls: ['https://passet-hub.subscan.io/'],
     ensRegistry: '0xe2fB8d393D3A257F709A3a96d234950d00626fa5',
     baseRegistrar: '0xaD5EE06411D18A1Cd1051ED87eAebEE9CD154C64',
     registrarController: '0xfc9FC0f9C67271a84d5Ee1Bd6f14D8527533Bb64',
@@ -22,13 +32,20 @@ export const SUPPORTED_NETWORKS: Record<number, NetworkConfig & Partial<Deployme
     storeFactory: '0xD1ba8f9dD2218859b4113Fb7eF5C2Ac6D46794f4',
     dotnsRegistrar: '0xa312DA532a0da1F843b09a0172611c2538944b16',
     multicall: '0xe83DCEE30d0b5848D1e74aDb638F3357f9E4766B',
+    defaultReverseRegistrar: '0x7547f128d60e8DFcefE2517Bc55176b860933644',
   },
 };
 
+export const GAS_LIMIT = 10000000n;
+export const MAX_WEIGHT = {
+  refTime: BigInt('18446744073709551615'),
+  proofSize: BigInt('18446744073709551615'),
+};
+const PAS_DECIMALS = 10;
 export const SPECIAL_CHAR_REGEX = /[&^%$*+~=`{}|\\<>\/\[\]"]+/;
 export const TOKEN_UNIT = 'PAS';
 export const DEFAULT_NETWORK_ID = 420420420;
-export const BLOCK_EXPLORER = 'https://blockscout-passet-hub.parity-testnet.parity.io/';
+export const BLOCK_EXPLORER = 'https://passet-hub.subscan.io/';
 export function getFirstDeployedNetwork(): (NetworkConfig & Partial<Deployment>) | undefined {
   return Object.values(SUPPORTED_NETWORKS).find(network => network.ensRegistry !== zeroAddress);
 }
@@ -38,6 +55,9 @@ export function toFixed(value: string, decimals = 8): string {
   return num.toFixed(decimals);
 }
 
+export function formatPas(raw: bigint): string {
+  return formatUnits(raw, PAS_DECIMALS);
+}
 export function addPercentage(value: bigint, percent: number): bigint {
   return (value * BigInt(100 + percent)) / 100n;
 }
@@ -138,3 +158,82 @@ export function validateENSName(label: string, minLabelLength = 3, maxLabelLengt
 export function normalizeDomainName(name: string): string {
   return name.replace(/\.dot$/, '');
 }
+
+export function extractBytes(result: any): Uint8Array | string | null {
+  if (!result) return null;
+
+  const core =
+    result.result ??
+    result.ok ??
+    result.asOk ??
+    (Array.isArray(result) ? result[1] : null) ??
+    result;
+
+  if (!core) return null;
+
+  if (core.isOk && core.asOk) return unwrap(core.asOk);
+  if (core.ok) return unwrap(core.ok);
+
+  if (core.toHuman) {
+    const human = core.toHuman();
+    const v = human?.Ok ?? human?.ok;
+    if (typeof v === 'string') return v;
+  }
+
+  return unwrap(core);
+}
+
+export function unwrap(v: any): Uint8Array | string | null {
+  if (!v) return null;
+  if (typeof v === 'string') return v;
+  if (v instanceof Uint8Array) return v;
+  if (v.toU8a) return v.toU8a();
+  return null;
+}
+
+export const ss58ToEthereum = (address: SS58String): Binary =>
+  Binary.fromBytes(hexToU8a(keccak256(AccountId().enc(address))).slice(12));
+
+export const isMappedTypedApi = async (
+  api: TypedApi<Paseo>,
+  address: SS58String
+): Promise<boolean> => {
+  const key = ss58ToEthereum(address);
+  const result = await api.query.Revive.OriginalAccount.getValue(key);
+  return result != null;
+};
+
+export const isMappedDedot = async (
+  api: DedotClient<PaseoAssetHubApi>,
+  address: SS58String
+): Promise<boolean> => {
+  const evm = await api.call.reviveApi.address(address);
+  return evm !== zeroAddress && evm != null;
+};
+
+export const accountIsMapped = async (
+  client: DedotClient<PaseoAssetHubApi> | TypedApi<Paseo>,
+  address: SS58String
+): Promise<boolean> => {
+  const isDedot = 'rpc' in client;
+
+  if (isDedot) {
+    return await isMappedDedot(client as DedotClient<PaseoAssetHubApi>, address);
+  }
+
+  return await isMappedTypedApi(client as TypedApi<Paseo>, address);
+};
+
+export const isValidSubstrateAddress = (address: string, ss58Format = 42): boolean => {
+  try {
+    if (isHex(address)) return false;
+
+    const decoded = decodeAddress(address);
+
+    const checksummed = encodeAddress(decoded, ss58Format);
+
+    return address === checksummed;
+  } catch {
+    return false;
+  }
+};

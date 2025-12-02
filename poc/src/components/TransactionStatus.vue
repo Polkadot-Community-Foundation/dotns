@@ -110,14 +110,7 @@
               </div>
 
               <h2 class="text-2xl font-extrabold text-gray-900 mb-2">Congratulations!</h2>
-              <p class="text-gray-600 text-sm mb-6">
-                Transaction successful!
-                <span v-if="handle.length > 0" class="font-semibold text-gray-900">{{
-                  handle
-                }}</span
-                >.<br />
-                <span v-if="handle.length > 0"> It will expire ~ {{ expiryDate }}</span>
-              </p>
+              <p class="text-gray-600 text-sm mb-6">Transaction successful!</p>
 
               <div class="flex flex-col space-y-3">
                 <button
@@ -191,11 +184,11 @@
 </template>
 
 <script setup lang="ts">
-import { useWalletStore } from '../store/useWalletStore';
+import { zeroHash } from 'viem';
 import type { TransactionResult, TransactionState } from '../type';
 import { BLOCK_EXPLORER } from '../utils';
-import { ZeroHash } from 'ethers/constants';
 import { ref, watch, computed, onUnmounted, withDefaults } from 'vue';
+import { useNetworkStore } from '@/store/useNetworkStore';
 
 const props = withDefaults(
   defineProps<{
@@ -208,22 +201,18 @@ const props = withDefaults(
   }
 );
 
-const wallet = useWalletStore();
+const networkStore = useNetworkStore();
 defineEmits<{ close: [] }>();
 
 const status = ref<TransactionState>('pending');
 const elapsed = ref(0);
-let timer: number | null = null;
+let timer: number | null | NodeJS.Timeout = null;
 
-const expiryDate = new Date(
-  new Date().setFullYear(new Date().getFullYear() + 1)
-).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
-
-const explorer = wallet.currentNetwork?.blockExplorerUrls?.[0] || BLOCK_EXPLORER;
+const explorer = networkStore.currentNetwork?.blockExplorerUrls?.[0] || BLOCK_EXPLORER;
 
 const explorerUrl = computed(() =>
-  props.transaction?.hash && props.transaction?.hash !== ZeroHash
-    ? `${explorer}/tx/${props.transaction.hash}`
+  props.transaction?.hash && props.transaction?.hash !== zeroHash
+    ? `${explorer}/extrinsic/${props.transaction.hash}`
     : ''
 );
 
@@ -237,6 +226,7 @@ watch(
   () => props.transaction,
   newVal => {
     if (!newVal) {
+      console.log('watch:props.transaction ', newVal);
       status.value = 'pending';
       return;
     }

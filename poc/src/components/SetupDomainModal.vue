@@ -152,9 +152,10 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
-import { useWalletStore } from '../store/useWalletStore';
 import { zeroHash } from 'viem';
 import type { TransactionResult } from '@/type';
+import { useDomainStore } from '@/store/useDomainStore';
+import { useResolverStore } from '@/store/useResolverStore';
 
 const props = defineProps<{
   open: boolean;
@@ -165,7 +166,8 @@ const props = defineProps<{
 
 const emit = defineEmits(['close', 'complete']);
 
-const wallet = useWalletStore();
+const resolverStore = useResolverStore();
+const domainStore = useDomainStore();
 const isProcessing = ref(false);
 const currentStep = ref(0);
 
@@ -200,7 +202,7 @@ async function handleSetup() {
 
     if (props.needsReclaim) {
       currentStep.value = 1;
-      const reclaimResult = await wallet.reclaimDomain(props.name);
+      const reclaimResult = await domainStore.reclaimDomain(props.name);
 
       if (!reclaimResult.status) {
         finalResult = reclaimResult;
@@ -214,7 +216,7 @@ async function handleSetup() {
     }
 
     if (props.needsResolver) {
-      const resolverResult = await wallet.setResolverForName(props.name);
+      const resolverResult = await resolverStore.setResolverForName(props.name);
       finalResult = resolverResult;
 
       if (resolverResult.status) {
