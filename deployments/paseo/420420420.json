@@ -19,31 +19,3 @@
 }
 
 
-cast call \
-0xFf61Ee76A91b9cbCf74cE142B1b89b778D924e97 \
-'reverse(address)' 0x41df0d983C94ff742811649278faAa7fBfeb923DNo \
---rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io
-
-
-cast send 0xfc9FC0f9C67271a84d5Ee1Bd6f14D8527533Bb64 \
-"renew(string,uint256,bytes32)" "spha" 86400 "0x0000000000000000000000000000000000000000000000000000000000000000" \
---value 580000000000000 \
---rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io \
---private-key 0x5fb92d6e98884f76de468fa3f6278f8807c48bebc13595d45af5bdc4da702133
-
-cast call 0xe2fB8d393D3A257F709A3a96d234950d00626fa5 \
-"ownerOf(uint256)" \
-58433534525325686798640436611517527864812007933237575238479288963326404862149 \
---rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io
-
-
-cast call 0xaD5EE06411D18A1Cd1051ED87eAebEE9CD154C64 \
-"expiries(uint256)" \
-58433534525325686798640436611517527864812007933237575238479288963326404862149 \
---rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io
-
-
-ast call 0xaD5EE06411D18A1Cd1051ED87eAebEE9CD154C64 \
-"expiries(uint256)" \
-58433534525325686798640436611517527864812007933237575238479288963326404862149 \
---rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io
