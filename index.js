@@ -13,7 +13,7 @@ const PublicResolver = require('./build/contracts/PublicResolver')
 const Resolver = require('./build/contracts/Resolver')
 const ReverseRegistrar = require('./build/contracts/ReverseRegistrar')
 const TestRegistrar = require('./build/contracts/TestRegistrar')
-const StablePriceOracle = require('./build/contracts/StablePriceOracle')
+const StableOracle = require('./build/contracts/StableOracle')
 const DNSRegistrar = require('./build/contracts/DNSRegistrar')
 const PublicSuffixList = require('./build/contracts/PublicSuffixList')
 const SimplePublicSuffixList = require('./build/contracts/SimplePublicSuffixList')
@@ -41,7 +41,7 @@ module.exports = {
   PublicResolver,
   Resolver,
   ReverseRegistrar,
-  StablePriceOracle,
+  StableOracle,
   TestRegistrar,
   DNSRegistrar,
   PublicSuffixList,

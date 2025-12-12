@@ -7,7 +7,7 @@ import "../../ethregistrar/IBaseRegistrar.sol";
 import {NameCoder} from "../../utils/NameCoder.sol";
 
 contract UpgradedNameWrapperMock is INameWrapperUpgrade {
-    bytes32 private constant ETH_NODE =
+    bytes32 private constant DOT_NODE =
         0x93cdeb708b7545dc668eb9280176169d1c33cfd8ed6f04690a0bcc88a93fc4ae;
 
     ENS public immutable ens;
@@ -41,7 +41,7 @@ contract UpgradedNameWrapperMock is INameWrapperUpgrade {
         bytes32 parentNode = NameCoder.namehash(name, offset);
         bytes32 node = _makeNode(parentNode, labelhash);
 
-        if (parentNode == ETH_NODE) {
+        if (parentNode == DOT_NODE) {
             address registrant = registrar.ownerOf(uint256(labelhash));
             require(
                 msg.sender == registrant && registrar.isApprovedForAll(registrant, address(this)),

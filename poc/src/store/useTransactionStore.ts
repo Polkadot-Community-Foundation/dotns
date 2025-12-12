@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { zeroHash, type Address, type Hash } from 'viem';
+import { createPublicClient, http, zeroHash, type Address, type Hash } from 'viem';
 import type { Injected } from 'dedot/types';
 import type { GenericTransaction } from '@/type';
 import type { IClientWrapper } from '@/composables';
@@ -16,10 +16,24 @@ export const useTransactionStore = defineStore('useTransactionStore', () => {
     from: Address,
     to: Address,
     data: `0x${string}`,
-    value: bigint = 0n
+    value: bigint = 0n,
+    withViem: boolean = false,
+    ethRpcURL?: string
   ): Promise<`0x${string}`> {
     const fallback: `0x${string}` = zeroHash;
     try {
+      if (withViem && ethRpcURL) {
+        const viemTest = createPublicClient({
+          transport: http(ethRpcURL),
+        });
+        const ethCallResult = await viemTest.call({
+          to,
+          account: from,
+          data,
+        });
+        console.log('ethCallResult: ', ethCallResult);
+        return ethCallResult.data ?? zeroHash;
+      }
       walletStore.setIsLoading(true);
       if (!client) throw new Error('Client not initialised');
 

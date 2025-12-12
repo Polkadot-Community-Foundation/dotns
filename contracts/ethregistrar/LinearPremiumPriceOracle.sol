@@ -2,9 +2,9 @@
 pragma solidity ~0.8.17;
 
 import "./SafeMath.sol";
-import "./StablePriceOracle.sol";
+import "./StableOracle.sol";
 
-contract LinearPremiumPriceOracle is StablePriceOracle {
+contract LinearPremiumPriceOracle is StableOracle {
     using SafeMath for *;
 
     uint256 immutable GRACE_PERIOD = 90 days;
@@ -21,7 +21,7 @@ contract LinearPremiumPriceOracle is StablePriceOracle {
         uint256 _premiumDecreaseRate
     )
         public
-        StablePriceOracle(_usdOracle, _rentPrices)
+        StableOracle(_usdOracle, _rentPrices)
     {
         initialPremium = _initialPremium;
         premiumDecreaseRate = _premiumDecreaseRate;

@@ -1,0 +1,724 @@
+[07:01:50] [🔨] Building contracts...
+Compiling 1 files with Solc 0.8.30
+Solc 0.8.30 finished in 7.57s
+Compiler run successful with warnings:
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:18:9:
+   |
+18 |         address owner = records[node].owner;
+   |         ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:35:9:
+   |
+35 |         address owner,
+   |         ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:36:9:
+   |
+36 |         address resolver,
+   |         ^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:137:5:
+    |
+137 |     function resolver(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:37:9:
+   |
+37 |         uint64 ttl
+   |         ^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:144:5:
+    |
+144 |     function ttl(bytes32 node) public view virtual override returns (uint64) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:56:9:
+   |
+56 |         address owner,
+   |         ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:57:9:
+   |
+57 |         address resolver,
+   |         ^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:137:5:
+    |
+137 |     function resolver(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:58:9:
+   |
+58 |         uint64 ttl
+   |         ^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:144:5:
+    |
+144 |     function ttl(bytes32 node) public view virtual override returns (uint64) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:71:37:
+   |
+71 |     function setOwner(bytes32 node, address owner) public virtual override authorised(node) {
+   |                                     ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+  --> contracts/registry/ENSRegistry.sol:83:9:
+   |
+83 |         address owner
+   |         ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:100:40:
+    |
+100 |     function setResolver(bytes32 node, address resolver) public virtual override authorised(node) {
+    |                                        ^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:137:5:
+    |
+137 |     function resolver(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:108:35:
+    |
+108 |     function setTTL(bytes32 node, uint64 ttl) public virtual override authorised(node) {
+    |                                   ^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:144:5:
+    |
+144 |     function ttl(bytes32 node) public view virtual override returns (uint64) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:160:9:
+    |
+160 |         address owner,
+    |         ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:172:38:
+    |
+172 |     function _setOwner(bytes32 node, address owner) internal virtual {
+    |                                      ^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:125:5:
+    |
+125 |     function owner(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:176:47:
+    |
+176 |     function _setResolverAndTTL(bytes32 node, address resolver, uint64 ttl) internal {
+    |                                               ^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:137:5:
+    |
+137 |     function resolver(bytes32 node) public view virtual override returns (address) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/registry/ENSRegistry.sol:176:65:
+    |
+176 |     function _setResolverAndTTL(bytes32 node, address resolver, uint64 ttl) internal {
+    |                                                                 ^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/registry/ENSRegistry.sol:144:5:
+    |
+144 |     function ttl(bytes32 node) public view virtual override returns (uint64) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/reverseRegistrar/ReverseRegistrar.sol:121:9:
+    |
+121 |         bytes32 node = claimForAddr(addr, owner, resolver);
+    |         ^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+   --> contracts/reverseRegistrar/ReverseRegistrar.sol:129:5:
+    |
+129 |     function node(address addr) public pure override returns (bytes32) {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:340:19:
+    |
+340 |     function wrap(bytes calldata name, address wrappedOwner, address resolver) public {
+    |                   ^^^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:473:22:
+    |
+473 |     function upgrade(bytes calldata name, bytes calldata extraData) public {
+    |                      ^^^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:558:9:
+    |
+558 |         bytes memory name = _saveLabel(parentNode, node, label);
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:717:9:
+    |
+717 |         bytes memory name = names[node];
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:830:9:
+    |
+830 |         bytes memory name
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:858:9:
+    |
+858 |         bytes memory name,
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:879:9:
+    |
+879 |         bytes memory name = _addLabel(label, names[parentNode]);
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:891:9:
+    |
+891 |         bytes memory name = _addLabel(label, names[parentNode]);
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:907:9:
+    |
+907 |         bytes memory name = _addLabel(label, names[parentNode]);
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2519): This declaration shadows an existing declaration.
+   --> contracts/wrapper/NameWrapper.sol:980:9:
+    |
+980 |         bytes memory name = _addLabel(label, "\x03eth\x00");
+    |         ^^^^^^^^^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> contracts/wrapper/NameWrapper.sol:61:5:
+   |
+61 |     string public constant name = "NameWrapper";
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Warning (2462): Visibility for constructor is ignored. If you want the contract to be non-deployable, making it "abstract" is sufficient.
+ --> contracts/ethregistrar/DummyOracle.sol:6:5:
+  |
+6 |     constructor(int256 _value) public {
+  |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2462): Visibility for constructor is ignored. If you want the contract to be non-deployable, making it "abstract" is sufficient.
+  --> contracts/registry/ENSRegistry.sol:24:5:
+   |
+24 |     constructor() public {
+   |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (2462): Visibility for constructor is ignored. If you want the contract to be non-deployable, making it "abstract" is sufficient.
+  --> contracts/root/Root.sol:17:5:
+   |
+17 |     constructor(ENS _ens) public {
+   |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning (8417): Since the VM version paris, "difficulty" was replaced by "prevrandao", which now returns a random number based on the beacon chain.
+   --> contracts/utils/Multicall3.sol:221:22:
+    |
+221 |         difficulty = block.difficulty;
+    |                      ^^^^^^^^^^^^^^^^
+
+Warning (2018): Function state mutability can be restricted to pure
+   --> contracts/ethregistrar/BaseRegistrarImplementation.sol:181:5:
+    |
+181 |     function supportsInterface(bytes4 interfaceID)
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+[07:01:58] [✅] Build done.
+[07:01:58] [📋] Labels and nodes:
+[07:01:58]   reverse label: 0xdec08c9dbbdd0890e300eb5062089b2d4b1c40e3673bbccb5423f7b37dcf9a9c
+[07:01:58]   reverse node:  0xa097f6721ce401e757d1223a763fef49b8b5f90bb18567ddb86fd205dff71d34
+[07:01:58]   addr label:    0xe5e14487b78f85faa6e1808e89246cf57dd34831548ff2e6097380d98db2504a
+[07:01:58]   dot label:     0xce159cf34380757d1932a8e4a74e85e85957b0a7a52d9c566c0a3c8d6133d0f7
+[07:01:59]   dot node:      0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce
+============================================
+[07:01:59] [🏗️] Deploying core ENS infrastructure...
+--------------------------------------------
+[07:01:59] [⏳] Deploying ENSRegistry...
+[07:01:59] No args
+[07:01:59] [⚙️] forge create contracts/registry/ENSRegistry.sol:ENSRegistry --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x5cff894C8d51ad148BC41053B322698AD07ed09e
+Transaction hash: 0x1fb10126e87c84b185d2289b5faeab7901679808d83b9f8d19e57e8ff26fd03c
+[07:02:06] [✅] ENSRegistry at 0x5cff894C8d51ad148BC41053B322698AD07ed09e
+--------------------------------------------
+[07:02:06] [⏳] Deploying Root...
+[07:02:06] Args: 0x5cff894C8d51ad148BC41053B322698AD07ed09e
+[07:02:06] [⚙️] forge create contracts/root/Root.sol:Root --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0x5cff894C8d51ad148BC41053B322698AD07ed09e
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xfA222eE83e012066a3848126bd046a43C13a0e2B
+Transaction hash: 0xe92c41bc7d87caa5ff75c9b984b47d49d3d9e7886e59aad0370e5ddbe57a7c1a
+[07:02:12] [✅] Root at 0xfA222eE83e012066a3848126bd046a43C13a0e2B
+[07:02:12] [🔗] TX: 0x5cff894C8d51ad148BC41053B322698AD07ed09e :: setOwner(bytes32,address)(0x0000000000000000000000000000000000000000000000000000000000000000 0xfA222eE83e012066a3848126bd046a43C13a0e2B)
+
+blockHash            0x32e1eaea93bd28d6be982b0e4c7b0eda6956a23e181cf88788f07ce6cea83f1c
+blockNumber          2518855
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              272837280
+logs                 [{"address":"0x5cff894c8d51ad148bc41053b322698ad07ed09e","topics":["0xd4735d920b0f87494915f556dd9b54c8f309026070caea5c737245152564d266","0x0000000000000000000000000000000000000000000000000000000000000000"],"data":"0x000000000000000000000000fa222ee83e012066a3848126bd046a43c13a0e2b","blockHash":"0x32e1eaea93bd28d6be982b0e4c7b0eda6956a23e181cf88788f07ce6cea83f1c","blockNumber":"0x266f47","transactionHash":"0x0520875d14a6a69ab1df5afea04fb158c2596e61b741abb81098a1a577c9c804","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000020000000000000000000100000000000000000000000000800000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000008000000000000000000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x0520875d14a6a69ab1df5afea04fb158c2596e61b741abb81098a1a577c9c804
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x5cff894C8d51ad148BC41053B322698AD07ed09e
+[07:02:19] [🔗] TX: 0xfA222eE83e012066a3848126bd046a43C13a0e2B :: setController(address,bool)(0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac true)
+
+blockHash            0xc4b867eb353d3c9853dded7eb57edbac90ad99006c84e4f4295c216eb39b3d27
+blockNumber          2518856
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              272788450
+logs                 [{"address":"0xfa222ee83e012066a3848126bd046a43c13a0e2b","topics":["0x4c97694570a07277810af7e5669ffd5f6a2d6b74b6e9a274b8b870fd5114cf87","0x000000000000000000000000f24ff3a9cf04c71dbc94d0b566f7a27b94566cac"],"data":"0x0000000000000000000000000000000000000000000000000000000000000001","blockHash":"0xc4b867eb353d3c9853dded7eb57edbac90ad99006c84e4f4295c216eb39b3d27","blockNumber":"0x266f48","transactionHash":"0xf26f3080412ffcc125ff006d7c35d7854821ecce3102debde746e6859d479ca8","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000001000000000000000020000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0xf26f3080412ffcc125ff006d7c35d7854821ecce3102debde746e6859d479ca8
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0xfA222eE83e012066a3848126bd046a43C13a0e2B
+--------------------------------------------
+[07:02:25] [⏳] Deploying ReverseRegistrar...
+[07:02:25] Args: 0x5cff894C8d51ad148BC41053B322698AD07ed09e
+[07:02:25] [⚙️] forge create contracts/reverseRegistrar/ReverseRegistrar.sol:ReverseRegistrar --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0x5cff894C8d51ad148BC41053B322698AD07ed09e
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xeB713b8978Ae6c2010068Fd1C949d0ae685047e0
+Transaction hash: 0x40f95e29110fbceef44d00e148e4c976ad118899e018a9eda2b28720fe65fec9
+[07:02:37] [✅] ReverseRegistrar at 0xeB713b8978Ae6c2010068Fd1C949d0ae685047e0
+[07:02:37] [🔗] TX: 0xfA222eE83e012066a3848126bd046a43C13a0e2B :: setSubnodeOwner(bytes32,address)(0xdec08c9dbbdd0890e300eb5062089b2d4b1c40e3673bbccb5423f7b37dcf9a9c 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac)
+
+blockHash            0x6910e702cf2485cb1661e61556793f64c8c5ae7fda2ccb23a6513a6a77e674e4
+blockNumber          2518859
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              328112240
+logs                 [{"address":"0x5cff894c8d51ad148bc41053b322698ad07ed09e","topics":["0xce0457fe73731f824cc272376169235128c118b49d344817417c6d108d155e82","0x0000000000000000000000000000000000000000000000000000000000000000","0xdec08c9dbbdd0890e300eb5062089b2d4b1c40e3673bbccb5423f7b37dcf9a9c"],"data":"0x000000000000000000000000f24ff3a9cf04c71dbc94d0b566f7a27b94566cac","blockHash":"0x6910e702cf2485cb1661e61556793f64c8c5ae7fda2ccb23a6513a6a77e674e4","blockNumber":"0x266f4b","transactionHash":"0x27f6c67e817c2f3ddca3d40a03d1c00d37ca0c84e44c9f1f4e00081c627104a1","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000000000000000000400000800000800000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000004000000000000000000000000000000020000008000000000000000000000000000000000000000000000000000000000400
+root                 
+status               1 (success)
+transactionHash      0x27f6c67e817c2f3ddca3d40a03d1c00d37ca0c84e44c9f1f4e00081c627104a1
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0xfA222eE83e012066a3848126bd046a43C13a0e2B
+[07:02:42] [🔗] TX: 0x5cff894C8d51ad148BC41053B322698AD07ed09e :: setSubnodeOwner(bytes32,bytes32,address)(0xa097f6721ce401e757d1223a763fef49b8b5f90bb18567ddb86fd205dff71d34 0xe5e14487b78f85faa6e1808e89246cf57dd34831548ff2e6097380d98db2504a 0xeB713b8978Ae6c2010068Fd1C949d0ae685047e0)
+
+blockHash            0x80d211d4ded0364be42353c3cac778f7c99156064844a0fd78e0b8ef1bbe2bdf
+blockNumber          2518860
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              304788450
+logs                 [{"address":"0x5cff894c8d51ad148bc41053b322698ad07ed09e","topics":["0xce0457fe73731f824cc272376169235128c118b49d344817417c6d108d155e82","0xa097f6721ce401e757d1223a763fef49b8b5f90bb18567ddb86fd205dff71d34","0xe5e14487b78f85faa6e1808e89246cf57dd34831548ff2e6097380d98db2504a"],"data":"0x000000000000000000000000eb713b8978ae6c2010068fd1c949d0ae685047e0","blockHash":"0x80d211d4ded0364be42353c3cac778f7c99156064844a0fd78e0b8ef1bbe2bdf","blockNumber":"0x266f4c","transactionHash":"0x32dedb812a21a942e8e8fae6a14e8398f6f3d9e4fd29d3622c60634f05227341","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000000800000000000000000800000800000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000004000001000000000000000000000000000000008000000000040000000000000000000000000000000000000000010000000
+root                 
+status               1 (success)
+transactionHash      0x32dedb812a21a942e8e8fae6a14e8398f6f3d9e4fd29d3622c60634f05227341
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x5cff894C8d51ad148BC41053B322698AD07ed09e
+--------------------------------------------
+[07:02:49] [⏳] Deploying BaseRegistrarImplementation...
+[07:02:49] Args: 0x5cff894C8d51ad148BC41053B322698AD07ed09e 0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce
+[07:02:49] [⚙️] forge create contracts/ethregistrar/BaseRegistrarImplementation.sol:BaseRegistrarImplementation --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0x5cff894C8d51ad148BC41053B322698AD07ed09e 0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xaB14fb520aCee0bF7791169924d9e2B3e92F2fe3
+Transaction hash: 0x4cdb8c47571b7c98d484aa2b51e2cfa7255ccf4603530d04d9b5f54bf8286bcc
+[07:02:54] [✅] BaseRegistrarImplementation at 0xaB14fb520aCee0bF7791169924d9e2B3e92F2fe3
+[07:02:54] [🔗] TX: 0xfA222eE83e012066a3848126bd046a43C13a0e2B :: setSubnodeOwner(bytes32,address)(0xce159cf34380757d1932a8e4a74e85e85957b0a7a52d9c566c0a3c8d6133d0f7 0xaB14fb520aCee0bF7791169924d9e2B3e92F2fe3)
+
+blockHash            0x6a808ffde892daf61507977c5efab07a3059aefbdd3053ea7fe7963558203d02
+blockNumber          2518862
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              328112240
+logs                 [{"address":"0x5cff894c8d51ad148bc41053b322698ad07ed09e","topics":["0xce0457fe73731f824cc272376169235128c118b49d344817417c6d108d155e82","0x0000000000000000000000000000000000000000000000000000000000000000","0xce159cf34380757d1932a8e4a74e85e85957b0a7a52d9c566c0a3c8d6133d0f7"],"data":"0x000000000000000000000000ab14fb520acee0bf7791169924d9e2b3e92f2fe3","blockHash":"0x6a808ffde892daf61507977c5efab07a3059aefbdd3053ea7fe7963558203d02","blockNumber":"0x266f4e","transactionHash":"0x015286e65f446fab54410e38c5f6cc78910e3b34162197a74af37adb7e6944d5","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000000000000000000100000800000800000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000004000000000000000000000000000000020000008000000000000000000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x015286e65f446fab54410e38c5f6cc78910e3b34162197a74af37adb7e6944d5
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0xfA222eE83e012066a3848126bd046a43C13a0e2B
+[07:03:02] [🔎] Owner of .dot node: 0xaB14fb520aCee0bF7791169924d9e2B3e92F2fe3
+[07:03:02] [✅] .dot ownership verified
+============================================
+[07:03:02] [💰] Deploying pricing and metadata...
+--------------------------------------------
+[07:03:02] [⏳] Deploying DummyOracle...
+[07:03:02] Args: 160000000000
+[07:03:02] [⚙️] forge create contracts/ethregistrar/DummyOracle.sol:DummyOracle --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 160000000000
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x39d1418BF412cd2a0d53EB7691682368f3Db70FD
+Transaction hash: 0xc235cb36df001f7ef080b7b2103b66eebcd5e8560ff695d6e73654029603e23e
+[07:03:07] [✅] DummyOracle at 0x39d1418BF412cd2a0d53EB7691682368f3Db70FD
+--------------------------------------------
+[07:03:07] [⏳] Deploying StableOracle...
+[07:03:07] Args: 0x39d1418BF412cd2a0d53EB7691682368f3Db70FD [0, 0, 3170979200, 1585489600, 317097920]
+[07:03:07] [⚙️] forge create contracts/ethregistrar/StableOracle.sol:StableOracle --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0x39d1418BF412cd2a0d53EB7691682368f3Db70FD [0, 0, 3170979200, 1585489600, 317097920]
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x8e8d4E9Ad8795A98D0830624183e8Fec02b8707C
+Transaction hash: 0xe44326d5a850d4ea529c953463d1067d9959aec65d65133cf4a93c7b353aa473
+[07:03:13] [✅] StableOracle at 0x8e8d4E9Ad8795A98D0830624183e8Fec02b8707C
+--------------------------------------------
+[07:03:13] [⏳] Deploying StaticMetadataService...
+[07:03:13] Args: http://localhost:8080/name/0x{id}
+[07:03:13] [⚙️] forge create contracts/wrapper/StaticMetadataService.sol:StaticMetadataService --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args http://localhost:8080/name/0x{id}
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x6eB28cdbDD792499Fb6bD9F7C14A49629362f29e
+Transaction hash: 0x4d7a9683fed35a265fc87dd6e3e1625f8823941eba4dbfc9922fa9a4600f5c37
+[07:03:19] [✅] StaticMetadataService at 0x6eB28cdbDD792499Fb6bD9F7C14A49629362f29e
+============================================
+[07:03:19] [📦] Deploying NameWrapper and controllers...
+--------------------------------------------
+[07:03:19] [⏳] Deploying NameWrapper...
+[07:03:19] Args: 0x5cff894C8d51ad148BC41053B322698AD07ed09e 0xaB14fb520aCee0bF7791169924d9e2B3e92F2fe3 0x6eB28cdbDD792499Fb6bD9F7C14A49629362f29e
+[07:03:19] [⚙️] forge create contracts/wrapper/NameWrapper.sol:NameWrapper --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0x5cff894C8d51ad148BC41053B322698AD07ed09e 0xaB14fb520aCee0bF7791169924d9e2B3e92F2fe3 0x6eB28cdbDD792499Fb6bD9F7C14A49629362f29e
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xd9e25AF06c7Fd2DCDd42171BD52F545C84B023b1
+Transaction hash: 0x63de08ba0eaaa0b6d114ee0a0db3d273188d7205f84e454a4978d356ffe8c376
+[07:03:26] [✅] NameWrapper at 0xd9e25AF06c7Fd2DCDd42171BD52F545C84B023b1
+[07:03:26] [🔗] TX: 0xaB14fb520aCee0bF7791169924d9e2B3e92F2fe3 :: addController(address)(0xd9e25AF06c7Fd2DCDd42171BD52F545C84B023b1)
+
+blockHash            0x21ae9b7a747feaa51048133563c125694dc960eddce1003339c2be638586a9af
+blockNumber          2518867
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              239788450
+logs                 [{"address":"0xab14fb520acee0bf7791169924d9e2b3e92f2fe3","topics":["0x0a8bb31534c0ed46f380cb867bd5c803a189ced9a764e30b3a4991a9901d7474","0x000000000000000000000000d9e25af06c7fd2dcdd42171bd52f545c84b023b1"],"data":"0x","blockHash":"0x21ae9b7a747feaa51048133563c125694dc960eddce1003339c2be638586a9af","blockNumber":"0x266f53","transactionHash":"0x99ff63ef67765c24df87553b147917dc8100678833c96db6c4c9c5c76f1b71b9","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000080000000000000000000000000000400000000000000000000000000000000000000002000000000000000000000000000000000000000000010000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000400000000000040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000
+root                 
+status               1 (success)
+transactionHash      0x99ff63ef67765c24df87553b147917dc8100678833c96db6c4c9c5c76f1b71b9
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0xaB14fb520aCee0bF7791169924d9e2B3e92F2fe3
+--------------------------------------------
+[07:03:31] [⏳] Deploying DefaultReverseRegistrar...
+[07:03:31] No args
+[07:03:31] [⚙️] forge create contracts/reverseRegistrar/DefaultReverseRegistrar.sol:DefaultReverseRegistrar --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x7B5b6c318ce5A5Fc171dc01091eBcBfd53b22081
+Transaction hash: 0x4666476076be9e32366fa1811d01b03d130f689f3ac1ab5663c2eabd891e0114
+[07:03:37] [✅] DefaultReverseRegistrar at 0x7B5b6c318ce5A5Fc171dc01091eBcBfd53b22081
+--------------------------------------------
+[07:03:37] [⏳] Deploying ETHRegistrarController...
+[07:03:37] Args: 0xaB14fb520aCee0bF7791169924d9e2B3e92F2fe3 0x8e8d4E9Ad8795A98D0830624183e8Fec02b8707C 6 86400 0xeB713b8978Ae6c2010068Fd1C949d0ae685047e0 0x7B5b6c318ce5A5Fc171dc01091eBcBfd53b22081 0x5cff894C8d51ad148BC41053B322698AD07ed09e
+[07:03:37] [⚙️] forge create contracts/ethregistrar/ETHRegistrarController.sol:ETHRegistrarController --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0xaB14fb520aCee0bF7791169924d9e2B3e92F2fe3 0x8e8d4E9Ad8795A98D0830624183e8Fec02b8707C 6 86400 0xeB713b8978Ae6c2010068Fd1C949d0ae685047e0 0x7B5b6c318ce5A5Fc171dc01091eBcBfd53b22081 0x5cff894C8d51ad148BC41053B322698AD07ed09e
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x74c40EFD9b4459c68C05d76e63B0B8Dd54D62b66
+Transaction hash: 0x317fc774ab75865bb270d0e586622f4ae464ea8683260f545454772cd661b453
+[07:03:43] [✅] ETHRegistrarController at 0x74c40EFD9b4459c68C05d76e63B0B8Dd54D62b66
+[07:03:43] [🔗] TX: 0xaB14fb520aCee0bF7791169924d9e2B3e92F2fe3 :: addController(address)(0x74c40EFD9b4459c68C05d76e63B0B8Dd54D62b66)
+
+blockHash            0x89f46336743ec854ac7902756c185d9a4d8df9e109e6cc013ff6414717cb75f2
+blockNumber          2518870
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              239788450
+logs                 [{"address":"0xab14fb520acee0bf7791169924d9e2b3e92f2fe3","topics":["0x0a8bb31534c0ed46f380cb867bd5c803a189ced9a764e30b3a4991a9901d7474","0x00000000000000000000000074c40efd9b4459c68c05d76e63b0b8dd54d62b66"],"data":"0x","blockHash":"0x89f46336743ec854ac7902756c185d9a4d8df9e109e6cc013ff6414717cb75f2","blockNumber":"0x266f56","transactionHash":"0xade7b4c5a5656611f0979b13c30b3565e47d96e99b613decb29a23e2e641fdc1","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000400000000000000000000000000000800000000002000000000000000000000000000000000000000000010000000020000000000000000000000000000000000000000000000000000020000000000000000000000000000000000008000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0xade7b4c5a5656611f0979b13c30b3565e47d96e99b613decb29a23e2e641fdc1
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0xaB14fb520aCee0bF7791169924d9e2B3e92F2fe3
+[07:03:49] [🔗] TX: 0xd9e25AF06c7Fd2DCDd42171BD52F545C84B023b1 :: setController(address,bool)(0x74c40EFD9b4459c68C05d76e63B0B8Dd54D62b66 true)
+
+blockHash            0xfb04a6b9713a7ec920d172ce2e67908d372a4d682b4db47a7ead2d8d24ccadec
+blockNumber          2518871
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              272788450
+logs                 [{"address":"0xd9e25af06c7fd2dcdd42171bd52f545c84b023b1","topics":["0x4c97694570a07277810af7e5669ffd5f6a2d6b74b6e9a274b8b870fd5114cf87","0x00000000000000000000000074c40efd9b4459c68c05d76e63b0b8dd54d62b66"],"data":"0x0000000000000000000000000000000000000000000000000000000000000001","blockHash":"0xfb04a6b9713a7ec920d172ce2e67908d372a4d682b4db47a7ead2d8d24ccadec","blockNumber":"0x266f57","transactionHash":"0x4ac051ece03f8e35d12762cb4d0d78496b462dd5995754d7e54e2fd5b6e54cb7","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000002000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008004000000000000000000000001000008000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x4ac051ece03f8e35d12762cb4d0d78496b462dd5995754d7e54e2fd5b6e54cb7
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0xd9e25AF06c7Fd2DCDd42171BD52F545C84B023b1
+[07:03:54] [🔗] TX: 0xeB713b8978Ae6c2010068Fd1C949d0ae685047e0 :: setController(address,bool)(0x74c40EFD9b4459c68C05d76e63B0B8Dd54D62b66 true)
+
+blockHash            0x8ac58f125997e7a360cce62c69da4d34fc97f61a2bbe09654f0d4a48714de65e
+blockNumber          2518872
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              272788450
+logs                 [{"address":"0xeb713b8978ae6c2010068fd1c949d0ae685047e0","topics":["0x4c97694570a07277810af7e5669ffd5f6a2d6b74b6e9a274b8b870fd5114cf87","0x00000000000000000000000074c40efd9b4459c68c05d76e63b0b8dd54d62b66"],"data":"0x0000000000000000000000000000000000000000000000000000000000000001","blockHash":"0x8ac58f125997e7a360cce62c69da4d34fc97f61a2bbe09654f0d4a48714de65e","blockNumber":"0x266f58","transactionHash":"0x663b3ee4c9f8608d6182f3ba4d33fe5450f67ed30269489dd76a74a477c7877b","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000001000000000000000000000000002000000000000000000000000000000000000000020001000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000001000008000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x663b3ee4c9f8608d6182f3ba4d33fe5450f67ed30269489dd76a74a477c7877b
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0xeB713b8978Ae6c2010068Fd1C949d0ae685047e0
+============================================
+[07:04:01] [🔧] Deploying additional contracts...
+--------------------------------------------
+[07:04:01] [⏳] Deploying StaticBulkRenewal...
+[07:04:01] Args: 0x74c40EFD9b4459c68C05d76e63B0B8Dd54D62b66
+[07:04:01] [⚙️] forge create contracts/ethregistrar/StaticBulkRenewal.sol:StaticBulkRenewal --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0x74c40EFD9b4459c68C05d76e63B0B8Dd54D62b66
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x7D68d0c9D23c3c87A795b396D1308ddCe9ce09Ff
+Transaction hash: 0x9e76426f3118cc423ff1d7dd247eed489e621a175e5c26cac8ef7cf6a66d6ea7
+[07:05:19] [✅] StaticBulkRenewal at 0x7D68d0c9D23c3c87A795b396D1308ddCe9ce09Ff
+--------------------------------------------
+[07:05:19] [⏳] Deploying PublicResolver...
+[07:05:19] Args: 0x5cff894C8d51ad148BC41053B322698AD07ed09e 0xd9e25AF06c7Fd2DCDd42171BD52F545C84B023b1 0x74c40EFD9b4459c68C05d76e63B0B8Dd54D62b66 0xeB713b8978Ae6c2010068Fd1C949d0ae685047e0
+[07:05:19] [⚙️] forge create contracts/resolvers/PublicResolver.sol:PublicResolver --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0x5cff894C8d51ad148BC41053B322698AD07ed09e 0xd9e25AF06c7Fd2DCDd42171BD52F545C84B023b1 0x74c40EFD9b4459c68C05d76e63B0B8Dd54D62b66 0xeB713b8978Ae6c2010068Fd1C949d0ae685047e0
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x85442CFAcC19BF3a66e33F65B7EbF53B7D945d4A
+Transaction hash: 0x6b978a7f7fa08f63760d9d483478bbaf7161983b5504a35c13d66210f6acb4a5
+[07:05:25] [✅] PublicResolver at 0x85442CFAcC19BF3a66e33F65B7EbF53B7D945d4A
+[07:05:26] [🔗] TX: 0xeB713b8978Ae6c2010068Fd1C949d0ae685047e0 :: setDefaultResolver(address)(0x85442CFAcC19BF3a66e33F65B7EbF53B7D945d4A)
+
+blockHash            0xa168a0765089dacccf5a0cac522a305bf9367c75231f4f4a9ae036b5ea6e572f
+blockNumber          2518876
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              239788450
+logs                 [{"address":"0xeb713b8978ae6c2010068fd1c949d0ae685047e0","topics":["0xeae17a84d9eb83d8c8eb317f9e7d64857bc363fa51674d996c023f4340c577cf","0x00000000000000000000000085442cfacc19bf3a66e33f65b7ebf53b7d945d4a"],"data":"0x","blockHash":"0xa168a0765089dacccf5a0cac522a305bf9367c75231f4f4a9ae036b5ea6e572f","blockNumber":"0x266f5c","transactionHash":"0x568a10e81cfc031e87485b5879cd707658b9f03b172a7efdbcc083c7e4c4027c","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000002000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000001000000000000000000000000000000000020000000000000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x568a10e81cfc031e87485b5879cd707658b9f03b172a7efdbcc083c7e4c4027c
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0xeB713b8978Ae6c2010068Fd1C949d0ae685047e0
+--------------------------------------------
+[07:05:31] [⏳] Deploying GatewayProvider...
+[07:05:31] Args: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac ["http://universal-offchain-resolver.local/"]
+[07:05:31] [⚙️] forge create contracts/ccipRead/GatewayProvider.sol:GatewayProvider --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac ["http://universal-offchain-resolver.local/"]
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xf53a325A371ff389f2DAe6Ed75F93D2928193B75
+Transaction hash: 0x3f24567d4fef5eb76c954256c8e3b4d6e388463671ea192e50516586c1fe2ef7
+[07:05:37] [✅] GatewayProvider at 0xf53a325A371ff389f2DAe6Ed75F93D2928193B75
+--------------------------------------------
+[07:05:37] [⏳] Deploying UniversalResolver...
+[07:05:37] Args: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac 0x5cff894C8d51ad148BC41053B322698AD07ed09e 0xf53a325A371ff389f2DAe6Ed75F93D2928193B75
+[07:05:37] [⚙️] forge create contracts/universalResolver/UniversalResolver.sol:UniversalResolver --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac 0x5cff894C8d51ad148BC41053B322698AD07ed09e 0xf53a325A371ff389f2DAe6Ed75F93D2928193B75
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x399995760eDCeF4B65B22022Cd2929EFd125aAb3
+Transaction hash: 0x1f31f3385f93613d03ba220f69a3994047fbb6f45dc4710c7fb2c3edd4e23a5b
+[07:05:43] [✅] UniversalResolver at 0x399995760eDCeF4B65B22022Cd2929EFd125aAb3
+[07:05:43] [🔗] TX: 0x5cff894C8d51ad148BC41053B322698AD07ed09e :: setApprovalForAll(address,bool)(0x74c40EFD9b4459c68C05d76e63B0B8Dd54D62b66 true)
+
+blockHash            0x589ddb1b8c88a84b1d5e9638eb85f7010d08453711e7479fa5b1563c52ae4c2c
+blockNumber          2518879
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              257088680
+logs                 [{"address":"0x5cff894c8d51ad148bc41053b322698ad07ed09e","topics":["0x17307eab39ab6107e8899845ad3d59bd9653f200f220920489ca2b5937696c31","0x000000000000000000000000f24ff3a9cf04c71dbc94d0b566f7a27b94566cac","0x00000000000000000000000074c40efd9b4459c68c05d76e63b0b8dd54d62b66"],"data":"0x0000000000000000000000000000000000000000000000000000000000000001","blockHash":"0x589ddb1b8c88a84b1d5e9638eb85f7010d08453711e7479fa5b1563c52ae4c2c","blockNumber":"0x266f5f","transactionHash":"0x8c2e10258282ca5589c2d0680550fcda6cdd9a06485a0520d6868d12060859c6","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000040000000000000000000800800800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020002000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008200800000000000000008000000000020000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x8c2e10258282ca5589c2d0680550fcda6cdd9a06485a0520d6868d12060859c6
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x5cff894C8d51ad148BC41053B322698AD07ed09e
+[07:05:49] [🔗] TX: 0xaB14fb520aCee0bF7791169924d9e2B3e92F2fe3 :: setResolver(address)(0x85442CFAcC19BF3a66e33F65B7EbF53B7D945d4A)
+
+blockHash            0x51e96b9436a9083d60418cf84d6c87d9e3dc0d2a788c5012653a515aed8a21c1
+blockNumber          2518881
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              301124200
+logs                 [{"address":"0x5cff894c8d51ad148bc41053b322698ad07ed09e","topics":["0x335721b01866dc23fbee8b6b2c7b1e14d6f05c28cd35a2c934239f94095602a0","0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce"],"data":"0x00000000000000000000000085442cfacc19bf3a66e33f65b7ebf53b7d945d4a","blockHash":"0x51e96b9436a9083d60418cf84d6c87d9e3dc0d2a788c5012653a515aed8a21c1","blockNumber":"0x266f61","transactionHash":"0x13c86e1242c2576db29c4bf850818540f8140e0e119c83b0f8d7a19732f62196","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000000000000000000000000800000800000000000000080000000000000000000000000000000020010000000000000000040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x13c86e1242c2576db29c4bf850818540f8140e0e119c83b0f8d7a19732f62196
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0xaB14fb520aCee0bF7791169924d9e2B3e92F2fe3
+============================================
+[07:06:01] [🛠️] Deploying utilities...
+--------------------------------------------
+[07:06:01] [⏳] Deploying StoreFactory...
+[07:06:01] No args
+[07:06:01] [⚙️] forge create contracts/utils/StoreFactory.sol:StoreFactory --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x8b82b021123DE6Abf14CA8aDc9E7B45a8FeaF700
+Transaction hash: 0x851cbf9393d7930faa5c042a530bceafa13d61b45d16a23a134dd535f90499b5
+[07:07:19] [✅] StoreFactory at 0x8b82b021123DE6Abf14CA8aDc9E7B45a8FeaF700
+--------------------------------------------
+[07:07:19] [⏳] Deploying DotnsRegistrar...
+[07:07:19] Args: 0x74c40EFD9b4459c68C05d76e63B0B8Dd54D62b66 0x5cff894C8d51ad148BC41053B322698AD07ed09e 0x8b82b021123DE6Abf14CA8aDc9E7B45a8FeaF700
+[07:07:19] [⚙️] forge create contracts/utils/DotnsRegistrar.sol:DotnsRegistrar --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0x74c40EFD9b4459c68C05d76e63B0B8Dd54D62b66 0x5cff894C8d51ad148BC41053B322698AD07ed09e 0x8b82b021123DE6Abf14CA8aDc9E7B45a8FeaF700
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x83EaBb007EA3293a724FbA2f73c87880894227e8
+Transaction hash: 0x44d3c8ff98d8166e72ab1ac9d0822b4fc6c31f8b63a5215da7f153c9bab45c06
+[07:07:31] [✅] DotnsRegistrar at 0x83EaBb007EA3293a724FbA2f73c87880894227e8
+--------------------------------------------
+[07:07:31] [⏳] Deploying Multicall3...
+[07:07:31] No args
+[07:07:31] [⚙️] forge create contracts/utils/Multicall3.sol:Multicall3 --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x57e75212fE55e5B98Df9Fe0A186B1e267B522F31
+Transaction hash: 0x095eabe8043a9abb062c07b3f8ada6c809e479b28beea4819633305bd8b64a16
+[07:07:37] [✅] Multicall3 at 0x57e75212fE55e5B98Df9Fe0A186B1e267B522F31
+============================================
+[07:07:37] [🔍] Running final verification...
+[07:07:38] [✅] Verification passed: .dot TLD owned by BaseRegistrar
+============================================

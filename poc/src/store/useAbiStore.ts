@@ -6,13 +6,12 @@ export const useAbiStore = defineStore('useAbiStore', () => {
   let ENSRegistryABI: Abi;
   let StaticBulkRenewalABI: Abi;
   let BaseRegistrarABI: Abi;
-  let DummyOracleABI: Abi;
   let StoreFactoryABI: Abi;
   let StoreABI: Abi;
   let PublicResolverABI: Abi;
   let MultiCallABI: Abi;
   let ReverseRegistrarABI: Abi;
-
+  let StableOracleABI: Abi;
   async function loadABIs(): Promise<void> {
     if (ETHRegistrarControllerABI) return;
 
@@ -21,35 +20,35 @@ export const useAbiStore = defineStore('useAbiStore', () => {
       ENSRegistry,
       StaticBulkRenewal,
       BaseRegistrarImplementation,
-      DummyOracle,
       StoreFactory,
       Store,
       PublicResolver,
       MultiCall,
       DefaultReverseRegistrar,
+      StableOracle,
     ] = await Promise.all([
       import('../../abis/ETHRegistrarController.json'),
       import('../../abis/ENSRegistry.json'),
       import('../../abis/StaticBulkRenewal.json'),
       import('../../abis/BaseRegistrarImplementation.json'),
-      import('../../abis/DummyOracle.json'),
       import('../../abis/StoreFactory.json'),
       import('../../abis/Store.json'),
       import('../../abis/PublicResolver.json'),
       import('../../abis/Multicall3.json'),
       import('../../abis/DefaultReverseRegistrar.json'),
+      import('../../abis/StableOracle.json'),
     ]);
 
     ETHRegistrarControllerABI = ETHRegistrarController.abi as Abi;
     ENSRegistryABI = ENSRegistry.abi as Abi;
     StaticBulkRenewalABI = StaticBulkRenewal.abi as Abi;
     BaseRegistrarABI = BaseRegistrarImplementation.abi as Abi;
-    DummyOracleABI = DummyOracle.abi as Abi;
     StoreFactoryABI = StoreFactory.abi as Abi;
     StoreABI = Store.abi as Abi;
     PublicResolverABI = PublicResolver.abi as Abi;
     MultiCallABI = MultiCall.abi as Abi;
     ReverseRegistrarABI = DefaultReverseRegistrar.abi as Abi;
+    StableOracleABI = StableOracle.abi as Abi;
   }
 
   function getABI(name: string): Abi {
@@ -58,12 +57,12 @@ export const useAbiStore = defineStore('useAbiStore', () => {
       ENSRegistry: ENSRegistryABI,
       StaticBulkRenewal: StaticBulkRenewalABI,
       BaseRegistrar: BaseRegistrarABI,
-      DummyOracle: DummyOracleABI,
       StoreFactory: StoreFactoryABI,
       Store: StoreABI,
       PublicResolver: PublicResolverABI,
       MultiCall: MultiCallABI,
       ReverseRegistrar: ReverseRegistrarABI,
+      StableOracle: StableOracleABI,
     };
     const abi = abis[name];
     if (!abi) {

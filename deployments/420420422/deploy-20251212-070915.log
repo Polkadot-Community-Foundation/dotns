@@ -1,0 +1,407 @@
+[07:09:15] [🔨] Building contracts...
+No files changed, compilation skipped
+[07:09:16] [✅] Build done.
+[07:09:16] [📋] Labels and nodes:
+[07:09:16]   reverse label: 0xdec08c9dbbdd0890e300eb5062089b2d4b1c40e3673bbccb5423f7b37dcf9a9c
+[07:09:16]   reverse node:  0xa097f6721ce401e757d1223a763fef49b8b5f90bb18567ddb86fd205dff71d34
+[07:09:16]   addr label:    0xe5e14487b78f85faa6e1808e89246cf57dd34831548ff2e6097380d98db2504a
+[07:09:16]   dot label:     0xce159cf34380757d1932a8e4a74e85e85957b0a7a52d9c566c0a3c8d6133d0f7
+[07:09:16]   dot node:      0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce
+============================================
+[07:09:16] [🏗️] Deploying core ENS infrastructure...
+--------------------------------------------
+[07:09:16] [⏳] Deploying ENSRegistry...
+[07:09:16] No args
+[07:09:16] [⚙️] forge create contracts/registry/ENSRegistry.sol:ENSRegistry --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA
+Transaction hash: 0x9749d4be23a1820f3866a6b4acda7d46053b328c2b469f5d4d27cb8226e8dae1
+[07:09:31] [✅] ENSRegistry at 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA
+--------------------------------------------
+[07:09:31] [⏳] Deploying Root...
+[07:09:31] Args: 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA
+[07:09:31] [⚙️] forge create contracts/root/Root.sol:Root --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x3a479A303482679C29Ea8a796507a7Cfe32a2A80
+Transaction hash: 0xdf088e65b098a929c7d3711219f171db471309069fbfa069c3e9011713154db2
+[07:09:37] [✅] Root at 0x3a479A303482679C29Ea8a796507a7Cfe32a2A80
+[07:09:37] [🔗] TX: 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA :: setOwner(bytes32,address)(0x0000000000000000000000000000000000000000000000000000000000000000 0x3a479A303482679C29Ea8a796507a7Cfe32a2A80)
+
+blockHash            0x05e6d578877a6a9e717f7ec83085a8ca5fda73fda1b803f5352269cc0db7cadf
+blockNumber          2518907
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              272837280
+logs                 [{"address":"0x8e0c77ea9316c42aa8ffec98df3110a77a4a9bba","topics":["0xd4735d920b0f87494915f556dd9b54c8f309026070caea5c737245152564d266","0x0000000000000000000000000000000000000000000000000000000000000000"],"data":"0x0000000000000000000000003a479a303482679c29ea8a796507a7cfe32a2a80","blockHash":"0x05e6d578877a6a9e717f7ec83085a8ca5fda73fda1b803f5352269cc0db7cadf","blockNumber":"0x266f7b","transactionHash":"0x4fa626b77fa3fec4e70e1828cce8784346c637a718e91d1b1a93f39c6f7cdd5b","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000020000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000100020000000000000000000800000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x4fa626b77fa3fec4e70e1828cce8784346c637a718e91d1b1a93f39c6f7cdd5b
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA
+[07:09:43] [🔗] TX: 0x3a479A303482679C29Ea8a796507a7Cfe32a2A80 :: setController(address,bool)(0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac true)
+
+blockHash            0x35cef6ce1405d08f2d98984ec7ee5dbb14d784c88967f3083fb37ce77c57fe93
+blockNumber          2518908
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              272788450
+logs                 [{"address":"0x3a479a303482679c29ea8a796507a7cfe32a2a80","topics":["0x4c97694570a07277810af7e5669ffd5f6a2d6b74b6e9a274b8b870fd5114cf87","0x000000000000000000000000f24ff3a9cf04c71dbc94d0b566f7a27b94566cac"],"data":"0x0000000000000000000000000000000000000000000000000000000000000001","blockHash":"0x35cef6ce1405d08f2d98984ec7ee5dbb14d784c88967f3083fb37ce77c57fe93","blockNumber":"0x266f7c","transactionHash":"0x1c576a8c08a1c427b923d4ee0c182f00c43d2d8d960d609e30b045e54696e3af","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000000000000000200000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000001000000000000002020000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x1c576a8c08a1c427b923d4ee0c182f00c43d2d8d960d609e30b045e54696e3af
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x3a479A303482679C29Ea8a796507a7Cfe32a2A80
+--------------------------------------------
+[07:09:48] [⏳] Deploying ReverseRegistrar...
+[07:09:48] Args: 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA
+[07:09:48] [⚙️] forge create contracts/reverseRegistrar/ReverseRegistrar.sol:ReverseRegistrar --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x239df89bf3a9f51b7d9ae1c90A9927ED89830b70
+Transaction hash: 0x02e9efd5bf0332c667b864585e73fd3c816143f4b678998ba4b4fade823ca4c0
+[07:09:55] [✅] ReverseRegistrar at 0x239df89bf3a9f51b7d9ae1c90A9927ED89830b70
+[07:09:55] [🔗] TX: 0x3a479A303482679C29Ea8a796507a7Cfe32a2A80 :: setSubnodeOwner(bytes32,address)(0xdec08c9dbbdd0890e300eb5062089b2d4b1c40e3673bbccb5423f7b37dcf9a9c 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac)
+
+blockHash            0x00bd7f1da399b1f6916483ac1f245a90494b56415bed67949361c0045da1df10
+blockNumber          2518911
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              328112240
+logs                 [{"address":"0x8e0c77ea9316c42aa8ffec98df3110a77a4a9bba","topics":["0xce0457fe73731f824cc272376169235128c118b49d344817417c6d108d155e82","0x0000000000000000000000000000000000000000000000000000000000000000","0xdec08c9dbbdd0890e300eb5062089b2d4b1c40e3673bbccb5423f7b37dcf9a9c"],"data":"0x000000000000000000000000f24ff3a9cf04c71dbc94d0b566f7a27b94566cac","blockHash":"0x00bd7f1da399b1f6916483ac1f245a90494b56415bed67949361c0045da1df10","blockNumber":"0x266f7f","transactionHash":"0x5ec2b0bb5d0e0883080e954458950959a15756b2480e309efdca9e0b2e5abbcb","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000010000000000000000000000000000000000800000000000000000000000000000000000000000000000000000100020000000000000000000800000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000004000040000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000400
+root                 
+status               1 (success)
+transactionHash      0x5ec2b0bb5d0e0883080e954458950959a15756b2480e309efdca9e0b2e5abbcb
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x3a479A303482679C29Ea8a796507a7Cfe32a2A80
+[07:10:07] [🔗] TX: 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA :: setSubnodeOwner(bytes32,bytes32,address)(0xa097f6721ce401e757d1223a763fef49b8b5f90bb18567ddb86fd205dff71d34 0xe5e14487b78f85faa6e1808e89246cf57dd34831548ff2e6097380d98db2504a 0x239df89bf3a9f51b7d9ae1c90A9927ED89830b70)
+
+blockHash            0xeb8cde7f316188257545e5336a8ed663879d8c10c9af5ac46a8ad7cfbbc8625e
+blockNumber          2518912
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              304788450
+logs                 [{"address":"0x8e0c77ea9316c42aa8ffec98df3110a77a4a9bba","topics":["0xce0457fe73731f824cc272376169235128c118b49d344817417c6d108d155e82","0xa097f6721ce401e757d1223a763fef49b8b5f90bb18567ddb86fd205dff71d34","0xe5e14487b78f85faa6e1808e89246cf57dd34831548ff2e6097380d98db2504a"],"data":"0x000000000000000000000000239df89bf3a9f51b7d9ae1c90a9927ed89830b70","blockHash":"0xeb8cde7f316188257545e5336a8ed663879d8c10c9af5ac46a8ad7cfbbc8625e","blockNumber":"0x266f80","transactionHash":"0x5adfcef101dbca2cf8623d39f976d67dbc83b5dcfb6c27ba3c61ad07504df8a1","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000800000000000000000000000000000000000000000000000000000100000800000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000004000041000000000000000000000000000000000000000000040000000000000000000000000000000000000000010000000
+root                 
+status               1 (success)
+transactionHash      0x5adfcef101dbca2cf8623d39f976d67dbc83b5dcfb6c27ba3c61ad07504df8a1
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA
+--------------------------------------------
+[07:10:13] [⏳] Deploying BaseRegistrarImplementation...
+[07:10:13] Args: 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA 0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce
+[07:10:13] [⚙️] forge create contracts/ethregistrar/BaseRegistrarImplementation.sol:BaseRegistrarImplementation --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA 0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x113536e89F5D4D6cE2a679CA38a7030A0C131A33
+Transaction hash: 0x91600413d644af36760d325c1de18302a52092ed5cce030ed61adbdb9d9f1dca
+[07:10:19] [✅] BaseRegistrarImplementation at 0x113536e89F5D4D6cE2a679CA38a7030A0C131A33
+[07:10:19] [🔗] TX: 0x3a479A303482679C29Ea8a796507a7Cfe32a2A80 :: setSubnodeOwner(bytes32,address)(0xce159cf34380757d1932a8e4a74e85e85957b0a7a52d9c566c0a3c8d6133d0f7 0x113536e89F5D4D6cE2a679CA38a7030A0C131A33)
+
+blockHash            0xa148ab78d4529198c995d446d943d8af013b75a59c5e723239f3e221d1730702
+blockNumber          2518915
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              328112240
+logs                 [{"address":"0x8e0c77ea9316c42aa8ffec98df3110a77a4a9bba","topics":["0xce0457fe73731f824cc272376169235128c118b49d344817417c6d108d155e82","0x0000000000000000000000000000000000000000000000000000000000000000","0xce159cf34380757d1932a8e4a74e85e85957b0a7a52d9c566c0a3c8d6133d0f7"],"data":"0x000000000000000000000000113536e89f5d4d6ce2a679ca38a7030a0c131a33","blockHash":"0xa148ab78d4529198c995d446d943d8af013b75a59c5e723239f3e221d1730702","blockNumber":"0x266f83","transactionHash":"0x470028b7657874713b0eaa9b1c836bb3584a9fecb06c61a0d44b7f9192fd51f3","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000030000000000000000000000000000000000800000000000000000000000000000000000000000000000000000100020000000000000000000800000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000004000040000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x470028b7657874713b0eaa9b1c836bb3584a9fecb06c61a0d44b7f9192fd51f3
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x3a479A303482679C29Ea8a796507a7Cfe32a2A80
+[07:10:31] [🔎] Owner of .dot node: 0x113536e89F5D4D6cE2a679CA38a7030A0C131A33
+[07:10:31] [✅] .dot ownership verified
+============================================
+[07:10:31] [💰] Deploying pricing and metadata...
+--------------------------------------------
+[07:10:31] [⏳] Deploying DummyOracle...
+[07:10:31] Args: 160000000000
+[07:10:31] [⚙️] forge create contracts/ethregistrar/DummyOracle.sol:DummyOracle --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 160000000000
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x568d4cf50a095f10C7d1c2386A28Fb19D8600E42
+Transaction hash: 0xded996f65421a176c9b58aee199f5c2957e9133cde1c1c780062478cd931b2d6
+[07:10:37] [✅] DummyOracle at 0x568d4cf50a095f10C7d1c2386A28Fb19D8600E42
+--------------------------------------------
+[07:10:37] [⏳] Deploying StableOracle...
+[07:10:37] Args: 0x568d4cf50a095f10C7d1c2386A28Fb19D8600E42 [0, 0, 3170979200, 1585489600, 317097920]
+[07:10:37] [⚙️] forge create contracts/ethregistrar/StableOracle.sol:StableOracle --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0x568d4cf50a095f10C7d1c2386A28Fb19D8600E42 [0, 0, 3170979200, 1585489600, 317097920]
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x6b97e3ada63Fb3915287B4cBB2DDB9460b52092f
+Transaction hash: 0x791363e02efbc3f6e151574c8afb0c8af1213f1cf01f433bd3b59638ce81ab3c
+[07:10:43] [✅] StableOracle at 0x6b97e3ada63Fb3915287B4cBB2DDB9460b52092f
+--------------------------------------------
+[07:10:43] [⏳] Deploying StaticMetadataService...
+[07:10:43] Args: http://localhost:8080/name/0x{id}
+[07:10:43] [⚙️] forge create contracts/wrapper/StaticMetadataService.sol:StaticMetadataService --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args http://localhost:8080/name/0x{id}
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x47D9622eaa61aE89395aa3448C0831B0288b1a52
+Transaction hash: 0x718fb7f4ab5736b98a6eff194977a1874202ea1ae05757c246784a84910b3e6e
+[07:10:49] [✅] StaticMetadataService at 0x47D9622eaa61aE89395aa3448C0831B0288b1a52
+============================================
+[07:10:49] [📦] Deploying NameWrapper and controllers...
+--------------------------------------------
+[07:10:49] [⏳] Deploying NameWrapper...
+[07:10:49] Args: 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA 0x113536e89F5D4D6cE2a679CA38a7030A0C131A33 0x47D9622eaa61aE89395aa3448C0831B0288b1a52
+[07:10:49] [⚙️] forge create contracts/wrapper/NameWrapper.sol:NameWrapper --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA 0x113536e89F5D4D6cE2a679CA38a7030A0C131A33 0x47D9622eaa61aE89395aa3448C0831B0288b1a52
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xB8eb6f367D5fd5BD724f88CDD509c95e5A178299
+Transaction hash: 0xfa005998d0d72592dee7226808f99b8e9d151eb2989adf44a8fa384f525aa823
+[07:10:55] [✅] NameWrapper at 0xB8eb6f367D5fd5BD724f88CDD509c95e5A178299
+[07:10:55] [🔗] TX: 0x113536e89F5D4D6cE2a679CA38a7030A0C131A33 :: addController(address)(0xB8eb6f367D5fd5BD724f88CDD509c95e5A178299)
+
+blockHash            0xd8cff3d593eadd489f3afef9ff83bcc0f4617d3f6edc2b9c0fa30441ab91d16d
+blockNumber          2518920
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              239788450
+logs                 [{"address":"0x113536e89f5d4d6ce2a679ca38a7030a0c131a33","topics":["0x0a8bb31534c0ed46f380cb867bd5c803a189ced9a764e30b3a4991a9901d7474","0x000000000000000000000000b8eb6f367d5fd5bd724f88cdd509c95e5a178299"],"data":"0x","blockHash":"0xd8cff3d593eadd489f3afef9ff83bcc0f4617d3f6edc2b9c0fa30441ab91d16d","blockNumber":"0x266f88","transactionHash":"0x00abed058b562034e0cd8721294824637fa10bf5a047707e9fdf63d774f135a1","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000200000000000000000000000000000400000000000000000000000000000000000000000000000000080000000000000000000000000000100010000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000008000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x00abed058b562034e0cd8721294824637fa10bf5a047707e9fdf63d774f135a1
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x113536e89F5D4D6cE2a679CA38a7030A0C131A33
+--------------------------------------------
+[07:11:01] [⏳] Deploying DefaultReverseRegistrar...
+[07:11:01] No args
+[07:11:01] [⚙️] forge create contracts/reverseRegistrar/DefaultReverseRegistrar.sol:DefaultReverseRegistrar --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xE6613F3dAAeA25ba998a7d881Df362f4c676ba90
+Transaction hash: 0x4a7e1db019dc306e58ae7dce7357b2ea24351f8ce037c6c09955deacc208e760
+[07:11:06] [✅] DefaultReverseRegistrar at 0xE6613F3dAAeA25ba998a7d881Df362f4c676ba90
+--------------------------------------------
+[07:11:06] [⏳] Deploying ETHRegistrarController...
+[07:11:06] Args: 0x113536e89F5D4D6cE2a679CA38a7030A0C131A33 0x6b97e3ada63Fb3915287B4cBB2DDB9460b52092f 6 86400 0x239df89bf3a9f51b7d9ae1c90A9927ED89830b70 0xE6613F3dAAeA25ba998a7d881Df362f4c676ba90 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA
+[07:11:06] [⚙️] forge create contracts/ethregistrar/ETHRegistrarController.sol:ETHRegistrarController --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0x113536e89F5D4D6cE2a679CA38a7030A0C131A33 0x6b97e3ada63Fb3915287B4cBB2DDB9460b52092f 6 86400 0x239df89bf3a9f51b7d9ae1c90A9927ED89830b70 0xE6613F3dAAeA25ba998a7d881Df362f4c676ba90 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xafbeD1bd739cFCC5fF19B6D3876687d686AFb782
+Transaction hash: 0x87f4c2dd7f4f5c0da6439777ddb6b057616edf78592767e515bfbde80a416e37
+[07:11:12] [✅] ETHRegistrarController at 0xafbeD1bd739cFCC5fF19B6D3876687d686AFb782
+[07:11:12] [🔗] TX: 0x113536e89F5D4D6cE2a679CA38a7030A0C131A33 :: addController(address)(0xafbeD1bd739cFCC5fF19B6D3876687d686AFb782)
+
+blockHash            0xa719b8b599cf1b6537945e22f48aa768c03fb716dba0b543e1df6aeb84409f9c
+blockNumber          2518923
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              239788450
+logs                 [{"address":"0x113536e89f5d4d6ce2a679ca38a7030a0c131a33","topics":["0x0a8bb31534c0ed46f380cb867bd5c803a189ced9a764e30b3a4991a9901d7474","0x000000000000000000000000afbed1bd739cfcc5ff19b6d3876687d686afb782"],"data":"0x","blockHash":"0xa719b8b599cf1b6537945e22f48aa768c03fb716dba0b543e1df6aeb84409f9c","blockNumber":"0x266f8b","transactionHash":"0x68d0c40e5b496e25abdfc15cd71616e761fcd42d1ef396d08a4d8707e3710826","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000080000000000400400000000000000000000000000000000000000000000000000000000000000000000000000000000100010000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000008000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x68d0c40e5b496e25abdfc15cd71616e761fcd42d1ef396d08a4d8707e3710826
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x113536e89F5D4D6cE2a679CA38a7030A0C131A33
+[07:11:18] [🔗] TX: 0xB8eb6f367D5fd5BD724f88CDD509c95e5A178299 :: setController(address,bool)(0xafbeD1bd739cFCC5fF19B6D3876687d686AFb782 true)
+
+blockHash            0x0962d9df06dd3a060c4cca7d2b084adbc0271f4ba9e7cc6a3b5d175faefb98dc
+blockNumber          2518924
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              272788450
+logs                 [{"address":"0xb8eb6f367d5fd5bd724f88cdd509c95e5a178299","topics":["0x4c97694570a07277810af7e5669ffd5f6a2d6b74b6e9a274b8b870fd5114cf87","0x000000000000000000000000afbed1bd739cfcc5ff19b6d3876687d686afb782"],"data":"0x0000000000000000000000000000000000000000000000000000000000000001","blockHash":"0x0962d9df06dd3a060c4cca7d2b084adbc0271f4ba9e7cc6a3b5d175faefb98dc","blockNumber":"0x266f8c","transactionHash":"0xfe564055b1258cbac90257ccacb3779e799f27669ed18fbf5512993ecf10effc","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000010000000000000000080000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000001000000000000000001000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0xfe564055b1258cbac90257ccacb3779e799f27669ed18fbf5512993ecf10effc
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0xB8eb6f367D5fd5BD724f88CDD509c95e5A178299
+[07:11:25] [🔗] TX: 0x239df89bf3a9f51b7d9ae1c90A9927ED89830b70 :: setController(address,bool)(0xafbeD1bd739cFCC5fF19B6D3876687d686AFb782 true)
+
+blockHash            0xe3721ab883b47873322b4f1a7dda7d46d5fae073fda14ca2f8b3602e1f8b3860
+blockNumber          2518927
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              272788450
+logs                 [{"address":"0x239df89bf3a9f51b7d9ae1c90a9927ed89830b70","topics":["0x4c97694570a07277810af7e5669ffd5f6a2d6b74b6e9a274b8b870fd5114cf87","0x000000000000000000000000afbed1bd739cfcc5ff19b6d3876687d686afb782"],"data":"0x0000000000000000000000000000000000000000000000000000000000000001","blockHash":"0xe3721ab883b47873322b4f1a7dda7d46d5fae073fda14ca2f8b3602e1f8b3860","blockNumber":"0x266f8f","transactionHash":"0x41cdec11a40b02762d6fd0282d70e118f8565cb8e46eb1970e65f73af2b4802b","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000080000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000020000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000004000000000000000000000001000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x41cdec11a40b02762d6fd0282d70e118f8565cb8e46eb1970e65f73af2b4802b
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x239df89bf3a9f51b7d9ae1c90A9927ED89830b70
+============================================
+[07:11:43] [🔧] Deploying additional contracts...
+--------------------------------------------
+[07:11:43] [⏳] Deploying StaticBulkRenewal...
+[07:11:43] Args: 0xafbeD1bd739cFCC5fF19B6D3876687d686AFb782
+[07:11:43] [⚙️] forge create contracts/ethregistrar/StaticBulkRenewal.sol:StaticBulkRenewal --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0xafbeD1bd739cFCC5fF19B6D3876687d686AFb782
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xc9A2cb679B78B85369C71F9d68a4443e55c971CF
+Transaction hash: 0x19d0f23e76167243e685d39f5e69089a08b2ab1072993b9c2b1485dc2780bdf8
+[07:11:49] [✅] StaticBulkRenewal at 0xc9A2cb679B78B85369C71F9d68a4443e55c971CF
+--------------------------------------------
+[07:11:49] [⏳] Deploying PublicResolver...
+[07:11:49] Args: 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA 0xB8eb6f367D5fd5BD724f88CDD509c95e5A178299 0xafbeD1bd739cFCC5fF19B6D3876687d686AFb782 0x239df89bf3a9f51b7d9ae1c90A9927ED89830b70
+[07:11:49] [⚙️] forge create contracts/resolvers/PublicResolver.sol:PublicResolver --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA 0xB8eb6f367D5fd5BD724f88CDD509c95e5A178299 0xafbeD1bd739cFCC5fF19B6D3876687d686AFb782 0x239df89bf3a9f51b7d9ae1c90A9927ED89830b70
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xA6652021f976D8d8C00AB238c022Aa5C5B2ac6D8
+Transaction hash: 0xa30d2b916e4ac7c1d0c295c0c27a7c88c12da084d27c874c8cf854df1d64820c
+[07:12:01] [✅] PublicResolver at 0xA6652021f976D8d8C00AB238c022Aa5C5B2ac6D8
+[07:12:01] [🔗] TX: 0x239df89bf3a9f51b7d9ae1c90A9927ED89830b70 :: setDefaultResolver(address)(0xA6652021f976D8d8C00AB238c022Aa5C5B2ac6D8)
+
+blockHash            0xd567bc09bc08189aa48ff038e8323d5c341ddb03ab210563e8cabfa7bfa0386e
+blockNumber          2518931
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              239788450
+logs                 [{"address":"0x239df89bf3a9f51b7d9ae1c90a9927ed89830b70","topics":["0xeae17a84d9eb83d8c8eb317f9e7d64857bc363fa51674d996c023f4340c577cf","0x000000000000000000000000a6652021f976d8d8c00ab238c022aa5c5b2ac6d8"],"data":"0x","blockHash":"0xd567bc09bc08189aa48ff038e8323d5c341ddb03ab210563e8cabfa7bfa0386e","blockNumber":"0x266f93","transactionHash":"0x26ab4bcbc3fee9905ed369153094d04f74980022a48a0631d0a01d50ba2bfd01","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000040000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000001000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000008000000000000000000000000000000000000100000080000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x26ab4bcbc3fee9905ed369153094d04f74980022a48a0631d0a01d50ba2bfd01
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x239df89bf3a9f51b7d9ae1c90A9927ED89830b70
+--------------------------------------------
+[07:12:06] [⏳] Deploying GatewayProvider...
+[07:12:06] Args: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac ["http://universal-offchain-resolver.local/"]
+[07:12:06] [⚙️] forge create contracts/ccipRead/GatewayProvider.sol:GatewayProvider --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac ["http://universal-offchain-resolver.local/"]
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x4C3e54462f3975Ce16Bee4DC9c7EB15ed95151a7
+Transaction hash: 0x0c0ad20a9fc57a1a0b09fc0d2e4d439cd398fe2393827894c4d2a19c0269f476
+[07:12:19] [✅] GatewayProvider at 0x4C3e54462f3975Ce16Bee4DC9c7EB15ed95151a7
+--------------------------------------------
+[07:12:19] [⏳] Deploying UniversalResolver...
+[07:12:19] Args: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA 0x4C3e54462f3975Ce16Bee4DC9c7EB15ed95151a7
+[07:12:19] [⚙️] forge create contracts/universalResolver/UniversalResolver.sol:UniversalResolver --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA 0x4C3e54462f3975Ce16Bee4DC9c7EB15ed95151a7
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x524BC9CD802a0bc14187BAec6889aFd10Eac7E4B
+Transaction hash: 0x1f0230927a968dd1ebd48aa66f320668d4a4a0b821a30985d4281b085fcf59e1
+[07:12:25] [✅] UniversalResolver at 0x524BC9CD802a0bc14187BAec6889aFd10Eac7E4B
+[07:12:25] [🔗] TX: 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA :: setApprovalForAll(address,bool)(0xafbeD1bd739cFCC5fF19B6D3876687d686AFb782 true)
+
+blockHash            0x485359663e25df2639a46db2c95b96e724dd994cf91b6e8fbf93565c55e1ec70
+blockNumber          2518935
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              257088680
+logs                 [{"address":"0x8e0c77ea9316c42aa8ffec98df3110a77a4a9bba","topics":["0x17307eab39ab6107e8899845ad3d59bd9653f200f220920489ca2b5937696c31","0x000000000000000000000000f24ff3a9cf04c71dbc94d0b566f7a27b94566cac","0x000000000000000000000000afbed1bd739cfcc5ff19b6d3876687d686afb782"],"data":"0x0000000000000000000000000000000000000000000000000000000000000001","blockHash":"0x485359663e25df2639a46db2c95b96e724dd994cf91b6e8fbf93565c55e1ec70","blockNumber":"0x266f97","transactionHash":"0xb2e121d6e619f5e2c50abecaac7128844aa437d5353a8a46d9740130ae88873b","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000080000000000400000000040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000002000100000000000000000000000000000000000008000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000200800000000000000000000000000020000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0xb2e121d6e619f5e2c50abecaac7128844aa437d5353a8a46d9740130ae88873b
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA
+[07:12:31] [🔗] TX: 0x113536e89F5D4D6cE2a679CA38a7030A0C131A33 :: setResolver(address)(0xA6652021f976D8d8C00AB238c022Aa5C5B2ac6D8)
+
+blockHash            0xc32da565936fff3902475e302fff49dc3398d621b5aae71fbe44285f23e6b005
+blockNumber          2518936
+contractAddress      
+cumulativeGasUsed    0
+effectiveGasPrice    10000000
+from                 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+gasUsed              301124200
+logs                 [{"address":"0x8e0c77ea9316c42aa8ffec98df3110a77a4a9bba","topics":["0x335721b01866dc23fbee8b6b2c7b1e14d6f05c28cd35a2c934239f94095602a0","0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce"],"data":"0x000000000000000000000000a6652021f976d8d8c00ab238c022aa5c5b2ac6d8","blockHash":"0xc32da565936fff3902475e302fff49dc3398d621b5aae71fbe44285f23e6b005","blockNumber":"0x266f98","transactionHash":"0x0499720907c9b82457094ffffd679d84effa6535604cc8de87aaf672f5d5bed3","transactionIndex":"0x2","logIndex":"0x5","removed":false}]
+logsBloom            0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000020010000000000000000840000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000010040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+root                 
+status               1 (success)
+transactionHash      0x0499720907c9b82457094ffffd679d84effa6535604cc8de87aaf672f5d5bed3
+transactionIndex     2
+type                 2
+blobGasPrice         
+blobGasUsed          
+to                   0x113536e89F5D4D6cE2a679CA38a7030A0C131A33
+============================================
+[07:12:36] [🛠️] Deploying utilities...
+--------------------------------------------
+[07:12:36] [⏳] Deploying StoreFactory...
+[07:12:36] No args
+[07:12:37] [⚙️] forge create contracts/utils/StoreFactory.sol:StoreFactory --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xcdbC420B3394DC1592F1B731A5f9d9007Bf7526d
+Transaction hash: 0x7e7a4d5d7a872a93d49bf85d5be110c85853587e430d2824ec55f94ae966e0bd
+[07:12:43] [✅] StoreFactory at 0xcdbC420B3394DC1592F1B731A5f9d9007Bf7526d
+--------------------------------------------
+[07:12:43] [⏳] Deploying DotnsRegistrar...
+[07:12:43] Args: 0xafbeD1bd739cFCC5fF19B6D3876687d686AFb782 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA 0xcdbC420B3394DC1592F1B731A5f9d9007Bf7526d
+[07:12:43] [⚙️] forge create contracts/utils/DotnsRegistrar.sol:DotnsRegistrar --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast --constructor-args 0xafbeD1bd739cFCC5fF19B6D3876687d686AFb782 0x8e0C77eA9316C42AA8ffEC98df3110a77A4a9bbA 0xcdbC420B3394DC1592F1B731A5f9d9007Bf7526d
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0x74eE245C0C8Cff387341C668e151A6Fc2c1Ff92D
+Transaction hash: 0x7d992a0e9b38757511e9e705380f35f68cda776dfab93c77264ae27cb6581647
+[07:12:49] [✅] DotnsRegistrar at 0x74eE245C0C8Cff387341C668e151A6Fc2c1Ff92D
+--------------------------------------------
+[07:12:49] [⏳] Deploying Multicall3...
+[07:12:49] No args
+[07:12:49] [⚙️] forge create contracts/utils/Multicall3.sol:Multicall3 --account revive --password 123456 --rpc-url https://testnet-passet-hub-eth-rpc.polkadot.io --broadcast
+No files changed, compilation skipped
+Deployer: 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac
+Deployed to: 0xbC52bdc7FA07Cad4580d63124b0E0d874fE55a91
+Transaction hash: 0x98a08420b24622ac633d379416f870aa6a07a264190047a461907b6f2623087a
+[07:12:55] [✅] Multicall3 at 0xbC52bdc7FA07Cad4580d63124b0E0d874fE55a91
+============================================
+[07:12:55] [🔍] Running final verification...
+[07:12:56] [✅] Verification passed: .dot TLD owned by BaseRegistrar
+============================================
+[07:12:56] [🏁] Deployment script completed successfully.

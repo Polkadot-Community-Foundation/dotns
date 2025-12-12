@@ -11,10 +11,11 @@ import {Resolver} from "../resolvers/Resolver.sol";
 import {ENS} from "../registry/ENS.sol";
 import {IReverseRegistrar} from "../reverseRegistrar/IReverseRegistrar.sol";
 import {IDefaultReverseRegistrar} from "../reverseRegistrar/IDefaultReverseRegistrar.sol";
-import {IETHRegistrarController, IPriceOracle} from "./IETHRegistrarController.sol";
+import {IETHRegistrarController} from "./IETHRegistrarController.sol";
 import {ERC20Recoverable} from "../utils/ERC20Recoverable.sol";
-
+import {IStableOracle} from "./IStableOracle.sol";
 /// @dev A registrar controller for registering and renewing names at fixed cost.
+
 contract ETHRegistrarController is Ownable, IETHRegistrarController, ERC165, ERC20Recoverable {
     using StringUtils for *;
 
@@ -27,8 +28,8 @@ contract ETHRegistrarController is Ownable, IETHRegistrarController, ERC165, ERC
     /// @notice The minimum duration for a registration.
     uint256 public constant MIN_REGISTRATION_DURATION = 5 minutes;
 
-    // @notice The node (i.e. namehash) for the eth TLD.
-    bytes32 private constant ETH_NODE =
+    // @notice The node (i.e. namehash) for the dot TLD.
+    bytes32 private constant DOT_NODE =
         0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
 
     /// @notice The maximum expiry time for a registration.
@@ -37,7 +38,7 @@ contract ETHRegistrarController is Ownable, IETHRegistrarController, ERC165, ERC
     /// @notice The ENS registry.
     ENS public immutable ens;
 
-    // @notice The base registrar implementation for the eth TLD.
+    // @notice The base registrar implementation for the dot TLD.
     BaseRegistrarImplementation immutable base;
 
     /// @notice The minimum time a commitment must exist to be valid.
@@ -52,8 +53,8 @@ contract ETHRegistrarController is Ownable, IETHRegistrarController, ERC165, ERC
     /// @notice The registrar for default.reverse. (i.e. fallback reverse for all EVM chains)
     IDefaultReverseRegistrar public immutable defaultReverseRegistrar;
 
-    /// @notice The price oracle for the eth TLD.
-    IPriceOracle public immutable prices;
+    /// @notice The price oracle for the dot TLD.
+    IStableOracle public immutable prices;
 
     /// @notice A mapping of commitments to their timestamp.
     mapping(bytes32 => uint256) public commitments;
@@ -127,8 +128,8 @@ contract ETHRegistrarController is Ownable, IETHRegistrarController, ERC165, ERC
 
     /// @notice Constructor for the ETHRegistrarController.
     ///
-    /// @param _base The base registrar implementation for the eth TLD.
-    /// @param _prices The price oracle for the eth TLD.
+    /// @param _base The base registrar implementation for the dot TLD.
+    /// @param _prices The price oracle for the dot TLD.
     /// @param _minCommitmentAge The minimum time a commitment must exist to be valid.
     /// @param _maxCommitmentAge The maximum time a commitment can exist to be valid.
     /// @param _reverseRegistrar The registrar for addr.reverse.
@@ -136,7 +137,7 @@ contract ETHRegistrarController is Ownable, IETHRegistrarController, ERC165, ERC
     /// @param _ens The ENS registry.
     constructor(
         BaseRegistrarImplementation _base,
-        IPriceOracle _prices,
+        IStableOracle _prices,
         uint256 _minCommitmentAge,
         uint256 _maxCommitmentAge,
         IReverseRegistrar _reverseRegistrar,
@@ -172,7 +173,7 @@ contract ETHRegistrarController is Ownable, IETHRegistrarController, ERC165, ERC
         public
         view
         override
-        returns (IPriceOracle.Price memory price)
+        returns (IStableOracle.Price memory price)
     {
         bytes32 labelhash = keccak256(bytes(label));
         price = _rentPrice(label, labelhash, duration);
@@ -242,7 +243,7 @@ contract ETHRegistrarController is Ownable, IETHRegistrarController, ERC165, ERC
     /// @param registration.referrer The referrer of the registration.
     function register(Registration calldata registration) public payable override {
         bytes32 labelhash = keccak256(bytes(registration.label));
-        IPriceOracle.Price memory price =
+        IStableOracle.Price memory price =
             _rentPrice(registration.label, labelhash, registration.duration);
         uint256 totalPrice = price.base + price.premium;
         if (msg.value < totalPrice) revert InsufficientValue();
@@ -278,7 +279,7 @@ contract ETHRegistrarController is Ownable, IETHRegistrarController, ERC165, ERC
         } else {
             expires = base.register(uint256(labelhash), address(this), registration.duration);
 
-            bytes32 namehash = keccak256(abi.encodePacked(ETH_NODE, labelhash));
+            bytes32 namehash = keccak256(abi.encodePacked(DOT_NODE, labelhash));
             ens.setRecord(namehash, registration.owner, registration.resolver, 0);
 
             if (registration.data.length > 0) {
@@ -311,7 +312,7 @@ contract ETHRegistrarController is Ownable, IETHRegistrarController, ERC165, ERC
             expires,
             registration.referrer
         );
-
+        prices.reserveBaseName(registration.label, msg.sender);
         if (msg.value > totalPrice) {
             payable(msg.sender).transfer(msg.value - totalPrice);
         }
@@ -333,7 +334,7 @@ contract ETHRegistrarController is Ownable, IETHRegistrarController, ERC165, ERC
     {
         bytes32 labelhash = keccak256(bytes(label));
 
-        IPriceOracle.Price memory price = _rentPrice(label, labelhash, duration);
+        IStableOracle.Price memory price = _rentPrice(label, labelhash, duration);
         if (msg.value < price.base) revert InsufficientValue();
 
         uint256 expires = base.renew(uint256(labelhash), duration);
@@ -357,7 +358,6 @@ contract ETHRegistrarController is Ownable, IETHRegistrarController, ERC165, ERC
     }
 
     /* Internal functions */
-
     function _rentPrice(
         string calldata label,
         bytes32 labelhash,
@@ -365,9 +365,11 @@ contract ETHRegistrarController is Ownable, IETHRegistrarController, ERC165, ERC
     )
         internal
         view
-        returns (IPriceOracle.Price memory price)
+        returns (IStableOracle.Price memory price)
     {
-        price = prices.price(label, base.nameExpires(uint256(labelhash)), duration);
+        IStableOracle.PriceWithMeta memory meta =
+            prices.priceWithCheck(label, base.nameExpires(uint256(labelhash)), duration, msg.sender);
+        price = meta.price;
     }
 
     function _available(string calldata label, bytes32 labelhash) internal view returns (bool) {

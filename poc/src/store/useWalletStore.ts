@@ -49,6 +49,7 @@ export const useWalletStore = defineStore(
         await networkStore.initClient();
         await listenForAccountChanges();
         const connected = await connectWallet();
+        console.log('connected: ', connected);
         if (connected) {
           isConnected.value = true;
         }
@@ -65,7 +66,7 @@ export const useWalletStore = defineStore(
 
         if (papiExtensionNames.length > 0) {
           const papiExtension = await connectInjectedExtension(papiExtensionNames[0]!);
-          const papiAccounts = await papiExtension.getAccounts();
+          const papiAccounts = papiExtension.getAccounts();
 
           if (papiAccounts.length > 0 && papiAccounts[0]!.polkadotSigner) {
             const papiAccount = papiAccounts[0];
@@ -140,7 +141,7 @@ export const useWalletStore = defineStore(
       const papiExtensionNames = getInjectedExtensions();
       if (papiExtensionNames.length > 0) {
         const papiExtension = await connectInjectedExtension(papiExtensionNames[0]!);
-        const papiAccounts = await papiExtension.getAccounts();
+        const papiAccounts = papiExtension.getAccounts();
 
         const matchingPapiAccount = papiAccounts.find(
           account => account.address === accounts[0]!.address

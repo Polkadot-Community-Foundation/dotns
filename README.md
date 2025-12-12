@@ -23,7 +23,7 @@ import {
   PublicResolver,
   Resolver,
   ReverseRegistrar,
-  StablePriceOracle,
+  StableOracle,
   TestRegistrar,
 } from '@ensdomains/ens-contracts'
 ```
@@ -44,7 +44,7 @@ import '@ensdomains/ens-contracts/contracts/ethregistrar/BulkRenewal.sol';
 import '@ensdomains/ens-contracts/contracts/ethregistrar/ETHRegistrarController.sol';
 import '@ensdomains/ens-contracts/contracts/ethregistrar/LinearPremiumPriceOracle.sol';
 import '@ensdomains/ens-contracts/contracts/ethregistrar/PriceOracle.sol';
-import '@ensdomains/ens-contracts/contracts/ethregistrar/StablePriceOracle.sol';
+import '@ensdomains/ens-contracts/contracts/ethregistrar/StableOracle.sol';
 // Resolvers
 import '@ensdomains/ens-contracts/contracts/resolvers/PublicResolver.sol';
 import '@ensdomains/ens-contracts/contracts/resolvers/Resolver.sol';
@@ -86,7 +86,7 @@ Implementation of the `.test` registrar facilitates easy testing of ENS on the E
 
 ## EthRegistrar
 
-Implements an [ENS](https://ens.domains/) registrar intended for the .eth TLD.
+Implements an [ENS](https://ens.domains/) registrar intended for the .dot TLD.
 
 These contracts were audited by ConsenSys Diligence; the audit report is available [here](https://github.com/ConsenSys/ens-audit-report-2019-02).
 
@@ -122,9 +122,9 @@ The minimum delay and expiry for commitments exist to prevent miners or other us
 
 SimplePriceOracle is a trivial implementation of the pricing oracle for the EthRegistrarController that always returns a fixed price per domain per year, determined by the contract owner.
 
-### StablePriceOracle
+### StableOracle
 
-StablePriceOracle is a price oracle implementation that allows the contract owner to specify pricing based on the length of a name, and uses a fiat currency oracle to set a fixed price in fiat per name.
+StableOracle is a price oracle implementation that allows the contract owner to specify pricing based on the length of a name, and uses a fiat currency oracle to set a fixed price in fiat per name.
 
 ## Resolvers
 

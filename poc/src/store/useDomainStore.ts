@@ -15,7 +15,7 @@ import { useNetworkStore } from './useNetworkStore';
 import { useTransactionStore } from './useTransactionStore';
 import { useAbiStore } from './useAbiStore';
 import { useUserStoreManager } from './useUserStoreManager';
-import { normalizeDomainName, toFixed, getSecondsForUnit } from '../utils';
+import { normalizeDomainName, toFixed, getSecondsForUnit, PopStatus } from '../utils';
 import type { Commitment, Registration, TransactionResult } from '@/type';
 import { useWalletStore } from './useWalletStore';
 
@@ -155,7 +155,10 @@ export const useDomainStore = defineStore('useDomainStore', () => {
         client,
         walletStore.address!,
         network.registrarController,
-        data
+        data,
+        0n,
+        true,
+        network.ethRPCURL
       );
 
       const decoded = decodeAbiParameters(
@@ -186,6 +189,103 @@ export const useDomainStore = defineStore('useDomainStore', () => {
         return `0.00 ${networkStore.currentNetwork.nativeCurrency.symbol}`;
       }
       return 0n;
+    }
+  }
+  async function classifyName(label: string): Promise<string> {
+    try {
+      networkStore.ensureClient();
+      await abiStore.ensureAbis();
+      const network = networkStore.currentNetwork;
+
+      if (!network?.StableOracle) {
+        throw new Error('Registrar controller not configured');
+      }
+
+      const client = await networkStore.getClient();
+
+      const data = encodeFunctionData({
+        abi: abiStore.getABI('StableOracle'),
+        functionName: 'classifyName',
+        args: [label],
+      });
+
+      const result = await transactionStore.ethCall(
+        client,
+        walletStore.address!,
+        network?.StableOracle,
+        data,
+        0n,
+        true,
+        network.ethRPCURL
+      );
+
+      const decoded = decodeAbiParameters(
+        [
+          {
+            type: 'tuple',
+            components: [
+              { name: 'requirement', type: 'uint256' },
+              { name: 'message', type: 'string' },
+            ],
+          },
+        ],
+        result
+      );
+      const classification = decoded[0];
+
+      return classification.message;
+    } catch (error) {
+      console.error('[DomainStore:classifyName]', error);
+      return 'Available to all';
+    }
+  }
+  async function getNamePopStatus(label: string): Promise<PopStatus> {
+    try {
+      networkStore.ensureClient();
+      await abiStore.ensureAbis();
+      const network = networkStore.currentNetwork;
+
+      if (!network?.StableOracle) {
+        throw new Error('Registrar controller not configured');
+      }
+
+      const client = await networkStore.getClient();
+
+      const data = encodeFunctionData({
+        abi: abiStore.getABI('StableOracle'),
+        functionName: 'getNamePopStatus',
+        args: [label],
+      });
+
+      const result = await transactionStore.ethCall(
+        client,
+        walletStore.address!,
+        network?.StableOracle,
+        data,
+        0n,
+        true,
+        network.ethRPCURL
+      );
+
+      const decoded = decodeAbiParameters(
+        [
+          {
+            type: 'enum',
+            components: [
+              { name: 'requirement', type: 'uint256' },
+              { name: 'message', type: 'string' },
+            ],
+          },
+        ],
+        result
+      );
+
+      const status = decoded[0] as PopStatus;
+
+      return status;
+    } catch (error) {
+      console.error('[DomainStore:getNamePopStatus]', error);
+      return PopStatus.NoStatus;
     }
   }
 
@@ -526,5 +626,7 @@ export const useDomainStore = defineStore('useDomainStore', () => {
     getGracePeriod,
     reclaimDomain,
     batchRenewDomains,
+    classifyName,
+    getNamePopStatus,
   };
 });

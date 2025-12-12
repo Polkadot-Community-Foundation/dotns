@@ -1,9 +1,9 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ~0.8.17;
 
-import "./StablePriceOracle.sol";
+import "./StableOracle.sol";
 
-contract ExponentialPremiumPriceOracle is StablePriceOracle {
+contract ExponentialPremiumPriceOracle is StableOracle {
     uint256 constant GRACE_PERIOD = 90 days;
     uint256 immutable startPremium;
     uint256 immutable endValue;
@@ -14,7 +14,7 @@ contract ExponentialPremiumPriceOracle is StablePriceOracle {
         uint256 _startPremium,
         uint256 totalDays
     )
-        StablePriceOracle(_usdOracle, _rentPrices)
+        StableOracle(_usdOracle, _rentPrices)
     {
         startPremium = _startPremium;
         endValue = _startPremium >> totalDays;

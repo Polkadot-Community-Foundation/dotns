@@ -12,8 +12,6 @@
     "format:fix": "prettier --write \"src/**/*.{ts,vue,js,json,css,scss,html,md}\"",
     "lint:format": "bun run lint && bun run format",
     "lint:format:fix": "bun run lint:fix && bun run format:fix",
-    "worker:dev": "wrangler dev src/limoResolver.ts",
-    "worker:deploy": "wrangler deploy src/limoResolver.ts",
     "postinstall": "papi"
   },
   "dependencies": {

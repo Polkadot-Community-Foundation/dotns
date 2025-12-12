@@ -115,11 +115,11 @@
         class="text-sm font-medium mb-3"
         :class="status === 'available' ? 'text-green-600' : 'text-[#E6007A]'"
       >
-        {{ status === 'available' ? 'Handle is available' : 'Handle is already taken' }}
+        {{ statusMessage }}
       </p>
 
       <button
-        v-if="status === 'available'"
+        v-if="status === 'available' && canRegister"
         @click="registerHandle"
         class="px-6 py-3 rounded-xl font-medium text-white bg-[#E6007A] hover:bg-[#d1006f] transition-colors duration-200"
       >
@@ -161,6 +161,7 @@ import type { DotNSStatus, TransactionResult } from '../type';
 import { zeroHash } from 'viem';
 import { useDomainStore } from '@/store/useDomainStore';
 import { useUserStoreManager } from '@/store/useUserStoreManager';
+import { validateName, classifyName, canRegisterWithStatus, PopStatus } from '@/utils';
 
 const storeManager = useUserStoreManager();
 const domainStore = useDomainStore();
@@ -168,6 +169,7 @@ const searchQuery = ref('');
 const isFocused = ref(false);
 const isLoading = ref(false);
 const status = ref<DotNSStatus | null>(null);
+const userPopStatus = ref<PopStatus>(PopStatus.NoStatus);
 
 const showModal = ref(false);
 const showWaiting = ref(false);
@@ -182,7 +184,51 @@ const transaction = ref<TransactionResult>({
 
 let debounceTimer: number;
 
+const nameClassification = computed(() => {
+  if (!searchQuery.value.trim()) return null;
+  return classifyName(searchQuery.value);
+});
+
+const statusMessage = computed(() => {
+  if (!nameClassification.value) return '';
+
+  const c = nameClassification.value;
+
+  const availability =
+    status.value === 'available' ? 'Handle is available' : 'Handle is already taken';
+
+  let pop;
+
+  switch (c.requirement) {
+    case PopStatus.Reserved:
+      pop = 'Reserved for Governance';
+      break;
+    case PopStatus.PopFull:
+      pop = 'Requires Full personhood verification';
+      break;
+    case PopStatus.PopLite:
+      pop = 'Requires Light personhood verification';
+      break;
+    case PopStatus.NoStatus:
+      pop = 'Available to all';
+      break;
+  }
+
+  return `${availability} — ${pop}`;
+});
+
+const nameValidation = computed(() => {
+  if (!searchQuery.value.trim()) return { valid: true };
+  return validateName(searchQuery.value);
+});
+
+const canRegister = computed(() => {
+  if (!nameValidation.value.valid || !nameClassification.value) return false;
+  return canRegisterWithStatus(searchQuery.value, userPopStatus.value);
+});
+
 function registerHandle() {
+  if (!canRegister.value) return;
   showModal.value = true;
 }
 
@@ -204,8 +250,8 @@ async function finalizeRegistration() {
   }
 }
 
-function handleFinalized(transactionResults: TransactionResult) {
-  transaction.value = transactionResults;
+function handleFinalized(result: TransactionResult) {
+  transaction.value = result;
   showTransaction.value = true;
 }
 
@@ -216,10 +262,12 @@ function handleWaitingComplete() {
 function handleInput() {
   clearTimeout(debounceTimer);
   status.value = null;
+
   if (!searchQuery.value.trim()) {
     isLoading.value = false;
     return;
   }
+
   isLoading.value = true;
   debounceTimer = window.setTimeout(checkHandleAvailability, 800);
 }

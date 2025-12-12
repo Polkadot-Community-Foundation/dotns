@@ -19,11 +19,12 @@ export type Deployment = {
   registrarController: Address;
   bulkRenewal: Address;
   publicResolver: Address;
-  oracle: Address;
   storeFactory: Address;
   dotnsRegistrar: Address;
   multicall: Address;
   defaultReverseRegistrar: Address;
+  StableOracle: Address;
+  ethRPCURL: string;
 };
 export type Registration = {
   label: string;

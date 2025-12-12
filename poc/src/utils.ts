@@ -23,16 +23,17 @@ export const SUPPORTED_NETWORKS: Record<number, NetworkConfig & Partial<Deployme
       'wss://passet-hub-paseo.ibp.network',
     ],
     blockExplorerUrls: ['https://passet-hub.subscan.io/'],
-    ensRegistry: '0xe2fB8d393D3A257F709A3a96d234950d00626fa5',
-    baseRegistrar: '0xaD5EE06411D18A1Cd1051ED87eAebEE9CD154C64',
-    registrarController: '0xfc9FC0f9C67271a84d5Ee1Bd6f14D8527533Bb64',
-    bulkRenewal: '0x092b689ed3c08F194EbcB7Fcc7c63d482AaEf2c9',
-    publicResolver: '0x41df0d983C94ff742811649278faAa7fBfeb923D',
-    oracle: '0x313d4B1c0e4C487A61da6F8ebf00AA01f56be145',
-    storeFactory: '0xD1ba8f9dD2218859b4113Fb7eF5C2Ac6D46794f4',
-    dotnsRegistrar: '0xa312DA532a0da1F843b09a0172611c2538944b16',
-    multicall: '0xe83DCEE30d0b5848D1e74aDb638F3357f9E4766B',
-    defaultReverseRegistrar: '0x7547f128d60e8DFcefE2517Bc55176b860933644',
+    ensRegistry: '0xC0c7f882c253AE7F0E97a8FaCD1c7DfE8aFFc608',
+    baseRegistrar: '0xDfd8f8fB9E90dd30f907f4Ad2111429c76118925',
+    registrarController: '0xBa24B58c0967F3dDD128Dec4B5a18711957a3cF4',
+    bulkRenewal: '0x5AD7f19A127E4A8CC92cfca2c257731D8A50535c',
+    publicResolver: '0xECC23874f673E54fd213b2AC4DC0345Df133043C',
+    storeFactory: '0xaC9a350c92D8DEB2E1FC0951C604B18b472a767c',
+    dotnsRegistrar: '0x36dBd7BdeF1f77247819Deeb1CFd2711347F8677',
+    multicall: '0x45b60233e000EE7C7440E14fab57f598564addAd',
+    StableOracle: '0x9b76A3d6A30c39E0020843D1a44E03A4AB42B6Bb',
+    defaultReverseRegistrar: '0xC1D19E62E281bF948Dc59E1Fd69A35c57139CAAE',
+    ethRPCURL: 'https://testnet-passet-hub-eth-rpc.polkadot.io',
   },
 };
 
@@ -236,4 +237,167 @@ export const isValidSubstrateAddress = (address: string, ss58Format = 42): boole
   } catch {
     return false;
   }
+};
+
+export const PopStatus = {
+  NoStatus: 0,
+  PopLite: 1,
+  PopFull: 2,
+  Reserved: 3,
+} as const;
+
+export type PopStatus = (typeof PopStatus)[keyof typeof PopStatus];
+
+export interface NameClassification {
+  requirement: PopStatus;
+  message: string;
+  valid: boolean;
+  error?: string;
+}
+
+export function countTrailingDigits(name: string): number {
+  let count = 0;
+  for (let i = name.length - 1; i >= 0; i--) {
+    const char = name[i];
+    if (char && char >= '0' && char <= '9') {
+      count++;
+    } else {
+      break;
+    }
+  }
+  return count;
+}
+
+export function classifyName(name: string): NameClassification {
+  const len = name.length;
+  const trailing = countTrailingDigits(name);
+
+  if (len <= 5) {
+    return {
+      requirement: PopStatus.Reserved,
+      message: 'Reserved for Governance',
+      valid: false,
+      error: 'Reserved for Governance',
+    };
+  }
+
+  if (len >= 6 && len <= 8) {
+    if (trailing >= 2) {
+      return {
+        requirement: PopStatus.PopLite,
+        message: 'Requires Light personhood verification',
+        valid: true,
+      };
+    }
+    return {
+      requirement: PopStatus.PopFull,
+      message: 'Requires Full personhood verification',
+      valid: true,
+    };
+  }
+
+  if (trailing >= 2) {
+    return {
+      requirement: PopStatus.NoStatus,
+      message: 'Available to all',
+      valid: true,
+    };
+  }
+
+  return {
+    requirement: PopStatus.PopFull,
+    message: 'Requires Full personhood verification',
+    valid: true,
+  };
+}
+
+export function canRegisterWithStatus(name: string, userStatus: PopStatus): boolean {
+  const classification = classifyName(name);
+
+  if (!classification.valid) {
+    return false;
+  }
+
+  if (classification.requirement === PopStatus.Reserved) {
+    return false;
+  }
+
+  if (classification.requirement === PopStatus.PopFull) {
+    return userStatus === PopStatus.PopFull;
+  }
+
+  if (classification.requirement === PopStatus.PopLite) {
+    return userStatus === PopStatus.PopLite || userStatus === PopStatus.PopFull;
+  }
+
+  if (classification.requirement === PopStatus.NoStatus) {
+    return true;
+  }
+
+  return false;
+}
+
+export function getEligibilityMessage(name: string, userStatus: PopStatus): string {
+  const classification = classifyName(name);
+
+  if (!classification.valid) {
+    return classification.error || 'Invalid name';
+  }
+
+  if (classification.requirement === PopStatus.Reserved) {
+    return 'Reserved for Governance';
+  }
+
+  if (classification.requirement === PopStatus.PopFull) {
+    if (userStatus === PopStatus.PopFull) {
+      return 'Eligible: PopFull verified for PopFull name';
+    }
+    return 'Ineligible: Requires Full Personhood verification';
+  }
+
+  if (classification.requirement === PopStatus.PopLite) {
+    if (userStatus === PopStatus.PopLite || userStatus === PopStatus.PopFull) {
+      return 'Eligible: PoP verified for PopLite name';
+    }
+    return 'Ineligible: Requires Personhood Lite verification';
+  }
+
+  const trailingDigits = countTrailingDigits(name);
+
+  if (trailingDigits > 0) {
+    if (userStatus === PopStatus.PopLite) {
+      return 'Eligible: PopLite for 9+ char name with suffix';
+    } else if (userStatus === PopStatus.PopFull) {
+      return 'Note: PopFull registering PopLite eligible name';
+    }
+    return 'Available: Standard pricing applies';
+  } else {
+    if (userStatus === PopStatus.PopFull) {
+      return 'Eligible: PopFull for 9+ char name';
+    } else if (userStatus === PopStatus.PopLite) {
+      return 'Available: PopLite not optimal for alpha-only';
+    }
+    return 'Available: Standard pricing applies';
+  }
+}
+
+export function validateName(name: string): { valid: boolean; error?: string } {
+  if (!name || name.length === 0) {
+    return { valid: false, error: 'Name cannot be empty' };
+  }
+
+  const classification = classifyName(name);
+
+  if (!classification.valid) {
+    return { valid: false, error: classification.error };
+  }
+
+  return { valid: true };
+}
+
+export const PopStatusLabels = {
+  [PopStatus.NoStatus]: 'No Status',
+  [PopStatus.PopLite]: 'Pop Lite',
+  [PopStatus.PopFull]: 'Pop Full',
+  [PopStatus.Reserved]: 'Reserved',
 };

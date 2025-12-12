@@ -83,7 +83,6 @@ export class ClientWrapper implements IClientWrapper {
         undefined,
         Binary.fromHex(data)
       );
-
       const originalValue = ethResults.result?.value ?? { data: undefined, flags: {} as any };
       const dataField = (originalValue as any)?.data;
       const dataHex =
