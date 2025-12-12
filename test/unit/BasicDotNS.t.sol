@@ -273,4 +273,38 @@ contract BasicDotns is BaseDotns {
 
         assertGt(priceData.base, 0);
     }
+
+    function test_ReservedBaseName_PreventsOtherUserFromRegisteringFullName() public {
+        string memory suffixLabel = "bobbob99";
+        string memory baseLabel = "bobbob";
+
+        vm.startPrank(leonardo);
+        priceOracle.setNamePopStatus(suffixLabel, IStableOracle.PopStatus.PopLite);
+        vm.stopPrank();
+
+        IETHRegistrarController.Registration memory regLite = IETHRegistrarController.Registration({
+            label: suffixLabel,
+            owner: leonardo,
+            duration: 365 days,
+            secret: keccak256(abi.encodePacked(suffixLabel, block.timestamp)),
+            resolver: address(publicResolver),
+            data: new bytes[](0),
+            reverseRecord: 1,
+            referrer: bytes32(0)
+        });
+
+        _commitAndRegister(regLite);
+
+        vm.startPrank(tiago);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IStableOracle.PopError.selector, "Base name reserved for original Lite registrant"
+            )
+        );
+
+        ethRegistrarController.rentPrice(baseLabel, 365 days);
+
+        vm.stopPrank();
+    }
 }

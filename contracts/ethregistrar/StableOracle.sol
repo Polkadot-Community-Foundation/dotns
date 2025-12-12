@@ -75,7 +75,7 @@ contract StableOracle is IStableOracle, Ownable {
         bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
 
         namePopStatus[msg.sender][node] = status;
-        emit NamePopStatusSet(name, status,msg.sender);
+        emit NamePopStatusSet(name, status, msg.sender);
     }
 
     /// @inheritdoc IStableOracle
@@ -118,11 +118,13 @@ contract StableOracle is IStableOracle, Ownable {
 
     /// @inheritdoc IStableOracle
     function reserveBaseName(string calldata baseName, address user) external onlyRegistry {
-        Reservation memory r = reservations[baseName];
-        if (r.owner == address(0)) {
+        string memory stripped = _stripDigits(baseName);
+
+        Reservation memory reservation = reservations[stripped];
+        if (reservation.owner == address(0)) {
             uint64 expiry = uint64(block.timestamp + 12 weeks);
-            reservations[baseName] = Reservation(user, expiry);
-            emit BaseNameReserved(baseName, user, expiry);
+            reservations[stripped] = Reservation(user, expiry);
+            emit BaseNameReserved(stripped, user, expiry);
         }
     }
 

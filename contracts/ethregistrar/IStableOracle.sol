@@ -28,7 +28,7 @@ interface IStableOracle is IPriceOracle {
     /// @param name The name label updated
     /// @param status The tier assigned to the name
     /// @param owner The owner of the name
-    event NamePopStatusSet(string indexed name, PopStatus indexed status,address indexed owner);
+    event NamePopStatusSet(string indexed name, PopStatus indexed status, address indexed owner);
 
     /// @notice Emitted when a base name receives a reservation
     /// @param baseName The digit-stripped label receiving reservation
