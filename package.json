@@ -7,7 +7,6 @@
     "test": "forge test -vvvvv",
     "deploy:anvil": "bun run reset && cross-env FOUNDRY_ETH_RPC_URL=paseo_local  forge script scripts/DotnsDeployer.s.sol:DotnsDeployer --account anvil-polkadot --password 123456 --sender 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --broadcast -vvvvv --gas-limit 50000000",
     "deploy:testnet": "cross-env FOUNDRY_ETH_RPC_URL=paseo bun run reset && forge script scripts/DotnsDeployer.s.sol:DotnsDeployer --account revive --password 123456 --sender 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac --broadcast -vvvvv --gas-limit 50000000 --skip-simulation --slow --resume",
-    "preinstall": "./setup.bash",
     "postinstall": "./setup.bash",
     "reset": "forge clean"
   },
