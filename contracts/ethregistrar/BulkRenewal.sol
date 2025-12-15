@@ -2,8 +2,8 @@
 pragma solidity ~0.8.17;
 
 import "../registry/ENS.sol";
-import "./ETHRegistrarController.sol";
-import "./IETHRegistrarController.sol";
+import "./DotRegistrarController.sol";
+import "./IDotRegistrarController.sol";
 import "../resolvers/Resolver.sol";
 import "./IBulkRenewal.sol";
 import "./IPriceOracle.sol";
@@ -20,10 +20,10 @@ contract BulkRenewal is IBulkRenewal {
         ens = _ens;
     }
 
-    function getController() internal view returns (ETHRegistrarController) {
+    function getController() internal view returns (DotRegistrarController) {
         Resolver r = Resolver(ens.resolver(ETH_NAMEHASH));
-        return ETHRegistrarController(
-            r.interfaceImplementer(ETH_NAMEHASH, type(IETHRegistrarController).interfaceId)
+        return DotRegistrarController(
+            r.interfaceImplementer(ETH_NAMEHASH, type(IDotRegistrarController).interfaceId)
         );
     }
 
@@ -36,7 +36,7 @@ contract BulkRenewal is IBulkRenewal {
         override
         returns (uint256 total)
     {
-        ETHRegistrarController controller = getController();
+        DotRegistrarController controller = getController();
         uint256 length = names.length;
         for (uint256 i = 0; i < length;) {
             IPriceOracle.Price memory price = controller.rentPrice(names[i], duration);
@@ -56,7 +56,7 @@ contract BulkRenewal is IBulkRenewal {
         payable
         override
     {
-        ETHRegistrarController controller = getController();
+        DotRegistrarController controller = getController();
         uint256 length = names.length;
         uint256 total;
         for (uint256 i = 0; i < length;) {
@@ -73,7 +73,8 @@ contract BulkRenewal is IBulkRenewal {
     }
 
     function supportsInterface(bytes4 interfaceID) external pure returns (bool) {
-        return interfaceID == type(IERC165).interfaceId
-            || interfaceID == type(IBulkRenewal).interfaceId;
+        return
+            interfaceID == type(IERC165).interfaceId
+                || interfaceID == type(IBulkRenewal).interfaceId;
     }
 }

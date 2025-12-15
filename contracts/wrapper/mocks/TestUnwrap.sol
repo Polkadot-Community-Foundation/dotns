@@ -89,7 +89,8 @@ contract TestUnwrap is Ownable {
         address owner = ens.owner(node);
 
         require(
-            approvedWrapper[sender] && owner == sender && ens.isApprovedForAll(owner, address(this)),
+            approvedWrapper[sender] && owner == sender
+                && ens.isApprovedForAll(owner, address(this)),
             "Unauthorised"
         );
 

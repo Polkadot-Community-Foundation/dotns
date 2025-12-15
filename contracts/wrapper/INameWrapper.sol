@@ -74,12 +74,7 @@ interface INameWrapper is IERC1155 {
 
     function upgrade(bytes calldata name, bytes calldata extraData) external;
 
-    function setFuses(
-        bytes32 node,
-        uint16 ownerControlledFuses
-    )
-        external
-        returns (uint32 newFuses);
+    function setFuses(bytes32 node, uint16 ownerControlledFuses) external returns (uint32 newFuses);
 
     function setChildFuses(
         bytes32 parentNode,
@@ -113,13 +108,7 @@ interface INameWrapper is IERC1155 {
         external
         returns (bytes32);
 
-    function extendExpiry(
-        bytes32 node,
-        bytes32 labelhash,
-        uint64 expiry
-    )
-        external
-        returns (uint64);
+    function extendExpiry(bytes32 node, bytes32 labelhash, uint64 expiry) external returns (uint64);
 
     function canModifyName(bytes32 node, address addr) external view returns (bool);
 

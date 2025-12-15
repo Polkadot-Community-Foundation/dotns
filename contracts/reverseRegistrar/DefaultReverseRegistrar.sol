@@ -38,14 +38,14 @@ contract DefaultReverseRegistrar is
     {
         // Follow ERC191 version 0 https://eips.ethereum.org/EIPS/eip-191
         bytes32 message = keccak256(
-            abi.encodePacked(
-                address(this),
-                this.setNameForAddrWithSignature.selector,
-                addr,
-                signatureExpiry,
-                name
-            )
-        ).toEthSignedMessageHash();
+                abi.encodePacked(
+                    address(this),
+                    this.setNameForAddrWithSignature.selector,
+                    addr,
+                    signatureExpiry,
+                    name
+                )
+            ).toEthSignedMessageHash();
 
         signature.validateSignatureWithExpiry(addr, message, signatureExpiry);
 

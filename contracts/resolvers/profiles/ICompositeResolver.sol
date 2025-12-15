@@ -16,10 +16,7 @@ interface ICompositeResolver is IExtendedResolver {
     ///
     /// @return resolver The underlying resolver address.
     /// @return offchain `true` if `resolver` is offchain.
-    function getResolver(bytes memory name)
-        external
-        view
-        returns (address resolver, bool offchain);
+    function getResolver(bytes memory name) external view returns (address resolver, bool offchain);
 
     /// @notice Determine if resolving `name` requires offchain data.
     ///

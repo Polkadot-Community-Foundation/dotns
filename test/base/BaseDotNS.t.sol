@@ -1,18 +1,21 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.0;
+pragma solidity ^0.8.30;
 
 import {Test} from "forge-std/Test.sol";
 import {ENSRegistry} from "../../contracts/registry/ENSRegistry.sol";
 import {Root} from "../../contracts/root/Root.sol";
 import {ReverseRegistrar} from "../../contracts/reverseRegistrar/ReverseRegistrar.sol";
-import {BaseRegistrarImplementation} from
-    "../../contracts/ethregistrar/BaseRegistrarImplementation.sol";
+import {
+    BaseRegistrarImplementation
+} from "../../contracts/ethregistrar/BaseRegistrarImplementation.sol";
 import {DummyOracle} from "../../contracts/ethregistrar/DummyOracle.sol";
 import {StableOracle} from "../../contracts/ethregistrar/StableOracle.sol";
 import {StaticMetadataService} from "../../contracts/wrapper/StaticMetadataService.sol";
 import {NameWrapper} from "../../contracts/wrapper/NameWrapper.sol";
-import {DefaultReverseRegistrar} from "../../contracts/reverseRegistrar/DefaultReverseRegistrar.sol";
-import {ETHRegistrarController} from "../../contracts/ethregistrar/ETHRegistrarController.sol";
+import {
+    DefaultReverseRegistrar
+} from "../../contracts/reverseRegistrar/DefaultReverseRegistrar.sol";
+import {DotRegistrarController} from "../../contracts/ethregistrar/DotRegistrarController.sol";
 import {StaticBulkRenewal} from "../../contracts/ethregistrar/StaticBulkRenewal.sol";
 import {PublicResolver} from "../../contracts/resolvers/PublicResolver.sol";
 import {GatewayProvider} from "../../contracts/ccipRead/GatewayProvider.sol";
@@ -21,8 +24,8 @@ import {StoreFactory} from "../../contracts/utils/StoreFactory.sol";
 import {DotnsRegistrar} from "../../contracts/utils/DotnsRegistrar.sol";
 import {Multicall3} from "../../contracts/utils/Multicall3.sol";
 import {IMetadataService} from "../../contracts/wrapper/IMetadataService.sol";
-import {AggregatorInterface} from "../../contracts/ethregistrar/StableOracle.sol";
-import {IETHRegistrarController} from "../../contracts/ethregistrar/IETHRegistrarController.sol";
+import {IDotRegistrarController} from "../../contracts/ethregistrar/IDotRegistrarController.sol";
+import {Upgrades, Options} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 abstract contract BaseDotns is Test {
     /// @notice Test user account: ed
@@ -57,8 +60,8 @@ abstract contract BaseDotns is Test {
     /// @notice Dummy price oracle for testing
     DummyOracle public dummyOracle;
 
-    /// @notice Stable price oracle with PoP-based pricing logic
-    StableOracle public priceOracle;
+    /// @notice Stable oracle with PoP-based pricing logic
+    StableOracle public stableOracle;
 
     /// @notice Static metadata service for name wrapper
     StaticMetadataService public metadataService;
@@ -71,7 +74,7 @@ abstract contract BaseDotns is Test {
     DefaultReverseRegistrar public defaultReverseRegistrar;
 
     /// @notice Main ETH registrar controller
-    ETHRegistrarController public ethRegistrarController;
+    DotRegistrarController public dotRegistrarController;
 
     // Additional Contracts
     /// @notice Bulk renewal contract
@@ -118,6 +121,9 @@ abstract contract BaseDotns is Test {
     bytes32 private constant DOT_NODE =
         0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
 
+    /// @notice Upgrade options for UUPS proxy deployment
+    Options public options;
+
     function setUp() public virtual noGasMetering {
         // Create test users
         ed = _createUser("ed");
@@ -131,6 +137,7 @@ abstract contract BaseDotns is Test {
         dotLabel = keccak256("dot");
         reverseNode = _namehash(ZERO_HASH, reverseLabel);
         dotNode = _namehash(ZERO_HASH, dotLabel);
+        //options.unsafeSkipAllChecks = true;
 
         // Deploy core ENS infrastructure
         ensRegistry = new ENSRegistry();
@@ -164,9 +171,12 @@ abstract contract BaseDotns is Test {
         rentPrices[2] = 3170979200;
         rentPrices[3] = 1585489600;
         rentPrices[4] = 317097920;
-
-        priceOracle = new StableOracle(AggregatorInterface(address(dummyOracle)), rentPrices);
-        vm.label(address(priceOracle), "StableOracle");
+        address stableOracleAddress = Upgrades.deployUUPSProxy(
+            "StableOracle.sol:StableOracle",
+            abi.encodeCall(StableOracle.initialize, (address(dummyOracle), rentPrices))
+        );
+        stableOracle = StableOracle(stableOracleAddress);
+        vm.label(stableOracleAddress, "StableOracle");
 
         metadataService = new StaticMetadataService("http://localhost:8080/name/0x{id}");
         vm.label(address(metadataService), "StaticMetadataService");
@@ -182,30 +192,30 @@ abstract contract BaseDotns is Test {
         vm.label(address(defaultReverseRegistrar), "DefaultReverseRegistrar");
 
         // Since we using an in memory node which has block.timestamp of 0 we need to increase
-        // This to something higher than 0 to prevent a revert MaxCommitmentAgeTooHigh in ETHRegistrarController
+        // This to something higher than 0 to prevent a revert MaxCommitmentAgeTooHigh in DotRegistrarController
         vm.warp(1 days);
 
-        ethRegistrarController = new ETHRegistrarController(
+        dotRegistrarController = new DotRegistrarController(
             baseRegistrar,
-            priceOracle,
+            stableOracle,
             6,
             86400,
             reverseRegistrar,
             defaultReverseRegistrar,
             ensRegistry
         );
-        vm.label(address(ethRegistrarController), "ETHRegistrarController");
+        vm.label(address(dotRegistrarController), "DotRegistrarController");
 
-        baseRegistrar.addController(address(ethRegistrarController));
-        nameWrapper.setController(address(ethRegistrarController), true);
-        reverseRegistrar.setController(address(ethRegistrarController), true);
+        baseRegistrar.addController(address(dotRegistrarController));
+        nameWrapper.setController(address(dotRegistrarController), true);
+        reverseRegistrar.setController(address(dotRegistrarController), true);
 
         // Deploy additional contracts
-        bulkRenewal = new StaticBulkRenewal(ethRegistrarController);
+        bulkRenewal = new StaticBulkRenewal(dotRegistrarController);
         vm.label(address(bulkRenewal), "StaticBulkRenewal");
 
         publicResolver = new PublicResolver(
-            ensRegistry, nameWrapper, address(ethRegistrarController), address(reverseRegistrar)
+            ensRegistry, nameWrapper, address(dotRegistrarController), address(reverseRegistrar)
         );
         vm.label(address(publicResolver), "PublicResolver");
 
@@ -213,13 +223,13 @@ abstract contract BaseDotns is Test {
 
         string[] memory urls = new string[](1);
         urls[0] = "http://universal-offchain-resolver.local/";
-        gatewayProvider = new GatewayProvider(owner, urls);
+        gatewayProvider = new GatewayProvider(urls);
         vm.label(address(gatewayProvider), "GatewayProvider");
 
         universalResolver = new UniversalResolver(owner, ensRegistry, gatewayProvider);
         vm.label(address(universalResolver), "UniversalResolver");
 
-        ensRegistry.setApprovalForAll(address(ethRegistrarController), true);
+        ensRegistry.setApprovalForAll(address(dotRegistrarController), true);
         baseRegistrar.setResolver(address(publicResolver));
 
         // Deploy utilities
@@ -227,13 +237,13 @@ abstract contract BaseDotns is Test {
         vm.label(address(storeFactory), "StoreFactory");
 
         dotnsRegistrar = new DotnsRegistrar(
-            address(ethRegistrarController), address(ensRegistry), address(storeFactory)
+            address(dotRegistrarController), address(ensRegistry), address(storeFactory)
         );
         vm.label(address(dotnsRegistrar), "DotnsRegistrar");
 
         multicall3 = new Multicall3();
         vm.label(address(multicall3), "Multicall3");
-        priceOracle.updateEthRegistry(address(ethRegistrarController));
+        stableOracle.updateEthRegistry(address(dotRegistrarController));
         vm.stopPrank();
     }
 
@@ -277,17 +287,15 @@ abstract contract BaseDotns is Test {
     /// @dev Handles the full registration flow: commit, wait for min commitment age, then register
     /// @param registration Registration struct containing label, owner, duration, and other parameters
 
-    function _commitAndRegister(IETHRegistrarController.Registration memory registration)
-        internal
-    {
+    function _commitAndRegister(IDotRegistrarController.Registration memory registration) internal {
         vm.startPrank(registration.owner);
         vm.warp(block.timestamp + 1);
-        bytes32 commit = ethRegistrarController.makeCommitment(registration);
-        ethRegistrarController.commit(commit);
-        vm.warp(block.timestamp + ethRegistrarController.minCommitmentAge() + 2);
+        bytes32 commit = dotRegistrarController.makeCommitment(registration);
+        dotRegistrarController.commit(commit);
+        vm.warp(block.timestamp + dotRegistrarController.minCommitmentAge() + 2);
         uint256 price =
-            ethRegistrarController.rentPrice(registration.label, registration.duration).base;
-        ethRegistrarController.register{value: price}(registration);
+            dotRegistrarController.rentPrice(registration.label, registration.duration).base;
+        dotRegistrarController.register{value: price}(registration);
         vm.stopPrank();
     }
 }

@@ -12,11 +12,5 @@ interface IInterfaceResolver {
     /// @param node The ENS node to query.
     /// @param interfaceID The EIP 165 interface ID to check for.
     /// @return The address that implements this interface, or 0 if the interface is unsupported.
-    function interfaceImplementer(
-        bytes32 node,
-        bytes4 interfaceID
-    )
-        external
-        view
-        returns (address);
+    function interfaceImplementer(bytes32 node, bytes4 interfaceID) external view returns (address);
 }

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import type { Abi } from 'viem';
 
 export const useAbiStore = defineStore('useAbiStore', () => {
-  let ETHRegistrarControllerABI: Abi;
+  let DotRegistrarControllerABI: Abi;
   let ENSRegistryABI: Abi;
   let StaticBulkRenewalABI: Abi;
   let BaseRegistrarABI: Abi;
@@ -13,10 +13,10 @@ export const useAbiStore = defineStore('useAbiStore', () => {
   let ReverseRegistrarABI: Abi;
   let StableOracleABI: Abi;
   async function loadABIs(): Promise<void> {
-    if (ETHRegistrarControllerABI) return;
+    if (DotRegistrarControllerABI) return;
 
     const [
-      ETHRegistrarController,
+      DotRegistrarController,
       ENSRegistry,
       StaticBulkRenewal,
       BaseRegistrarImplementation,
@@ -27,7 +27,7 @@ export const useAbiStore = defineStore('useAbiStore', () => {
       DefaultReverseRegistrar,
       StableOracle,
     ] = await Promise.all([
-      import('../../abis/ETHRegistrarController.json'),
+      import('../../abis/DotRegistrarController.json'),
       import('../../abis/ENSRegistry.json'),
       import('../../abis/StaticBulkRenewal.json'),
       import('../../abis/BaseRegistrarImplementation.json'),
@@ -39,7 +39,7 @@ export const useAbiStore = defineStore('useAbiStore', () => {
       import('../../abis/StableOracle.json'),
     ]);
 
-    ETHRegistrarControllerABI = ETHRegistrarController.abi as Abi;
+    DotRegistrarControllerABI = DotRegistrarController.abi as Abi;
     ENSRegistryABI = ENSRegistry.abi as Abi;
     StaticBulkRenewalABI = StaticBulkRenewal.abi as Abi;
     BaseRegistrarABI = BaseRegistrarImplementation.abi as Abi;
@@ -53,7 +53,7 @@ export const useAbiStore = defineStore('useAbiStore', () => {
 
   function getABI(name: string): Abi {
     const abis: Record<string, Abi> = {
-      ETHRegistrarController: ETHRegistrarControllerABI,
+      DotRegistrarController: DotRegistrarControllerABI,
       ENSRegistry: ENSRegistryABI,
       StaticBulkRenewal: StaticBulkRenewalABI,
       BaseRegistrar: BaseRegistrarABI,
@@ -72,7 +72,7 @@ export const useAbiStore = defineStore('useAbiStore', () => {
   }
 
   async function ensureAbis(): Promise<void> {
-    if (!ETHRegistrarControllerABI) {
+    if (!DotRegistrarControllerABI) {
       await loadABIs();
     }
   }

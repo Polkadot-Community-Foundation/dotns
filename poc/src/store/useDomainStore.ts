@@ -74,7 +74,7 @@ export const useDomainStore = defineStore('useDomainStore', () => {
       };
 
       const data = encodeFunctionData({
-        abi: abiStore.getABI('ETHRegistrarController'),
+        abi: abiStore.getABI('DotRegistrarController'),
         functionName: 'makeCommitment',
         args: [registration],
       });
@@ -110,7 +110,7 @@ export const useDomainStore = defineStore('useDomainStore', () => {
       const client = await networkStore.getClient();
 
       const data = encodeFunctionData({
-        abi: abiStore.getABI('ETHRegistrarController'),
+        abi: abiStore.getABI('DotRegistrarController'),
         functionName: 'commit',
         args: [commitment],
       });
@@ -146,7 +146,7 @@ export const useDomainStore = defineStore('useDomainStore', () => {
       const client = await networkStore.getClient();
 
       const data = encodeFunctionData({
-        abi: abiStore.getABI('ETHRegistrarController'),
+        abi: abiStore.getABI('DotRegistrarController'),
         functionName: 'rentPrice',
         args: [label, duration],
       });
@@ -377,7 +377,7 @@ export const useDomainStore = defineStore('useDomainStore', () => {
       const cost = (await fetchRegistrationCost(label, duration, false)) as bigint;
 
       const data = encodeFunctionData({
-        abi: abiStore.getABI('ETHRegistrarController'),
+        abi: abiStore.getABI('DotRegistrarController'),
         functionName: 'renew',
         args: [label, duration, zeroHash],
       });
@@ -422,7 +422,7 @@ export const useDomainStore = defineStore('useDomainStore', () => {
       };
 
       const data = encodeFunctionData({
-        abi: abiStore.getABI('ETHRegistrarController'),
+        abi: abiStore.getABI('DotRegistrarController'),
         functionName: 'register',
         args: [registration],
       });
@@ -474,7 +474,7 @@ export const useDomainStore = defineStore('useDomainStore', () => {
       const client = await networkStore.getClient();
 
       const data = encodeFunctionData({
-        abi: abiStore.getABI('ETHRegistrarController'),
+        abi: abiStore.getABI('DotRegistrarController'),
         functionName: 'minCommitmentAge',
         args: [],
       });

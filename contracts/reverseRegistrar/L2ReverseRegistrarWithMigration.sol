@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.4;
 
-import {Ownable} from "@openzeppelin/contracts-v5/access/Ownable.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {L2ReverseRegistrar} from "./L2ReverseRegistrar.sol";
 import {INameResolver} from "../resolvers/profiles/INameResolver.sol";

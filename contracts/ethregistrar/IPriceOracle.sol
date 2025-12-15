@@ -1,17 +1,23 @@
-//SPDX-License-Identifier: MIT
-pragma solidity >=0.8.17 <0.9.0;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.30;
 
+/// @title Price Oracle Interface
+/// @notice Defines pricing structure for .dot domain registrations and renewals
+/// @dev Implementations calculate base pricing and time-based premiums
 interface IPriceOracle {
+    /// @notice Price breakdown for domain operations
+    /// @param base Standard registration cost based on length and duration
+    /// @param premium Additional cost for recently expired domains
     struct Price {
         uint256 base;
         uint256 premium;
     }
 
-    /// @dev Returns the price to register or renew a name.
-    /// @param name The name being registered or renewed.
-    /// @param expires When the name presently expires (0 if this is a new registration).
-    /// @param duration How long the name is being registered or extended for, in seconds.
-    /// @return base premium tuple of base price + premium price
+    /// @notice Calculates registration or renewal price
+    /// @param name Domain label to price
+    /// @param expires Current expiration timestamp (zero for new registrations)
+    /// @param duration Registration period in seconds
+    /// @return pricing Price breakdown with base and premium components
     function price(
         string calldata name,
         uint256 expires,
@@ -19,5 +25,5 @@ interface IPriceOracle {
     )
         external
         view
-        returns (Price calldata);
+        returns (Price memory pricing);
 }

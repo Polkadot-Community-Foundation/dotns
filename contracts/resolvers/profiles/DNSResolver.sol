@@ -132,7 +132,8 @@ abstract contract DNSResolver is IDNSRecordResolver, IDNSZoneResolver, ResolverB
 
     function supportsInterface(bytes4 interfaceID) public view virtual override returns (bool) {
         return interfaceID == type(IDNSRecordResolver).interfaceId
-            || interfaceID == type(IDNSZoneResolver).interfaceId || super.supportsInterface(interfaceID);
+            || interfaceID == type(IDNSZoneResolver).interfaceId
+            || super.supportsInterface(interfaceID);
     }
 
     function setDNSRRSet(

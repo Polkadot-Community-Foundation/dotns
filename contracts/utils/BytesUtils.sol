@@ -289,12 +289,10 @@ library BytesUtils {
     /// @dev Returns `true` if word contains a zero byte.
     function hasZeroByte(uint256 word) internal pure returns (bool) {
         unchecked {
-            return (
-                (
-                    ~word
-                        & (word - 0x0101010101010101010101010101010101010101010101010101010101010101)
-                ) & 0x8080808080808080808080808080808080808080808080808080808080808080
-            ) != 0;
+            return ((~word
+                            & (word
+                                    - 0x0101010101010101010101010101010101010101010101010101010101010101))
+                        & 0x8080808080808080808080808080808080808080808080808080808080808080) != 0;
         }
     }
 
@@ -330,8 +328,8 @@ library BytesUtils {
                 if (hasZeroByte(word)) {
                     return off <= len
                         || hasZeroByte(
-                            word | ((1 << ((off - len) << 3)) - 1) // recheck overflow by making it nonzero
-                        );
+                        word | ((1 << ((off - len) << 3)) - 1) // recheck overflow by making it nonzero
+                    );
                 }
             }
         }

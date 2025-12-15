@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
+import {console} from "forge-std/Script.sol";
 import {BaseDeployer} from "./BaseDeployer.s.sol";
 import {ENSRegistry} from "../contracts/registry/ENSRegistry.sol";
 import {Root} from "../contracts/root/Root.sol";
 import {ReverseRegistrar} from "../contracts/reverseRegistrar/ReverseRegistrar.sol";
-import {BaseRegistrarImplementation} from "../contracts/ethregistrar/BaseRegistrarImplementation.sol";
+import {
+    BaseRegistrarImplementation
+} from "../contracts/ethregistrar/BaseRegistrarImplementation.sol";
 import {DummyOracle} from "../contracts/ethregistrar/DummyOracle.sol";
 import {StableOracle} from "../contracts/ethregistrar/StableOracle.sol";
 import {StaticMetadataService} from "../contracts/wrapper/StaticMetadataService.sol";
 import {NameWrapper} from "../contracts/wrapper/NameWrapper.sol";
-import {ETHRegistrarController} from "../contracts/ethregistrar/ETHRegistrarController.sol";
+import {DotRegistrarController} from "../contracts/ethregistrar/DotRegistrarController.sol";
 import {StaticBulkRenewal} from "../contracts/ethregistrar/StaticBulkRenewal.sol";
 import {PublicResolver} from "../contracts/resolvers/PublicResolver.sol";
 import {GatewayProvider} from "../contracts/ccipRead/GatewayProvider.sol";
@@ -21,6 +24,7 @@ import {StoreFactory} from "../contracts/utils/StoreFactory.sol";
 import {DotnsRegistrar} from "../contracts/utils/DotnsRegistrar.sol";
 import {Multicall3} from "../contracts/utils/Multicall3.sol";
 import {AggregatorInterface} from "../contracts/ethregistrar/StableOracle.sol";
+import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 /// @title DotnsDeployer
 contract DotnsDeployer is BaseDeployer {
@@ -34,7 +38,7 @@ contract DotnsDeployer is BaseDeployer {
     StableOracle public stableOracle;
     StaticMetadataService public staticMetadataService;
     NameWrapper public nameWrapper;
-    ETHRegistrarController public ethRegistrarController;
+    DotRegistrarController public dotRegistrarController;
     StaticBulkRenewal public staticBulkRenewal;
     PublicResolver public publicResolver;
     GatewayProvider public gatewayProvider;
@@ -47,6 +51,9 @@ contract DotnsDeployer is BaseDeployer {
     /// @notice Executes deployment following the exact BaseDotns test sequence
     function run() external {
         uint256 chainId = block.chainid;
+        vm.warp(block.timestamp + 1 weeks);
+        console.log("Current blocktime");
+        console.logUint(block.timestamp);
         initDeployment(chainId);
 
         address OWNER = msg.sender;
@@ -76,20 +83,13 @@ contract DotnsDeployer is BaseDeployer {
         bytes32 reverseNode = keccak256(abi.encodePacked(ZERO_HASH, reverseLabel));
 
         root.setSubnodeOwner(reverseLabel, OWNER);
-        ensRegistry.setSubnodeOwner(
-            reverseNode,
-            addrLabel,
-            address(reverseRegistrar)
-        );
+        ensRegistry.setSubnodeOwner(reverseNode, addrLabel, address(reverseRegistrar));
 
         // Base registrar for .dot
         bytes32 dotLabel = keccak256("dot");
         bytes32 dotNode = keccak256(abi.encodePacked(ZERO_HASH, dotLabel));
 
-        baseRegistrarImplementation = new BaseRegistrarImplementation(
-            ensRegistry,
-            dotNode
-        );
+        baseRegistrarImplementation = new BaseRegistrarImplementation(ensRegistry, dotNode);
         vm.label(address(baseRegistrarImplementation), "BaseRegistrarImplementation");
         logDeployment("BaseRegistrarImplementation", address(baseRegistrarImplementation));
 
@@ -109,12 +109,13 @@ contract DotnsDeployer is BaseDeployer {
         rentPrices[4] = 317097920;
 
         // StableOracle
-        stableOracle = new StableOracle(
-            AggregatorInterface(address(dummyOracle)),
-            rentPrices
+        address stableOracleAddress = Upgrades.deployUUPSProxy(
+            "StableOracle.sol:StableOracle",
+            abi.encodeCall(StableOracle.initialize, (address(dummyOracle), rentPrices))
         );
-        vm.label(address(stableOracle), "StableOracle");
-        logDeployment("StableOracle", address(stableOracle));
+        stableOracle = StableOracle(stableOracleAddress);
+        vm.label(stableOracleAddress, "StableOracle");
+        logDeployment("StableOracle", stableOracleAddress);
 
         // Metadata Service
         staticMetadataService = new StaticMetadataService("http://localhost:8080/name/0x{id}");
@@ -137,11 +138,8 @@ contract DotnsDeployer is BaseDeployer {
         vm.label(address(defaultReverseRegistrar), "DefaultReverseRegistrar");
         logDeployment("DefaultReverseRegistrar", address(defaultReverseRegistrar));
 
-        // Advance timestamp (matches BaseDotns)
-        vm.warp(1 days);
-
-        // ETH Registrar Controller
-        ethRegistrarController = new ETHRegistrarController(
+        // Dot Registrar Controller
+        dotRegistrarController = new DotRegistrarController(
             baseRegistrarImplementation,
             stableOracle,
             6,
@@ -150,24 +148,21 @@ contract DotnsDeployer is BaseDeployer {
             defaultReverseRegistrar,
             ensRegistry
         );
-        vm.label(address(ethRegistrarController), "ETHRegistrarController");
-        logDeployment("ETHRegistrarController", address(ethRegistrarController));
+        vm.label(address(dotRegistrarController), "DotRegistrarController");
+        logDeployment("dotRegistrarController", address(dotRegistrarController));
 
-        baseRegistrarImplementation.addController(address(ethRegistrarController));
-        nameWrapper.setController(address(ethRegistrarController), true);
-        reverseRegistrar.setController(address(ethRegistrarController), true);
+        baseRegistrarImplementation.addController(address(dotRegistrarController));
+        nameWrapper.setController(address(dotRegistrarController), true);
+        reverseRegistrar.setController(address(dotRegistrarController), true);
 
         // Bulk Renewal
-        staticBulkRenewal = new StaticBulkRenewal(ethRegistrarController);
+        staticBulkRenewal = new StaticBulkRenewal(dotRegistrarController);
         vm.label(address(staticBulkRenewal), "StaticBulkRenewal");
         logDeployment("StaticBulkRenewal", address(staticBulkRenewal));
 
         // Public Resolver
         publicResolver = new PublicResolver(
-            ensRegistry,
-            nameWrapper,
-            address(ethRegistrarController),
-            address(reverseRegistrar)
+            ensRegistry, nameWrapper, address(dotRegistrarController), address(reverseRegistrar)
         );
         vm.label(address(publicResolver), "PublicResolver");
         logDeployment("PublicResolver", address(publicResolver));
@@ -177,7 +172,7 @@ contract DotnsDeployer is BaseDeployer {
         // Gateway Provider
         string[] memory urls = new string[](1);
         urls[0] = "http://universal-offchain-resolver.local/";
-        gatewayProvider = new GatewayProvider(OWNER, urls);
+        gatewayProvider = new GatewayProvider(urls);
         vm.label(address(gatewayProvider), "GatewayProvider");
         logDeployment("GatewayProvider", address(gatewayProvider));
 
@@ -187,7 +182,7 @@ contract DotnsDeployer is BaseDeployer {
         logDeployment("UniversalResolver", address(universalResolver));
 
         // Set approvals
-        ensRegistry.setApprovalForAll(address(ethRegistrarController), true);
+        ensRegistry.setApprovalForAll(address(dotRegistrarController), true);
         baseRegistrarImplementation.setResolver(address(publicResolver));
 
         // Store Factory
@@ -197,9 +192,7 @@ contract DotnsDeployer is BaseDeployer {
 
         // DotnsRegistrar
         dotnsRegistrar = new DotnsRegistrar(
-            address(ethRegistrarController),
-            address(ensRegistry),
-            address(storeFactory)
+            address(dotRegistrarController), address(ensRegistry), address(storeFactory)
         );
         vm.label(address(dotnsRegistrar), "DotnsRegistrar");
         logDeployment("DotnsRegistrar", address(dotnsRegistrar));
@@ -209,7 +202,7 @@ contract DotnsDeployer is BaseDeployer {
         vm.label(address(multicall3), "Multicall3");
         logDeployment("Multicall3", address(multicall3));
 
-        stableOracle.updateEthRegistry(address(ethRegistrarController));
+        stableOracle.updateEthRegistry(address(dotRegistrarController));
 
         vm.stopBroadcast();
         saveDeployments(_getDeploymentFolder(), vm.toString(chainId));
@@ -218,8 +211,10 @@ contract DotnsDeployer is BaseDeployer {
     /// @notice Returns deployment folder location based on chain ID
     function _getDeploymentFolder() internal view returns (string memory directory) {
         directory = "localhost";
-        if (block.chainid == 420420420) {
+        if (block.chainid == 420420422) {
             directory = "paseo";
+        } else if (block.chainid == 420420420) {
+            directory = "paseo-local";
         }
     }
 }

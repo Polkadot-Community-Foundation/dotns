@@ -340,14 +340,7 @@ library NameCoder {
     /// @param label The child label to prepend.
     ///
     /// @return The DNS-encoded child name.
-    function addLabel(
-        bytes memory name,
-        string memory label
-    )
-        internal
-        pure
-        returns (bytes memory)
-    {
+    function addLabel(bytes memory name, string memory label) internal pure returns (bytes memory) {
         return abi.encodePacked(assertLabelSize(label), label, name);
     }
 

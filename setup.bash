@@ -1,0 +1,216 @@
+#!/bin/bash
+set -euo pipefail
+
+RELEASE_REPO="paritytech/hardhat-polkadot"
+BIN_DIR="$(pwd)/bin"
+REVIVE_PK="5fb92d6e98884f76de468fa3f6278f8807c48bebc13595d45af5bdc4da702133"
+REVIVE_ADDRESS="0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
+ANVIL="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+ANVIL_ADDRESS="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+WALLET_PASSWORD="123456"
+
+msg(){ printf "%s\n" "$*"; }
+
+install_nodes_binaries(){
+  echo "Checking node binaries..."
+  mkdir -p "$BIN_DIR"
+  local platform
+  platform="$(detect_platform)"
+  
+  local needs_download=false
+  
+  if ! check_binary_exists "revive-dev-node"; then
+    needs_download=true
+  fi
+  if ! check_binary_exists "eth-rpc"; then
+    needs_download=true
+  fi
+  
+  if [ "$needs_download" = false ]; then
+    echo "All binaries already installed, skipping download"
+    return 0
+  fi
+  
+  echo "Downloading missing binaries..."
+  case "$platform" in
+    darwin-arm64)
+      download_bin "revive-dev-node-darwin-arm64" "revive-dev-node" || true
+      download_bin "eth-rpc-darwin-arm64" "eth-rpc" || true
+      ;;
+    darwin-x64)
+      download_bin "revive-dev-node-darwin-x64" "revive-dev-node" || true
+      download_bin "eth-rpc-darwin-x64" "eth-rpc" || true
+      ;;
+    linux-x64)
+      download_bin "revive-dev-node-linux-x64" "revive-dev-node" || true
+      download_bin "eth-rpc-linux-x64" "eth-rpc" || true
+      ;;
+    linux-arm64)
+      download_bin "revive-dev-node-linux-arm64" "revive-dev-node" || true
+      download_bin "eth-rpc-linux-arm64" "eth-rpc" || true
+      ;;
+    *)
+      echo "Unsupported platform: $platform"
+      ;;
+  esac
+}
+
+# We do this here to force initialising the submodules
+# Such that we can patch the file which causes issues
+# Until we can fix the version missmatch between contracts
+# We will keep this 
+init_submodules(){
+  echo "Initializing git submodules..."
+  
+  if [ ! -d ".git" ]; then
+    echo "  ⚠ Not a git repository, skipping submodules"
+    return 0
+  fi
+  
+  if ! command -v git >/dev/null 2>&1; then
+    echo "  ⚠ Git not installed, skipping submodules"
+    return 0
+  fi
+  
+  echo "Syncing submodule configuration..."
+  git submodule sync 2>/dev/null || true
+  
+  echo "Initializing submodules..."
+  if ! git submodule update --init --recursive; then
+    echo "  ⚠ Submodule initialization failed"
+    return 0
+  fi
+  
+  echo "  ✓ Submodules initialized"
+  echo "Forcing OpenZeppelin v4.9.3..."
+  
+  if [ -d "lib/openzeppelin-contracts-upgradeable" ]; then
+    echo "  - Fetching openzeppelin-contracts-upgradeable tags..."
+    (cd lib/openzeppelin-contracts-upgradeable && git fetch --tags origin 2>/dev/null)
+    echo "  - Checking out v4.9.3..."
+    (cd lib/openzeppelin-contracts-upgradeable && git checkout -f v4.9.3 2>/dev/null) && \
+      echo "  ✓ openzeppelin-contracts-upgradeable@v4.9.3" || \
+      echo "  ⚠ Failed to checkout openzeppelin-contracts-upgradeable@v4.9.3"
+  else
+    echo "  ⚠ lib/openzeppelin-contracts-upgradeable not found"
+  fi
+  
+  if [ -d "lib/openzeppelin-contracts" ]; then
+    echo "  - Fetching openzeppelin-contracts tags..."
+    (cd lib/openzeppelin-contracts && git fetch --tags origin 2>/dev/null)
+    echo "  - Checking out v4.9.3..."
+    (cd lib/openzeppelin-contracts && git checkout -f v4.9.3 2>/dev/null) && \
+      echo "  ✓ openzeppelin-contracts@v4.9.3" || \
+      echo "  ⚠ Failed to checkout openzeppelin-contracts@v4.9.3"
+  else
+    echo "  ⚠ lib/openzeppelin-contracts not found"
+  fi
+}
+
+
+patch_openzeppelin_upgrades(){
+  echo "Patching OpenZeppelin upgrades library..."
+  
+  local upgrades_file="lib/openzeppelin-foundry-upgrades/src/Upgrades.sol"
+  local patch_file="$(pwd)/Upgrades.p.sol"
+  
+  if [ ! -f "$patch_file" ]; then
+    echo "  ⚠ Patch file 'Upgrades.p.sol' not found, skipping patch"
+    return 0
+  fi
+  
+  if [ ! -f "$upgrades_file" ]; then
+    echo "  ⚠ OpenZeppelin upgrades file not found, skipping patch"
+    return 0
+  fi
+  
+  if cmp -s "$patch_file" "$upgrades_file"; then
+    echo "  ✓ OpenZeppelin upgrades already patched, skipping"
+    return 0
+  fi
+  
+  cp "$upgrades_file" "${upgrades_file}.backup"
+  cp "$patch_file" "$upgrades_file"
+  
+  echo "  ✓ OpenZeppelin upgrades replaced with patched version"
+}
+
+check_binary_exists(){
+  local link_name="$1"
+  local binary_path="$BIN_DIR/$link_name"
+  
+  if [ -f "$binary_path" ] && [ -x "$binary_path" ]; then
+    echo "  ✓ $link_name already installed, skipping download"
+    return 0
+  fi
+  return 1
+}
+
+resolve_asset_url(){
+  local want="$1"
+  curl -fsSL "https://api.github.com/repos/${RELEASE_REPO}/releases?per_page=30" \
+  | node -e '
+    const fs=require("fs");
+    const rels=JSON.parse(fs.readFileSync(0,"utf8"));
+    const want=process.argv[1];
+    for(const r of rels){
+      const tag=(r.tag_name||"").toLowerCase();
+      const name=(r.name||"").toLowerCase();
+      if(tag.startsWith("nodes-")||name.includes("nodes build")){
+        for(const a of r.assets||[]){
+          if(a.name===want){ console.log(a.browser_download_url); process.exit(0); }
+        }
+      }
+    }
+    process.exit(1);
+  ' "$want"
+}
+
+download_bin(){
+  local asset="$1" link_name="$2"
+  
+  if check_binary_exists "$link_name"; then
+    return 0
+  fi
+  
+  local url out
+  if ! url="$(resolve_asset_url "$asset")"; then
+    msg "$asset not found in latest nodes-* releases"
+    return 1
+  fi
+  out="$BIN_DIR/$asset"
+  curl -fsSL --retry 3 --retry-delay 1 -o "$out" "$url"
+  chmod +x "$out"
+  ln -sfn "$out" "$BIN_DIR/$link_name"
+  msg "  ✓ $link_name installed from $(basename "$url")"
+}
+
+setup_foundry_wallet(){
+  echo "Setting up Foundry wallets..."
+  
+  if ! command -v cast >/dev/null 2>&1; then
+    echo "WARNING: 'cast' command not found. Install Foundry: https://getfoundry.sh"
+    return 0
+  fi
+  
+  # Setup revive wallet
+  if cast wallet list 2>/dev/null | grep -q "revive"; then
+    echo "  ✓ Wallet 'revive' already exists, skipping creation"
+  else
+    cast wallet import revive --private-key "$REVIVE_PK" --unsafe-password "$WALLET_PASSWORD" 2>/dev/null || true
+    echo "  ✓ Wallet 'revive' created (address: $REVIVE_ADDRESS)"
+  fi
+  
+  # Setup anvil-polkadot wallet
+  if cast wallet list 2>/dev/null | grep -q "anvil-polkadot"; then
+    echo "  ✓ Wallet 'anvil-polkadot' already exists, skipping creation"
+  else
+    cast wallet import anvil-polkadot --private-key "$ANVIL" --unsafe-password "$WALLET_PASSWORD" 2>/dev/null || true
+    echo "  ✓ Wallet 'anvil-polkadot' created (address: $ANVIL_ADDRESS)"
+  fi
+}
+
+init_submodules
+patch_openzeppelin_upgrades
+setup_foundry_wallet
+echo "Setup complete!"

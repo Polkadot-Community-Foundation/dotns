@@ -105,7 +105,8 @@ contract NameWrapper is
         returns (bool)
     {
         return interfaceId == type(INameWrapper).interfaceId
-            || interfaceId == type(IERC721Receiver).interfaceId || super.supportsInterface(interfaceId);
+            || interfaceId == type(IERC721Receiver).interfaceId
+            || super.supportsInterface(interfaceId);
     }
 
     /* ERC1155 Fuse */
@@ -219,8 +220,9 @@ contract NameWrapper is
     /// @return whether or not is owner or operator
     function canModifyName(bytes32 node, address addr) public view returns (bool) {
         (address owner, uint32 fuses, uint64 expiry) = getData(uint256(node));
-        return (owner == addr || isApprovedForAll(owner, addr))
-            && !_isETH2LDInGracePeriod(fuses, expiry);
+        return
+            (owner == addr || isApprovedForAll(owner, addr))
+                && !_isETH2LDInGracePeriod(fuses, expiry);
     }
 
     /// @notice Checks if owner/operator or approved by owner
@@ -229,9 +231,9 @@ contract NameWrapper is
     /// @return whether or not is owner/operator or approved
     function canExtendSubnames(bytes32 node, address addr) public view returns (bool) {
         (address owner, uint32 fuses, uint64 expiry) = getData(uint256(node));
-        return (
-            owner == addr || isApprovedForAll(owner, addr) || getApproved(uint256(node)) == addr
-        ) && !_isETH2LDInGracePeriod(fuses, expiry);
+        return (owner == addr
+                || isApprovedForAll(owner, addr)
+                || getApproved(uint256(node)) == addr) && !_isETH2LDInGracePeriod(fuses, expiry);
     }
 
     /// @notice Wraps a .eth domain, creating a new token and sending the original ERC721 token to this contract

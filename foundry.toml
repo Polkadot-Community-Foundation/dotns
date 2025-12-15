@@ -25,10 +25,11 @@ number_underscore = "preserve"
 single_line_statement_blocks = "preserve"
 multiline_func_header = "all"
 
-[profile.lint]
-exclude_lints = ["mixed-case-variable"]
 
 [profile.default.optimizer_details]
 yul = true
 
-# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+[rpc_endpoints]
+paseo_local = "http://127.0.0.1:8545"
+paseo_testnet = "wss://testnet-passet-hub.polkadot.io"
+anvil = "http://127.0.0.1:8545"

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-import {ERC165} from "@openzeppelin/contracts-v5/utils/introspection/ERC165.sol";
+import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {IExtendedResolver} from "../resolvers/profiles/IExtendedResolver.sol";
 import {IAddressResolver} from "../resolvers/profiles/IAddressResolver.sol";
 import {IAddrResolver} from "../resolvers/profiles/IAddrResolver.sol";
@@ -32,7 +32,8 @@ abstract contract AbstractReverseResolver is IExtendedResolver, INameReverser, E
     /// @inheritdoc ERC165
     function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
         return interfaceId == type(IExtendedResolver).interfaceId
-            || interfaceId == type(INameReverser).interfaceId || super.supportsInterface(interfaceId);
+            || interfaceId == type(INameReverser).interfaceId
+            || super.supportsInterface(interfaceId);
     }
 
     /// @notice The EVM Chain ID corresponding to the `coinType`.

@@ -2,9 +2,9 @@
 
 pragma solidity ^0.8.4;
 
-import {Ownable} from "@openzeppelin/contracts-v5/access/Ownable.sol";
-import {MessageHashUtils} from "@openzeppelin/contracts-v5/utils/cryptography/MessageHashUtils.sol";
-import {ERC165} from "@openzeppelin/contracts-v5/utils/introspection/ERC165.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 import {IL2ReverseRegistrar} from "./IL2ReverseRegistrar.sol";
 import {StandaloneReverseRegistrar} from "./StandaloneReverseRegistrar.sol";
@@ -76,15 +76,15 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     {
         // Follow ERC191 version 0 https://eips.ethereum.org/EIPS/eip-191
         bytes32 message = keccak256(
-            abi.encodePacked(
-                address(this),
-                this.setNameForAddrWithSignature.selector,
-                addr,
-                signatureExpiry,
-                name,
-                coinTypes
-            )
-        ).toEthSignedMessageHash();
+                abi.encodePacked(
+                    address(this),
+                    this.setNameForAddrWithSignature.selector,
+                    addr,
+                    signatureExpiry,
+                    name,
+                    coinTypes
+                )
+            ).toEthSignedMessageHash();
 
         signature.validateSignatureWithExpiry(addr, message, signatureExpiry);
 
@@ -105,16 +105,16 @@ contract L2ReverseRegistrar is IL2ReverseRegistrar, ERC165, StandaloneReverseReg
     {
         // Follow ERC191 version 0 https://eips.ethereum.org/EIPS/eip-191
         bytes32 message = keccak256(
-            abi.encodePacked(
-                address(this),
-                this.setNameForOwnableWithSignature.selector,
-                contractAddr,
-                owner,
-                signatureExpiry,
-                name,
-                coinTypes
-            )
-        ).toEthSignedMessageHash();
+                abi.encodePacked(
+                    address(this),
+                    this.setNameForOwnableWithSignature.selector,
+                    contractAddr,
+                    owner,
+                    signatureExpiry,
+                    name,
+                    coinTypes
+                )
+            ).toEthSignedMessageHash();
 
         if (!_ownsContract(contractAddr, owner)) revert NotOwnerOfContract();
 

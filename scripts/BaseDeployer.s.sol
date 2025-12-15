@@ -8,9 +8,7 @@ abstract contract BaseDeployer is Script {
     bool private isFirstEntry = true;
 
     function initDeployment(uint256 chainId) internal {
-        deploymentData = string(
-            abi.encodePacked('{\n  "chain_id": "', vm.toString(chainId), '",\n  "contracts": {\n')
-        );
+        deploymentData = string(abi.encodePacked('{\n"contracts": {\n'));
         isFirstEntry = true;
     }
 

@@ -1,64 +1,64 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.8.0;
+pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../base/BaseDotNS.t.sol";
 import {IStableOracle} from "../../contracts/ethregistrar/StableOracle.sol";
-import {IETHRegistrarController} from "../../contracts/ethregistrar/IETHRegistrarController.sol";
+import {IDotRegistrarController} from "../../contracts/ethregistrar/IDotRegistrarController.sol";
 
 contract BasicDotns is BaseDotns {
     function test_RevertWhen_NameReservedForGovernance() public {
         string memory label = "alice";
 
-        IETHRegistrarController.Registration memory registration = IETHRegistrarController
-            .Registration({
-            label: label,
-            owner: ed,
-            duration: 365 days,
-            secret: keccak256(abi.encodePacked(label, block.timestamp)),
-            resolver: address(publicResolver),
-            data: new bytes[](0),
-            reverseRecord: 1,
-            referrer: bytes32(0)
-        });
+        IDotRegistrarController.Registration memory registration =
+            IDotRegistrarController.Registration({
+                label: label,
+                owner: ed,
+                duration: 365 days,
+                secret: keccak256(abi.encodePacked(label, block.timestamp)),
+                resolver: address(publicResolver),
+                data: new bytes[](0),
+                reverseRecord: 1,
+                referrer: bytes32(0)
+            });
 
         vm.startPrank(ed);
         vm.warp(block.timestamp + 1);
 
-        bytes32 commitHash = ethRegistrarController.makeCommitment(registration);
-        ethRegistrarController.commit(commitHash);
+        bytes32 commitHash = dotRegistrarController.makeCommitment(registration);
+        dotRegistrarController.commit(commitHash);
 
-        vm.warp(block.timestamp + ethRegistrarController.minCommitmentAge() + 2);
+        vm.warp(block.timestamp + dotRegistrarController.minCommitmentAge() + 2);
 
         vm.expectRevert(
             abi.encodeWithSelector(IStableOracle.PopError.selector, "Reserved for Governance")
         );
 
-        ethRegistrarController.rentPrice(label, 365 days);
+        dotRegistrarController.rentPrice(label, 365 days);
         vm.stopPrank();
     }
 
     function test_RevertWhen_PopFullRequiredNotClaimed() public {
         string memory label = "alicebob";
 
-        IETHRegistrarController.Registration memory registration = IETHRegistrarController
-            .Registration({
-            label: label,
-            owner: ed,
-            duration: 365 days,
-            secret: keccak256(abi.encodePacked(label, block.timestamp)),
-            resolver: address(publicResolver),
-            data: new bytes[](0),
-            reverseRecord: 1,
-            referrer: bytes32(0)
-        });
+        IDotRegistrarController.Registration memory registration =
+            IDotRegistrarController.Registration({
+                label: label,
+                owner: ed,
+                duration: 365 days,
+                secret: keccak256(abi.encodePacked(label, block.timestamp)),
+                resolver: address(publicResolver),
+                data: new bytes[](0),
+                reverseRecord: 1,
+                referrer: bytes32(0)
+            });
 
         vm.startPrank(ed);
         vm.warp(block.timestamp + 1);
 
-        bytes32 commitHash = ethRegistrarController.makeCommitment(registration);
-        ethRegistrarController.commit(commitHash);
+        bytes32 commitHash = dotRegistrarController.makeCommitment(registration);
+        dotRegistrarController.commit(commitHash);
 
-        vm.warp(block.timestamp + ethRegistrarController.minCommitmentAge() + 2);
+        vm.warp(block.timestamp + dotRegistrarController.minCommitmentAge() + 2);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -66,7 +66,7 @@ contract BasicDotns is BaseDotns {
             )
         );
 
-        ethRegistrarController.rentPrice(label, 365 days);
+        dotRegistrarController.rentPrice(label, 365 days);
         vm.stopPrank();
     }
 
@@ -74,20 +74,20 @@ contract BasicDotns is BaseDotns {
         string memory label = "alicebob";
 
         vm.prank(ed);
-        priceOracle.setNamePopStatus(label, IStableOracle.PopStatus.PopFull);
+        stableOracle.setNamePopStatus(label, IStableOracle.PopStatus.PopFull);
         vm.stopPrank();
 
-        IETHRegistrarController.Registration memory registration = IETHRegistrarController
-            .Registration({
-            label: label,
-            owner: ed,
-            duration: 365 days,
-            secret: keccak256(abi.encodePacked(label, block.timestamp)),
-            resolver: address(publicResolver),
-            data: new bytes[](0),
-            reverseRecord: 1,
-            referrer: bytes32(0)
-        });
+        IDotRegistrarController.Registration memory registration =
+            IDotRegistrarController.Registration({
+                label: label,
+                owner: ed,
+                duration: 365 days,
+                secret: keccak256(abi.encodePacked(label, block.timestamp)),
+                resolver: address(publicResolver),
+                data: new bytes[](0),
+                reverseRecord: 1,
+                referrer: bytes32(0)
+            });
 
         _commitAndRegister(registration);
 
@@ -98,20 +98,20 @@ contract BasicDotns is BaseDotns {
         string memory label = "alice01";
 
         vm.prank(ed);
-        priceOracle.setNamePopStatus(label, IStableOracle.PopStatus.PopLite);
+        stableOracle.setNamePopStatus(label, IStableOracle.PopStatus.PopLite);
         vm.stopPrank();
 
-        IETHRegistrarController.Registration memory registration = IETHRegistrarController
-            .Registration({
-            label: label,
-            owner: ed,
-            duration: 365 days,
-            secret: keccak256(abi.encodePacked(label, block.timestamp)),
-            resolver: address(publicResolver),
-            data: new bytes[](0),
-            reverseRecord: 1,
-            referrer: bytes32(0)
-        });
+        IDotRegistrarController.Registration memory registration =
+            IDotRegistrarController.Registration({
+                label: label,
+                owner: ed,
+                duration: 365 days,
+                secret: keccak256(abi.encodePacked(label, block.timestamp)),
+                resolver: address(publicResolver),
+                data: new bytes[](0),
+                reverseRecord: 1,
+                referrer: bytes32(0)
+            });
 
         _commitAndRegister(registration);
 
@@ -122,20 +122,20 @@ contract BasicDotns is BaseDotns {
         string memory label = "bobbob99";
 
         vm.prank(leonardo);
-        priceOracle.setNamePopStatus(label, IStableOracle.PopStatus.PopLite);
+        stableOracle.setNamePopStatus(label, IStableOracle.PopStatus.PopLite);
         vm.stopPrank();
 
-        IETHRegistrarController.Registration memory registration = IETHRegistrarController
-            .Registration({
-            label: label,
-            owner: leonardo,
-            duration: 365 days,
-            secret: keccak256(abi.encodePacked(label, block.timestamp)),
-            resolver: address(publicResolver),
-            data: new bytes[](0),
-            reverseRecord: 1,
-            referrer: bytes32(0)
-        });
+        IDotRegistrarController.Registration memory registration =
+            IDotRegistrarController.Registration({
+                label: label,
+                owner: leonardo,
+                duration: 365 days,
+                secret: keccak256(abi.encodePacked(label, block.timestamp)),
+                resolver: address(publicResolver),
+                data: new bytes[](0),
+                reverseRecord: 1,
+                referrer: bytes32(0)
+            });
 
         _commitAndRegister(registration);
 
@@ -146,20 +146,20 @@ contract BasicDotns is BaseDotns {
         string memory label = "charlie7";
 
         vm.prank(tiago);
-        priceOracle.setNamePopStatus(label, IStableOracle.PopStatus.PopFull);
+        stableOracle.setNamePopStatus(label, IStableOracle.PopStatus.PopFull);
         vm.stopPrank();
 
-        IETHRegistrarController.Registration memory registration = IETHRegistrarController
-            .Registration({
-            label: label,
-            owner: tiago,
-            duration: 365 days,
-            secret: keccak256(abi.encodePacked(label, block.timestamp)),
-            resolver: address(publicResolver),
-            data: new bytes[](0),
-            reverseRecord: 1,
-            referrer: bytes32(0)
-        });
+        IDotRegistrarController.Registration memory registration =
+            IDotRegistrarController.Registration({
+                label: label,
+                owner: tiago,
+                duration: 365 days,
+                secret: keccak256(abi.encodePacked(label, block.timestamp)),
+                resolver: address(publicResolver),
+                data: new bytes[](0),
+                reverseRecord: 1,
+                referrer: bytes32(0)
+            });
 
         _commitAndRegister(registration);
 
@@ -170,20 +170,20 @@ contract BasicDotns is BaseDotns {
         string memory label = "longnamehere";
 
         vm.startPrank(ed);
-        priceOracle.setNamePopStatus(label, IStableOracle.PopStatus.PopFull);
+        stableOracle.setNamePopStatus(label, IStableOracle.PopStatus.PopFull);
         vm.stopPrank();
 
-        IETHRegistrarController.Registration memory registration = IETHRegistrarController
-            .Registration({
-            label: label,
-            owner: ed,
-            duration: 365 days,
-            secret: keccak256(abi.encodePacked(label, block.timestamp)),
-            resolver: address(publicResolver),
-            data: new bytes[](0),
-            reverseRecord: 1,
-            referrer: bytes32(0)
-        });
+        IDotRegistrarController.Registration memory registration =
+            IDotRegistrarController.Registration({
+                label: label,
+                owner: ed,
+                duration: 365 days,
+                secret: keccak256(abi.encodePacked(label, block.timestamp)),
+                resolver: address(publicResolver),
+                data: new bytes[](0),
+                reverseRecord: 1,
+                referrer: bytes32(0)
+            });
 
         _commitAndRegister(registration);
 
@@ -193,17 +193,17 @@ contract BasicDotns is BaseDotns {
     function test_Register9Plus_NoStatus_WhenTwoSuffixDigits() public {
         string memory label = "longnamehere01";
 
-        IETHRegistrarController.Registration memory registration = IETHRegistrarController
-            .Registration({
-            label: label,
-            owner: ed,
-            duration: 365 days,
-            secret: keccak256(abi.encodePacked(label, block.timestamp)),
-            resolver: address(publicResolver),
-            data: new bytes[](0),
-            reverseRecord: 1,
-            referrer: bytes32(0)
-        });
+        IDotRegistrarController.Registration memory registration =
+            IDotRegistrarController.Registration({
+                label: label,
+                owner: ed,
+                duration: 365 days,
+                secret: keccak256(abi.encodePacked(label, block.timestamp)),
+                resolver: address(publicResolver),
+                data: new bytes[](0),
+                reverseRecord: 1,
+                referrer: bytes32(0)
+            });
 
         _commitAndRegister(registration);
 
@@ -214,27 +214,27 @@ contract BasicDotns is BaseDotns {
         string memory label = "alice123";
 
         vm.prank(ed);
-        priceOracle.setNamePopStatus(label, IStableOracle.PopStatus.PopLite);
+        stableOracle.setNamePopStatus(label, IStableOracle.PopStatus.PopLite);
 
-        IETHRegistrarController.Registration memory registration = IETHRegistrarController
-            .Registration({
-            label: label,
-            owner: ed,
-            duration: 365 days,
-            secret: keccak256(abi.encodePacked(label, block.timestamp)),
-            resolver: address(publicResolver),
-            data: new bytes[](0),
-            reverseRecord: 1,
-            referrer: bytes32(0)
-        });
+        IDotRegistrarController.Registration memory registration =
+            IDotRegistrarController.Registration({
+                label: label,
+                owner: ed,
+                duration: 365 days,
+                secret: keccak256(abi.encodePacked(label, block.timestamp)),
+                resolver: address(publicResolver),
+                data: new bytes[](0),
+                reverseRecord: 1,
+                referrer: bytes32(0)
+            });
 
         vm.startPrank(ed);
         vm.warp(block.timestamp + 1);
 
-        bytes32 commitHash = ethRegistrarController.makeCommitment(registration);
-        ethRegistrarController.commit(commitHash);
+        bytes32 commitHash = dotRegistrarController.makeCommitment(registration);
+        dotRegistrarController.commit(commitHash);
 
-        vm.warp(block.timestamp + ethRegistrarController.minCommitmentAge() + 2);
+        vm.warp(block.timestamp + dotRegistrarController.minCommitmentAge() + 2);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -242,7 +242,7 @@ contract BasicDotns is BaseDotns {
             )
         );
 
-        ethRegistrarController.rentPrice(label, 365 days);
+        dotRegistrarController.rentPrice(label, 365 days);
         vm.stopPrank();
     }
 
@@ -250,11 +250,11 @@ contract BasicDotns is BaseDotns {
         string memory label = "testname";
 
         vm.prank(ed);
-        priceOracle.setNamePopStatus(label, IStableOracle.PopStatus.PopFull);
+        stableOracle.setNamePopStatus(label, IStableOracle.PopStatus.PopFull);
         vm.stopPrank();
 
         vm.prank(ed);
-        IStableOracle.PopStatus status = priceOracle.getNamePopStatus(label);
+        IStableOracle.PopStatus status = stableOracle.getNamePopStatus(label);
         vm.stopPrank();
 
         assertEq(uint256(status), uint256(IStableOracle.PopStatus.PopFull));
@@ -264,11 +264,11 @@ contract BasicDotns is BaseDotns {
         string memory label = "alicebob";
 
         vm.prank(ed);
-        priceOracle.setNamePopStatus(label, IStableOracle.PopStatus.PopFull);
+        stableOracle.setNamePopStatus(label, IStableOracle.PopStatus.PopFull);
         vm.stopPrank();
 
         vm.prank(ed);
-        IStableOracle.Price memory priceData = ethRegistrarController.rentPrice(label, 365 days);
+        IStableOracle.Price memory priceData = dotRegistrarController.rentPrice(label, 365 days);
         vm.stopPrank();
 
         assertGt(priceData.base, 0);
@@ -279,21 +279,22 @@ contract BasicDotns is BaseDotns {
         string memory baseLabel = "bobbob";
 
         vm.startPrank(leonardo);
-        priceOracle.setNamePopStatus(suffixLabel, IStableOracle.PopStatus.PopLite);
+        stableOracle.setNamePopStatus(suffixLabel, IStableOracle.PopStatus.PopLite);
         vm.stopPrank();
 
-        IETHRegistrarController.Registration memory regLite = IETHRegistrarController.Registration({
-            label: suffixLabel,
-            owner: leonardo,
-            duration: 365 days,
-            secret: keccak256(abi.encodePacked(suffixLabel, block.timestamp)),
-            resolver: address(publicResolver),
-            data: new bytes[](0),
-            reverseRecord: 1,
-            referrer: bytes32(0)
-        });
+        IDotRegistrarController.Registration memory registration =
+            IDotRegistrarController.Registration({
+                label: suffixLabel,
+                owner: leonardo,
+                duration: 365 days,
+                secret: keccak256(abi.encodePacked(suffixLabel, block.timestamp)),
+                resolver: address(publicResolver),
+                data: new bytes[](0),
+                reverseRecord: 1,
+                referrer: bytes32(0)
+            });
 
-        _commitAndRegister(regLite);
+        _commitAndRegister(registration);
 
         vm.startPrank(tiago);
 
@@ -303,7 +304,7 @@ contract BasicDotns is BaseDotns {
             )
         );
 
-        ethRegistrarController.rentPrice(baseLabel, 365 days);
+        dotRegistrarController.rentPrice(baseLabel, 365 days);
 
         vm.stopPrank();
     }

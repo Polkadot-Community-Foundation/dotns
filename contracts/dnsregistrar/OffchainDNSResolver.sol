@@ -43,10 +43,7 @@ contract OffchainDNSResolver is IExtendedResolver, IERC165 {
         return interfaceId == type(IExtendedResolver).interfaceId;
     }
 
-    function resolve(
-        bytes calldata name,
-        bytes calldata data
-    )
+    function resolve(bytes calldata name, bytes calldata data)
         external
         view
         returns (bytes memory)
@@ -99,9 +96,8 @@ contract OffchainDNSResolver is IExtendedResolver, IERC165 {
                         query,
                         abi.encodeCall(IExtendedDNSResolver.resolve, (name, query, context))
                     );
-                } else if (
-                    IERC165(dnsresolver).supportsInterface(IExtendedResolver.resolve.selector)
-                ) {
+                } else if (IERC165(dnsresolver)
+                        .supportsInterface(IExtendedResolver.resolve.selector)) {
                     return callWithOffchainLookupPropagation(
                         dnsresolver,
                         name,

@@ -149,9 +149,8 @@ abstract contract CCIPBatcher is CCIPReader {
                         EIP3668.Params memory p = decodeOffchainLookup(lu.data);
                         bool ok;
                         // assumption: unsafe contracts don't revert OffchainLookup()
-                        (ok, v) = p.sender.staticcall(
-                            abi.encodeWithSelector(p.callbackFunction, v, p.extraData)
-                        );
+                        (ok, v) = p.sender
+                            .staticcall(abi.encodeWithSelector(p.callbackFunction, v, p.extraData));
                         if (ok || bytes4(v) != OffchainLookup.selector) {
                             lu.flags |= FLAG_DONE;
                             // decision: promote empty response from the callback => call error
