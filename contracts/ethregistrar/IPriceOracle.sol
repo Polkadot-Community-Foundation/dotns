@@ -26,4 +26,18 @@ interface IPriceOracle {
         external
         view
         returns (Price memory pricing);
+
+    /// @notice Returns the pricing premium in wei.
+    /// @param name Domain label to price
+    /// @param expires Current expiration timestamp (zero for new registrations)
+    /// @param duration Registration period in seconds
+    /// @return premiumWei Prremium price
+    function premium(
+        string calldata name,
+        uint256 expires,
+        uint256 duration
+    )
+        external
+        view
+        returns (uint256 premiumWei);
 }

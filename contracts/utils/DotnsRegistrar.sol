@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-import {IDotRegistrarController} from "../ethRegistrar/IDotRegistrarController.sol";
+import {IDotRegistrarController} from "../ethregistrar/IDotRegistrarController.sol";
 import {ENS} from "../registry/ENS.sol";
 import {IStoreFactory} from "./IStoreFactory.sol";
 import {IStore} from "./IStore.sol";

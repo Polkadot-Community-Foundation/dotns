@@ -55,10 +55,12 @@ interface IStableOracle is IPriceOracle {
     /// @notice Bundle returned from metadata-aware pricing queries
     /// @param price Base and premium values in wei
     /// @param status Required PoP tier for this name
+    /// @param userStatus Currently set user POP status
     /// @param message Human-readable classification description
     struct PriceWithMeta {
         IPriceOracle.Price price;
         PopStatus status;
+        PopStatus userStatus;
         string message;
     }
 
@@ -77,10 +79,11 @@ interface IStableOracle is IPriceOracle {
     ///      The name we check if the names status was setup by them
     function setNamePopStatus(string calldata name, PopStatus status) external;
 
-    /// @notice Returns the PoP verification tier assigned to a name
-    /// @param name The name label
-    /// @return The assigned PopStatus tier
-    function getNamePopStatus(string calldata name) external view returns (PopStatus);
+    /// @notice Retrieves PoP status for a name
+    /// @param name Domain label
+    /// @param who Owner of the Domain label
+    /// @return status Assigned PoP tier for caller
+    function getNamePopStatus(string calldata name, address who) external view returns (PopStatus);
 
     /// @notice Classifies a name into a required PoP tier according to DotNS naming rules
     /// @param name The name label being evaluated
@@ -116,22 +119,31 @@ interface IStableOracle is IPriceOracle {
         view
         returns (bool reservedStatus, address owner, uint64 expires);
 
-    /// @notice Computes pricing and classification metadata while enforcing base-name reservation rules
-    /// @param name The full name label (with or without suffix)
-    /// @param expires Current expiry timestamp for the name
-    /// @param duration Duration of requested registration
-    /// @param user Address attempting to register
-    /// @return meta A bundle containing pricing and classification metadata
+    /// @notice Calculates price with PoP and reservation validation
+    /// @param name Domain label
+    /// @param expires Current expiration (zero for new registration)
+    /// @param duration Registration period in seconds
+    /// @param userAddress Registering user for the given label
+    ///@dev We currently revert on names considered as reserved for Governance
+    ///     We will need more clarification on how to treat the path of allowing
+    ///     Names of this length to be registered
+    ///     The price we apply here is merely for spam protection and is insignificant
+    /// @return metadata Price with PoP requirements
     function priceWithCheck(
         string calldata name,
         uint256 expires,
         uint256 duration,
-        address user
+        address userAddress
     )
         external
         view
-        returns (PriceWithMeta memory meta);
+        returns (PriceWithMeta memory metadata);
 
+    /// @notice Used to determine if a given name is a base name
+    ///        Base name means has no trailing digits based on POP rules
+    /// @param name The name to check
+    /// @return isBase stating if the name is base or not
+    function isBaseName(string calldata name) external view returns (bool isBase);
     /// @notice allows the Owner to update the dot/eth registry
     /// @param ethReg the address of the new registry
     function updateEthRegistry(address ethReg) external;

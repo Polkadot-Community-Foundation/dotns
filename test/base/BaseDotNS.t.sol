@@ -245,6 +245,7 @@ abstract contract BaseDotns is Test {
         vm.label(address(multicall3), "Multicall3");
         stableOracle.updateEthRegistry(address(dotRegistrarController));
         vm.stopPrank();
+        vm.warp(block.timestamp + 121 days);
     }
 
     /// @notice Create a new test user with funded native balance and private key
@@ -283,10 +284,10 @@ abstract contract BaseDotns is Test {
         bytes32 labelhash = keccak256(bytes(label));
         return keccak256(abi.encodePacked(DOT_NODE, labelhash));
     }
+
     /// @notice Helper function to commit and register a name in a single call
     /// @dev Handles the full registration flow: commit, wait for min commitment age, then register
     /// @param registration Registration struct containing label, owner, duration, and other parameters
-
     function _commitAndRegister(IDotRegistrarController.Registration memory registration) internal {
         vm.startPrank(registration.owner);
         vm.warp(block.timestamp + 1);
@@ -296,6 +297,17 @@ abstract contract BaseDotns is Test {
         uint256 price =
             dotRegistrarController.rentPrice(registration.label, registration.duration).base;
         dotRegistrarController.register{value: price}(registration);
+        vm.stopPrank();
+    }
+
+    /// @notice Helper function to commit a name in a single call
+    /// @param registration Registration struct containing label, owner, duration, and other parameters
+    function _commit(IDotRegistrarController.Registration memory registration) internal {
+        vm.startPrank(registration.owner);
+        vm.warp(block.timestamp + 1);
+        bytes32 commit = dotRegistrarController.makeCommitment(registration);
+        dotRegistrarController.commit(commit);
+        vm.warp(block.timestamp + dotRegistrarController.minCommitmentAge() + 2);
         vm.stopPrank();
     }
 }

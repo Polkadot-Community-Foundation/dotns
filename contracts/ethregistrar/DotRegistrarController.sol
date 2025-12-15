@@ -149,9 +149,16 @@ contract DotRegistrarController is Ownable, IDotRegistrarController, ERC165, ERC
     /// @inheritdoc IDotRegistrarController
     function register(Registration calldata registration) public payable override {
         bytes32 labelhash = keccak256(bytes(registration.label));
-        IStableOracle.Price memory price =
-            _rentPrice(registration.label, labelhash, registration.duration);
-        uint256 totalCost = price.base + price.premium;
+        IStableOracle.PriceWithMeta memory price = oracle.priceWithCheck(
+            registration.label,
+            baseRegistrar.nameExpires(uint256(labelhash)),
+            registration.duration,
+            registration.owner
+        );
+
+        uint256 totalCost = price.userStatus == IStableOracle.PopStatus.PopFull
+            ? 0
+            : price.price.base + price.price.premium;
 
         require(msg.value >= totalCost, InsufficientValue());
         require(_available(registration.label, labelhash), NameNotAvailable(registration.label));
@@ -216,13 +223,15 @@ contract DotRegistrarController is Ownable, IDotRegistrarController, ERC165, ERC
             registration.label,
             labelhash,
             registration.owner,
-            price.base,
-            price.premium,
+            price.price.base,
+            price.price.premium,
             expirationTime,
             registration.referrer
         );
 
-        oracle.reserveBaseName(registration.label, msg.sender);
+        if (price.userStatus == IStableOracle.PopStatus.PopLite) {
+            oracle.reserveBaseName(registration.label, msg.sender);
+        }
 
         if (msg.value > totalCost) {
             (bool success,) = payable(msg.sender).call{value: msg.value - totalCost}("");
@@ -281,10 +290,9 @@ contract DotRegistrarController is Ownable, IDotRegistrarController, ERC165, ERC
         view
         returns (IStableOracle.Price memory price)
     {
-        IStableOracle.PriceWithMeta memory meta = oracle.priceWithCheck(
-            label, baseRegistrar.nameExpires(uint256(labelhash)), duration, msg.sender
-        );
-        return meta.price;
+        IStableOracle.Price memory price =
+            oracle.price(label, baseRegistrar.nameExpires(uint256(labelhash)), duration);
+        return price;
     }
 
     /// @notice Internal availability check

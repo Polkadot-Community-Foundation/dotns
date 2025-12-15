@@ -24,7 +24,7 @@ interface AggregatorInterface {
 /// @title Stable Oracle
 /// @notice Implements DotNS pricing with PoP-tier validation and base-name reservations
 /// @dev Upgradeable via UUPS - manages classification and pricing for .dot domains
-/// @custom:security-contact security@example.com
+/// @custom:security-contact admin@parity.io
 contract StableOracle is
     Initializable,
     UUPSUpgradeable,
@@ -60,6 +60,10 @@ contract StableOracle is
     /// @dev Base name is digit-stripped form of label
     mapping(string => Reservation) public reservations;
 
+    /// @notice This represents the currently set
+    ///.        Time that a given base name is reserved for
+    uint256 public constant MAX_RESERVATION_TIME = 12 weeks;
+
     /// @notice Namehash of .dot TLD
     bytes32 private constant DOT_NODE =
         0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
@@ -93,7 +97,8 @@ contract StableOracle is
     )
         internal
         onlyInitializing
-{       __UUPSUpgradeable_init();
+    {
+        __UUPSUpgradeable_init();
         __Ownable_init();
         __ERC165_init();
         usdOracle = AggregatorInterface(oracleAddress);
@@ -111,9 +116,7 @@ contract StableOracle is
         __StableOracle_init(oracleAddress, rentPrices);
     }
 
-    /// @notice Assigns PoP status to a name for caller
-    /// @param name Domain label
-    /// @param status PoP tier to assign
+    /// @inheritdoc IStableOracle
     function setNamePopStatus(string calldata name, PopStatus status) external override {
         bytes32 labelhash = keccak256(bytes(name));
         bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
@@ -122,24 +125,22 @@ contract StableOracle is
         emit NamePopStatusSet(name, status, msg.sender);
     }
 
-    /// @notice Retrieves PoP status for a name
-    /// @param name Domain label
-    /// @return status Assigned PoP tier for caller
-    function getNamePopStatus(string calldata name)
-        external
+    /// @inheritdoc IStableOracle
+    function getNamePopStatus(
+        string calldata name,
+        address who
+    )
+        public
         view
         override
         returns (PopStatus status)
     {
         bytes32 labelhash = keccak256(bytes(name));
         bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
-        return namePopStatus[msg.sender][node];
+        return namePopStatus[who][node];
     }
 
-    /// @notice Determines required PoP tier for a name
-    /// @param name Domain label to classify
-    /// @return requirement Required PoP tier
-    /// @return message Classification explanation
+    /// @inheritdoc IStableOracle
     function classifyName(string calldata name)
         public
         pure
@@ -169,53 +170,50 @@ contract StableOracle is
         return (PopStatus.PopFull, "Requires Full personhood verification");
     }
 
-    /// @notice Reserves a base name for initial registrant
-    /// @param baseName Domain label to reserve
-    /// @param userAddress Address of initial registrant
+    /// @inheritdoc IStableOracle
     function reserveBaseName(
-        string calldata baseName,
+        string calldata name,
         address userAddress
     )
         external
         override
         onlyRegistry
     {
-        string memory strippedBase = _stripDigits(baseName);
-
+        string memory strippedBase = _stripDigits(name);
+        PopStatus userStatus = getNamePopStatus(name, userAddress);
+        require(userStatus == PopStatus.PopLite, PopError("Only Personhood lite can reserve names"));
         Reservation memory existingReservation = reservations[strippedBase];
         if (existingReservation.owner == address(0)) {
-            uint64 expiryTime = uint64(block.timestamp + 12 weeks);
+            uint64 expiryTime = uint64(block.timestamp + MAX_RESERVATION_TIME);
             reservations[strippedBase] = Reservation(userAddress, expiryTime);
             emit BaseNameReserved(strippedBase, userAddress, expiryTime);
         }
     }
 
-    /// @notice Updates registry controller address
-    /// @param newRegistry New controller address
+    /// @inheritdoc IStableOracle
     function updateEthRegistry(address newRegistry) external override onlyOwner {
         emit RegistryUpdated(ethRegistryController, newRegistry);
         ethRegistryController = newRegistry;
     }
 
-    /// @notice Retrieves base name reservation details
-    /// @param baseName Base name to query
-    /// @return reservationOwner Owner of reservation
-    /// @return expiryTimestamp Expiration timestamp
+    /// @inheritdoc IStableOracle
+    function isBaseName(string calldata baseName) public view override returns (bool isBase) {
+        uint256 digits = _countTrailingDigits(baseName);
+        return digits == 0;
+    }
+
+    /// @inheritdoc IStableOracle
     function getBaseNameReservation(string calldata baseName)
         external
         view
         override
         returns (address reservationOwner, uint64 expiryTimestamp)
     {
-        Reservation memory r = reservations[baseName];
-        return (r.owner, r.expires);
+        Reservation memory reserved = reservations[baseName];
+        return (reserved.owner, reserved.expires);
     }
 
-    /// @notice Checks if base name is currently reserved
-    /// @param baseName Base name to check
-    /// @return isReserved True if actively reserved
-    /// @return reservationOwner Owner of reservation
-    /// @return expiryTimestamp Expiration timestamp
+    /// @inheritdoc IStableOracle
     function isBaseNameReserved(string calldata baseName)
         external
         view
@@ -229,16 +227,7 @@ contract StableOracle is
         return (false, r.owner, r.expires);
     }
 
-    /// @notice Calculates price with PoP and reservation validation
-    /// @param name Domain label
-    /// @param expires Current expiration (zero for new registration)
-    /// @param duration Registration period in seconds
-    /// @param userAddress Registering user
-    ///@dev We currently revert on names considered as reserved for Governance
-    ///     We will need more clarification on how to treat the path of allowing
-    ///     Names of this length to be registered
-    ///     The price we apply here is merely for spam protection and is insignificant
-    /// @return metadata Price with PoP requirements
+    /// @inheritdoc IStableOracle
     function priceWithCheck(
         string calldata name,
         uint256 expires,
@@ -250,31 +239,29 @@ contract StableOracle is
         override
         returns (PriceWithMeta memory metadata)
     {
+        // We call this to ensure we dont allow
+        // Querying of any names that have been
+        // Reserved so we fail fast
         _enforceReservationRules(name, userAddress);
 
         metadata.price = price(name, expires, duration);
         (PopStatus requiredStatus, string memory classification) = classifyName(name);
+        PopStatus userStatus = getNamePopStatus(name, userAddress);
         metadata.status = requiredStatus;
         metadata.message = classification;
-
+        metadata.userStatus = userStatus;
         require(requiredStatus != PopStatus.Reserved, PopError(classification));
 
-        bytes32 labelhash = keccak256(bytes(name));
-        bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
-        PopStatus claimedStatus = namePopStatus[userAddress][node];
-
-        require(
-            requiredStatus != PopStatus.PopFull || claimedStatus == PopStatus.PopFull,
-            PopError("Requires Full Personhood verification")
-        );
-
-        if (requiredStatus == PopStatus.PopLite) {
+        if (requiredStatus == PopStatus.PopFull) {
             require(
-                claimedStatus == PopStatus.PopLite || claimedStatus == PopStatus.PopFull,
+                userStatus == PopStatus.PopFull, PopError("Requires Full Personhood verification")
+            );
+        } else if (requiredStatus == PopStatus.PopLite) {
+            require(
+                userStatus == PopStatus.PopLite || userStatus == PopStatus.PopFull,
                 PopError("Requires Personhood Lite verification")
             );
         }
-
         return metadata;
     }
 
@@ -292,11 +279,7 @@ contract StableOracle is
         }
     }
 
-    /// @notice Calculates registration or renewal price
-    /// @param name Domain label
-    /// @param expires Current expiration (zero for new registration)
-    /// @param duration Registration period in seconds
-    /// @return pricing Price breakdown
+    /// @inheritdoc IPriceOracle
     function price(
         string calldata name,
         uint256 expires,
@@ -321,11 +304,7 @@ contract StableOracle is
         });
     }
 
-    /// @notice Calculates premium for expired domain
-    /// @param name Domain label
-    /// @param expires Expiration timestamp
-    /// @param duration Registration period
-    /// @return premiumWei Premium in wei
+    /// @inheritdoc IPriceOracle
     function premium(
         string calldata name,
         uint256 expires,
