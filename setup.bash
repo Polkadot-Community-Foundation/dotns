@@ -70,9 +70,9 @@ init_submodules(){
 patch_openzeppelin_upgrades(){
   echo "Patching OpenZeppelin upgrades library..."
   local upgrades_file="lib/openzeppelin-foundry-upgrades/src/Upgrades.sol"
-  local patch_file="$(pwd)/Upgrades.p.sol"
+  local patch_file="$(pwd)/contracts/patch/Upgrades.sol"
   if [ ! -f "$patch_file" ]; then
-    echo "  ⚠ Patch file 'Upgrades.p.sol' not found, skipping patch"
+    echo "  ⚠ Patch file 'Upgrades.sol' not found, skipping patch"
     return 0
   fi
   if [ ! -f "$upgrades_file" ]; then

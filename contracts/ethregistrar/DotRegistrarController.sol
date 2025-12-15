@@ -290,9 +290,7 @@ contract DotRegistrarController is Ownable, IDotRegistrarController, ERC165, ERC
         view
         returns (IStableOracle.Price memory price)
     {
-        IStableOracle.Price memory price =
-            oracle.price(label, baseRegistrar.nameExpires(uint256(labelhash)), duration);
-        return price;
+        return oracle.price(label, baseRegistrar.nameExpires(uint256(labelhash)), duration);
     }
 
     /// @notice Internal availability check
