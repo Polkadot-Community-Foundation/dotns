@@ -31,5 +31,3 @@ yul = true
 
 [rpc_endpoints]
 paseo_local = "http://127.0.0.1:8545"
-paseo_testnet = "wss://testnet-passet-hub.polkadot.io"
-anvil = "http://127.0.0.1:8545"
