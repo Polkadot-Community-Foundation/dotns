@@ -1,18 +1,21 @@
 name: Deploy Contracts and Verify artifacts
+
 on:
   pull_request:
-    branches:
-      - main
+    branches: [main]
   push:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repo
+      - name: Checkout repo (with submodules)
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -50,7 +53,7 @@ jobs:
 
       - name: Verify deployment artifact exists
         run: |
-          [ -f deployments/paseo-local/420420420.json ] || exit 1
+          [ -f deployments/paseo-local/420420420.json ]
 
       - name: Stop Anvil
         if: always()
