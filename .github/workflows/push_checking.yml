@@ -1,0 +1,67 @@
+name: Test Solidity Contracts
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'script/**'
+      - 'test/**'
+      - '**.sol'
+
+jobs:
+  test:
+    name: Run contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Foundry toolchain
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Display Foundry version
+        run: |
+          forge --version
+          cast --version
+
+      - name: Setup Bun runtime
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Display Bun version
+        run: bun --version
+
+      - name: Install project dependencies
+        run: |
+          echo "Installing dependencies with Bun..."
+          bun install --verbose
+
+      - name: Build contracts
+        run: |
+          echo "Building Solidity contracts..."
+          forge build --sizes -vvvvv
+
+      - name: Run contract tests
+        run: |
+          echo "Running Foundry tests..."
+          forge test -vvvvv
+
+      - name: Generate gas report
+        run: |
+          echo "Generating gas usage report..."
+          forge test --gas-report
+
+      - name: Test summary
+        if: success()
+        run: echo "✓ All tests passed successfully"
+
+      - name: Test failed
+        if: failure()
+        run: |
+          echo "✗ Tests failed"
+          exit 1

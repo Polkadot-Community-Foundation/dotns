@@ -11,3 +11,4 @@ out
 deployments/**/.pendingSafeTransactions
 deployments/localhost
 broadcast/*
+/bin/*

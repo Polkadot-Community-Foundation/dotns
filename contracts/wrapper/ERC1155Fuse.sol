@@ -66,16 +66,7 @@ abstract contract ERC1155Fuse is ERC165, IERC1155, IERC1155MetadataURI {
     /// @dev See {IERC1155-balanceOf}.
     /// Requirements:
     /// - `account` cannot be the zero address.
-    function balanceOf(
-        address account,
-        uint256 id
-    )
-        public
-        view
-        virtual
-        override
-        returns (uint256)
-    {
+    function balanceOf(address account, uint256 id) public view virtual override returns (uint256) {
         require(account != address(0), "ERC1155: balance query for the zero address");
         address owner = ownerOf(id);
         if (owner == account) {
@@ -300,7 +291,7 @@ abstract contract ERC1155Fuse is ERC165, IERC1155, IERC1155MetadataURI {
     )
         private
     {
-        if (to.isContract()) {
+        if (to.code.length > 0) {
             try IERC1155Receiver(to).onERC1155Received(operator, from, id, amount, data) returns (
                 bytes4 response
             ) {
@@ -325,9 +316,11 @@ abstract contract ERC1155Fuse is ERC165, IERC1155, IERC1155MetadataURI {
     )
         private
     {
-        if (to.isContract()) {
-            try IERC1155Receiver(to).onERC1155BatchReceived(operator, from, ids, amounts, data)
-            returns (bytes4 response) {
+        if (to.code.length > 0) {
+            try IERC1155Receiver(to)
+                .onERC1155BatchReceived(operator, from, ids, amounts, data) returns (
+                bytes4 response
+            ) {
                 if (response != IERC1155Receiver(to).onERC1155BatchReceived.selector) {
                     revert("ERC1155: ERC1155Receiver rejected tokens");
                 }

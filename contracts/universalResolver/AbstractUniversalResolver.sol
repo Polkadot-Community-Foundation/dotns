@@ -41,11 +41,7 @@ abstract contract AbstractUniversalResolver is IUniversalResolver, CCIPBatcher, 
     }
 
     /// @inheritdoc IUniversalResolver
-    function findResolver(bytes memory name)
-        public
-        view
-        virtual
-        returns (address, bytes32, uint256);
+    function findResolver(bytes memory name) public view virtual returns (address, bytes32, uint256);
 
     /// @dev A valid resolver and its relevant properties.
     struct ResolverInfo {
@@ -70,11 +66,9 @@ abstract contract AbstractUniversalResolver is IUniversalResolver, CCIPBatcher, 
     function _checkResolver(ResolverInfo memory info) internal view {
         if (info.resolver == address(0)) {
             revert ResolverNotFound(info.name);
-        } else if (
-            ERC165Checker.supportsERC165InterfaceUnchecked(
+        } else if (ERC165Checker.supportsERC165InterfaceUnchecked(
                 info.resolver, type(IExtendedResolver).interfaceId
-            )
-        ) {
+            )) {
             info.extended = true;
         } else if (info.offset != 0) {
             revert ResolverNotFound(info.name); // immediate resolver requires exact match
@@ -292,15 +286,12 @@ abstract contract AbstractUniversalResolver is IUniversalResolver, CCIPBatcher, 
         bool multi = bytes4(call) == IMulticallable.multicall.selector;
         if (
             ERC165Checker.supportsERC165InterfaceUnchecked(
-                info.resolver, type(IERC7996).interfaceId
-            )
-                && (
-                    !multi
-                        || (
-                            info.extended
-                                && IERC7996(info.resolver).supportsFeature(ResolverFeatures.RESOLVE_MULTICALL)
-                        )
+                    info.resolver, type(IERC7996).interfaceId
                 )
+                && (!multi
+                    || (info.extended
+                        && IERC7996(info.resolver)
+                            .supportsFeature(ResolverFeatures.RESOLVE_MULTICALL)))
         ) {
             ccipRead(
                 address(info.resolver),
@@ -350,13 +341,7 @@ abstract contract AbstractUniversalResolver is IUniversalResolver, CCIPBatcher, 
     }
 
     /// @dev CCIP-Read callback for `_callResolver()` from calling the batch gateway successfully.
-    function resolveBatchCallback(
-        bytes calldata response,
-        bytes calldata extraData
-    )
-        external
-        view
-    {
+    function resolveBatchCallback(bytes calldata response, bytes calldata extraData) external view {
         Lookup[] memory lookups = abi.decode(response, (Batch)).lookups;
         (bool extended, bool multi, bytes4 callbackFunction, bytes memory extraData_) =
             abi.decode(extraData, (bool, bool, bytes4, bytes));

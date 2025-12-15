@@ -7,7 +7,7 @@ import {NameCoder} from "../../utils/NameCoder.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract TestUnwrap is Ownable {
-    bytes32 private constant ETH_NODE =
+    bytes32 private constant DOT_NODE =
         0x93cdeb708b7545dc668eb9280176169d1c33cfd8ed6f04690a0bcc88a93fc4ae;
 
     ENS public immutable ens;
@@ -64,7 +64,7 @@ contract TestUnwrap is Ownable {
         bytes32 parentNode = NameCoder.namehash(name, offset);
         bytes32 node = _makeNode(parentNode, labelhash);
 
-        if (parentNode == ETH_NODE) {
+        if (parentNode == DOT_NODE) {
             _unwrapETH2LD(labelhash, wrappedOwner, msg.sender);
         } else {
             _unwrapSubnode(node, wrappedOwner, msg.sender);
@@ -89,7 +89,8 @@ contract TestUnwrap is Ownable {
         address owner = ens.owner(node);
 
         require(
-            approvedWrapper[sender] && owner == sender && ens.isApprovedForAll(owner, address(this)),
+            approvedWrapper[sender] && owner == sender
+                && ens.isApprovedForAll(owner, address(this)),
             "Unauthorised"
         );
 

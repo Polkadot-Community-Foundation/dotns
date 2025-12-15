@@ -61,7 +61,7 @@ contract NameWrapper is
     string public constant name = "NameWrapper";
 
     uint64 private constant GRACE_PERIOD = 90 days;
-    bytes32 private constant ETH_NODE =
+    bytes32 private constant DOT_NODE =
         0x93cdeb708b7545dc668eb9280176169d1c33cfd8ed6f04690a0bcc88a93fc4ae;
     bytes32 private constant ETH_LABELHASH =
         0x4f5b812789fc606be1b3b16908db13fc7a9adf7ca72641f84d75b47069d3d7f0;
@@ -82,10 +82,10 @@ contract NameWrapper is
         registrar = _registrar;
         metadataService = _metadataService;
 
-        /* Burn PARENT_CANNOT_CONTROL and CANNOT_UNWRAP fuses for ROOT_NODE and ETH_NODE and set expiry to max */
+        /* Burn PARENT_CANNOT_CONTROL and CANNOT_UNWRAP fuses for ROOT_NODE and DOT_NODE and set expiry to max */
 
         _setData(
-            uint256(ETH_NODE), address(0), uint32(PARENT_CANNOT_CONTROL | CANNOT_UNWRAP), MAX_EXPIRY
+            uint256(DOT_NODE), address(0), uint32(PARENT_CANNOT_CONTROL | CANNOT_UNWRAP), MAX_EXPIRY
         );
         _setData(
             uint256(ROOT_NODE),
@@ -94,7 +94,7 @@ contract NameWrapper is
             MAX_EXPIRY
         );
         names[ROOT_NODE] = "\x00";
-        names[ETH_NODE] = "\x03eth\x00";
+        names[DOT_NODE] = "\x03eth\x00";
     }
 
     function supportsInterface(bytes4 interfaceId)
@@ -105,7 +105,8 @@ contract NameWrapper is
         returns (bool)
     {
         return interfaceId == type(INameWrapper).interfaceId
-            || interfaceId == type(IERC721Receiver).interfaceId || super.supportsInterface(interfaceId);
+            || interfaceId == type(IERC721Receiver).interfaceId
+            || super.supportsInterface(interfaceId);
     }
 
     /* ERC1155 Fuse */
@@ -219,8 +220,9 @@ contract NameWrapper is
     /// @return whether or not is owner or operator
     function canModifyName(bytes32 node, address addr) public view returns (bool) {
         (address owner, uint32 fuses, uint64 expiry) = getData(uint256(node));
-        return (owner == addr || isApprovedForAll(owner, addr))
-            && !_isETH2LDInGracePeriod(fuses, expiry);
+        return
+            (owner == addr || isApprovedForAll(owner, addr))
+                && !_isETH2LDInGracePeriod(fuses, expiry);
     }
 
     /// @notice Checks if owner/operator or approved by owner
@@ -229,9 +231,9 @@ contract NameWrapper is
     /// @return whether or not is owner/operator or approved
     function canExtendSubnames(bytes32 node, address addr) public view returns (bool) {
         (address owner, uint32 fuses, uint64 expiry) = getData(uint256(node));
-        return (
-            owner == addr || isApprovedForAll(owner, addr) || getApproved(uint256(node)) == addr
-        ) && !_isETH2LDInGracePeriod(fuses, expiry);
+        return (owner == addr
+                || isApprovedForAll(owner, addr)
+                || getApproved(uint256(node)) == addr) && !_isETH2LDInGracePeriod(fuses, expiry);
     }
 
     /// @notice Wraps a .eth domain, creating a new token and sending the original ERC721 token to this contract
@@ -252,7 +254,7 @@ contract NameWrapper is
         uint256 tokenId = uint256(keccak256(bytes(label)));
         address registrant = registrar.ownerOf(tokenId);
         if (registrant != msg.sender && !registrar.isApprovedForAll(registrant, msg.sender)) {
-            revert Unauthorised(_makeNode(ETH_NODE, bytes32(tokenId)), msg.sender);
+            revert Unauthorised(_makeNode(DOT_NODE, bytes32(tokenId)), msg.sender);
         }
 
         // transfer the token from the user to this contract
@@ -309,7 +311,7 @@ contract NameWrapper is
         onlyController
         returns (uint256 expires)
     {
-        bytes32 node = _makeNode(ETH_NODE, bytes32(tokenId));
+        bytes32 node = _makeNode(DOT_NODE, bytes32(tokenId));
 
         uint256 registrarExpiry = registrar.renew(tokenId, duration);
 
@@ -344,7 +346,7 @@ contract NameWrapper is
 
         names[node] = name;
 
-        if (parentNode == ETH_NODE) {
+        if (parentNode == DOT_NODE) {
             revert IncompatibleParent();
         }
 
@@ -374,12 +376,12 @@ contract NameWrapper is
         address controller
     )
         public
-        onlyTokenOwner(_makeNode(ETH_NODE, labelhash))
+        onlyTokenOwner(_makeNode(DOT_NODE, labelhash))
     {
         if (registrant == address(this)) {
             revert IncorrectTargetOwner(registrant);
         }
-        _unwrap(_makeNode(ETH_NODE, labelhash), controller);
+        _unwrap(_makeNode(DOT_NODE, labelhash), controller);
         registrar.safeTransferFrom(address(this), registrant, uint256(labelhash));
     }
 
@@ -396,7 +398,7 @@ contract NameWrapper is
         public
         onlyTokenOwner(_makeNode(parentNode, labelhash))
     {
-        if (parentNode == ETH_NODE) {
+        if (parentNode == DOT_NODE) {
             revert IncompatibleParent();
         }
         if (controller == address(0x0) || controller == address(this)) {
@@ -730,7 +732,7 @@ contract NameWrapper is
     function isWrapped(bytes32 parentNode, bytes32 labelhash) public view returns (bool) {
         bytes32 node = _makeNode(parentNode, labelhash);
         bool wrapped = _isWrapped(node);
-        if (parentNode != ETH_NODE) {
+        if (parentNode != DOT_NODE) {
             return wrapped;
         }
         try registrar.ownerOf(uint256(labelhash)) returns (address owner) {
@@ -975,7 +977,7 @@ contract NameWrapper is
         private
     {
         bytes32 labelhash = keccak256(bytes(label));
-        bytes32 node = _makeNode(ETH_NODE, labelhash);
+        bytes32 node = _makeNode(DOT_NODE, labelhash);
         // hardcode dns-encoded eth string for gas savings
         bytes memory name = _addLabel(label, "\x03eth\x00");
         names[node] = name;

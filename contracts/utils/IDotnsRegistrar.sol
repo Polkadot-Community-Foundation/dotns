@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-import {IETHRegistrarController} from "../ethRegistrar/IETHRegistrarController.sol";
+import {IDotRegistrarController} from "../ethregistrar/IDotRegistrarController.sol";
 
 /// @title IDotnsRegistrar
 /// @notice Interface for orchestrating ENS registration and subdomain management with automated storage.
@@ -24,15 +24,15 @@ interface IDotnsRegistrar {
     );
 
     /// @notice Register a new ENS name and automatically record it in the specified user store.
-    /// @dev Performs two atomic operations: registers the name via ETHRegistrarController and
+    /// @dev Performs two atomic operations: registers the name via DotRegistrarController and
     ///      records the registration in the user's store. The entire transaction reverts if any step fails.
     ///      The store must be deployed via StoreFactory and must have authorized this registrar contract.
-    /// @param registration The registration parameters required by ETHRegistrarController.
+    /// @param registration The registration parameters required by DotRegistrarController.
     /// @param store The address of the user's deployed store contract where the subdomain will be recorded.
     /// @custom:reverts If registration fails, store is not deployed, store has not authorized this contract,
     ///                 or storage operation fails.
     function registerAndStore(
-        IETHRegistrarController.Registration calldata registration,
+        IDotRegistrarController.Registration calldata registration,
         address store
     )
         external

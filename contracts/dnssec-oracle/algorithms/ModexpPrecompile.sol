@@ -23,8 +23,14 @@ library ModexpPrecompile {
         output = new bytes(modulus.length);
 
         assembly {
-            success :=
-                staticcall(gas(), 5, add(input, 32), mload(input), add(output, 32), mload(modulus))
+            success := staticcall(
+                gas(),
+                5,
+                add(input, 32),
+                mload(input),
+                add(output, 32),
+                mload(modulus)
+            )
         }
     }
 }

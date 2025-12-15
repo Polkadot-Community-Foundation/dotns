@@ -16,14 +16,7 @@ contract TestNameCoder {
         return NameCoder.countLabels(name, offset);
     }
 
-    function readLabel(
-        bytes memory name,
-        uint256 offset
-    )
-        external
-        pure
-        returns (bytes32, uint256)
-    {
+    function readLabel(bytes memory name, uint256 offset) external pure returns (bytes32, uint256) {
         return NameCoder.readLabel(name, offset);
     }
 
@@ -70,14 +63,7 @@ contract TestNameCoder {
         return NameCoder.ethName(label);
     }
 
-    function addLabel(
-        bytes memory name,
-        string memory label
-    )
-        external
-        pure
-        returns (bytes memory)
-    {
+    function addLabel(bytes memory name, string memory label) external pure returns (bytes memory) {
         return NameCoder.addLabel(name, label);
     }
 }

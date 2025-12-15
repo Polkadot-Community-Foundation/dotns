@@ -44,14 +44,7 @@ contract EllipticCurve {
     }
 
     /// @dev Transform affine coordinates into projective coordinates.
-    function toProjectivePoint(
-        uint256 x0,
-        uint256 y0
-    )
-        internal
-        pure
-        returns (uint256[3] memory P)
-    {
+    function toProjectivePoint(uint256 x0, uint256 y0) internal pure returns (uint256[3] memory P) {
         P[2] = addmod(0, 1, p);
         P[0] = mulmod(x0, P[2], p);
         P[1] = mulmod(y0, P[2], p);

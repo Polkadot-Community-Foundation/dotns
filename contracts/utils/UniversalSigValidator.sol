@@ -38,7 +38,8 @@ contract UniversalSigValidator {
         // - ERC-1271 verification if there's contract code
         // - finally, ecrecover
         bool isCounterfactual = _signature.length >= 32
-            && bytes32(_signature[_signature.length - 32:_signature.length]) == ERC6492_DETECTION_SUFFIX;
+            && bytes32(_signature[_signature.length - 32:_signature.length])
+                == ERC6492_DETECTION_SUFFIX;
         if (isCounterfactual) {
             address create2Factory;
             bytes memory factoryCalldata;

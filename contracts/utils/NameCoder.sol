@@ -17,7 +17,7 @@ import {BytesUtils} from "./BytesUtils.sol";
 ///
 library NameCoder {
     /// @dev The namehash of "eth".
-    bytes32 public constant ETH_NODE =
+    bytes32 public constant DOT_NODE =
         0x93cdeb708b7545dc668eb9280176169d1c33cfd8ed6f04690a0bcc88a93fc4ae;
 
     /// @dev The label was empty.
@@ -340,14 +340,7 @@ library NameCoder {
     /// @param label The child label to prepend.
     ///
     /// @return The DNS-encoded child name.
-    function addLabel(
-        bytes memory name,
-        string memory label
-    )
-        internal
-        pure
-        returns (bytes memory)
-    {
+    function addLabel(bytes memory name, string memory label) internal pure returns (bytes memory) {
         return abi.encodePacked(assertLabelSize(label), label, name);
     }
 

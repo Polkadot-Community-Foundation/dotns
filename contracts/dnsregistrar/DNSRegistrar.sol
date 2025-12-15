@@ -112,8 +112,9 @@ contract DNSRegistrar is IDNSRegistrar, IERC165 {
     }
 
     function supportsInterface(bytes4 interfaceID) external pure override returns (bool) {
-        return interfaceID == type(IERC165).interfaceId
-            || interfaceID == type(IDNSRegistrar).interfaceId;
+        return
+            interfaceID == type(IERC165).interfaceId
+                || interfaceID == type(IDNSRegistrar).interfaceId;
     }
 
     function _claim(

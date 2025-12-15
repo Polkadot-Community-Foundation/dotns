@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-import {IETHRegistrarController} from "../ethRegistrar/IETHRegistrarController.sol";
+import {IDotRegistrarController} from "../ethregistrar/IDotRegistrarController.sol";
 import {ENS} from "../registry/ENS.sol";
 import {IStoreFactory} from "./IStoreFactory.sol";
 import {IStore} from "./IStore.sol";
@@ -11,25 +11,25 @@ import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
 /// @notice Orchestrates ENS registration and subdomain management with automated storage.
 /// @dev Combines ENS operations with user store management to provide atomic registration workflows.
 contract DotnsRegistrar is IDotnsRegistrar {
-    IETHRegistrarController public immutable registrar;
+    IDotRegistrarController public immutable registrar;
 
     ENS public immutable registry;
 
     IStoreFactory public immutable storeFactory;
 
     /// @notice Initializes the orchestrator with required contract addresses.
-    /// @param registrarAddress The address of the ETHRegistrarController contract.
+    /// @param registrarAddress The address of the DotRegistrarController contract.
     /// @param registryAddress The address of the ENS Registry contract.
     /// @param storeFactoryAddress The address of the StoreFactory contract.
     constructor(address registrarAddress, address registryAddress, address storeFactoryAddress) {
-        registrar = IETHRegistrarController(registrarAddress);
+        registrar = IDotRegistrarController(registrarAddress);
         registry = ENS(registryAddress);
         storeFactory = IStoreFactory(storeFactoryAddress);
     }
 
     /// @inheritdoc IDotnsRegistrar
     function registerAndStore(
-        IETHRegistrarController.Registration calldata registration,
+        IDotRegistrarController.Registration calldata registration,
         address store
     )
         external

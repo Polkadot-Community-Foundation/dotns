@@ -76,15 +76,7 @@ contract Store is IStore {
     }
 
     /// @inheritdoc IStore
-    function getValueFor(
-        address user,
-        bytes32 key
-    )
-        external
-        view
-        override
-        returns (string memory)
-    {
+    function getValueFor(address user, bytes32 key) external view override returns (string memory) {
         return store[user][key];
     }
 

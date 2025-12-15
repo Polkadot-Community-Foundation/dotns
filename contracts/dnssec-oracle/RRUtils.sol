@@ -340,8 +340,8 @@ library RRUtils {
                     uint256 unused = 256 - (data.length - i) * 8;
                     word = (word >> unused) << unused;
                 }
-                ac1 +=
-                    (word & 0xFF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00) >> 8;
+                ac1 += (word & 0xFF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00)
+                        >> 8;
                 ac2 += (word & 0x00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF);
             }
             ac1 = (ac1 & 0x0000FFFF0000FFFF0000FFFF0000FFFF0000FFFF0000FFFF0000FFFF0000FFFF)

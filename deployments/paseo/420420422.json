@@ -1,0 +1,21 @@
+{
+"contracts": {
+    "ENSRegistry": "0xdf280307F42F349e5c773B079399c49aD7EEC6dc",
+    "Root": "0x179d814D1b56d7e00b322A16441d61D16713E855",
+    "ReverseRegistrar": "0x09f91c8907f5F073c32304EE9F055CAF321555a3",
+    "BaseRegistrarImplementation": "0x0d27de774fAD23c1AEa60B1516a81c9be8eEc32E",
+    "DummyOracle": "0xc3aC054ec3b90765A6D5AF77803809ffE941f967",
+    "StableOracle": "0x5cEbaa977BCC0047c2e9282C6BDdaD9Cc7A4B631",
+    "StaticMetadataService": "0x68d515A0eF85c6d79145f2F60DD95303a93cC25A",
+    "NameWrapper": "0xFa4157880858791cb82a15B5496905Fb6B12d615",
+    "DefaultReverseRegistrar": "0x052Cd7FCCCD3F2c4685b683f9d7e65f3C74934E0",
+    "dotRegistrarController": "0x9eCB431C1716162A1EB25d471E4654b3Dc8AFCA5",
+    "StaticBulkRenewal": "0xEcaB2657a5bFdF26E6921aa49De9fbB1fFbecC64",
+    "PublicResolver": "0x9426739449EBAF1E2578d11aCbAFAE060d43cc0b",
+    "GatewayProvider": "0xD13A7D6C3F6B226eEf3827FC7d35F942bBcA387B",
+    "UniversalResolver": "0x725f96591bf86e9bC4175f761b6aaB2748e32C89",
+    "StoreFactory": "0xA72748FB3c688E7E66a24Ae31E4FC7ab68D98E4D",
+    "DotnsRegistrar": "0x653E1ABeb1A4F8E4849bA74bCCa9BbceE592672C",
+    "Multicall3": "0xe5283D58de76Fa4c7BA6078cd4e185904dd85277"
+  }
+}

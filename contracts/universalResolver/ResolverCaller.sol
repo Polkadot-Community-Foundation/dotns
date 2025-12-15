@@ -57,13 +57,9 @@ abstract contract ResolverCaller is CCIPBatcher {
         );
         if (
             ERC165Checker.supportsERC165InterfaceUnchecked(resolver, type(IERC7996).interfaceId)
-                && (
-                    !multi
-                        || (
-                            extended
-                                && IERC7996(resolver).supportsFeature(ResolverFeatures.RESOLVE_MULTICALL)
-                        )
-                )
+                && (!multi
+                    || (extended
+                        && IERC7996(resolver).supportsFeature(ResolverFeatures.RESOLVE_MULTICALL)))
         ) {
             if (extended) {
                 // resolve() has the same return signature as callResolver()

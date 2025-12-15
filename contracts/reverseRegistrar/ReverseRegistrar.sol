@@ -158,6 +158,3 @@ contract ReverseRegistrar is Ownable, Controllable, IReverseRegistrar {
         }
     }
 }
-
-
-

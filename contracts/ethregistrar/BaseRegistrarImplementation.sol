@@ -14,7 +14,7 @@ contract BaseRegistrarImplementation is ERC721, IBaseRegistrar, Ownable {
     bytes32 public baseNode;
     // A map of addresses that are authorised to register and renew names.
     mapping(address => bool) public controllers;
-    uint256 public constant GRACE_PERIOD = 5 minutes;
+    uint256 public constant GRACE_PERIOD = 120 days;
     bytes4 private constant INTERFACE_META_ID = bytes4(keccak256("supportsInterface(bytes4)"));
     bytes4 private constant ERC721_ID = bytes4(
         keccak256("balanceOf(address)") ^ keccak256("ownerOf(uint256)")
@@ -44,9 +44,9 @@ contract BaseRegistrarImplementation is ERC721, IBaseRegistrar, Ownable {
         returns (bool)
     {
         address owner = ownerOf(tokenId);
-        return (
-            spender == owner || getApproved(tokenId) == spender || isApprovedForAll(owner, spender)
-        );
+        return
+            (spender == owner || getApproved(tokenId) == spender
+                    || isApprovedForAll(owner, spender));
     }
 
     constructor(ENS _ens, bytes32 _baseNode) ERC721("", "") {

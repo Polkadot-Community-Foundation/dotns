@@ -61,8 +61,9 @@ library StringUtils {
 
     // determine if a character needs escaping
     function _needsEscaping(bytes1 char) private pure returns (bool) {
-        return char == '"' || char == "/" || char == "\\" || char == "\n" || char == "\r"
-            || char == "\t";
+        return
+            char == '"' || char == "/" || char == "\\" || char == "\n" || char == "\r"
+                || char == "\t";
     }
 
     // get the escaped character

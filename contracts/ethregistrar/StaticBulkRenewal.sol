@@ -1,16 +1,16 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ~0.8.17;
 
-import "./ETHRegistrarController.sol";
+import "./DotRegistrarController.sol";
 import "./IBulkRenewal.sol";
 import "./IPriceOracle.sol";
 
 import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 contract StaticBulkRenewal is IBulkRenewal {
-    ETHRegistrarController controller;
+    DotRegistrarController controller;
 
-    constructor(ETHRegistrarController _controller) {
+    constructor(DotRegistrarController _controller) {
         controller = _controller;
     }
 
@@ -58,7 +58,8 @@ contract StaticBulkRenewal is IBulkRenewal {
     }
 
     function supportsInterface(bytes4 interfaceID) external pure returns (bool) {
-        return interfaceID == type(IERC165).interfaceId
-            || interfaceID == type(IBulkRenewal).interfaceId;
+        return
+            interfaceID == type(IERC165).interfaceId
+                || interfaceID == type(IBulkRenewal).interfaceId;
     }
 }

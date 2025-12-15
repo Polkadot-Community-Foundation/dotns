@@ -10,11 +10,5 @@ interface IABIResolver {
     /// @param contentTypes A bitwise OR of the ABI formats accepted by the caller.
     /// @return contentType The content type of the return value
     /// @return data The ABI data
-    function ABI(
-        bytes32 node,
-        uint256 contentTypes
-    )
-        external
-        view
-        returns (uint256, bytes memory);
+    function ABI(bytes32 node, uint256 contentTypes) external view returns (uint256, bytes memory);
 }

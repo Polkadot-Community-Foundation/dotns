@@ -8,10 +8,7 @@ import "@ensdomains/solsha1/contracts/SHA1.sol";
 contract SHA1Digest is Digest {
     using BytesUtils for *;
 
-    function verify(
-        bytes calldata data,
-        bytes calldata hash
-    )
+    function verify(bytes calldata data, bytes calldata hash)
         external
         pure
         override

@@ -1,0 +1,88 @@
+name: Format & Lint Solidity Contracts
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'script/**'
+      - 'test/**'
+      - '**.sol'
+
+jobs:
+  format-check:
+    name: Check Solidity formatting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Foundry toolchain
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Display Foundry version
+        run: |
+          forge --version
+          cast --version
+
+      - name: Check Solidity formatting
+        run: |
+          echo "Running forge fmt --check on all Solidity files..."
+          forge fmt --check -vvvvv
+
+      - name: Format check summary
+        if: success()
+        run: echo "✓ All Solidity files are properly formatted"
+
+      - name: Format check failed
+        if: failure()
+        run: |
+          echo "✗ Formatting issues detected. Run 'forge fmt' locally to fix."
+          exit 1
+
+  lint-check:
+    name: Lint Solidity contracts
+    runs-on: ubuntu-latest
+    needs: format-check
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Foundry toolchain
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Display Foundry version
+        run: |
+          forge --version
+          cast --version
+
+      - name: Setup Bun runtime
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Display Bun version
+        run: bun --version
+
+      - name: Install project dependencies
+        run: |
+          echo "Installing dependencies with Bun..."
+          bun install --verbose
+
+      - name: Build contracts with Foundry
+        run: |
+          echo "Building Solidity contracts..."
+          forge build --sizes -vvvvv
+
+      - name: Lint check summary
+        if: success()
+        run: echo "✓ All contracts compiled successfully"
+
+      - name: Lint check failed
+        if: failure()
+        run: |
+          echo "✗ Contract compilation failed"
+          exit 1
