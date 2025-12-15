@@ -22,7 +22,7 @@ import {GatewayProvider} from "../../contracts/ccipRead/GatewayProvider.sol";
 import {UniversalResolver} from "../../contracts/universalResolver/UniversalResolver.sol";
 import {StoreFactory} from "../../contracts/utils/StoreFactory.sol";
 import {DotnsRegistrar} from "../../contracts/utils/DotnsRegistrar.sol";
-import {Multicall3} from "../../contracts/utils/Multicall3.sol";
+import {Multicall3} from "../../contracts/utils/MultiCall3.sol";
 import {IMetadataService} from "../../contracts/wrapper/IMetadataService.sol";
 import {IDotRegistrarController} from "../../contracts/ethregistrar/IDotRegistrarController.sol";
 import {Upgrades, Options} from "openzeppelin-foundry-upgrades/Upgrades.sol";

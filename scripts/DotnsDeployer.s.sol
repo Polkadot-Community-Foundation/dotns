@@ -22,7 +22,7 @@ import {IMetadataService} from "../contracts/wrapper/IMetadataService.sol";
 import {DefaultReverseRegistrar} from "../contracts/reverseRegistrar/DefaultReverseRegistrar.sol";
 import {StoreFactory} from "../contracts/utils/StoreFactory.sol";
 import {DotnsRegistrar} from "../contracts/utils/DotnsRegistrar.sol";
-import {Multicall3} from "../contracts/utils/Multicall3.sol";
+import {Multicall3} from "../contracts/utils/MultiCall3.sol";
 import {AggregatorInterface} from "../contracts/ethregistrar/StableOracle.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
