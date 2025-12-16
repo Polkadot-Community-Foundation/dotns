@@ -8,7 +8,6 @@ import {ReverseRegistrar} from "../../contracts/reverseRegistrar/ReverseRegistra
 import {
     BaseRegistrarImplementation
 } from "../../contracts/ethregistrar/BaseRegistrarImplementation.sol";
-import {DummyOracle} from "../../contracts/ethregistrar/DummyOracle.sol";
 import {StableOracle} from "../../contracts/ethregistrar/StableOracle.sol";
 import {StaticMetadataService} from "../../contracts/wrapper/StaticMetadataService.sol";
 import {NameWrapper} from "../../contracts/wrapper/NameWrapper.sol";
@@ -55,10 +54,6 @@ abstract contract BaseDotns is Test {
 
     /// @notice Base registrar implementation for .dot TLD
     BaseRegistrarImplementation public baseRegistrar;
-
-    // Pricing and Metadata
-    /// @notice Dummy price oracle for testing
-    DummyOracle public dummyOracle;
 
     /// @notice Stable oracle with PoP-based pricing logic
     StableOracle public stableOracle;
@@ -161,10 +156,6 @@ abstract contract BaseDotns is Test {
 
         root.setSubnodeOwner(dotLabel, address(baseRegistrar));
 
-        // Deploy pricing contracts
-        dummyOracle = new DummyOracle(160000000000);
-        vm.label(address(dummyOracle), "DummyOracle");
-
         uint256[] memory rentPrices = new uint256[](5);
         rentPrices[0] = 0;
         rentPrices[1] = 0;
@@ -172,8 +163,7 @@ abstract contract BaseDotns is Test {
         rentPrices[3] = 1585489600;
         rentPrices[4] = 317097920;
         address stableOracleAddress = Upgrades.deployUUPSProxy(
-            "StableOracle.sol:StableOracle",
-            abi.encodeCall(StableOracle.initialize, (address(dummyOracle), rentPrices))
+            "StableOracle.sol:StableOracle", abi.encodeCall(StableOracle.initialize, rentPrices)
         );
         stableOracle = StableOracle(stableOracleAddress);
         vm.label(stableOracleAddress, "StableOracle");

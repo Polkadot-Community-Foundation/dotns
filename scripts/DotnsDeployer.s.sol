@@ -9,8 +9,7 @@ import {ReverseRegistrar} from "../contracts/reverseRegistrar/ReverseRegistrar.s
 import {
     BaseRegistrarImplementation
 } from "../contracts/ethregistrar/BaseRegistrarImplementation.sol";
-import {DummyOracle} from "../contracts/ethregistrar/DummyOracle.sol";
-import {StableOracle} from "../contracts/ethregistrar/StableOracle.sol";
+import {StableOracle, IStableOracle} from "../contracts/ethregistrar/StableOracle.sol";
 import {StaticMetadataService} from "../contracts/wrapper/StaticMetadataService.sol";
 import {NameWrapper} from "../contracts/wrapper/NameWrapper.sol";
 import {DotRegistrarController} from "../contracts/ethregistrar/DotRegistrarController.sol";
@@ -23,7 +22,6 @@ import {DefaultReverseRegistrar} from "../contracts/reverseRegistrar/DefaultReve
 import {StoreFactory} from "../contracts/utils/StoreFactory.sol";
 import {DotnsRegistrar} from "../contracts/utils/DotnsRegistrar.sol";
 import {Multicall3} from "../contracts/utils/MultiCall3.sol";
-import {AggregatorInterface} from "../contracts/ethregistrar/StableOracle.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 /// @title DotnsDeployer
@@ -34,7 +32,6 @@ contract DotnsDeployer is BaseDeployer {
     Root public root;
     ReverseRegistrar public reverseRegistrar;
     BaseRegistrarImplementation public baseRegistrarImplementation;
-    DummyOracle public dummyOracle;
     StableOracle public stableOracle;
     StaticMetadataService public staticMetadataService;
     NameWrapper public nameWrapper;
@@ -54,7 +51,7 @@ contract DotnsDeployer is BaseDeployer {
         vm.warp(block.timestamp + 1 weeks);
         console.log("Current blocktime");
         console.logUint(block.timestamp);
-        initDeployment(chainId);
+        initDeployment();
 
         address OWNER = msg.sender;
         vm.startBroadcast(OWNER);
@@ -95,11 +92,6 @@ contract DotnsDeployer is BaseDeployer {
 
         root.setSubnodeOwner(dotLabel, address(baseRegistrarImplementation));
 
-        // Dummy Oracle
-        dummyOracle = new DummyOracle(160000000000);
-        vm.label(address(dummyOracle), "DummyOracle");
-        logDeployment("DummyOracle", address(dummyOracle));
-
         // Rent prices
         uint256[] memory rentPrices = new uint256[](5);
         rentPrices[0] = 0;
@@ -110,8 +102,7 @@ contract DotnsDeployer is BaseDeployer {
 
         // StableOracle
         address stableOracleAddress = Upgrades.deployUUPSProxy(
-            "StableOracle.sol:StableOracle",
-            abi.encodeCall(StableOracle.initialize, (address(dummyOracle), rentPrices))
+            "StableOracle.sol:StableOracle", abi.encodeCall(StableOracle.initialize, (rentPrices))
         );
         stableOracle = StableOracle(stableOracleAddress);
         vm.label(stableOracleAddress, "StableOracle");
@@ -149,7 +140,7 @@ contract DotnsDeployer is BaseDeployer {
             ensRegistry
         );
         vm.label(address(dotRegistrarController), "DotRegistrarController");
-        logDeployment("dotRegistrarController", address(dotRegistrarController));
+        logDeployment("DotRegistrarController", address(dotRegistrarController));
 
         baseRegistrarImplementation.addController(address(dotRegistrarController));
         nameWrapper.setController(address(dotRegistrarController), true);
@@ -206,6 +197,13 @@ contract DotnsDeployer is BaseDeployer {
 
         vm.stopBroadcast();
         saveDeployments(_getDeploymentFolder(), vm.toString(chainId));
+        getNamePopStatus();
+    }
+
+    function getNamePopStatus() public view {
+        (IStableOracle.PopStatus status, string memory message) = stableOracle.classifyName("hello");
+
+        require(uint256(status) == uint256(IStableOracle.PopStatus.Reserved));
     }
 
     /// @notice Returns deployment folder location based on chain ID
