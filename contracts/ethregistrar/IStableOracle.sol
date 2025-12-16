@@ -143,7 +143,7 @@ interface IStableOracle is IPriceOracle {
     ///        Base name means has no trailing digits based on POP rules
     /// @param name The name to check
     /// @return isBase stating if the name is base or not
-    function isBaseName(string calldata name) external view returns (bool isBase);
+    function isBaseName(string calldata name) external pure returns (bool isBase);
     /// @notice allows the Owner to update the dot/eth registry
     /// @param ethReg the address of the new registry
     function updateEthRegistry(address ethReg) external;

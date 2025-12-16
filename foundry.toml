@@ -31,3 +31,4 @@ yul = true
 
 [rpc_endpoints]
 paseo_local = "http://127.0.0.1:8545"
+paseo ="https://testnet-passet-hub-eth-rpc.polkadot.io"

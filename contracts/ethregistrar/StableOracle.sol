@@ -13,14 +13,6 @@ import {IStableOracle} from "./IStableOracle.sol";
 import {IPriceOracle} from "./IPriceOracle.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 
-/// @title Oralce Containing Custom Pricing and POP logic
-/// @notice Returns latest USD price with 8 decimals
-interface AggregatorInterface {
-    /// @notice Retrieves latest price answer
-    /// @return price Latest price with 8 decimal places
-    function latestAnswer() external view returns (int256 price);
-}
-
 /// @title Stable Oracle
 /// @notice Implements DotNS pricing with PoP-tier validation and base-name reservations
 /// @dev Upgradeable via UUPS - manages classification and pricing for .dot domains
@@ -34,23 +26,20 @@ contract StableOracle is
 {
     using StringUtils for *;
 
-    /// @notice USD rental price for single-character names in attoUSD
+    /// @notice Wei rental price for single-character names per second
     uint256 public price1Letter;
 
-    /// @notice USD rental price for two-character names in attoUSD
+    /// @notice Wei rental price for two-character names per second
     uint256 public price2Letter;
 
-    /// @notice USD rental price for three-character names in attoUSD
+    /// @notice Wei rental price for three-character names per second
     uint256 public price3Letter;
 
-    /// @notice USD rental price for four-character names in attoUSD
+    /// @notice Wei rental price for four-character names per second
     uint256 public price4Letter;
 
-    /// @notice USD rental price for names of five+ characters in attoUSD
+    /// @notice Wei rental price for names of five+ characters per second
     uint256 public price5Letter;
-
-    /// @notice Static price oracle for PAS/USD exchange rate
-    AggregatorInterface public usdOracle;
 
     /// @notice Tracks PoP status assignments per user and name
     /// @dev Mapping: user => node => PopStatus
@@ -60,8 +49,7 @@ contract StableOracle is
     /// @dev Base name is digit-stripped form of label
     mapping(string => Reservation) public reservations;
 
-    /// @notice This represents the currently set
-    ///.        Time that a given base name is reserved for
+    /// @notice Maximum time a base name can be reserved
     uint256 public constant MAX_RESERVATION_TIME = 12 weeks;
 
     /// @notice Namehash of .dot TLD
@@ -89,19 +77,11 @@ contract StableOracle is
     }
 
     /// @notice Initializes the oracle with pricing parameters
-    /// @param oracleAddress Price feed with static prices
-    /// @param rentPrices Array of base prices [1char, 2char, 3char, 4char, 5+char]
-    function __StableOracle_init(
-        address oracleAddress,
-        uint256[] memory rentPrices
-    )
-        internal
-        onlyInitializing
-    {
+    /// @param rentPrices Array of base prices in wei per second [1char, 2char, 3char, 4char, 5+char]
+    function __StableOracle_init(uint256[] memory rentPrices) internal onlyInitializing {
         __UUPSUpgradeable_init();
         __Ownable_init();
         __ERC165_init();
-        usdOracle = AggregatorInterface(oracleAddress);
         price1Letter = rentPrices[0];
         price2Letter = rentPrices[1];
         price3Letter = rentPrices[2];
@@ -110,10 +90,9 @@ contract StableOracle is
     }
 
     /// @notice Initializes the oracle (public entry point)
-    /// @param oracleAddress Price feed with static prices
-    /// @param rentPrices Array of base prices [1char, 2char, 3char, 4char, 5+char]
-    function initialize(address oracleAddress, uint256[] memory rentPrices) public initializer {
-        __StableOracle_init(oracleAddress, rentPrices);
+    /// @param rentPrices Array of base prices in wei per second [1char, 2char, 3char, 4char, 5+char]
+    function initialize(uint256[] memory rentPrices) public initializer {
+        __StableOracle_init(rentPrices);
     }
 
     /// @inheritdoc IStableOracle
@@ -197,7 +176,7 @@ contract StableOracle is
     }
 
     /// @inheritdoc IStableOracle
-    function isBaseName(string calldata baseName) public view override returns (bool isBase) {
+    function isBaseName(string calldata baseName) public pure override returns (bool isBase) {
         uint256 digits = _countTrailingDigits(baseName);
         return digits == 0;
     }
@@ -239,9 +218,7 @@ contract StableOracle is
         override
         returns (PriceWithMeta memory metadata)
     {
-        // We call this to ensure we dont allow
-        // Querying of any names that have been
-        // Reserved so we fail fast
+        // Enforce reservation rules to fail fast on reserved base names
         _enforceReservationRules(name, userAddress);
 
         metadata.price = price(name, expires, duration);
@@ -299,9 +276,7 @@ contract StableOracle is
         else if (nameLength == 2) basePrice = price2Letter * duration;
         else basePrice = price1Letter * duration;
 
-        return IPriceOracle.Price({
-            base: attoUSDToWei(basePrice), premium: attoUSDToWei(_premium(name, expires, duration))
-        });
+        return IPriceOracle.Price({base: basePrice, premium: _premium(name, expires, duration)});
     }
 
     /// @inheritdoc IPriceOracle
@@ -314,7 +289,7 @@ contract StableOracle is
         view
         returns (uint256 premiumWei)
     {
-        return attoUSDToWei(_premium(name, expires, duration));
+        return _premium(name, expires, duration);
     }
 
     /// @notice Counts trailing digits in a string
@@ -352,24 +327,8 @@ contract StableOracle is
         return string(output);
     }
 
-    /// @notice Converts attoUSD to wei using oracle price
-    /// @param amount Amount in attoUSD
-    /// @return weiAmount Amount in wei
-    function attoUSDToWei(uint256 amount) internal view returns (uint256 weiAmount) {
-        uint256 pasPrice = uint256(usdOracle.latestAnswer());
-        return (amount * 1e8) / pasPrice;
-    }
-
-    /// @notice Converts wei to attoUSD using oracle price
-    /// @param amount Amount in wei
-    /// @return attoUSDAmount Amount in attoUSD
-    function weiToAttoUSD(uint256 amount) internal view returns (uint256 attoUSDAmount) {
-        uint256 pasPrice = uint256(usdOracle.latestAnswer());
-        return (amount * pasPrice) / 1e8;
-    }
-
     /// @notice Calculates premium for expired domains
-    /// @return premiumAmount Premium in attoUSD
+    /// @return premiumAmount Premium in wei
     /// @dev Override in derived contracts for custom premium logic
     function _premium(
         string memory,
