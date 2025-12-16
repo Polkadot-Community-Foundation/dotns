@@ -9,7 +9,6 @@ import {ReverseRegistrar} from "../contracts/reverseRegistrar/ReverseRegistrar.s
 import {
     BaseRegistrarImplementation
 } from "../contracts/ethregistrar/BaseRegistrarImplementation.sol";
-import {DummyOracle} from "../contracts/ethregistrar/DummyOracle.sol";
 import {StableOracle, IStableOracle} from "../contracts/ethregistrar/StableOracle.sol";
 import {StaticMetadataService} from "../contracts/wrapper/StaticMetadataService.sol";
 import {NameWrapper} from "../contracts/wrapper/NameWrapper.sol";
@@ -53,7 +52,7 @@ contract DotnsDeployer is BaseDeployer {
         vm.warp(block.timestamp + 1 weeks);
         console.log("Current blocktime");
         console.logUint(block.timestamp);
-        initDeployment(chainId);
+        initDeployment();
 
         address OWNER = msg.sender;
         vm.startBroadcast(OWNER);
