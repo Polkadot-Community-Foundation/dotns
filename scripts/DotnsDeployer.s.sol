@@ -32,7 +32,6 @@ contract DotnsDeployer is BaseDeployer {
     Root public root;
     ReverseRegistrar public reverseRegistrar;
     BaseRegistrarImplementation public baseRegistrarImplementation;
-    DummyOracle public dummyOracle;
     StableOracle public stableOracle;
     StaticMetadataService public staticMetadataService;
     NameWrapper public nameWrapper;
