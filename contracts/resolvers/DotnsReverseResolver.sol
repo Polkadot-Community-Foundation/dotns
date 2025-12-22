@@ -1,0 +1,88 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.30;
+
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {
+    OwnableUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {
+    ERC165Upgradeable
+} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
+import {IDotnsReverseResolver} from "./IDotnsReverseResolver.sol";
+
+/// @title Dot Reverse Resolver
+/// @notice Resolves an address to its associated .dot name.
+/// @dev Maintains an on-chain mapping from addresses to name strings.
+/// @custom:security-contact admin@parity.io
+contract DotnsReverseResolver is
+    Initializable,
+    UUPSUpgradeable,
+    OwnableUpgradeable,
+    ERC165Upgradeable,
+    IDotnsReverseResolver
+{
+    /// @dev Mapping from address to its reverse name.
+    ///      An empty string indicates that no reverse name is set.
+    mapping(address => string) private reverseNames;
+
+    /// @notice Address authorised to modify reverse name records.
+    address public registrar;
+
+    /// @notice Restricts access to the configured registrar.
+    /// @dev Reverts if the caller is not the configured registrar.
+    modifier onlyRegistrar() {
+        require(msg.sender == registrar, NotRegistrar());
+        _;
+    }
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /// @notice Initializes the reverse resolver.
+    /// @dev This function may only be called once.
+    function initialize() external initializer {
+        __Ownable_init(msg.sender);
+        __ERC165_init();
+    }
+
+    /// @inheritdoc IDotnsReverseResolver
+    function setReverseName(address addr, string calldata name) external override onlyRegistrar {
+        reverseNames[addr] = name;
+    }
+
+    /// @inheritdoc IDotnsReverseResolver
+    function nameOf(address addr) external view override returns (string memory name) {
+        return reverseNames[addr];
+    }
+
+    /// @inheritdoc IDotnsReverseResolver
+    function updateRegistrar(address newRegistrar) external override onlyOwner {
+        require(newRegistrar != address(0), NotRegistrar());
+        address oldRegistrar = registrar;
+        registrar = newRegistrar;
+        emit RegistrarUpdated(oldRegistrar, newRegistrar);
+    }
+
+    /// @inheritdoc ERC165Upgradeable
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC165Upgradeable)
+        returns (bool supported)
+    {
+        return interfaceId == type(IDotnsReverseResolver).interfaceId
+            || super.supportsInterface(interfaceId);
+    }
+
+    /// @notice Returns implementation version
+    /// @return versionString Current version string
+    function version() external pure virtual returns (string memory versionString) {
+        versionString = "1.0.0";
+    }
+
+    /// @inheritdoc UUPSUpgradeable
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+}

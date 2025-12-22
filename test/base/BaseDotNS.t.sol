@@ -2,302 +2,264 @@
 pragma solidity ^0.8.30;
 
 import {Test} from "forge-std/Test.sol";
-import {ENSRegistry} from "../../contracts/registry/ENSRegistry.sol";
-import {Root} from "../../contracts/root/Root.sol";
-import {ReverseRegistrar} from "../../contracts/reverseRegistrar/ReverseRegistrar.sol";
-import {
-    BaseRegistrarImplementation
-} from "../../contracts/ethregistrar/BaseRegistrarImplementation.sol";
-import {StableOracle} from "../../contracts/ethregistrar/StableOracle.sol";
-import {StaticMetadataService} from "../../contracts/wrapper/StaticMetadataService.sol";
-import {NameWrapper} from "../../contracts/wrapper/NameWrapper.sol";
-import {
-    DefaultReverseRegistrar
-} from "../../contracts/reverseRegistrar/DefaultReverseRegistrar.sol";
-import {DotRegistrarController} from "../../contracts/ethregistrar/DotRegistrarController.sol";
-import {StaticBulkRenewal} from "../../contracts/ethregistrar/StaticBulkRenewal.sol";
-import {PublicResolver} from "../../contracts/resolvers/PublicResolver.sol";
-import {GatewayProvider} from "../../contracts/ccipRead/GatewayProvider.sol";
-import {UniversalResolver} from "../../contracts/universalResolver/UniversalResolver.sol";
-import {StoreFactory} from "../../contracts/utils/StoreFactory.sol";
-import {DotnsRegistrar} from "../../contracts/utils/DotnsRegistrar.sol";
-import {Multicall3} from "../../contracts/utils/MultiCall3.sol";
-import {IMetadataService} from "../../contracts/wrapper/IMetadataService.sol";
-import {IDotRegistrarController} from "../../contracts/ethregistrar/IDotRegistrarController.sol";
-import {Upgrades, Options} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
+import {PopOracle, IPopOracle} from "../../contracts/pop/PopOracle.sol";
+import {DotnsRegistrar, IDotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
+import {
+    DotnsRegistrarController,
+    IDotnsRegistrarController
+} from "../../contracts/registrars/DotnsRegistrarController.sol";
+import {DotnsRegistry, IDotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
+import {DotnsResolver} from "../../contracts/resolvers/DotnsResolver.sol";
+import {DotnsContentResolver} from "../../contracts/resolvers/DotnsContentResolver.sol";
+import {
+    DotnsReverseResolver,
+    IDotnsReverseResolver
+} from "../../contracts/resolvers/DotnsReverseResolver.sol";
+import {StoreFactory, IStoreFactory} from "../../contracts/store/StoreFactory.sol";
+import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
+
+/// @title BaseDotns
+/// @notice Common Foundry test base for deploying a DotNS stack behind UUPS proxies.
+/// @dev Deploys and wires the core DotNS contracts used by test suites:
+///      - StoreFactory: per-user Store instances used for immutable registration writes
+///      - DotnsRegistrar: ERC721-backed registrar used to allocate label ownership
+///      - DotnsRegistry: forward registry used to set subnode ownership under .dot
+///      - DotnsReverseResolver: reverse resolver used to set default reverse records
+///      - DotnsContentResolver: resolver used for content records
+///      - PopOracle: PoP rules and spam-pricing oracle
+///      - DotnsRegistrarController: commit–reveal controller orchestrating registration flow
+///
+/// @dev Testing conventions:
+///      - `setUp()` warps time to a deterministic timestamp and funds pre-defined users.
+///      - Deployments are executed under `owner` as the admin address.
+///      - Addresses are labeled to improve trace readability.
 abstract contract BaseDotns is Test {
-    /// @notice Test user account: ed
+    /// @notice Test user account: ed.
     address public ed;
 
-    /// @notice Test user account: leonardo
+    /// @notice Test user account: leonardo.
     address public leonardo;
 
-    /// @notice Test user account: tiago
+    /// @notice Test user account: tiago.
     address public tiago;
 
-    /// @notice Test user account: owner/admin
+    /// @notice Test user account: owner/admin used to deploy and configure contracts.
     address public owner;
 
-    /// @notice Default balance allocated to test users
-    uint256 public immutable DEFAULT_BALANCE = 99999999999999 ether;
+    /// @notice Default native balance allocated to test users.
+    uint256 public constant DEFAULT_BALANCE = 99_999_999_999_999 ether;
 
-    // Core ENS Infrastructure
-    /// @notice Central registry mapping domain nodes to owners
-    ENSRegistry public ensRegistry;
+    /// @notice Deployed PoP oracle instance.
+    PopOracle public popOracle;
 
-    /// @notice Root contract managing TLD ownership
-    Root public root;
-
-    /// @notice Reverse registrar for address-to-name resolution
-    ReverseRegistrar public reverseRegistrar;
-
-    /// @notice Base registrar implementation for .dot TLD
-    BaseRegistrarImplementation public baseRegistrar;
-
-    /// @notice Stable oracle with PoP-based pricing logic
-    StableOracle public stableOracle;
-
-    /// @notice Static metadata service for name wrapper
-    StaticMetadataService public metadataService;
-
-    // Wrapper and Controllers
-    /// @notice Name wrapper for ERC-1155 token representation
-    NameWrapper public nameWrapper;
-
-    /// @notice Default reverse registrar
-    DefaultReverseRegistrar public defaultReverseRegistrar;
-
-    /// @notice Main ETH registrar controller
-    DotRegistrarController public dotRegistrarController;
-
-    // Additional Contracts
-    /// @notice Bulk renewal contract
-    StaticBulkRenewal public bulkRenewal;
-
-    /// @notice Public resolver for ENS records
-    PublicResolver public publicResolver;
-
-    /// @notice Gateway provider for CCIP read
-    GatewayProvider public gatewayProvider;
-
-    /// @notice Universal resolver
-    UniversalResolver public universalResolver;
-
-    /// @notice Store factory utility
-    StoreFactory public storeFactory;
-
-    /// @notice Dotns registrar utility
+    /// @notice Deployed DotNS registrar instance.
     DotnsRegistrar public dotnsRegistrar;
 
-    /// @notice Multicall3 utility
-    Multicall3 public multicall3;
+    /// @notice Deployed registrar controller instance.
+    DotnsRegistrarController public dotnsRegistrarController;
 
-    // Domain Hashes
+    /// @notice Deployed forward registry instance.
+    DotnsRegistry public dotnsRegistry;
+
+    /// @notice Deployed forward resolver instance.
+    DotnsResolver public dotnsResolver;
+
+    /// @notice Deployed content resolver instance.
+    DotnsContentResolver public dotnsContentResolver;
+
+    /// @notice Deployed reverse resolver instance.
+    DotnsReverseResolver public dotnsReverseResolver;
+
+    /// @notice Deployed Store factory instance.
+    StoreFactory public storeFactory;
+
+    /// @notice Rent price applied to PoP NoStatus users for spam resistance.
+    /// @dev This value is passed into PopOracle initialization in this base test.
+    uint256 public constant rentPrice = 2e15 wei;
+
     /// @notice Zero hash constant
     bytes32 public constant ZERO_HASH = bytes32(0);
 
-    /// @notice Label hash for 'reverse'
-    bytes32 public reverseLabel;
-
-    /// @notice Label hash for 'addr'
-    bytes32 public addrLabel;
-
-    /// @notice Label hash for 'dot'
+    /// @notice Label hash for "dot".
+    /// @dev Computed during setup as `keccak256(bytes("dot"))`.
     bytes32 public dotLabel;
 
-    /// @notice Node hash for reverse registry
-    bytes32 public reverseNode;
-
-    /// @notice Node hash for .dot TLD
+    /// @notice Node hash for the ".dot" TLD.
+    /// @dev Computed during setup as `_namehash(ZERO_HASH, dotLabel)`.
     bytes32 public dotNode;
 
-    /// @notice Default node hash for .dot TLD
+    /// @notice Default node hash for the ".dot" TLD.
+    /// @dev Included to cross-check against computed `dotNode` where relevant.
     bytes32 private constant DOT_NODE =
         0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
 
-    /// @notice Upgrade options for UUPS proxy deployment
-    Options public options;
-
     function setUp() public virtual noGasMetering {
-        // Create test users
+        vm.warp(365 days);
+
         ed = _createUser("ed");
         leonardo = _createUser("leonardo");
         tiago = _createUser("tiago");
         owner = _createUser("owner");
-        vm.startPrank(owner);
-        // Calculate domain hashes
-        reverseLabel = keccak256("reverse");
-        addrLabel = keccak256("addr");
-        dotLabel = keccak256("dot");
-        reverseNode = _namehash(ZERO_HASH, reverseLabel);
+
+        dotLabel = keccak256(bytes("dot"));
         dotNode = _namehash(ZERO_HASH, dotLabel);
-        //options.unsafeSkipAllChecks = true;
 
-        // Deploy core ENS infrastructure
-        ensRegistry = new ENSRegistry();
-        vm.label(address(ensRegistry), "ENSRegistry");
+        vm.startPrank(owner);
 
-        root = new Root(ensRegistry);
-        vm.label(address(root), "Root");
-
-        ensRegistry.setOwner(ZERO_HASH, address(root));
-        root.setController(owner, true);
-
-        reverseRegistrar = new ReverseRegistrar(ensRegistry);
-        vm.label(address(reverseRegistrar), "ReverseRegistrar");
-
-        root.setSubnodeOwner(reverseLabel, owner);
-        ensRegistry.setSubnodeOwner(reverseNode, addrLabel, address(reverseRegistrar));
-
-        // Deploy base registrar
-        baseRegistrar = new BaseRegistrarImplementation(ensRegistry, dotNode);
-        vm.label(address(baseRegistrar), "BaseRegistrarImplementation");
-
-        root.setSubnodeOwner(dotLabel, address(baseRegistrar));
-
-        uint256[] memory rentPrices = new uint256[](5);
-        rentPrices[0] = 0;
-        rentPrices[1] = 0;
-        rentPrices[2] = 3170979200;
-        rentPrices[3] = 1585489600;
-        rentPrices[4] = 317097920;
-        address stableOracleAddress = Upgrades.deployUUPSProxy(
-            "StableOracle.sol:StableOracle", abi.encodeCall(StableOracle.initialize, rentPrices)
-        );
-        stableOracle = StableOracle(stableOracleAddress);
-        vm.label(stableOracleAddress, "StableOracle");
-
-        metadataService = new StaticMetadataService("http://localhost:8080/name/0x{id}");
-        vm.label(address(metadataService), "StaticMetadataService");
-
-        // Deploy name wrapper and controllers
-        nameWrapper =
-            new NameWrapper(ensRegistry, baseRegistrar, IMetadataService(address(metadataService)));
-        vm.label(address(nameWrapper), "NameWrapper");
-
-        baseRegistrar.addController(address(nameWrapper));
-
-        defaultReverseRegistrar = new DefaultReverseRegistrar();
-        vm.label(address(defaultReverseRegistrar), "DefaultReverseRegistrar");
-
-        // Since we using an in memory node which has block.timestamp of 0 we need to increase
-        // This to something higher than 0 to prevent a revert MaxCommitmentAgeTooHigh in DotRegistrarController
-        vm.warp(1 days);
-
-        dotRegistrarController = new DotRegistrarController(
-            baseRegistrar,
-            stableOracle,
-            6,
-            86400,
-            reverseRegistrar,
-            defaultReverseRegistrar,
-            ensRegistry
-        );
-        vm.label(address(dotRegistrarController), "DotRegistrarController");
-
-        baseRegistrar.addController(address(dotRegistrarController));
-        nameWrapper.setController(address(dotRegistrarController), true);
-        reverseRegistrar.setController(address(dotRegistrarController), true);
-
-        // Deploy additional contracts
-        bulkRenewal = new StaticBulkRenewal(dotRegistrarController);
-        vm.label(address(bulkRenewal), "StaticBulkRenewal");
-
-        publicResolver = new PublicResolver(
-            ensRegistry, nameWrapper, address(dotRegistrarController), address(reverseRegistrar)
-        );
-        vm.label(address(publicResolver), "PublicResolver");
-
-        reverseRegistrar.setDefaultResolver(address(publicResolver));
-
-        string[] memory urls = new string[](1);
-        urls[0] = "http://universal-offchain-resolver.local/";
-        gatewayProvider = new GatewayProvider(urls);
-        vm.label(address(gatewayProvider), "GatewayProvider");
-
-        universalResolver = new UniversalResolver(owner, ensRegistry, gatewayProvider);
-        vm.label(address(universalResolver), "UniversalResolver");
-
-        ensRegistry.setApprovalForAll(address(dotRegistrarController), true);
-        baseRegistrar.setResolver(address(publicResolver));
-
-        // Deploy utilities
         storeFactory = new StoreFactory();
         vm.label(address(storeFactory), "StoreFactory");
 
-        dotnsRegistrar = new DotnsRegistrar(
-            address(dotRegistrarController), address(ensRegistry), address(storeFactory)
+        address dotnsRegistrarAddress = Upgrades.deployUUPSProxy(
+            "DotnsRegistrar.sol:DotnsRegistrar",
+            abi.encodeCall(DotnsRegistrar.initialize, ("Dotns", "Dotns"))
         );
-        vm.label(address(dotnsRegistrar), "DotnsRegistrar");
+        dotnsRegistrar = DotnsRegistrar(dotnsRegistrarAddress);
+        vm.label(dotnsRegistrarAddress, "DotnsRegistrar");
 
-        multicall3 = new Multicall3();
-        vm.label(address(multicall3), "Multicall3");
-        stableOracle.updateEthRegistry(address(dotRegistrarController));
+        address dotnsRegistryAddress = Upgrades.deployUUPSProxy(
+            "DotnsRegistry.sol:DotnsRegistry", abi.encodeCall(DotnsRegistry.initialize, ())
+        );
+        dotnsRegistry = DotnsRegistry(dotnsRegistryAddress);
+        vm.label(dotnsRegistryAddress, "DotnsRegistry");
+
+        address dotnsReverseResolverAddress = Upgrades.deployUUPSProxy(
+            "DotnsReverseResolver.sol:DotnsReverseResolver",
+            abi.encodeCall(DotnsReverseResolver.initialize, ())
+        );
+        dotnsReverseResolver = DotnsReverseResolver(dotnsReverseResolverAddress);
+        vm.label(dotnsReverseResolverAddress, "DotnsReverseResolver");
+
+        address dotnsContentResolverAddress = Upgrades.deployUUPSProxy(
+            "DotnsContentResolver.sol:DotnsContentResolver",
+            abi.encodeCall(DotnsContentResolver.initialize, (IDotnsRegistry(dotnsRegistryAddress)))
+        );
+        dotnsContentResolver = DotnsContentResolver(dotnsContentResolverAddress);
+        vm.label(dotnsContentResolverAddress, "DotnsContentResolver");
+
+        address popOracleAddress = Upgrades.deployUUPSProxy(
+            "PopOracle.sol:PopOracle", abi.encodeCall(PopOracle.initialize, (rentPrice))
+        );
+        popOracle = PopOracle(popOracleAddress);
+        vm.label(popOracleAddress, "PopOracle");
+
+        address dotnsRegistrarControllerAddress = Upgrades.deployUUPSProxy(
+            "DotnsRegistrarController.sol:DotnsRegistrarController",
+            abi.encodeCall(
+                DotnsRegistrarController.initialize,
+                (
+                    IDotnsRegistrar(dotnsRegistrarAddress),
+                    IDotnsRegistry(dotnsRegistryAddress),
+                    IDotnsReverseResolver(dotnsReverseResolverAddress),
+                    IPopOracle(popOracleAddress),
+                    IStoreFactory(address(storeFactory)),
+                    6 seconds,
+                    1 days
+                )
+            )
+        );
+        dotnsRegistrarController = DotnsRegistrarController(dotnsRegistrarControllerAddress);
+        vm.label(dotnsRegistrarControllerAddress, "DotnsRegistrarController");
+        dotnsReverseResolver.updateRegistrar(dotnsRegistrarControllerAddress);
+        popOracle.updateEthRegistry(dotnsRegistrarControllerAddress);
+        dotnsRegistrar.addController(dotnsRegistrarControllerAddress);
+        dotnsRegistry.updateRegistrarController(dotnsRegistrarControllerAddress);
         vm.stopPrank();
-        vm.warp(block.timestamp + 121 days);
     }
 
-    /// @notice Create a new test user with funded native balance and private key
-    /// @param name Label to assign to the created address
-    /// @return account Newly created payable address
-    /// @return privateKey Private key for the account
-    function _createUserWitPrivateKey(string memory name)
-        internal
-        returns (address payable account, uint256 privateKey)
-    {
-        (address user, uint256 userPk) = makeAddrAndKey(name);
-        vm.deal({account: user, newBalance: DEFAULT_BALANCE});
-        vm.label(user, name);
-        return (payable(user), userPk);
+    /// @notice Computes an namehash for `parent` and `label`.
+    /// @dev Equivalent to `keccak256(abi.encodePacked(parent, label))`.
+    /// @param parent The parent node hash.
+    /// @param label The label hash.
+    /// @return node The resulting node hash.
+    function _namehash(bytes32 parent, bytes32 label) internal pure returns (bytes32 node) {
+        node = keccak256(abi.encodePacked(parent, label));
     }
 
-    /// @notice Create a new test user with funded native balance and label it
-    /// @param name Label to assign to the created address
-    /// @return user Newly created payable address
+    /// @notice Creates a new test user and funds it with DEFAULT_BALANCE.
+    /// @dev Uses Foundry's `makeAddr` to derive a deterministic address and labels it in traces.
+    /// @param name Human-readable label used to derive and label the address.
+    /// @return user Newly created payable address.
     function _createUser(string memory name) internal returns (address payable user) {
         user = payable(makeAddr(name));
         vm.deal({account: user, newBalance: DEFAULT_BALANCE});
         vm.label(user, name);
     }
 
-    /// @notice Calculate namehash for a parent node and label
-    /// @param parent Parent node hash
-    /// @param label Label hash
-    /// @return Node hash
-    function _namehash(bytes32 parent, bytes32 label) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(parent, label));
-    }
-    /// @dev Helper to compute the nodehash the oracle uses
-
-    function _node(string memory label) internal pure returns (bytes32) {
-        bytes32 labelhash = keccak256(bytes(label));
-        return keccak256(abi.encodePacked(DOT_NODE, labelhash));
-    }
-
-    /// @notice Helper function to commit and register a name in a single call
-    /// @dev Handles the full registration flow: commit, wait for min commitment age, then register
-    /// @param registration Registration struct containing label, owner, duration, and other parameters
-    function _commitAndRegister(IDotRegistrarController.Registration memory registration) internal {
-        vm.startPrank(registration.owner);
-        vm.warp(block.timestamp + 1);
-        bytes32 commit = dotRegistrarController.makeCommitment(registration);
-        dotRegistrarController.commit(commit);
-        vm.warp(block.timestamp + dotRegistrarController.minCommitmentAge() + 2);
-        uint256 price =
-            dotRegistrarController.rentPrice(registration.label, registration.duration).base;
-        dotRegistrarController.register{value: price}(registration);
-        vm.stopPrank();
+    /// @notice Computes the commitment hash for a registration.
+    /// @dev Must match the controller's commitment preimage:
+    ///      `keccak256(abi.encode(label, owner, secret))`.
+    /// @param registration Registration parameters.
+    /// @return commitmentHash Commitment hash.
+    function _computeCommitmentHash(IDotnsRegistrarController.Registration memory registration)
+        internal
+        pure
+        returns (bytes32 commitmentHash)
+    {
+        commitmentHash =
+            keccak256(abi.encode(registration.label, registration.owner, registration.secret));
     }
 
-    /// @notice Helper function to commit a name in a single call
-    /// @param registration Registration struct containing label, owner, duration, and other parameters
-    function _commit(IDotRegistrarController.Registration memory registration) internal {
-        vm.startPrank(registration.owner);
-        vm.warp(block.timestamp + 1);
-        bytes32 commit = dotRegistrarController.makeCommitment(registration);
-        dotRegistrarController.commit(commit);
-        vm.warp(block.timestamp + dotRegistrarController.minCommitmentAge() + 2);
-        vm.stopPrank();
+    /// @notice Submits a commitment for a registration.
+    /// @dev Uses `registration.owner` as the committing account.
+    /// @param registration Registration parameters.
+    function _commitRegistration(IDotnsRegistrarController.Registration memory registration)
+        internal
+    {
+        bytes32 commitmentHash = _computeCommitmentHash(registration);
+        vm.prank(registration.owner);
+        dotnsRegistrarController.commit(commitmentHash);
+    }
+
+    /// @notice Submits a commitment and advances time past the controller minimum commitment age.
+    /// @param registration Registration parameters.
+    function _commitRegistrationAndWaitMinimumAge(
+        IDotnsRegistrarController.Registration memory registration
+    )
+        internal
+    {
+        _commitRegistration(registration);
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+    }
+
+    /// @notice Submits a commitment, waits for the minimum age, then registers with the exact oracle price.
+    /// @dev Prices are obtained via `popOracle.priceWithCheck(label, owner)`.
+    /// @param registration Registration parameters.
+    function _commitRegistrationAndRegister(
+        IDotnsRegistrarController.Registration memory registration
+    )
+        internal
+    {
+        _commitRegistrationAndWaitMinimumAge(registration);
+
+        IPopOracle.PriceWithMeta memory priceMetadata =
+            popOracle.priceWithCheck(registration.label, registration.owner);
+
+        vm.prank(registration.owner);
+        dotnsRegistrarController.register{value: priceMetadata.price}(registration);
+    }
+
+    /// @notice Minimal commit–reveal helper aligned to IDotnsRegistrarController.
+    /// @param label Label to register.
+    /// @param nameOwner Address to assign as owner.
+    function _commitAndRegister(string memory label, address nameOwner) internal {
+        bytes32 secret = keccak256(abi.encodePacked(label, nameOwner, block.timestamp));
+
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({label: label, owner: nameOwner, secret: secret});
+
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
+
+        vm.prank(nameOwner);
+        dotnsRegistrarController.commit(commitment);
+
+        uint256 minAge =
+            DotnsRegistrarController(address(dotnsRegistrarController)).minCommitmentAge();
+        vm.warp(block.timestamp + minAge + 1);
+
+        uint256 requiredPayment = popOracle.priceWithCheck(label, nameOwner).price;
+
+        vm.prank(nameOwner);
+        dotnsRegistrarController.register{value: requiredPayment}(registration);
     }
 }

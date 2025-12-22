@@ -1,0 +1,178 @@
+name: Slither Static Analysis
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - '**.sol'
+      - 'foundry.toml'
+      - '.github/workflows/slither.yml'
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Install dependencies
+        run: forge install
+
+      - name: Build contracts
+        run: forge build --build-info
+
+      - name: Run Slither
+        uses: crytic/slither-action@v0.4.0
+        id: slither
+        continue-on-error: true
+        with:
+          fail-on: none
+          slither-args: --json slither-report.json --checklist --markdown-root ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/
+
+      - name: Process Slither output
+        if: always()
+        run: |
+          python3 << 'EOF'
+          import json
+          import os
+          from collections import defaultdict
+
+          # Load Slither JSON report
+          with open('slither-report.json', 'r') as f:
+              data = json.load(f)
+
+          # Group findings by severity
+          findings = defaultdict(list)
+          
+          for result in data.get('results', {}).get('detectors', []):
+              severity = result.get('impact', 'Informational').capitalize()
+              findings[severity].append({
+                  'check': result.get('check', 'Unknown'),
+                  'description': result.get('description', '').strip(),
+                  'confidence': result.get('confidence', 'Unknown').capitalize(),
+                  'elements': result.get('elements', [])
+              })
+
+          # Severity order for sorting
+          severity_order = ['High', 'Medium', 'Low', 'Informational', 'Optimization']
+          
+          # Generate markdown table
+          output = []
+          output.append('# Slither Analysis Results\n')
+          
+          total_issues = sum(len(v) for v in findings.values())
+          
+          if total_issues == 0:
+              output.append('✅ No issues detected.\n')
+          else:
+              output.append(f'**Total Issues Found:** {total_issues}\n')
+              output.append('## Summary by Severity\n')
+              output.append('| Severity | Count |')
+              output.append('|----------|-------|')
+              
+              for severity in severity_order:
+                  count = len(findings.get(severity, []))
+                  if count > 0:
+                      emoji = {'High': '🔴', 'Medium': '🟡', 'Low': '🟢', 
+                              'Informational': 'ℹ️', 'Optimization': '⚙️'}.get(severity, '•')
+                      output.append(f'| {emoji} {severity} | {count} |')
+              
+              output.append('\n## Detailed Findings\n')
+              
+              for severity in severity_order:
+                  issues = findings.get(severity, [])
+                  if not issues:
+                      continue
+                  
+                  emoji = {'High': '🔴', 'Medium': '🟡', 'Low': '🟢', 
+                          'Informational': 'ℹ️', 'Optimization': '⚙️'}.get(severity, '•')
+                  output.append(f'\n### {emoji} {severity} ({len(issues)})\n')
+                  output.append('| Check | Description | Confidence | Location |')
+                  output.append('|-------|-------------|------------|----------|')
+                  
+                  for issue in issues:
+                      check = issue['check'].replace('|', '\\|')
+                      desc = issue['description'].replace('\n', ' ').replace('|', '\\|')[:150]
+                      if len(issue['description']) > 150:
+                          desc += '...'
+                      confidence = issue['confidence']
+                      
+                      # Extract location from elements
+                      locations = []
+                      for elem in issue['elements'][:2]:  # Limit to first 2 locations
+                          if 'source_mapping' in elem:
+                              loc = elem['source_mapping'].get('filename_short', '')
+                              line = elem['source_mapping'].get('lines', [])
+                              if loc and line:
+                                  locations.append(f"{loc}:{line[0] if line else '?'}")
+                      
+                      location = '<br>'.join(locations) if locations else 'N/A'
+                      output.append(f'| {check} | {desc} | {confidence} | {location} |')
+
+          # Write to markdown file
+          with open('slither-results.md', 'w') as f:
+              f.write('\n'.join(output))
+          
+          print('\n'.join(output))
+          EOF
+
+      - name: Comment PR with results
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const markdown = fs.readFileSync('slither-results.md', 'utf8');
+            
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Slither Analysis Results')
+            );
+            
+            const commentBody = `${markdown}\n\n---\n*Analysis performed on commit ${context.sha.substring(0, 7)}*`;
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+            }
+
+      - name: Upload Slither report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slither-report
+          path: |
+            slither-report.json
+            slither-results.md
+          retention-days: 30
