@@ -1,5 +1,4 @@
 [profile.default]
-root = "."
 src = "contracts"
 out = "out"
 test = "test"
