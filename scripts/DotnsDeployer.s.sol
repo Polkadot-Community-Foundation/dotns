@@ -6,25 +6,25 @@ import {BaseDeployer} from "./BaseDeployer.s.sol";
 
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
-import {PopOracle} from "../contracts/pop/PopOracle.sol";
-import {IPopOracle} from "../contracts/pop/IPopOracle.sol";
+import {PopOracle, IPopOracle} from "../contracts/pop/PopOracle.sol";
 
-import {DotnsRegistrar} from "../contracts/registrars/DotnsRegistrar.sol";
-import {IDotnsRegistrar} from "../contracts/registrars/IDotnsRegistrar.sol";
+import {DotnsRegistrar, IDotnsRegistrar} from "../contracts/registrars/DotnsRegistrar.sol";
 
-import {DotnsRegistrarController} from "../contracts/registrars/DotnsRegistrarController.sol";
-import {IDotnsRegistrarController} from "../contracts/registrars/IDotnsRegistrarController.sol";
+import {
+    DotnsRegistrarController,
+    IDotnsRegistrarController
+} from "../contracts/registrars/DotnsRegistrarController.sol";
 
-import {DotnsRegistry} from "../contracts/registry/DotnsRegistry.sol";
-import {IDotnsRegistry} from "../contracts/registry/IDotnsRegistry.sol";
+import {DotnsRegistry, IDotnsRegistry} from "../contracts/registry/DotnsRegistry.sol";
 
-import {DotnsReverseResolver} from "../contracts/resolvers/DotnsReverseResolver.sol";
-import {IDotnsReverseResolver} from "../contracts/resolvers/IDotnsReverseResolver.sol";
+import {
+    DotnsReverseResolver,
+    IDotnsReverseResolver
+} from "../contracts/resolvers/DotnsReverseResolver.sol";
 
 import {DotnsContentResolver} from "../contracts/resolvers/DotnsContentResolver.sol";
 
-import {StoreFactory} from "../contracts/store/StoreFactory.sol";
-import {IStoreFactory} from "../contracts/store/IStoreFactory.sol";
+import {StoreFactory, IStoreFactory} from "../contracts/store/StoreFactory.sol";
 
 /// @title DotnsDeployer
 contract DotnsDeployer is BaseDeployer {
@@ -54,7 +54,7 @@ contract DotnsDeployer is BaseDeployer {
         vm.startBroadcast(OWNER);
         vm.label(OWNER, "OWNER");
 
-        // StoreFactory 
+        // StoreFactory
         storeFactory = new StoreFactory();
         vm.label(address(storeFactory), "StoreFactory");
         logDeployment("StoreFactory", address(storeFactory));
