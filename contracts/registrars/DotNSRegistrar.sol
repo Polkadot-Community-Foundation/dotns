@@ -45,8 +45,8 @@ contract DotnsRegistrar is
     /// @param name ERC721 token name.
     /// @param symbol ERC721 token symbol.
     function initialize(string calldata name, string calldata symbol) external initializer {
-        __ERC721_init(name, symbol);
         __Ownable_init(msg.sender);
+        __ERC721_init(name, symbol);
     }
 
     /// @inheritdoc IDotnsRegistrar

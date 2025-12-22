@@ -3,8 +3,7 @@ src = "contracts"
 out = "out"
 test = "test"
 libs = ["lib"]
-
-fs_permissions = [{ access = "read", path = "./" }]
+fs_permissions = [{ access = "read-write", path = "./" }]
 ffi = true
 ast = true
 build_info = true
