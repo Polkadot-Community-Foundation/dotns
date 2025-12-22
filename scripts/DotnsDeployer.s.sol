@@ -27,7 +27,6 @@ import {StoreFactory} from "../contracts/store/StoreFactory.sol";
 import {IStoreFactory} from "../contracts/store/IStoreFactory.sol";
 
 /// @title DotnsDeployer
-/// @notice Deploys the DotNS stack in the same order/wiring as BaseDotns.setUp()
 contract DotnsDeployer is BaseDeployer {
     uint256 public constant rentPrice = 2e15 wei;
 
@@ -55,7 +54,7 @@ contract DotnsDeployer is BaseDeployer {
         vm.startBroadcast(OWNER);
         vm.label(OWNER, "OWNER");
 
-        // StoreFactory (non-proxy, matches BaseDotns)
+        // StoreFactory 
         storeFactory = new StoreFactory();
         vm.label(address(storeFactory), "StoreFactory");
         logDeployment("StoreFactory", address(storeFactory));

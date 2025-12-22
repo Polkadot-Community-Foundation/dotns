@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 import {IDotnsRegistrar} from "../../../contracts/registrars/DotnsRegistrar.sol";
 
-import {BaseDotns} from "../../base/BaseDotNS.t.sol";
+import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 contract DotnsRegistrarTests is BaseDotns {

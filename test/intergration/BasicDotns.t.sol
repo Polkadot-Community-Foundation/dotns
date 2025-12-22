@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {BaseDotns} from "../base/BaseDotNS.t.sol";
+import {BaseDotns} from "../base/BaseDotns.t.sol";
 
 import {PopOracle, IPopOracle} from "../../contracts/pop/PopOracle.sol";
 import {DotnsRegistrarController} from "../../contracts/registrars/DotnsRegistrarController.sol";

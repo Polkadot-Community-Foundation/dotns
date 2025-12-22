@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {BaseDotns} from "../../base/BaseDotNS.t.sol";
+import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IDotnsRegistry} from "../../../contracts/registry/IDotnsRegistry.sol";
 
 contract DotnsRegistryTests is BaseDotns {
