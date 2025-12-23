@@ -6,7 +6,7 @@ on:
       - main
       - develop
     paths:
-      - '**.sol'
+      - 'contracts/**.sol'
       - 'foundry.toml'
       - '.github/workflows/slither.yml'
 
@@ -40,21 +40,24 @@ jobs:
         continue-on-error: true
         with:
           fail-on: none
-          slither-args: --json slither-report.json --checklist --markdown-root ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.sha }}/
+          target: './contracts'
+          slither-args: --json slither-report.json --filter-paths "lib/|test/" --exclude-dependencies
 
       - name: Process Slither output
         if: always()
         run: |
           python3 << 'EOF'
           import json
-          import os
           from collections import defaultdict
 
-          # Load Slither JSON report
-          with open('slither-report.json', 'r') as f:
-              data = json.load(f)
+          try:
+              with open('slither-report.json', 'r') as f:
+                  data = json.load(f)
+          except (FileNotFoundError, json.JSONDecodeError):
+              with open('slither-results.md', 'w') as f:
+                  f.write('# Slither Analysis Results\n\nAnalysis failed to generate report.\n')
+              exit(0)
 
-          # Group findings by severity
           findings = defaultdict(list)
           
           for result in data.get('results', {}).get('detectors', []):
@@ -66,40 +69,32 @@ jobs:
                   'elements': result.get('elements', [])
               })
 
-          # Severity order for sorting
           severity_order = ['High', 'Medium', 'Low', 'Informational', 'Optimization']
           
-          # Generate markdown table
-          output = []
-          output.append('# Slither Analysis Results\n')
-          
+          output = ['# Slither Analysis Results\n']
           total_issues = sum(len(v) for v in findings.values())
           
           if total_issues == 0:
-              output.append('✅ No issues detected.\n')
+              output.append('No issues detected.\n')
           else:
-              output.append(f'**Total Issues Found:** {total_issues}\n')
-              output.append('## Summary by Severity\n')
+              output.append(f'**Total Issues:** {total_issues}\n')
+              output.append('## Summary\n')
               output.append('| Severity | Count |')
               output.append('|----------|-------|')
               
               for severity in severity_order:
                   count = len(findings.get(severity, []))
                   if count > 0:
-                      emoji = {'High': '🔴', 'Medium': '🟡', 'Low': '🟢', 
-                              'Informational': 'ℹ️', 'Optimization': '⚙️'}.get(severity, '•')
-                      output.append(f'| {emoji} {severity} | {count} |')
+                      output.append(f'| {severity} | {count} |')
               
-              output.append('\n## Detailed Findings\n')
+              output.append('\n## Details\n')
               
               for severity in severity_order:
                   issues = findings.get(severity, [])
                   if not issues:
                       continue
                   
-                  emoji = {'High': '🔴', 'Medium': '🟡', 'Low': '🟢', 
-                          'Informational': 'ℹ️', 'Optimization': '⚙️'}.get(severity, '•')
-                  output.append(f'\n### {emoji} {severity} ({len(issues)})\n')
+                  output.append(f'\n### {severity} ({len(issues)})\n')
                   output.append('| Check | Description | Confidence | Location |')
                   output.append('|-------|-------------|------------|----------|')
                   
@@ -110,9 +105,8 @@ jobs:
                           desc += '...'
                       confidence = issue['confidence']
                       
-                      # Extract location from elements
                       locations = []
-                      for elem in issue['elements'][:2]:  # Limit to first 2 locations
+                      for elem in issue['elements'][:2]:
                           if 'source_mapping' in elem:
                               loc = elem['source_mapping'].get('filename_short', '')
                               line = elem['source_mapping'].get('lines', [])
@@ -122,11 +116,8 @@ jobs:
                       location = '<br>'.join(locations) if locations else 'N/A'
                       output.append(f'| {check} | {desc} | {confidence} | {location} |')
 
-          # Write to markdown file
           with open('slither-results.md', 'w') as f:
               f.write('\n'.join(output))
-          
-          print('\n'.join(output))
           EOF
 
       - name: Comment PR with results
@@ -135,36 +126,40 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const markdown = fs.readFileSync('slither-results.md', 'utf8');
             
-            // Find existing comment
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-            
-            const botComment = comments.find(comment => 
-              comment.user.type === 'Bot' && 
-              comment.body.includes('Slither Analysis Results')
-            );
-            
-            const commentBody = `${markdown}\n\n---\n*Analysis performed on commit ${context.sha.substring(0, 7)}*`;
-            
-            if (botComment) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: botComment.id,
-                body: commentBody
-              });
-            } else {
-              await github.rest.issues.createComment({
+            try {
+              const markdown = fs.readFileSync('slither-results.md', 'utf8');
+              
+              const { data: comments } = await github.rest.issues.listComments({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: commentBody
               });
+              
+              const botComment = comments.find(comment => 
+                comment.user.type === 'Bot' && 
+                comment.body.includes('Slither Analysis Results')
+              );
+              
+              const commentBody = `${markdown}\n\n---\nAnalysis: ${context.sha.substring(0, 7)}`;
+              
+              if (botComment) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: botComment.id,
+                  body: commentBody
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: commentBody
+                });
+              }
+            } catch (error) {
+              core.setFailed(`Failed to post comment: ${error.message}`);
             }
 
       - name: Upload Slither report
