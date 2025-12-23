@@ -43,19 +43,46 @@ jobs:
           target: './contracts'
           slither-args: --json slither-report.json --filter-paths "lib/|test/" --exclude-dependencies
 
+      - name: Check Slither output
+        if: always()
+        run: |
+          echo "Checking for slither-report.json..."
+          if [ -f slither-report.json ]; then
+            echo "File exists, size: $(wc -c < slither-report.json) bytes"
+            echo "First 500 characters:"
+            head -c 500 slither-report.json
+          else
+            echo "slither-report.json not found"
+            ls -la
+          fi
+
       - name: Process Slither output
         if: always()
         run: |
           python3 << 'EOF'
           import json
+          import os
           from collections import defaultdict
+
+          if not os.path.exists('slither-report.json'):
+              print("ERROR: slither-report.json not found")
+              with open('slither-results.md', 'w') as f:
+                  f.write('# Slither Analysis Results\n\nSlither did not generate a report file.\n')
+              exit(0)
 
           try:
               with open('slither-report.json', 'r') as f:
-                  data = json.load(f)
-          except (FileNotFoundError, json.JSONDecodeError):
+                  content = f.read()
+                  if not content.strip():
+                      print("ERROR: slither-report.json is empty")
+                      with open('slither-results.md', 'w') as f:
+                          f.write('# Slither Analysis Results\n\nSlither report file is empty.\n')
+                      exit(0)
+                  data = json.loads(content)
+          except json.JSONDecodeError as e:
+              print(f"ERROR: Invalid JSON: {e}")
               with open('slither-results.md', 'w') as f:
-                  f.write('# Slither Analysis Results\n\nAnalysis failed to generate report.\n')
+                  f.write(f'# Slither Analysis Results\n\nFailed to parse Slither report: {str(e)}\n')
               exit(0)
 
           findings = defaultdict(list)
@@ -118,6 +145,8 @@ jobs:
 
           with open('slither-results.md', 'w') as f:
               f.write('\n'.join(output))
+          
+          print(f"Successfully generated report with {total_issues} issues")
           EOF
 
       - name: Comment PR with results
