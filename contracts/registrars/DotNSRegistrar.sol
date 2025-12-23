@@ -31,7 +31,7 @@ contract DotnsRegistrar is
 
     /// @notice Restricts function access to authorised controllers.
     modifier onlyController() {
-        require(controllers[msg.sender], NotController(msg.sender));
+        _onlyController();
         _;
     }
 
@@ -97,6 +97,12 @@ contract DotnsRegistrar is
     /// @return versionString Current version string
     function version() external pure virtual returns (string memory versionString) {
         versionString = "1.0.0";
+    }
+
+    /// @notice Internal function to check for controller access.
+    /// @dev Done this way to redue code size
+    function _onlyController() internal view {
+        require(controllers[msg.sender], NotController(msg.sender));
     }
 
     /// @inheritdoc UUPSUpgradeable

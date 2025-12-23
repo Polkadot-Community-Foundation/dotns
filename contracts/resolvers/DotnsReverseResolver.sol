@@ -14,6 +14,7 @@ import {IDotnsReverseResolver} from "./IDotnsReverseResolver.sol";
 /// @title Dot Reverse Resolver
 /// @notice Resolves an address to its associated .dot name.
 /// @dev Maintains an on-chain mapping from addresses to name strings.
+///      Writes are restricted to an authorised registrar.
 /// @custom:security-contact admin@parity.io
 contract DotnsReverseResolver is
     Initializable,
@@ -30,9 +31,8 @@ contract DotnsReverseResolver is
     address public registrar;
 
     /// @notice Restricts access to the configured registrar.
-    /// @dev Reverts if the caller is not the configured registrar.
     modifier onlyRegistrar() {
-        require(msg.sender == registrar, NotRegistrar());
+        _onlyRegistrar();
         _;
     }
 
@@ -75,6 +75,11 @@ contract DotnsReverseResolver is
     {
         return interfaceId == type(IDotnsReverseResolver).interfaceId
             || super.supportsInterface(interfaceId);
+    }
+
+    /// @notice Internal check enforcing registrar-only access.
+    function _onlyRegistrar() internal view {
+        require(msg.sender == registrar, NotRegistrar());
     }
 
     /// @notice Returns implementation version

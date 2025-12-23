@@ -25,13 +25,13 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     /// @notice Restricts access to the current owner of `node`.
     /// @param node Node identifier.
     modifier authorised(bytes32 node) {
-        require(records[node].owner == msg.sender, NotAuthorised());
+        _authorised(node);
         _;
     }
 
     /// @notice Restricts access to the configured registrar controller.
     modifier onlyRegistrarController() {
-        require(msg.sender == registrarController, NotAuthorised());
+        _onlyRegistrarController();
         _;
     }
 
@@ -69,7 +69,14 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     {
         require(newOwner != address(0), NotAuthorised());
 
-        subnode = keccak256(abi.encodePacked(node, label));
+        assembly {
+            // compute subnode
+            let pointer := mload(0x40)
+            mstore(pointer, node)
+            mstore(add(pointer, 0x20), label)
+            subnode := keccak256(pointer, 0x40)
+        }
+
         require(!records[subnode].exists, NodeAlreadyExists(subnode));
 
         records[subnode].owner = newOwner;
@@ -83,7 +90,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     function setOwner(
         bytes32 node,
         address newOwner,
-        address resolver
+        address resolverAddr
     )
         external
         override
@@ -93,7 +100,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         require(!records[node].exists, NodeAlreadyOwned(node));
 
         records[node].owner = newOwner;
-        records[node].resolver = resolver;
+        records[node].resolver = resolverAddr;
         records[node].exists = true;
 
         emit NodeTransferred(node, newOwner);
@@ -118,6 +125,17 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     /// @inheritdoc IDotnsRegistry
     function recordExists(bytes32 node) external view override returns (bool) {
         return records[node].exists;
+    }
+
+    /// @notice Internal authorisation check for node ownership.
+    /// @param node Node identifier.
+    function _authorised(bytes32 node) internal view {
+        require(records[node].owner == msg.sender, NotAuthorised());
+    }
+
+    /// @notice Internal check for registrar controller privileges.
+    function _onlyRegistrarController() internal view {
+        require(msg.sender == registrarController, NotAuthorised());
     }
 
     /// @notice Returns implementation version

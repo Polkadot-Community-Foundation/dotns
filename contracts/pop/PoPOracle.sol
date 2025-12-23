@@ -48,7 +48,7 @@ contract PopOracle is
 
     /// @notice Restricts function to registry controller
     modifier onlyRegistry() {
-        require(msg.sender == ethRegistryController, NotRegistry());
+        _onlyRegistry();
         _;
     }
 
@@ -59,7 +59,8 @@ contract PopOracle is
 
     /// @notice Initializes the oracle with pricing parameters
     /// @param _startingPrice Base price in wei for No pop status users
-    function __PopOracle_init(uint256 _startingPrice) internal onlyInitializing {
+    /// forge-lint: disable-next-line(mixed-case-variable)
+    function _popOracleInit(uint256 _startingPrice) internal onlyInitializing {
         __Ownable_init(msg.sender);
         __ERC165_init();
         startingPrice = _startingPrice;
@@ -68,13 +69,30 @@ contract PopOracle is
     /// @notice Initializes the oracle (public entry point)
     /// @param _startingPrice Base price in wei for No pop status users
     function initialize(uint256 _startingPrice) public initializer {
-        __PopOracle_init(_startingPrice);
+        _popOracleInit(_startingPrice);
     }
 
     /// @inheritdoc IPopOracle
     function setNamePopStatus(string calldata name, PopStatus status) external override {
-        bytes32 labelhash = keccak256(bytes(name));
-        bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
+        bytes32 labelhash;
+        bytes32 node;
+
+        assembly {
+            let pointer := mload(0x40)
+            let length := name.length
+            calldatacopy(pointer, name.offset, length)
+            labelhash := keccak256(pointer, length)
+
+            mstore(pointer, DOT_NODE)
+            mstore(add(pointer, 0x20), labelhash)
+            node := keccak256(pointer, 0x40)
+
+            let usedMemory := 0x40
+            if gt(length, 0x40) {
+                usedMemory := length
+            }
+            mstore(0x40, add(pointer, usedMemory))
+        }
 
         namePopStatus[msg.sender][node] = status;
         emit NamePopStatusSet(name, status, msg.sender);
@@ -90,8 +108,26 @@ contract PopOracle is
         override
         returns (PopStatus status)
     {
-        bytes32 labelhash = keccak256(bytes(name));
-        bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
+        bytes32 labelhash;
+        bytes32 node;
+
+        assembly {
+            let pointer := mload(0x40)
+            let length := name.length
+            calldatacopy(pointer, name.offset, length)
+            labelhash := keccak256(pointer, length)
+
+            mstore(pointer, DOT_NODE)
+            mstore(add(pointer, 0x20), labelhash)
+            node := keccak256(pointer, 0x40)
+
+            let usedMemory := 0x40
+            if gt(length, 0x40) {
+                usedMemory := length
+            }
+            mstore(0x40, add(pointer, usedMemory))
+        }
+
         return namePopStatus[who][node];
     }
 
@@ -102,27 +138,24 @@ contract PopOracle is
         override
         returns (PopStatus requirement, string memory message)
     {
-        uint256 totalLen = name.strlen();
+        uint256 totallength = name.strlen();
         uint256 trailingDigits = _countTrailingDigits(name);
 
         require(trailingDigits <= 2, PopError("Name can have maximum 2 digit suffix"));
 
-        uint256 baseLen = totalLen - trailingDigits;
+        uint256 baselength = totallength - trailingDigits;
 
-        // Governance reservation should not be bypassable with suffix digits
-        if (baseLen <= 5) {
+        if (baselength <= 5) {
             return (PopStatus.Reserved, "Reserved for Governance");
         }
 
-        // Lite-eligible: base length 6–8 with exactly 2 trailing digits
-        if (baseLen >= 6 && baseLen <= 8) {
+        if (baselength >= 6 && baselength <= 8) {
             if (trailingDigits == 2) {
                 return (PopStatus.PopLite, "Requires Light personhood verification");
             }
             return (PopStatus.PopFull, "Requires Full personhood verification");
         }
 
-        // 9+ base length
         if (trailingDigits == 2) {
             return (PopStatus.NoStatus, "Available to all");
         }
@@ -139,7 +172,6 @@ contract PopOracle is
         override
         onlyRegistry
     {
-        // Reservation only for lite-eligible usernames (base 6–8 + exactly 2 trailing digits).
         (PopStatus requiredStatus,) = classifyName(name);
         require(
             requiredStatus == PopStatus.PopLite,
@@ -150,8 +182,10 @@ contract PopOracle is
 
         Reservation memory existingReservation = reservations[strippedBase];
         if (existingReservation.owner == address(0)) {
+            // casting to 'uint64' is safe because  MAX_RESERVATION_TIME is less than 2^64 seconds
+            // forge-lint: disable-next-line(unsafe-typecast)
             uint64 expiryTime = uint64(block.timestamp + MAX_RESERVATION_TIME);
-            reservations[strippedBase] = Reservation(userAddress, expiryTime);
+            reservations[strippedBase] = Reservation({owner: userAddress, expires: expiryTime});
             emit BaseNameReserved(strippedBase, userAddress, expiryTime);
         }
     }
@@ -225,13 +259,11 @@ contract PopOracle is
                 PopError("Requires Personhood Lite verification")
             );
         } else {
-            // NoStatus:
-            // keep the “lite cannot take base names” rule for 9+ base names with no suffix.
-            // (Long names with a 2-digit suffix remain allowed for PopLite.)
             uint256 trailingDigits = _countTrailingDigits(name);
-            if (trailingDigits == 0 && userStatus == PopStatus.PopLite) {
-                revert PopError("Personhood Lite cannot register base names");
-            }
+            require(
+                trailingDigits != 0 && userStatus != PopStatus.PopLite,
+                PopError("Personhood Lite cannot register base names")
+            );
         }
 
         return metadata;
@@ -239,20 +271,16 @@ contract PopOracle is
 
     /// @inheritdoc IPopOracle
     function price(string calldata name) public view override returns (uint256) {
-        uint256 nameLength = name.strlen();
-        if (nameLength < 9) {
+        uint256 namelength = name.strlen();
+        if (namelength < 9) {
             return 0;
         }
 
-        uint256 pricePerSecond;
-
-        if (nameLength >= 15) {
-            pricePerSecond = startingPrice / 2;
-        } else {
-            pricePerSecond = startingPrice * (15 - nameLength);
+        if (namelength >= 15) {
+            return startingPrice / 2;
         }
 
-        return pricePerSecond;
+        return startingPrice * (15 - namelength);
     }
 
     /// @notice Enforces base name reservation rules
@@ -271,14 +299,18 @@ contract PopOracle is
     }
 
     /// @notice Counts trailing digits in a string
-    /// @param s String to analyze
+    /// @param label String to analyze
     /// @return digitCount Number of trailing digits
-    function _countTrailingDigits(string calldata s) internal pure returns (uint256 digitCount) {
-        bytes calldata b = bytes(s);
-        uint256 stringLength = b.length;
+    function _countTrailingDigits(string calldata label)
+        internal
+        pure
+        returns (uint256 digitCount)
+    {
+        bytes calldata bytesLabel = bytes(label);
+        uint256 stringlength = bytesLabel.length;
 
-        for (uint256 i = stringLength; i > 0; i--) {
-            if (b[i - 1] >= 0x30 && b[i - 1] <= 0x39) {
+        for (uint256 i = stringlength; i > 0; i--) {
+            if (bytesLabel[i - 1] >= 0x30 && bytesLabel[i - 1] <= 0x39) {
                 digitCount++;
             } else {
                 break;
@@ -290,30 +322,33 @@ contract PopOracle is
     /// @param name Domain label
     /// @return baseName Name without trailing digits
     function _stripDigits(string calldata name) internal pure returns (string memory baseName) {
-        bytes calldata b = bytes(name);
-        uint256 endPosition = b.length;
+        bytes calldata bytesName = bytes(name);
+        uint256 endPosition = bytesName.length;
 
-        while (endPosition > 0 && b[endPosition - 1] >= 0x30 && b[endPosition - 1] <= 0x39) {
+        while (
+            endPosition > 0 && bytesName[endPosition - 1] >= 0x30
+                && bytesName[endPosition - 1] <= 0x39
+        ) {
             endPosition--;
         }
 
         bytes memory output = new bytes(endPosition);
         for (uint256 i = 0; i < endPosition; i++) {
-            output[i] = b[i];
+            output[i] = bytesName[i];
         }
 
         return string(output);
     }
 
     /// @inheritdoc ERC165Upgradeable
-    function supportsInterface(bytes4 interfaceID)
+    function supportsInterface(bytes4 interfaceId)
         public
         view
         virtual
         override
         returns (bool supported)
     {
-        return interfaceID == type(IPopOracle).interfaceId || super.supportsInterface(interfaceID);
+        return interfaceId == type(IPopOracle).interfaceId || super.supportsInterface(interfaceId);
     }
 
     /// @inheritdoc UUPSUpgradeable
@@ -323,5 +358,11 @@ contract PopOracle is
     /// @return versionString Current version string
     function version() external pure virtual returns (string memory versionString) {
         versionString = "1.0.0";
+    }
+
+    /// @notice Ensures the caller is the authorized registry controller
+    /// @dev Done this way to redue code size
+    function _onlyRegistry() internal view {
+        require(msg.sender == ethRegistryController, NotRegistry());
     }
 }

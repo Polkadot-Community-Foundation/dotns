@@ -33,13 +33,9 @@ contract Store is IStore, Ownable {
     mapping(address => mapping(bytes32 => bool)) private lockedKeys;
 
     /// @notice Restricts function access to authorized contracts only.
-    /// @dev Reverts with NotAuthorised if caller is not in the authorized list.
+    /// @dev DotNS controllers are implicitly authorized.
     modifier onlyAuthorizedStore() {
-        // We check here to ensure that the caller isnt a controller
-        // If they are we require nothing, else we require them to be an authorized store
-        if (!isDotnsController(msg.sender)) {
-            require(authorizedStores[msg.sender], NotAuthorised(msg.sender));
-        }
+        _onlyAuthorizedStore();
         _;
     }
 
@@ -67,7 +63,7 @@ contract Store is IStore, Ownable {
 
     /// @inheritdoc IStore
     function setValue(bytes32 key, string calldata value) external override {
-        require(!lockedKeys[msg.sender][key], KeyLocked(msg.sender, key));
+        _ensureUnlocked(msg.sender, key);
 
         store[msg.sender][key] = value;
         values[msg.sender].push(value);
@@ -85,7 +81,7 @@ contract Store is IStore, Ownable {
         override
         onlyAuthorizedStore
     {
-        require(!lockedKeys[user][key], KeyLocked(user, key));
+        _ensureUnlocked(user, key);
 
         store[user][key] = value;
         values[user].push(value);
@@ -110,7 +106,7 @@ contract Store is IStore, Ownable {
 
     /// @inheritdoc IStore
     function deleteValue(bytes32 key) external override {
-        require(!lockedKeys[msg.sender][key], KeyLocked(msg.sender, key));
+        _ensureUnlocked(msg.sender, key);
 
         delete store[msg.sender][key];
         emit ValueDeleted(msg.sender, key);
@@ -148,5 +144,20 @@ contract Store is IStore, Ownable {
     function unauthorizeDotnsController(address controllerAddress) external override onlyOwner {
         dotnsControllers[controllerAddress] = false;
         emit DotnsControllerUnauthorized(controllerAddress);
+    }
+
+    /// @notice Internal authorization check for `setValueFor`
+    /// @dev DotNS controllers bypass the authorized store list
+    function _onlyAuthorizedStore() internal view {
+        if (!dotnsControllers[msg.sender]) {
+            require(authorizedStores[msg.sender], NotAuthorised(msg.sender));
+        }
+    }
+
+    /// @notice Ensures a `(user, key)` pair is not permanently locked
+    /// @param user Target user address
+    /// @param key Storage key
+    function _ensureUnlocked(address user, bytes32 key) internal view {
+        require(!lockedKeys[user][key], KeyLocked(user, key));
     }
 }

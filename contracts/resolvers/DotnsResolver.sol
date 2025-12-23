@@ -38,8 +38,10 @@ contract DotnsResolver is
     /// @notice Node → display name
     mapping(bytes32 => string) private displayNames;
 
+    /// @notice Restricts access to the owner of `node` as recorded in the registry
+    /// @param node Node identifier
     modifier onlyNodeOwner(bytes32 node) {
-        require(registry.owner(node) == msg.sender, NotAuthorised(node, msg.sender));
+        _onlyNodeOwner(node);
         _;
     }
 
@@ -52,8 +54,8 @@ contract DotnsResolver is
     /// @param _registry Dot registry used for ownership checks
     function initialize(IDotnsRegistry _registry) external initializer {
         __Ownable_init(msg.sender);
-
         __ERC165_init();
+
         registry = _registry;
     }
 
@@ -94,6 +96,12 @@ contract DotnsResolver is
     function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
         return
             interfaceId == type(IDotnsResolver).interfaceId || super.supportsInterface(interfaceId);
+    }
+
+    /// @notice Internal ownership check for a registry node
+    /// @param node Node identifier
+    function _onlyNodeOwner(bytes32 node) internal view {
+        require(registry.owner(node) == msg.sender, NotAuthorised(node, msg.sender));
     }
 
     /// @notice Returns implementation version

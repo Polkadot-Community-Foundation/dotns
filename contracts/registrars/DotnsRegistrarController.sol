@@ -29,7 +29,7 @@ import {IStoreFactory} from "../store/IStoreFactory.sol";
 ///      - A reveal is valid only if `minCommitmentAge <= now - committedAt < maxCommitmentAge`.
 ///
 /// @dev Store writing:
-///      - On successful registration, the controller writes the full name `<label>.dot` to the user’s Store.
+///      - On successful registration, the controller writes the full name `<label>.dot` to the user's Store.
 ///      - The Store is expected to permanently lock DotNS-written entries, preventing deletion or overwrite.
 /// @custom:security-contact admin@parity.io
 contract DotnsRegistrarController is
@@ -72,6 +72,9 @@ contract DotnsRegistrarController is
     /// @notice Commitment hash => timestamp when committed.
     mapping(bytes32 => uint256) public commitments;
 
+    /// @notice Key prefix for DotNS-written Store entries ("dotns.registered")
+    bytes32 internal dotnsRegisteredKey;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -79,13 +82,6 @@ contract DotnsRegistrarController is
 
     /// @notice Initializes the registrar controller.
     /// @dev Validates commitment window bounds and wires dependencies.
-    /// @param registrar The base registrar used to allocate/mint ownership.
-    /// @param registry The forward registry used to assign subnode ownership.
-    /// @param reverse The reverse resolver used to set a default reverse record.
-    /// @param popOracle The PoP oracle used for classification and pricing.
-    /// @param factory The Store factory used to persist immutable registration records.
-    /// @param minAge Minimum time (in seconds) after commit before reveal is allowed.
-    /// @param maxAge Maximum time (in seconds) after commit before reveal expires.
     function initialize(
         IDotnsRegistrar registrar,
         IDotnsRegistry registry,
@@ -112,12 +108,13 @@ contract DotnsRegistrarController is
 
         minCommitmentAge = minAge;
         maxCommitmentAge = maxAge;
+        dotnsRegisteredKey = hex"646f746e732e72656769737465726564000000000000000000000000000000";
     }
 
     /// @inheritdoc IDotnsRegistrarController
     function available(string calldata label) public view override returns (bool) {
         require(label.strlen() >= 3, NameNotAvailable(label));
-        bytes32 labelhash = keccak256(bytes(label));
+        bytes32 labelhash = _labelhash(label);
         return dotnsRegistrar.available(uint256(labelhash));
     }
 
@@ -126,9 +123,23 @@ contract DotnsRegistrarController is
         public
         pure
         override
-        returns (bytes32)
+        returns (bytes32 commitment)
     {
-        return keccak256(abi.encode(registration.label, registration.owner, registration.secret));
+        string calldata label = registration.label;
+        address owner = registration.owner;
+        bytes32 secret = registration.secret;
+
+        assembly {
+            let pointer := mload(0x40)
+
+            let len := label.length
+            calldatacopy(pointer, label.offset, len)
+
+            mstore(add(pointer, len), owner)
+            mstore(add(pointer, add(len, 0x20)), secret)
+
+            commitment := keccak256(pointer, add(len, 0x40))
+        }
     }
 
     /// @inheritdoc IDotnsRegistrarController
@@ -147,17 +158,15 @@ contract DotnsRegistrarController is
     function register(Registration calldata registration) external payable override {
         require(available(registration.label), NameNotAvailable(registration.label));
 
-        bytes32 labelhash = keccak256(bytes(registration.label));
+        bytes32 labelhash = _labelhash(registration.label);
         bytes32 commitment = makeCommitment(registration);
         uint256 committedAt = commitments[commitment];
 
         require(committedAt != 0, CommitmentNotFound(commitment));
-
         require(
             committedAt + minCommitmentAge <= block.timestamp,
             CommitmentTooNew(commitment, committedAt + minCommitmentAge, block.timestamp)
         );
-
         require(
             committedAt + maxCommitmentAge > block.timestamp,
             CommitmentTooOld(commitment, committedAt + maxCommitmentAge, block.timestamp)
@@ -168,12 +177,11 @@ contract DotnsRegistrarController is
         IPopOracle.PriceWithMeta memory priced =
             oracle.priceWithCheck(registration.label, registration.owner);
 
-        uint256 totalCost = priced.price;
-        require(msg.value >= totalCost, InsufficientValue());
+        require(msg.value >= priced.price, InsufficientValue());
 
         dotnsRegistrar.register(uint256(labelhash), registration.owner);
 
-        bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
+        bytes32 node = _namehash(labelhash);
         dotnsRegistry.setOwner(node, registration.owner, address(reverseResolver));
 
         reverseResolver.setReverseName(
@@ -188,7 +196,7 @@ contract DotnsRegistrarController is
             storeFactory.transferOwnership(registration.owner);
         }
 
-        bytes32 storeKey = keccak256(abi.encodePacked("dotns.registered", labelhash));
+        bytes32 storeKey = _storeKey(labelhash);
         store.setValueFor(registration.owner, storeKey, string.concat(registration.label, ".dot"));
 
         emit NameRegistered(
@@ -202,8 +210,8 @@ contract DotnsRegistrarController is
             oracle.reserveBaseName(registration.label, registration.owner);
         }
 
-        if (msg.value > totalCost) {
-            (bool ok,) = payable(msg.sender).call{value: msg.value - totalCost}("");
+        if (msg.value > priced.price) {
+            (bool ok,) = payable(msg.sender).call{value: msg.value - priced.price}("");
             require(ok, RefundFailed());
         }
     }
@@ -212,18 +220,16 @@ contract DotnsRegistrarController is
     function registerReserved(Registration calldata registration) external payable override {
         require(available(registration.label), NameNotAvailable(registration.label));
 
-        bytes32 labelhash = keccak256(bytes(registration.label));
-        bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
+        bytes32 labelhash = _labelhash(registration.label);
+        bytes32 node = _namehash(labelhash);
         bytes32 commitment = makeCommitment(registration);
         uint256 committedAt = commitments[commitment];
 
         require(committedAt != 0, CommitmentNotFound(commitment));
-
         require(
             committedAt + minCommitmentAge <= block.timestamp,
             CommitmentTooNew(commitment, committedAt + minCommitmentAge, block.timestamp)
         );
-
         require(
             committedAt + maxCommitmentAge > block.timestamp,
             CommitmentTooOld(commitment, committedAt + maxCommitmentAge, block.timestamp)
@@ -232,7 +238,6 @@ contract DotnsRegistrarController is
         delete commitments[commitment];
 
         dotnsRegistrar.register(uint256(labelhash), registration.owner);
-
         dotnsRegistry.setOwner(node, registration.owner, address(reverseResolver));
 
         reverseResolver.setReverseName(
@@ -246,7 +251,7 @@ contract DotnsRegistrarController is
             store.transferOwnership(registration.owner);
         }
 
-        bytes32 storeKey = keccak256(abi.encodePacked("dotns.registered", labelhash));
+        bytes32 storeKey = _storeKey(labelhash);
         store.setValueFor(registration.owner, storeKey, string.concat(registration.label, ".dot"));
 
         emit NameRegistered(registration.label, labelhash, registration.owner, 0, address(store));
@@ -256,6 +261,37 @@ contract DotnsRegistrarController is
     function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
         return interfaceId == type(IDotnsRegistrarController).interfaceId
             || super.supportsInterface(interfaceId);
+    }
+
+    /// @notice Computes keccak256(label)
+    function _labelhash(string calldata label) internal pure returns (bytes32 hash) {
+        assembly {
+            let pointer := mload(0x40)
+            let len := label.length
+            calldatacopy(pointer, label.offset, len)
+            hash := keccak256(pointer, len)
+        }
+    }
+
+    /// @notice Computes namehash(DOT_NODE, labelhash)
+    function _namehash(bytes32 labelhash) internal pure returns (bytes32 node) {
+        assembly {
+            let pointer := mload(0x40)
+            mstore(pointer, DOT_NODE)
+            mstore(add(pointer, 0x20), labelhash)
+            node := keccak256(pointer, 0x40)
+        }
+    }
+
+    /// @notice Computes keccak256("dotns.registered", labelhash)
+    function _storeKey(bytes32 labelhash) internal view returns (bytes32 key) {
+        bytes32 prefix = dotnsRegisteredKey;
+        assembly {
+            let pointer := mload(0x40)
+            mstore(pointer, prefix)
+            mstore(add(pointer, 0x20), labelhash)
+            key := keccak256(pointer, 0x40)
+        }
     }
 
     /// @notice Returns implementation version

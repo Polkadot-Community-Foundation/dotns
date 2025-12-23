@@ -24,7 +24,7 @@ contract BasicDotnsReverts is BaseDotns {
     }
 
     function test_revert_6_to_8_chars_no_digits_without_pop_full() public {
-        string memory label = "testit"; // baseLen=6, no digits => PopFull required
+        string memory label = "testit";
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({

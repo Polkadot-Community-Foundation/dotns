@@ -76,7 +76,7 @@ abstract contract BaseDotns is Test {
 
     /// @notice Rent price applied to PoP NoStatus users for spam resistance.
     /// @dev This value is passed into PopOracle initialization in this base test.
-    uint256 public constant rentPrice = 2e15 wei;
+    uint256 public constant RENT_PRICE = 2e15 wei;
 
     /// @notice Zero hash constant
     bytes32 public constant ZERO_HASH = bytes32(0);
@@ -138,7 +138,7 @@ abstract contract BaseDotns is Test {
         vm.label(dotnsContentResolverAddress, "DotnsContentResolver");
 
         address popOracleAddress = Upgrades.deployUUPSProxy(
-            "PopOracle.sol:PopOracle", abi.encodeCall(PopOracle.initialize, (rentPrice))
+            "PopOracle.sol:PopOracle", abi.encodeCall(PopOracle.initialize, (RENT_PRICE))
         );
         popOracle = PopOracle(popOracleAddress);
         vm.label(popOracleAddress, "PopOracle");
@@ -165,6 +165,7 @@ abstract contract BaseDotns is Test {
         dotnsRegistrar.addController(dotnsRegistrarControllerAddress);
         dotnsRegistry.updateRegistrarController(dotnsRegistrarControllerAddress);
         vm.stopPrank();
+        vm.warp(block.timestamp + 365 days);
     }
 
     /// @notice Computes an namehash for `parent` and `label`.
@@ -187,17 +188,14 @@ abstract contract BaseDotns is Test {
     }
 
     /// @notice Computes the commitment hash for a registration.
-    /// @dev Must match the controller's commitment preimage:
-    ///      `keccak256(abi.encode(label, owner, secret))`.
     /// @param registration Registration parameters.
     /// @return commitmentHash Commitment hash.
     function _computeCommitmentHash(IDotnsRegistrarController.Registration memory registration)
         internal
-        pure
+        view
         returns (bytes32 commitmentHash)
     {
-        commitmentHash =
-            keccak256(abi.encode(registration.label, registration.owner, registration.secret));
+        commitmentHash = dotnsRegistrarController.makeCommitment(registration);
     }
 
     /// @notice Submits a commitment for a registration.

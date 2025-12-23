@@ -3,9 +3,7 @@ pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../base/BaseDotns.t.sol";
 
-import {PopOracle, IPopOracle} from "../../contracts/pop/PopOracle.sol";
-import {DotnsRegistrarController} from "../../contracts/registrars/DotnsRegistrarController.sol";
-import {IDotnsRegistrarController} from "../../contracts/registrars/IDotnsRegistrarController.sol";
+import {IPopOracle} from "../../contracts/pop/PopOracle.sol";
 
 contract BasicDotns is BaseDotns {
     function test_register_pop_full_8_chars_no_digits_no_reservation() public {
