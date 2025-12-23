@@ -34,27 +34,18 @@ jobs:
       - name: Build contracts
         run: forge build --build-info
 
-      - name: Run Slither
-        uses: crytic/slither-action@v0.4.0
-        id: slither
-        continue-on-error: true
-        with:
-          fail-on: none
-          target: './contracts'
-          slither-args: --json slither-report.json --filter-paths "lib/|test/" --exclude-dependencies
+      - name: Install Slither
+        run: pip3 install slither-analyzer
 
-      - name: Check Slither output
-        if: always()
+      - name: Run Slither
+        continue-on-error: true
         run: |
-          echo "Checking for slither-report.json..."
-          if [ -f slither-report.json ]; then
-            echo "File exists, size: $(wc -c < slither-report.json) bytes"
-            echo "First 500 characters:"
-            head -c 500 slither-report.json
-          else
-            echo "slither-report.json not found"
-            ls -la
-          fi
+          slither . \
+            --json slither-report.json \
+            --filter-paths "lib/|test/" \
+            --exclude-dependencies \
+            --compile-force-framework foundry \
+            || true
 
       - name: Process Slither output
         if: always()
