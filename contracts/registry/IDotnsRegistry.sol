@@ -77,15 +77,15 @@ interface IDotnsRegistry {
     ///      This is a privileged operation used by the registrar controller during registration flows.
     /// @param node Node identifier.
     /// @param owner New owner address.
-    /// @param resolver Resolver address to set for the node.
+    /// @param resolverAddr Resolver address to set for the node.
     /// @custom:reverts NotRegistryController if the caller is not the registrar controller.
-    function setOwner(bytes32 node, address owner, address resolver) external;
+    function setOwner(bytes32 node, address owner, address resolverAddr) external;
 
     /// @notice Sets or clears the resolver for a node.
     /// @dev Callable only by the current node owner.
     /// @param node Node identifier.
-    /// @param resolver Resolver contract address (zero clears).
-    function setResolver(bytes32 node, address resolver) external;
+    /// @param resolverAddr Resolver contract address (zero clears).
+    function setResolver(bytes32 node, address resolverAddr) external;
 
     /// @notice Returns the owner of a node.
     /// @param node Node identifier.
