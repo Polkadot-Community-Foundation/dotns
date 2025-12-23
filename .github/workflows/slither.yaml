@@ -127,39 +127,39 @@ jobs:
           script: |
             const fs = require('fs');
             
-            try {
-              const markdown = fs.readFileSync('slither-results.md', 'utf8');
-              
-              const { data: comments } = await github.rest.issues.listComments({
+            if (!fs.existsSync('slither-results.md')) {
+              core.setFailed('slither-results.md does not exist');
+              return;
+            }
+            
+            const markdown = fs.readFileSync('slither-results.md', 'utf8');
+            const commentBody = `${markdown}\n\n---\nAnalysis: ${context.sha.substring(0, 7)}`;
+            
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.login === 'github-actions[bot]' &&
+              comment.body.includes('Slither Analysis Results')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody
+              });
+            } else {
+              await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
+                body: commentBody
               });
-              
-              const botComment = comments.find(comment => 
-                comment.user.type === 'Bot' && 
-                comment.body.includes('Slither Analysis Results')
-              );
-              
-              const commentBody = `${markdown}\n\n---\nAnalysis: ${context.sha.substring(0, 7)}`;
-              
-              if (botComment) {
-                await github.rest.issues.updateComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  comment_id: botComment.id,
-                  body: commentBody
-                });
-              } else {
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: context.issue.number,
-                  body: commentBody
-                });
-              }
-            } catch (error) {
-              core.setFailed(`Failed to post comment: ${error.message}`);
             }
 
       - name: Upload Slither report
