@@ -60,7 +60,7 @@ contract DotnsReverseResolver is
 
     /// @inheritdoc IDotnsReverseResolver
     function updateRegistrar(address newRegistrar) external override onlyOwner {
-        require(newRegistrar != address(0), NotRegistrar());
+        require(newRegistrar != address(0), InvalidRegistrar());
         address oldRegistrar = registrar;
         registrar = newRegistrar;
         emit RegistrarUpdated(oldRegistrar, newRegistrar);

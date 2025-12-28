@@ -14,10 +14,11 @@ import {IDotnsRegistry} from "../registry/IDotnsRegistry.sol";
 import {IDotnsContentResolver} from "./IDotnsContentResolver.sol";
 
 /// @title DotNS Content Resolver
-/// @notice Stores off-chain content references for DotNS nodes
-/// @dev This resolver maintains a simple mapping from node identifiers to
-///      opaque content identifiers. Authorisation is enforced strictly via
-///      node ownership in the DotNS registry.
+/// @notice Stores content hash and text records for DotNS nodes
+/// @dev Maintains simple storage for:
+///      - `contenthash(node)` as opaque bytes
+///      - `text(node, key)` as string key-value records
+///      Authorisation is enforced strictly via node ownership in the DotNS registry.
 /// @custom:security-contact admin@parity.io
 contract DotnsContentResolver is
     Initializable,
@@ -29,8 +30,11 @@ contract DotnsContentResolver is
     /// @notice DotNS registry used for ownership checks
     IDotnsRegistry public registry;
 
-    /// @notice Node → content identifier mapping
-    mapping(bytes32 => bytes) private contents;
+    /// @notice Node → content hash mapping
+    mapping(bytes32 => bytes) private contenthashes;
+
+    /// @notice Node → (key → value) text records
+    mapping(bytes32 => mapping(string => string)) private textRecords;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -41,30 +45,53 @@ contract DotnsContentResolver is
     /// @param _registry Address of the DotNS registry contract
     function initialize(IDotnsRegistry _registry) external initializer {
         __Ownable_init(msg.sender);
-
         __ERC165_init();
-
         registry = _registry;
     }
 
     /// @inheritdoc IDotnsContentResolver
-    function setContent(bytes32 node, bytes calldata content) external {
-        address owner = registry.owner(node);
-        require(owner == msg.sender, NotAuthorised(node, msg.sender));
-
-        contents[node] = content;
-        emit ContentUpdated(node, content);
+    function setContenthash(bytes32 node, bytes calldata hash) external override {
+        _requireNodeOwner(node);
+        contenthashes[node] = hash;
+        emit ContentHashUpdated(node, hash);
     }
 
     /// @inheritdoc IDotnsContentResolver
-    function contentOf(bytes32 node) external view returns (bytes memory content) {
-        return contents[node];
+    function contenthash(bytes32 node) external view override returns (bytes memory hash) {
+        return contenthashes[node];
+    }
+
+    /// @inheritdoc IDotnsContentResolver
+    function setText(bytes32 node, string calldata key, string calldata value) external override {
+        _requireNodeOwner(node);
+        textRecords[node][key] = value;
+        emit TextUpdated(node, key, value);
+    }
+
+    /// @inheritdoc IDotnsContentResolver
+    function text(
+        bytes32 node,
+        string calldata key
+    )
+        external
+        view
+        override
+        returns (string memory value)
+    {
+        return textRecords[node][key];
     }
 
     /// @inheritdoc ERC165Upgradeable
     function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
         return interfaceId == type(IDotnsContentResolver).interfaceId
             || super.supportsInterface(interfaceId);
+    }
+
+    /// @notice Ensures the caller is authorised to modify `node`
+    /// @param node Node identifier
+    function _requireNodeOwner(bytes32 node) internal view {
+        address owner = registry.owner(node);
+        require(owner == msg.sender, NotAuthorised(node, msg.sender));
     }
 
     /// @notice Returns implementation version

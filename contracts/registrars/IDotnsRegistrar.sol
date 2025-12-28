@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {IERC721} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
 
 /// @title DotNS Registrar Interface
 /// @author DotNS
@@ -31,11 +32,11 @@ interface IDotnsRegistrar is IERC721 {
 
     /// @notice Emitted when a controller is added.
     /// @param controller Address granted controller permissions.
-    event ControllerAdded(address indexed controller);
+    event ControllerAdded(IDotnsRegistrarController indexed controller);
 
     /// @notice Emitted when a controller is removed.
     /// @param controller Address whose controller permissions were revoked.
-    event ControllerRemoved(address indexed controller);
+    event ControllerRemoved(IDotnsRegistrarController indexed controller);
 
     /// @notice Returns whether a name is available for registration.
     /// @dev A name is available if and only if it has not been registered yet.
@@ -53,10 +54,10 @@ interface IDotnsRegistrar is IERC721 {
     /// @notice Adds an authorised controller.
     /// @dev Can only be called by an owner
     /// @param controller Address to authorise.
-    function addController(address controller) external;
+    function addController(IDotnsRegistrarController controller) external;
 
     /// @notice Removes an authorised controller.
     /// @dev Can only be called by an owner
     /// @param controller Address to deauthorise.
-    function removeController(address controller) external;
+    function removeController(IDotnsRegistrarController controller) external;
 }

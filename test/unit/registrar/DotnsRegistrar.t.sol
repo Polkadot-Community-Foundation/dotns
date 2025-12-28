@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 import {IDotnsRegistrar} from "../../../contracts/registrars/DotnsRegistrar.sol";
 
-import {BaseDotns} from "../../base/BaseDotns.t.sol";
+import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 contract DotnsRegistrarTests is BaseDotns {
@@ -12,10 +12,10 @@ contract DotnsRegistrarTests is BaseDotns {
         vm.startPrank(owner);
 
         vm.expectEmit(true, false, false, false, address(dotnsRegistrar));
-        emit IDotnsRegistrar.ControllerAdded(additionalController);
-        dotnsRegistrar.addController(additionalController);
+        emit IDotnsRegistrar.ControllerAdded(IDotnsRegistrarController(additionalController));
+        dotnsRegistrar.addController(IDotnsRegistrarController(additionalController));
 
-        assertTrue(dotnsRegistrar.controllers(additionalController));
+        assertTrue(dotnsRegistrar.controllers(IDotnsRegistrarController(additionalController)));
 
         vm.stopPrank();
     }
@@ -24,15 +24,15 @@ contract DotnsRegistrarTests is BaseDotns {
         address temporaryController = makeAddr("temporaryController");
 
         vm.startPrank(owner);
-        dotnsRegistrar.addController(temporaryController);
+        dotnsRegistrar.addController(IDotnsRegistrarController(temporaryController));
 
         vm.expectEmit(true, false, false, false, address(dotnsRegistrar));
-        emit IDotnsRegistrar.ControllerRemoved(temporaryController);
-        dotnsRegistrar.removeController(temporaryController);
+        emit IDotnsRegistrar.ControllerRemoved(IDotnsRegistrarController(temporaryController));
+        dotnsRegistrar.removeController(IDotnsRegistrarController(temporaryController));
 
         vm.stopPrank();
 
-        assertFalse(dotnsRegistrar.controllers(temporaryController));
+        assertFalse(dotnsRegistrar.controllers(IDotnsRegistrarController(temporaryController)));
     }
 
     function test_controller_can_register_and_mints_token_to_user() public {
@@ -120,8 +120,8 @@ contract DotnsRegistrarTests is BaseDotns {
         uint256 tokenId = uint256(keccak256(bytes("readdedControllerName")));
 
         vm.startPrank(owner);
-        dotnsRegistrar.removeController(controllerAddress);
-        dotnsRegistrar.addController(controllerAddress);
+        dotnsRegistrar.removeController(IDotnsRegistrarController(controllerAddress));
+        dotnsRegistrar.addController(IDotnsRegistrarController(controllerAddress));
         vm.stopPrank();
 
         vm.prank(controllerAddress);

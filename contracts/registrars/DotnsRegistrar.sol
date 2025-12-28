@@ -12,6 +12,7 @@ import {
 } from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 
 import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
+import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
 
 /// @title DotNS Base Registrar
 /// @author DotNS
@@ -27,7 +28,7 @@ contract DotnsRegistrar is
 {
     /// @notice Mapping of authorised controller addresses.
     /// @dev Controllers may call `register`.
-    mapping(address => bool) public controllers;
+    mapping(IDotnsRegistrarController controller => bool exists) public controllers;
 
     /// @notice Restricts function access to authorised controllers.
     modifier onlyController() {
@@ -50,13 +51,13 @@ contract DotnsRegistrar is
     }
 
     /// @inheritdoc IDotnsRegistrar
-    function addController(address controller) external onlyOwner {
+    function addController(IDotnsRegistrarController controller) external onlyOwner {
         controllers[controller] = true;
         emit ControllerAdded(controller);
     }
 
     /// @inheritdoc IDotnsRegistrar
-    function removeController(address controller) external onlyOwner {
+    function removeController(IDotnsRegistrarController controller) external onlyOwner {
         controllers[controller] = false;
         emit ControllerRemoved(controller);
     }
@@ -102,7 +103,7 @@ contract DotnsRegistrar is
     /// @notice Internal function to check for controller access.
     /// @dev Done this way to redue code size
     function _onlyController() internal view {
-        require(controllers[msg.sender], NotController(msg.sender));
+        require(controllers[IDotnsRegistrarController(msg.sender)], NotController(msg.sender));
     }
 
     /// @inheritdoc UUPSUpgradeable

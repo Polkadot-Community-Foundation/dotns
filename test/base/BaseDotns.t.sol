@@ -143,6 +143,20 @@ abstract contract BaseDotns is Test {
         popOracle = PopOracle(popOracleAddress);
         vm.label(popOracleAddress, "PopOracle");
 
+        address dotnContentResolverAddress = Upgrades.deployUUPSProxy(
+            "DotnsContentResolver.sol:DotnsContentResolver",
+            abi.encodeCall(DotnsContentResolver.initialize, (IDotnsRegistry(dotnsRegistryAddress)))
+        );
+        dotnsContentResolver = DotnsContentResolver(dotnContentResolverAddress);
+        vm.label(dotnContentResolverAddress, "DotnsContentResolver");
+
+        address dotnResolverAddress = Upgrades.deployUUPSProxy(
+            "DotnsResolver.sol:DotnsResolver",
+            abi.encodeCall(DotnsResolver.initialize, (IDotnsRegistry(dotnsRegistryAddress)))
+        );
+        dotnsResolver = DotnsResolver(dotnResolverAddress);
+        vm.label(dotnResolverAddress, "DotnsResolver");
+
         address dotnsRegistrarControllerAddress = Upgrades.deployUUPSProxy(
             "DotnsRegistrarController.sol:DotnsRegistrarController",
             abi.encodeCall(
@@ -162,7 +176,7 @@ abstract contract BaseDotns is Test {
         vm.label(dotnsRegistrarControllerAddress, "DotnsRegistrarController");
         dotnsReverseResolver.updateRegistrar(dotnsRegistrarControllerAddress);
         popOracle.updateEthRegistry(dotnsRegistrarControllerAddress);
-        dotnsRegistrar.addController(dotnsRegistrarControllerAddress);
+        dotnsRegistrar.addController(IDotnsRegistrarController(dotnsRegistrarControllerAddress));
         dotnsRegistry.updateRegistrarController(dotnsRegistrarControllerAddress);
         vm.stopPrank();
         vm.warp(block.timestamp + 365 days);
@@ -259,5 +273,29 @@ abstract contract BaseDotns is Test {
 
         vm.prank(nameOwner);
         dotnsRegistrarController.register{value: requiredPayment}(registration);
+    }
+
+    /// @notice Registers `label` for `labelOwner` under the requested PoP status and returns its node
+    /// @dev For NoStatus, no status is set on the oracle.
+    ///      For PopLite/PopFull, status is set for `(labelOwner, label)` before commit–reveal.
+    /// @param label The label to register (without the `.dot` suffix)
+    /// @param labelOwner The address that will own the registered label
+    /// @param status The PoP status to set for this label (NoStatus skips setting)
+    /// @return node The node identifier for `<label>.dot`
+    function _register(
+        string memory label,
+        address labelOwner,
+        IPopOracle.PopStatus status
+    )
+        internal
+        returns (bytes32 node)
+    {
+        if (status != IPopOracle.PopStatus.NoStatus) {
+            vm.prank(labelOwner);
+            popOracle.setNamePopStatus(label, status);
+        }
+
+        _commitAndRegister(label, labelOwner);
+        node = _namehash(dotNode, keccak256(bytes(label)));
     }
 }

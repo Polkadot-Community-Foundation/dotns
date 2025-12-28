@@ -10,6 +10,9 @@ interface IDotnsReverseResolver {
     /// @notice Thrown when a caller is not authorised to modify reverse records.
     error NotRegistrar();
 
+    /// @notice Thrown when an invalid registrar address is provided.
+    error InvalidRegistrar();
+
     /// @notice Emitted when the registrar address is updated.
     /// @param oldRegistrar Previous registrar.
     /// @param newRegistrar New registrar.
@@ -31,5 +34,6 @@ interface IDotnsReverseResolver {
     /// @notice Updates the registrar address authorised to write reverse records.
     /// @dev Implementations should restrict this to an admin/owner.
     /// @param newRegistrar The new registrar address.
+    /// @custom:reverts InvalidRegistrar if `newRegistrar` is the zero address.
     function updateRegistrar(address newRegistrar) external;
 }
