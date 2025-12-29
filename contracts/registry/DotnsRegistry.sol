@@ -25,7 +25,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     IDotnsRegistrarController public registrarController;
     /// @notice DotNS Reverse Resolver
     IDotnsReverseResolver public reverseResolver;
-        /// @dev Reserved storage space to allow for layout changes in the future.
+    /// @dev Reserved storage space to allow for layout changes in the future.
     uint256[50] private __gap;
 
     /// @notice Restricts access to the current owner of `node`.

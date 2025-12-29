@@ -46,7 +46,7 @@ contract PopOracle is
     /// @notice Authorized registry controller address
     address public ethRegistryController;
 
-        /// @dev Reserved storage space to allow for layout changes in the future.
+    /// @dev Reserved storage space to allow for layout changes in the future.
     uint256[50] private __gap;
 
     /// @notice Restricts function to registry controller
