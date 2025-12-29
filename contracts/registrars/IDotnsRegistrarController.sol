@@ -81,6 +81,13 @@ interface IDotnsRegistrarController {
     /// @notice Thrown when max commitment age is invalid (exceeds implementation limit).
     error MaxCommitmentAgeTooHigh();
 
+    /// @notice Thrown when an invalid Store instance is encountered.
+    /// @dev This usually means the store has not been deployed for the user.
+    error InvalidStore();
+
+    /// @notice Thrown when the caller is not the registry.
+    error NotRegistry();
+
     /// @notice Returns whether a label is available for registration.
     /// @param label Label to check.
     /// @return isAvailable True if the label can be registered.
@@ -108,4 +115,14 @@ interface IDotnsRegistrarController {
     /// @dev Can only be called by owner
     /// @param registration Registration parameters.
     function registerReserved(Registration calldata registration) external payable;
+
+    /// @notice Writes a newly created subnode to the user's Store.
+    /// @dev This function is intended to be called **only by the registry**.
+    ///      It updates the user's Store with the subnode information so that all subnodes
+    ///      for a user can be queried in real-time.
+    ///      The Store must already exist for the `newOwner`. If the Store write fails, the call should revert.
+    /// @param node The parent node identifier under which the subnode is created.
+    /// @param label The label of the subnode being created (used to construct the store key).
+    /// @param newOwner The owner of the new subnode, and the user whose Store will be updated.
+    function writeSubnodeToStore(bytes32 node, bytes32 label, address newOwner) external;
 }

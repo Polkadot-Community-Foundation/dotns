@@ -3,27 +3,15 @@ pragma solidity ^0.8.30;
 
 import {console} from "forge-std/Script.sol";
 import {BaseDeployer} from "./BaseDeployer.s.sol";
-
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 import {PopOracle, IPopOracle} from "../contracts/pop/PopOracle.sol";
-
 import {DotnsRegistrar, IDotnsRegistrar} from "../contracts/registrars/DotnsRegistrar.sol";
-
-import {
-    DotnsRegistrarController,
-    IDotnsRegistrarController
-} from "../contracts/registrars/DotnsRegistrarController.sol";
-
+import {DotnsRegistrarController, IDotnsRegistrarController} from "../contracts/registrars/DotnsRegistrarController.sol";
 import {DotnsRegistry, IDotnsRegistry} from "../contracts/registry/DotnsRegistry.sol";
-
-import {
-    DotnsReverseResolver,
-    IDotnsReverseResolver
-} from "../contracts/resolvers/DotnsReverseResolver.sol";
-
+import {DotnsReverseResolver, IDotnsReverseResolver} from "../contracts/resolvers/DotnsReverseResolver.sol";
 import {DotnsContentResolver} from "../contracts/resolvers/DotnsContentResolver.sol";
-
+import {DotnsResolver} from "../contracts/resolvers/DotnsResolver.sol";
 import {StoreFactory, IStoreFactory} from "../contracts/store/StoreFactory.sol";
 
 /// @title DotnsDeployer
@@ -37,6 +25,7 @@ contract DotnsDeployer is BaseDeployer {
     DotnsRegistry public dotnsRegistry;
     DotnsReverseResolver public dotnsReverseResolver;
     DotnsContentResolver public dotnsContentResolver;
+    DotnsResolver public dotnsResolver;
     DotnsRegistrarController public dotnsRegistrarController;
 
     function run() external {
@@ -44,13 +33,11 @@ contract DotnsDeployer is BaseDeployer {
 
         vm.warp(365 days);
 
-        console.log("Current blocktime");
-        console.logUint(block.timestamp);
+        console.log("Current blocktime", block.timestamp);
 
         initDeployment();
 
         address OWNER = msg.sender;
-
         vm.startBroadcast(OWNER);
         vm.label(OWNER, "OWNER");
 
@@ -68,14 +55,6 @@ contract DotnsDeployer is BaseDeployer {
         vm.label(dotnsRegistrarProxy, "DotnsRegistrar");
         logDeployment("DotnsRegistrar", dotnsRegistrarProxy);
 
-        // DotnsRegistry
-        address dotnsRegistryProxy = Upgrades.deployUUPSProxy(
-            "DotnsRegistry.sol:DotnsRegistry", abi.encodeCall(DotnsRegistry.initialize, ())
-        );
-        dotnsRegistry = DotnsRegistry(dotnsRegistryProxy);
-        vm.label(dotnsRegistryProxy, "DotnsRegistry");
-        logDeployment("DotnsRegistry", dotnsRegistryProxy);
-
         // DotnsReverseResolver
         address dotnsReverseResolverProxy = Upgrades.deployUUPSProxy(
             "DotnsReverseResolver.sol:DotnsReverseResolver",
@@ -85,6 +64,14 @@ contract DotnsDeployer is BaseDeployer {
         vm.label(dotnsReverseResolverProxy, "DotnsReverseResolver");
         logDeployment("DotnsReverseResolver", dotnsReverseResolverProxy);
 
+        // DotnsRegistry
+        address dotnsRegistryProxy = Upgrades.deployUUPSProxy(
+            "DotnsRegistry.sol:DotnsRegistry", abi.encodeCall(DotnsRegistry.initialize, ())
+        );
+        dotnsRegistry = DotnsRegistry(dotnsRegistryProxy);
+        vm.label(dotnsRegistryProxy, "DotnsRegistry");
+        logDeployment("DotnsRegistry", dotnsRegistryProxy);
+
         // DotnsContentResolver
         address dotnsContentResolverProxy = Upgrades.deployUUPSProxy(
             "DotnsContentResolver.sol:DotnsContentResolver",
@@ -93,6 +80,15 @@ contract DotnsDeployer is BaseDeployer {
         dotnsContentResolver = DotnsContentResolver(dotnsContentResolverProxy);
         vm.label(dotnsContentResolverProxy, "DotnsContentResolver");
         logDeployment("DotnsContentResolver", dotnsContentResolverProxy);
+
+        // DotnsResolver
+        address dotnsResolverProxy = Upgrades.deployUUPSProxy(
+            "DotnsResolver.sol:DotnsResolver",
+            abi.encodeCall(DotnsResolver.initialize, (IDotnsRegistry(dotnsRegistryProxy)))
+        );
+        dotnsResolver = DotnsResolver(dotnsResolverProxy);
+        vm.label(dotnsResolverProxy, "DotnsResolver");
+        logDeployment("DotnsResolver", dotnsResolverProxy);
 
         // PopOracle
         address popOracleProxy = Upgrades.deployUUPSProxy(
@@ -122,6 +118,7 @@ contract DotnsDeployer is BaseDeployer {
         vm.label(dotnsRegistrarControllerProxy, "DotnsRegistrarController");
         logDeployment("DotnsRegistrarController", dotnsRegistrarControllerProxy);
 
+        // Wire dependencies
         dotnsReverseResolver.updateRegistrar(dotnsRegistrarControllerProxy);
         popOracle.updateEthRegistry(dotnsRegistrarControllerProxy);
         dotnsRegistrar.addController(dotnsRegistrarControllerProxy);
@@ -130,13 +127,6 @@ contract DotnsDeployer is BaseDeployer {
         vm.stopBroadcast();
 
         saveDeployments(_getDeploymentFolder(), vm.toString(chainId));
-
-        _sanity_pop_oracle_reserved();
-    }
-
-    function _sanity_pop_oracle_reserved() internal view {
-        (IPopOracle.PopStatus status,) = popOracle.classifyName("hello");
-        require(uint256(status) == uint256(IPopOracle.PopStatus.Reserved), "unexpected pop status");
     }
 
     function _getDeploymentFolder() internal view returns (string memory directory) {

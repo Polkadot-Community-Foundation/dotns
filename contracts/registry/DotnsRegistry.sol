@@ -7,6 +7,8 @@ import {
     OwnableUpgradeable
 } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {IDotnsRegistry} from "./IDotnsRegistry.sol";
+import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController.sol";
+import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
 
 /// @title Dot Registry
 /// @notice Upgradeable on-chain registry for hierarchical name ownership and resolution.
@@ -20,7 +22,9 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
 
     /// @notice Address authorised to perform privileged ownership writes
     /// @dev Typically the DotnsRegistrarController proxy address.
-    address public registrarController;
+    IDotnsRegistrarController public registrarController;
+    /// @notice DotNS Reverse Resolver
+    IDotnsReverseResolver public reverseResolver;
 
     /// @notice Restricts access to the current owner of `node`.
     /// @param node Node identifier.
@@ -41,38 +45,43 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     }
 
     /// @notice Initializes the registry.
+    /// @param _reverseResolver Address of the DotNS reverse resolver contract.
     /// @dev Sets the deployer as the owner and initializes the root node (bytes32(0)).
     ///      Root node owner is set to the initializer caller.
-    function initialize() external initializer {
+    function initialize(IDotnsReverseResolver _reverseResolver) external initializer {
         __Ownable_init(msg.sender);
-
+        reverseResolver = _reverseResolver;
         records[bytes32(0)] = Record({owner: msg.sender, resolver: address(0), exists: true});
     }
 
     /// @inheritdoc IDotnsRegistry
-    function updateRegistrarController(address newRegistrarController) external override onlyOwner {
-        require(newRegistrarController != address(0), NotAuthorised());
+    function updateRegistrarController(IDotnsRegistrarController newRegistrarController)
+        external
+        override
+        onlyOwner
+    {
+        require(address(newRegistrarController) != address(0), NotAllowed());
         emit RegistrarControllerUpdated(registrarController, newRegistrarController);
         registrarController = newRegistrarController;
     }
 
     /// @inheritdoc IDotnsRegistry
     function setSubnodeOwner(
-        bytes32 node,
+        bytes32 parentNode,
         bytes32 label,
         address newOwner
     )
         external
         override
-        authorised(node)
+        authorised(parentNode)
         returns (bytes32 subnode)
     {
-        require(newOwner != address(0), NotAuthorised());
+        require(newOwner != address(0), NotAllowed());
 
         assembly {
             // compute subnode
             let pointer := mload(0x40)
-            mstore(pointer, node)
+            mstore(pointer, parentNode)
             mstore(add(pointer, 0x20), label)
             subnode := keccak256(pointer, 0x40)
         }
@@ -80,10 +89,10 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         require(!records[subnode].exists, NodeAlreadyExists(subnode));
 
         records[subnode].owner = newOwner;
-        records[subnode].resolver = address(0);
+        records[subnode].resolver = address(reverseResolver);
         records[subnode].exists = true;
-
-        emit NewOwner(node, label, newOwner);
+        registrarController.writeSubnodeToStore(parentNode, label, msg.sender);
+        emit NewOwner(parentNode, label, newOwner);
     }
 
     /// @inheritdoc IDotnsRegistry
@@ -135,7 +144,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
 
     /// @notice Internal check for registrar controller privileges.
     function _onlyRegistrarController() internal view {
-        require(msg.sender == registrarController, NotAuthorised());
+        require(IDotnsRegistrarController(msg.sender) == registrarController, NotAuthorised());
     }
 
     /// @notice Returns implementation version

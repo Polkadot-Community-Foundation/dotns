@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
+import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController.sol";
 
 /// @title Dot Registry Interface
 /// @notice Minimal on-chain registry for hierarchical name ownership and resolution.
@@ -40,8 +41,12 @@ interface IDotnsRegistry {
     /// @param oldRegistrarController Previous registrar controller.
     /// @param newRegistrarController New registrar controller.
     event RegistrarControllerUpdated(
-        address indexed oldRegistrarController, address indexed newRegistrarController
+        IDotnsRegistrarController indexed oldRegistrarController,
+        IDotnsRegistrarController indexed newRegistrarController
     );
+
+    /// @notice Thrown when an invalid (zero) address is provided.
+    error NotAllowed();
 
     /// @notice Thrown when the caller is not authorised.
     error NotAuthorised();
@@ -102,5 +107,5 @@ interface IDotnsRegistry {
     /// @notice Sets the registrar controller used for privileged node ownership writes.
     /// @dev Callable only by the registry owner.
     /// @param registrarController Address of the registrar controller contract.
-    function updateRegistrarController(address registrarController) external;
+    function updateRegistrarController(IDotnsRegistrarController registrarController) external;
 }

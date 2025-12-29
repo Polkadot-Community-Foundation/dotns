@@ -117,18 +117,21 @@ abstract contract BaseDotns is Test {
         dotnsRegistrar = DotnsRegistrar(dotnsRegistrarAddress);
         vm.label(dotnsRegistrarAddress, "DotnsRegistrar");
 
-        address dotnsRegistryAddress = Upgrades.deployUUPSProxy(
-            "DotnsRegistry.sol:DotnsRegistry", abi.encodeCall(DotnsRegistry.initialize, ())
-        );
-        dotnsRegistry = DotnsRegistry(dotnsRegistryAddress);
-        vm.label(dotnsRegistryAddress, "DotnsRegistry");
-
         address dotnsReverseResolverAddress = Upgrades.deployUUPSProxy(
             "DotnsReverseResolver.sol:DotnsReverseResolver",
             abi.encodeCall(DotnsReverseResolver.initialize, ())
         );
         dotnsReverseResolver = DotnsReverseResolver(dotnsReverseResolverAddress);
         vm.label(dotnsReverseResolverAddress, "DotnsReverseResolver");
+
+        address dotnsRegistryAddress = Upgrades.deployUUPSProxy(
+            "DotnsRegistry.sol:DotnsRegistry",
+            abi.encodeCall(
+                DotnsRegistry.initialize, (IDotnsReverseResolver(dotnsReverseResolverAddress))
+            )
+        );
+        dotnsRegistry = DotnsRegistry(dotnsRegistryAddress);
+        vm.label(dotnsRegistryAddress, "DotnsRegistry");
 
         address dotnsContentResolverAddress = Upgrades.deployUUPSProxy(
             "DotnsContentResolver.sol:DotnsContentResolver",
@@ -177,7 +180,9 @@ abstract contract BaseDotns is Test {
         dotnsReverseResolver.updateRegistrar(dotnsRegistrarControllerAddress);
         popOracle.updateEthRegistry(dotnsRegistrarControllerAddress);
         dotnsRegistrar.addController(IDotnsRegistrarController(dotnsRegistrarControllerAddress));
-        dotnsRegistry.updateRegistrarController(dotnsRegistrarControllerAddress);
+        dotnsRegistry.updateRegistrarController(
+            IDotnsRegistrarController(dotnsRegistrarControllerAddress)
+        );
         vm.stopPrank();
         vm.warp(block.timestamp + 365 days);
     }

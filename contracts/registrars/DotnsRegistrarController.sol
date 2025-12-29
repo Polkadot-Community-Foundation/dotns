@@ -75,6 +75,11 @@ contract DotnsRegistrarController is
     /// @notice Key prefix for DotNS-written Store entries ("dotns.registered")
     bytes32 internal dotnsRegisteredKey;
 
+    modifier onlyRegistry() {
+        _onlyRegistry();
+        _;
+    }
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -257,6 +262,24 @@ contract DotnsRegistrarController is
         emit NameRegistered(registration.label, labelhash, registration.owner, 0, address(store));
     }
 
+    /// @inheritdoc IDotnsRegistrarController
+    function writeSubnodeToStore(
+        bytes32 node,
+        bytes32 label,
+        address newOwner
+    )
+        public
+        override
+        onlyRegistry
+    {
+        bytes32 labelhash = label;
+        Store store = Store(address(storeFactory.getDeployedStore(newOwner)));
+
+        bytes32 storeKey = _storeKey(labelhash);
+
+        store.setValueFor(newOwner, storeKey, string.concat(label.bytes32ToString(), ".dot"));
+    }
+
     /// @inheritdoc ERC165Upgradeable
     function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
         return interfaceId == type(IDotnsRegistrarController).interfaceId
@@ -300,6 +323,11 @@ contract DotnsRegistrarController is
         versionString = "1.0.0";
     }
 
+    /// @notice Internal check enforcing registry-only access.
+    /// @dev Done this way to reduce code size
+    function _onlyRegistry() internal view {
+        require(msg.sender == address(dotnsRegistry), NotRegistry());
+    }
     /// @inheritdoc UUPSUpgradeable
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }
