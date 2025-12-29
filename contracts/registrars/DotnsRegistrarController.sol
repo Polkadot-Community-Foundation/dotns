@@ -263,21 +263,22 @@ contract DotnsRegistrarController is
     }
 
     /// @inheritdoc IDotnsRegistrarController
-    function writeSubnodeToStore(
-        bytes32 node,
-        bytes32 label,
-        address newOwner
-    )
+    function writeSubnodeToStore(IDotnsRegistry.SubnodeRecord calldata record)
         public
         override
         onlyRegistry
     {
-        bytes32 labelhash = label;
-        Store store = Store(address(storeFactory.getDeployedStore(newOwner)));
+        Store store = Store(address(storeFactory.getDeployedStore(record.owner)));
+
+        bytes32 labelhash = _labelhash(record.subLabel);
 
         bytes32 storeKey = _storeKey(labelhash);
 
-        store.setValueFor(newOwner, storeKey, string.concat(label.bytes32ToString(), ".dot"));
+        store.setValueFor(
+            record.owner,
+            storeKey,
+            string.concat(string.concat(record.subLabel, record.parentLabel), ".dot")
+        );
     }
 
     /// @inheritdoc ERC165Upgradeable

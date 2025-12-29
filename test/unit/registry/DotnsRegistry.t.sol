@@ -4,9 +4,10 @@ pragma solidity ^0.8.30;
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 import {IDotnsRegistry} from "../../../contracts/registry/IDotnsRegistry.sol";
 import {IPopOracle} from "../../../contracts/pop/IPopOracle.sol";
+import {Store} from "../../../contracts/store/Store.sol";
 
 contract DotnsRegistryTests is BaseDotns {
-    function test_root_record_is_initialized_and_owned_by_owner() public {
+    function test_root_record_is_initialized_and_owned_by_owner() public view {
         bytes32 root = bytes32(0);
         assertEq(dotnsRegistry.owner(root), owner);
         assertTrue(dotnsRegistry.recordExists(root));
@@ -86,55 +87,79 @@ contract DotnsRegistryTests is BaseDotns {
     }
 
     function test_node_owner_creates_subnode_emits_event_and_returns_expected_subnode() public {
-        bytes32 parent = _register("parentnode01", owner, IPopOracle.PopStatus.NoStatus);
+        string memory parentLabel = "parentnode01";
+        bytes32 parentNode = _register(parentLabel, owner, IPopOracle.PopStatus.NoStatus);
 
-        bytes32 label = keccak256(bytes("alice"));
-        bytes32 expected = keccak256(abi.encodePacked(parent, label));
+        string memory subLabel = "alice";
+        bytes32 subLabelhash = keccak256(bytes(subLabel));
+        bytes32 expected = keccak256(abi.encodePacked(parentNode, subLabelhash));
+
+        _ensureStoreFor(ed);
+
+        IDotnsRegistry.SubnodeRecord memory record = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: subLabel, parentLabel: parentLabel, owner: ed
+        });
 
         vm.expectEmit(true, true, false, true, address(dotnsRegistry));
-        emit IDotnsRegistry.NewOwner(parent, label, ed);
+        emit IDotnsRegistry.NewOwner(parentNode, subLabelhash, ed);
 
         vm.prank(owner);
-        bytes32 returned = dotnsRegistry.setSubnodeOwner(parent, label, ed);
+        bytes32 returned = dotnsRegistry.setSubnodeOwner(record);
 
         assertEq(returned, expected);
-        assertEq(dotnsRegistry.owner(expected), ed);
-        assertTrue(dotnsRegistry.recordExists(expected));
-        assertEq(dotnsRegistry.resolver(expected), address(dotnsReverseResolver));
+        assertEq(dotnsRegistry.owner(returned), ed);
+        assertTrue(dotnsRegistry.recordExists(returned));
+        assertEq(dotnsRegistry.resolver(returned), address(dotnsReverseResolver));
     }
 
     function test_node_owner_sets_resolver_emits_event_and_persists() public {
-        bytes32 parent = _register("parentnode03", owner, IPopOracle.PopStatus.NoStatus);
+        string memory parentLabel = "parentnode03";
+        bytes32 parentNode = _register(parentLabel, owner, IPopOracle.PopStatus.NoStatus);
 
-        bytes32 label = keccak256(bytes("carol"));
-        bytes32 node = keccak256(abi.encodePacked(parent, label));
-        address res = makeAddr("resolver");
+        string memory subLabel = "carol";
+        bytes32 subLabelhash = keccak256(bytes(subLabel));
+        bytes32 node = keccak256(abi.encodePacked(parentNode, subLabelhash));
+        address newResolver = makeAddr("resolver");
+
+        _ensureStoreFor(ed);
+
+        IDotnsRegistry.SubnodeRecord memory record = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: subLabel, parentLabel: parentLabel, owner: ed
+        });
 
         vm.prank(owner);
-        dotnsRegistry.setSubnodeOwner(parent, label, ed);
+        dotnsRegistry.setSubnodeOwner(record);
 
         vm.expectEmit(true, false, false, true, address(dotnsRegistry));
-        emit IDotnsRegistry.NewResolver(node, res);
+        emit IDotnsRegistry.NewResolver(node, newResolver);
 
         vm.prank(ed);
-        dotnsRegistry.setResolver(node, res);
+        dotnsRegistry.setResolver(node, newResolver);
 
-        assertEq(dotnsRegistry.resolver(node), res);
+        assertEq(dotnsRegistry.resolver(node), newResolver);
     }
 
     function test_node_owner_can_clear_resolver_to_zero() public {
-        bytes32 parent = _register("parentnode04", owner, IPopOracle.PopStatus.NoStatus);
+        string memory parentLabel = "parentnode04";
+        bytes32 parentNode = _register(parentLabel, owner, IPopOracle.PopStatus.NoStatus);
 
-        bytes32 label = keccak256(bytes("dave"));
-        bytes32 node = keccak256(abi.encodePacked(parent, label));
-        address res = makeAddr("resolver");
+        string memory subLabel = "dave";
+        bytes32 subLabelhash = keccak256(bytes(subLabel));
+        bytes32 node = keccak256(abi.encodePacked(parentNode, subLabelhash));
+        address newResolver = makeAddr("resolver");
+
+        _ensureStoreFor(ed);
+
+        IDotnsRegistry.SubnodeRecord memory record = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: subLabel, parentLabel: parentLabel, owner: ed
+        });
 
         vm.prank(owner);
-        dotnsRegistry.setSubnodeOwner(parent, label, ed);
+        dotnsRegistry.setSubnodeOwner(record);
 
         vm.prank(ed);
-        dotnsRegistry.setResolver(node, res);
-        assertEq(dotnsRegistry.resolver(node), res);
+        dotnsRegistry.setResolver(node, newResolver);
+        assertEq(dotnsRegistry.resolver(node), newResolver);
 
         vm.prank(ed);
         dotnsRegistry.setResolver(node, address(0));
@@ -142,17 +167,25 @@ contract DotnsRegistryTests is BaseDotns {
     }
 
     function test_subnode_owner_creates_nested_subnode_under_owned_parent() public {
-        bytes32 parentNode = _register("parentnode05", ed, IPopOracle.PopStatus.NoStatus);
+        string memory parentLabel = "parentnode05";
+        bytes32 parentNode = _register(parentLabel, ed, IPopOracle.PopStatus.NoStatus);
 
-        bytes32 childLabel = keccak256(bytes("child"));
-        bytes32 childNode = keccak256(abi.encodePacked(parentNode, childLabel));
+        string memory childLabel = "child";
+        bytes32 childLabelhash = keccak256(bytes(childLabel));
+        bytes32 expectedChildNode = keccak256(abi.encodePacked(parentNode, childLabelhash));
+
+        _ensureStoreFor(tiago);
+
+        IDotnsRegistry.SubnodeRecord memory record = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: childLabel, parentLabel: parentLabel, owner: tiago
+        });
 
         vm.prank(ed);
-        bytes32 returned = dotnsRegistry.setSubnodeOwner(parentNode, childLabel, tiago);
+        bytes32 returned = dotnsRegistry.setSubnodeOwner(record);
 
-        assertEq(returned, childNode);
-        assertEq(dotnsRegistry.owner(childNode), tiago);
-        assertTrue(dotnsRegistry.recordExists(childNode));
-        assertEq(dotnsRegistry.resolver(childNode), address(dotnsReverseResolver));
+        assertEq(returned, expectedChildNode);
+        assertEq(dotnsRegistry.owner(expectedChildNode), tiago);
+        assertTrue(dotnsRegistry.recordExists(expectedChildNode));
+        assertEq(dotnsRegistry.resolver(expectedChildNode), address(dotnsReverseResolver));
     }
 }

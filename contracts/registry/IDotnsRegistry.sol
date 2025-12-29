@@ -11,6 +11,19 @@ import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController
 ///      - Enforces authorisation strictly via node ownership (or explicit controller for privileged ops)
 /// @custom:security-contact admin@parity.io
 interface IDotnsRegistry {
+    /// @notice Record describing a subnode creation request
+    /// @param parentNode Parent node
+    /// @param subLabel Human readable subnode label e.g "alice"
+    /// @param parentLabel Human readable parent label e.g. bob
+    /// @param owner Address to assign as owner of the created subnode
+    /// @dev Label string is included for convenience, for the store
+    struct SubnodeRecord {
+        bytes32 parentNode;
+        string subLabel;
+        string parentLabel;
+        address owner;
+    }
+
     /// @notice Record describing the state of a node.
     /// @param owner Address that owns the node.
     /// @param resolver Address of the resolver associated with the node.
@@ -65,17 +78,9 @@ interface IDotnsRegistry {
     /// @notice Creates a new subnode and assigns its owner.
     /// @dev Callable only by the current owner of `node`.
     ///      Reverts if the derived subnode already exists.
-    /// @param node Parent node identifier.
-    /// @param label Keccak256 hash of the subnode label.
-    /// @param owner Address to assign as owner.
+    /// @param record SubnodeRecord see @custom:structs SubnodeRecord.
     /// @return subnode The derived subnode identifier.
-    function setSubnodeOwner(
-        bytes32 node,
-        bytes32 label,
-        address owner
-    )
-        external
-        returns (bytes32 subnode);
+    function setSubnodeOwner(SubnodeRecord calldata record) external returns (bytes32 subnode);
 
     /// @notice Transfers ownership of an existing node.
     /// @dev Callable only by the configured `registrarController`.

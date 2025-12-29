@@ -16,6 +16,7 @@ import {
     DotnsReverseResolver,
     IDotnsReverseResolver
 } from "../../contracts/resolvers/DotnsReverseResolver.sol";
+import {Store} from "../../contracts/store/Store.sol";
 import {StoreFactory, IStoreFactory} from "../../contracts/store/StoreFactory.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
@@ -302,5 +303,24 @@ abstract contract BaseDotns is Test {
 
         _commitAndRegister(label, labelOwner);
         node = _namehash(dotNode, keccak256(bytes(label)));
+    }
+
+    /// @notice Ensures a Store exists for `storeOwner`, deploying one if necessary.
+    /// @dev If a Store is deployed, it is authorised for the registrar controller
+    /// @param storeOwner The address that should own the Store.
+    /// @return store The deployed Store instance.
+    function _ensureStoreFor(address storeOwner) internal returns (Store store) {
+        address deployed = address(storeFactory.getDeployedStore(storeOwner));
+        if (deployed != address(0)) {
+            return Store(deployed);
+        }
+
+        vm.startPrank(storeOwner);
+
+        store = Store(address(storeFactory.deploy()));
+        // Must be authorised before the store is handed to the user.
+        store.authorizeDotnsController(address(dotnsRegistrarController));
+
+        vm.stopPrank();
     }
 }

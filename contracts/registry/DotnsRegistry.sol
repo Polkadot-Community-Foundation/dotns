@@ -66,33 +66,41 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     }
 
     /// @inheritdoc IDotnsRegistry
-    function setSubnodeOwner(
-        bytes32 parentNode,
-        bytes32 label,
-        address newOwner
-    )
+    function setSubnodeOwner(SubnodeRecord calldata record)
         external
         override
-        authorised(parentNode)
+        authorised(record.parentNode)
         returns (bytes32 subnode)
     {
+        address newOwner = record.owner;
         require(newOwner != address(0), NotAllowed());
 
+        bytes32 parentNode = record.parentNode;
+        string calldata subLabel = record.subLabel;
+
+        bytes32 labelhash;
         assembly {
-            // compute subnode
-            let pointer := mload(0x40)
-            mstore(pointer, parentNode)
-            mstore(add(pointer, 0x20), label)
-            subnode := keccak256(pointer, 0x40)
+            let freeMemoryPointer := mload(0x40)
+            let labelLength := subLabel.length
+            calldatacopy(freeMemoryPointer, subLabel.offset, labelLength)
+            labelhash := keccak256(freeMemoryPointer, labelLength)
+        }
+
+        assembly {
+            let freeMemoryPointer := mload(0x40)
+            mstore(freeMemoryPointer, parentNode)
+            mstore(add(freeMemoryPointer, 0x20), labelhash)
+            subnode := keccak256(freeMemoryPointer, 0x40)
         }
 
         require(!records[subnode].exists, NodeAlreadyExists(subnode));
 
-        records[subnode].owner = newOwner;
-        records[subnode].resolver = address(reverseResolver);
-        records[subnode].exists = true;
-        registrarController.writeSubnodeToStore(parentNode, label, msg.sender);
-        emit NewOwner(parentNode, label, newOwner);
+        records[subnode] =
+            Record({owner: newOwner, resolver: address(reverseResolver), exists: true});
+
+        registrarController.writeSubnodeToStore(record);
+
+        emit NewOwner(parentNode, labelhash, newOwner);
     }
 
     /// @inheritdoc IDotnsRegistry
