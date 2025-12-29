@@ -66,7 +66,7 @@ contract DotnsDeployer is BaseDeployer {
 
         // DotnsRegistry
         address dotnsRegistryProxy = Upgrades.deployUUPSProxy(
-            "DotnsRegistry.sol:DotnsRegistry", abi.encodeCall(DotnsRegistry.initialize, ())
+            "DotnsRegistry.sol:DotnsRegistry", abi.encodeCall(DotnsRegistry.initialize, (IDotnsReverseResolver(dotnsReverseResolverProxy)))
         );
         dotnsRegistry = DotnsRegistry(dotnsRegistryProxy);
         vm.label(dotnsRegistryProxy, "DotnsRegistry");
@@ -121,8 +121,8 @@ contract DotnsDeployer is BaseDeployer {
         // Wire dependencies
         dotnsReverseResolver.updateRegistrar(dotnsRegistrarControllerProxy);
         popOracle.updateEthRegistry(dotnsRegistrarControllerProxy);
-        dotnsRegistrar.addController(dotnsRegistrarControllerProxy);
-        dotnsRegistry.updateRegistrarController(dotnsRegistrarControllerProxy);
+        dotnsRegistrar.addController(IDotnsRegistrarController(dotnsRegistrarControllerProxy));
+        dotnsRegistry.updateRegistrarController(IDotnsRegistrarController(dotnsRegistrarControllerProxy));
 
         vm.stopBroadcast();
 
