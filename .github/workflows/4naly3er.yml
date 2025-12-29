@@ -54,7 +54,7 @@ jobs:
 
       - name: Install 4naly3er dependencies
         working-directory: .4naly3er
-        run: yarn install --frozen-lockfile
+        run: yarn install 
 
       - name: Run 4naly3er
         continue-on-error: true

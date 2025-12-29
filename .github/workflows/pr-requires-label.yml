@@ -14,7 +14,7 @@ jobs:
         env:
           LABELS_JSON: ${{ toJson(github.event.pull_request.labels) }}
         run: |
-          needles='["frontend","smartcontracts"]'
+          needles='["frontend","smartcontracts","other"]'
           has=0
           for l in $(echo "$LABELS_JSON" | jq -r '.[].name'); do
             if echo "$needles" | jq -e --arg l "$l" 'index($l) != null' >/dev/null; then
@@ -23,6 +23,6 @@ jobs:
             fi
           done
           if [ "$has" -eq 0 ]; then
-            echo "::error::PR must have at least one label: frontend | smartcontracts"
+            echo "::error::PR must have at least one label: frontend | smartcontracts | other"
             exit 1
           fi
