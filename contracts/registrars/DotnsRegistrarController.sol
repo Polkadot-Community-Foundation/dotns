@@ -74,6 +74,8 @@ contract DotnsRegistrarController is
 
     /// @notice Key prefix for DotNS-written Store entries ("dotns.registered")
     bytes32 internal dotnsRegisteredKey;
+        /// @dev Reserved storage space to allow for layout changes in the future.
+    uint256[50] private __gap;
 
     modifier onlyRegistry() {
         _onlyRegistry();

@@ -27,6 +27,8 @@ contract DotnsResolver is
 {
     /// @notice Registry used to resolve node ownership
     IDotnsRegistry public registry;
+    /// @dev Reserved storage space to allow for layout changes in the future.
+    uint256[50] private __gap;
 
     /// @notice Node → resolved address
     mapping(bytes32 => address) private addresses;

@@ -35,6 +35,8 @@ contract DotnsContentResolver is
 
     /// @notice Node → (key → value) text records
     mapping(bytes32 => mapping(string => string)) private textRecords;
+    /// @dev Reserved storage space to allow for layout changes in the future.
+    uint256[50] private __gap;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
