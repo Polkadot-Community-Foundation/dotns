@@ -31,8 +31,7 @@ contract DotnsContentResolver is
     IDotnsRegistry public registry;
 
     /// @notice Node → content hash mapping
-    mapping(bytes32 => bytes) private 
-    contenthashes;
+    mapping(bytes32 => bytes) private contenthashes;
 
     /// @notice Node → (key → value) text records
     mapping(bytes32 => mapping(string => string)) private textRecords;
