@@ -148,6 +148,6 @@ interface IPopOracle {
 
     /// @notice Calculates registration cost
     /// @param name Domain label to price
-    /// @return price for registering the name
-    function price(string calldata name) external view returns (uint256 price);
+    /// @return cost for registering the name
+    function price(string calldata name) external view returns (uint256 cost);
 }
