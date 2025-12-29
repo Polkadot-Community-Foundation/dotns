@@ -30,11 +30,11 @@ contract PopOracle is
 
     /// @notice Tracks PoP status assignments per user and name
     /// @dev Mapping: user => node => PopStatus
-    mapping(address => mapping(bytes32 => PopStatus)) public namePopStatus;
+    mapping(address user => mapping(bytes32 node => PopStatus status)) public namePopStatus;
 
     /// @notice Active reservations for base names
     /// @dev Base name is digit-stripped form of label
-    mapping(string => Reservation) public reservations;
+    mapping(string baseName => Reservation reservation) public reservations;
 
     /// @notice Maximum time a base name can be reserved
     uint256 public constant MAX_RESERVATION_TIME = 12 weeks;

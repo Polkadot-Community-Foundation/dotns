@@ -70,7 +70,7 @@ contract DotnsRegistrarController is
     uint256 public maxCommitmentAge;
 
     /// @notice Commitment hash => timestamp when committed.
-    mapping(bytes32 => uint256) public commitments;
+    mapping(bytes32 hash => uint256 timestamp) public commitments;
 
     /// @notice Key prefix for DotNS-written Store entries ("dotns.registered")
     bytes32 internal dotnsRegisteredKey;

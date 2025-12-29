@@ -17,20 +17,20 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 /// @custom:security-contact admin@parity.io
 contract Store is IStore, Ownable {
     /// @dev Primary data structure: user address => (key => value)
-    mapping(address => mapping(bytes32 => string)) private store;
+    mapping(address user => mapping(bytes32 key => string value)) private store;
 
     /// @dev Secondary structure tracking all values per user in insertion order.
     /// @dev This is append-only and not pruned on delete.
-    mapping(address => string[]) private values;
+    mapping(address user => string[] userValues) private values;
 
     /// @dev Tracks which addresses are authorized to call `setValueFor`.
-    mapping(address => bool) private authorizedStores;
+    mapping(address storeAddress => bool isAuthorized) private authorizedStores;
 
     /// @dev Tracks which addresses are treated as DotNS controllers for locking semantics.
-    mapping(address => bool) private dotnsControllers;
+    mapping(address controllerAddress => bool isDotnsController) private dotnsControllers;
 
     /// @dev Tracks whether a `(user, key)` is permanently locked.
-    mapping(address => mapping(bytes32 => bool)) private lockedKeys;
+    mapping(address user => mapping(bytes32 key => bool isLocked)) private lockedKeys;
 
     /// @notice Restricts function access to authorized contracts only.
     /// @dev DotNS controllers are implicitly authorized.

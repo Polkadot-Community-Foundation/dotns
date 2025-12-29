@@ -18,7 +18,7 @@ import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
 /// @custom:security-contact admin@parity.io
 contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, IDotnsRegistry {
     /// @notice Mapping of node identifiers to records.
-    mapping(bytes32 => Record) private records;
+    mapping(bytes32 node => Record record) private records;
 
     /// @notice Address authorised to perform privileged ownership writes
     /// @dev Typically the DotnsRegistrarController proxy address.

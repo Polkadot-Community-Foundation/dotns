@@ -25,7 +25,7 @@ contract DotnsReverseResolver is
 {
     /// @dev Mapping from address to its reverse name.
     ///      An empty string indicates that no reverse name is set.
-    mapping(address => string) private reverseNames;
+    mapping(address owner => string name) private reverseNames;
 
     /// @notice Address authorised to modify reverse name records.
     address public registrar;

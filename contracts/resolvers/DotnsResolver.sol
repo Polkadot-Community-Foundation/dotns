@@ -33,7 +33,7 @@ contract DotnsResolver is
     uint256[50] private __gap;
 
     /// @notice Node → resolved address
-    mapping(bytes32 => address) private addresses;
+    mapping(bytes32 node => address owner) private addresses;
 
     /// @notice Restricts access to the owner of `node` as recorded in the registry
     /// @param node Node identifier
