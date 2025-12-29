@@ -29,7 +29,9 @@ contract DotnsReverseResolver is
 
     /// @notice Address authorised to modify reverse name records.
     address public registrar;
+
     /// @dev Reserved storage space to allow for layout changes in the future.
+    // forge-lint: disable-next-line(mixed-case-variable)
     uint256[50] private __gap;
 
     /// @notice Restricts access to the configured registrar.

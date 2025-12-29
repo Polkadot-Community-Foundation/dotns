@@ -47,6 +47,7 @@ contract PopOracle is
     address public ethRegistryController;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
+    // forge-lint: disable-next-line(mixed-case-variable)
     uint256[50] private __gap;
 
     /// @notice Restricts function to registry controller

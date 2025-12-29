@@ -29,7 +29,9 @@ contract DotnsRegistrar is
     /// @notice Mapping of authorised controller addresses.
     /// @dev Controllers may call `register`.
     mapping(IDotnsRegistrarController controller => bool exists) public controllers;
+
     /// @dev Reserved storage space to allow for layout changes in the future.
+    // forge-lint: disable-next-line(mixed-case-variable)
     uint256[50] private __gap;
 
     /// @notice Restricts function access to authorised controllers.

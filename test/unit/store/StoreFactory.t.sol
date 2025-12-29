@@ -4,7 +4,7 @@ pragma solidity ^0.8.30;
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IStore} from "../../../contracts/store/IStore.sol";
 import {Store} from "../../../contracts/store/Store.sol";
-import {StoreFactory, IStoreFactory} from "../../../contracts/store/StoreFactory.sol";
+import {IStoreFactory} from "../../../contracts/store/StoreFactory.sol";
 
 contract StoreFactoryTests is BaseDotns {
     function test_deploy_reverts_when_already_deployed() public {

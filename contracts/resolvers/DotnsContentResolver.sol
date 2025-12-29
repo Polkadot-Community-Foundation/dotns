@@ -31,11 +31,14 @@ contract DotnsContentResolver is
     IDotnsRegistry public registry;
 
     /// @notice Node → content hash mapping
-    mapping(bytes32 => bytes) private contenthashes;
+    mapping(bytes32 => bytes) private 
+    contenthashes;
 
     /// @notice Node → (key → value) text records
     mapping(bytes32 => mapping(string => string)) private textRecords;
+
     /// @dev Reserved storage space to allow for layout changes in the future.
+    // forge-lint: disable-next-line(mixed-case-variable)
     uint256[50] private __gap;
 
     /// @custom:oz-upgrades-unsafe-allow constructor

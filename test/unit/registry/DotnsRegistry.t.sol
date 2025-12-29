@@ -4,8 +4,6 @@ pragma solidity ^0.8.30;
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 import {IDotnsRegistry} from "../../../contracts/registry/IDotnsRegistry.sol";
 import {IPopOracle} from "../../../contracts/pop/IPopOracle.sol";
-import {Store} from "../../../contracts/store/Store.sol";
-
 contract DotnsRegistryTests is BaseDotns {
     function test_root_record_is_initialized_and_owned_by_owner() public view {
         bytes32 root = bytes32(0);

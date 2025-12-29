@@ -74,7 +74,9 @@ contract DotnsRegistrarController is
 
     /// @notice Key prefix for DotNS-written Store entries ("dotns.registered")
     bytes32 internal dotnsRegisteredKey;
+
     /// @dev Reserved storage space to allow for layout changes in the future.
+    // forge-lint: disable-next-line(mixed-case-variable)
     uint256[50] private __gap;
 
     modifier onlyRegistry() {
