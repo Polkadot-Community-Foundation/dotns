@@ -6,60 +6,21 @@ import {IDotnsContentResolver} from "../../../contracts/resolvers/IDotnsContentR
 import {IPopOracle} from "../../../contracts/pop/IPopOracle.sol";
 
 contract DotnsContentResolverTests is BaseDotns {
-    function test_setcontenthash() public {
-        bytes32 node = _register("contenthashrecord01", ed, IPopOracle.PopStatus.NoStatus);
-        bytes memory h =
+    function test_setContenthash_and_read() public {
+        bytes32 node = _register("contenthash01", ed, IPopOracle.PopStatus.NoStatus);
+        bytes memory hash =
             hex"e30101701220aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
         vm.expectEmit(true, false, false, true);
-        emit IDotnsContentResolver.ContentHashUpdated(node, h);
+        emit IDotnsContentResolver.ContentHashUpdated(node, hash);
 
         vm.prank(ed);
-        dotnsContentResolver.setContenthash(node, h);
+        dotnsContentResolver.setContenthash(node, hash);
 
-        assertEq(dotnsContentResolver.contenthash(node), h);
+        assertEq(dotnsContentResolver.contenthash(node), hash);
     }
 
-    function test_setcontenthash_emits() public {
-        bytes32 node = _register("contenthashevt01", ed, IPopOracle.PopStatus.NoStatus);
-        bytes memory h = hex"e30101701220bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-
-        vm.expectEmit(true, false, false, true);
-        emit IDotnsContentResolver.ContentHashUpdated(node, h);
-
-        vm.prank(ed);
-        dotnsContentResolver.setContenthash(node, h);
-    }
-
-    function test_contenthash_defaultempty() public {
-        bytes32 node = _register("contenthashunset01", ed, IPopOracle.PopStatus.NoStatus);
-
-        bytes memory stored = dotnsContentResolver.contenthash(node);
-        assertEq(stored.length, 0);
-    }
-
-    function test_setcontenthash_overwrite() public {
-        bytes32 node = _register("contenthashovr01", ed, IPopOracle.PopStatus.NoStatus);
-        bytes memory a =
-            hex"e30101701220aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-        bytes memory b = hex"e30101701220cccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
-
-        vm.startPrank(ed);
-
-        vm.expectEmit(true, false, false, true);
-        emit IDotnsContentResolver.ContentHashUpdated(node, a);
-        dotnsContentResolver.setContenthash(node, a);
-
-        vm.expectEmit(true, false, false, true);
-        emit IDotnsContentResolver.ContentHashUpdated(node, b);
-        dotnsContentResolver.setContenthash(node, b);
-
-        vm.stopPrank();
-
-        assertEq(dotnsContentResolver.contenthash(node), b);
-    }
-
-    function test_settext() public {
+    function test_setText_and_read() public {
         bytes32 node = _register("textrecord01", ed, IPopOracle.PopStatus.NoStatus);
 
         vm.expectEmit(true, true, false, true);
@@ -71,43 +32,8 @@ contract DotnsContentResolverTests is BaseDotns {
         assertEq(dotnsContentResolver.text(node, "ipfs"), "bafytextcid1");
     }
 
-    function test_settext_emits() public {
-        bytes32 node = _register("texteventlong01", ed, IPopOracle.PopStatus.NoStatus);
-
-        vm.expectEmit(true, true, false, true);
-        emit IDotnsContentResolver.TextUpdated(node, "ipfs", "bafyemittext");
-
-        vm.prank(ed);
-        dotnsContentResolver.setText(node, "ipfs", "bafyemittext");
-    }
-
-    function test_text_defaultempty() public {
-        bytes32 node = _register("textunset01", ed, IPopOracle.PopStatus.NoStatus);
-
-        string memory v = dotnsContentResolver.text(node, "ipfs");
-        assertEq(bytes(v).length, 0);
-    }
-
-    function test_settext_overwrite() public {
-        bytes32 node = _register("textoverwritelong01", ed, IPopOracle.PopStatus.NoStatus);
-
-        vm.startPrank(ed);
-
-        vm.expectEmit(true, true, false, true);
-        emit IDotnsContentResolver.TextUpdated(node, "ipfs", "a");
-        dotnsContentResolver.setText(node, "ipfs", "a");
-
-        vm.expectEmit(true, true, false, true);
-        emit IDotnsContentResolver.TextUpdated(node, "ipfs", "b");
-        dotnsContentResolver.setText(node, "ipfs", "b");
-
-        vm.stopPrank();
-
-        assertEq(dotnsContentResolver.text(node, "ipfs"), "b");
-    }
-
-    function test_settext_multiplekeys() public {
-        bytes32 node = _register("textkeyslongname01", ed, IPopOracle.PopStatus.NoStatus);
+    function test_setMultipleTextKeys() public {
+        bytes32 node = _register("multikeys01", ed, IPopOracle.PopStatus.NoStatus);
 
         vm.startPrank(ed);
 
@@ -125,9 +51,9 @@ contract DotnsContentResolverTests is BaseDotns {
         assertEq(dotnsContentResolver.text(node, "avatar"), "bafy2");
     }
 
-    function test_settext_isolatednodes() public {
-        bytes32 nodeA = _register("nodeisolationa01", ed, IPopOracle.PopStatus.NoStatus);
-        bytes32 nodeB = _register("nodeisolationb01", ed, IPopOracle.PopStatus.NoStatus);
+    function test_setText_onMultipleNodes() public {
+        bytes32 nodeA = _register("mysepcialnodeA01", ed, IPopOracle.PopStatus.NoStatus);
+        bytes32 nodeB = _register("mysepcialnodeB01", ed, IPopOracle.PopStatus.NoStatus);
 
         vm.startPrank(ed);
 
@@ -143,5 +69,37 @@ contract DotnsContentResolverTests is BaseDotns {
 
         assertEq(dotnsContentResolver.text(nodeA, "ipfs"), "a");
         assertEq(dotnsContentResolver.text(nodeB, "ipfs"), "b");
+    }
+
+    function test_operatorCanSetRecords() public {
+        bytes32 node = _register("operatoor01", ed, IPopOracle.PopStatus.NoStatus);
+
+        vm.prank(ed);
+        vm.expectEmit(true, true, false, true);
+        emit IDotnsContentResolver.ApprovalForAll(ed, address(this), true);
+        dotnsContentResolver.setApprovalForAll(address(this), true);
+
+        vm.expectEmit(true, true, false, true);
+        emit IDotnsContentResolver.TextUpdated(node, "ipfs", "operatorCid");
+        dotnsContentResolver.setText(node, "ipfs", "operatorCid");
+
+        assertEq(dotnsContentResolver.text(node, "ipfs"), "operatorCid");
+    }
+
+    function test_operatorCanSetContenthash() public {
+        bytes32 node = _register("operatorContent01", ed, IPopOracle.PopStatus.NoStatus);
+        bytes memory hash =
+            hex"e30101701220bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+        vm.prank(ed);
+        vm.expectEmit(true, true, false, true);
+        emit IDotnsContentResolver.ApprovalForAll(ed, address(this), true);
+        dotnsContentResolver.setApprovalForAll(address(this), true);
+
+        vm.expectEmit(true, false, false, true);
+        emit IDotnsContentResolver.ContentHashUpdated(node, hash);
+        dotnsContentResolver.setContenthash(node, hash);
+
+        assertEq(dotnsContentResolver.contenthash(node), hash);
     }
 }

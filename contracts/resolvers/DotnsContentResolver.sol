@@ -14,11 +14,9 @@ import {IDotnsRegistry} from "../registry/IDotnsRegistry.sol";
 import {IDotnsContentResolver} from "./IDotnsContentResolver.sol";
 
 /// @title DotNS Content Resolver
-/// @notice Stores content hash and text records for DotNS nodes
-/// @dev Maintains simple storage for:
-///      - `contenthash(node)` as opaque bytes
-///      - `text(node, key)` as string key-value records
-///      Authorisation is enforced strictly via node ownership in the DotNS registry.
+/// @notice Implements `IDotnsContentResolver` interface with content hash, text records, and operator approvals
+/// @dev Stores opaque content hash bytes and text key-value pairs per node
+///      Authorisation enforced via DotNS registry ownership or approved operators
 /// @custom:security-contact admin@parity.io
 contract DotnsContentResolver is
     Initializable,
@@ -36,8 +34,10 @@ contract DotnsContentResolver is
     /// @notice Node → (key → value) text records
     mapping(bytes32 node => mapping(string key => string value)) private textRecords;
 
+    /// @notice Owner → operator → approval mapping
+    mapping(address owner => mapping(address operator => bool approved)) private operators;
+
     /// @dev Reserved storage space to allow for layout changes in the future.
-    // forge-lint: disable-next-line(mixed-case-variable)
     uint256[50] private __gap;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -55,7 +55,7 @@ contract DotnsContentResolver is
 
     /// @inheritdoc IDotnsContentResolver
     function setContenthash(bytes32 node, bytes calldata hash) external override {
-        _requireNodeOwner(node);
+        _requireNodeOwnerOrOperator(node);
         contenthashes[node] = hash;
         emit ContentHashUpdated(node, hash);
     }
@@ -67,7 +67,7 @@ contract DotnsContentResolver is
 
     /// @inheritdoc IDotnsContentResolver
     function setText(bytes32 node, string calldata key, string calldata value) external override {
-        _requireNodeOwner(node);
+        _requireNodeOwnerOrOperator(node);
         textRecords[node][key] = value;
         emit TextUpdated(node, key, value);
     }
@@ -85,23 +85,44 @@ contract DotnsContentResolver is
         return textRecords[node][key];
     }
 
-    /// @inheritdoc ERC165Upgradeable
-    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
-        return interfaceId == type(IDotnsContentResolver).interfaceId
-            || super.supportsInterface(interfaceId);
+    /// @inheritdoc IDotnsContentResolver
+    function setApprovalForAll(address operator, bool approved) external override {
+        operators[msg.sender][operator] = approved;
+        emit ApprovalForAll(msg.sender, operator, approved);
     }
 
-    /// @notice Ensures the caller is authorised to modify `node`
+    /// @inheritdoc IDotnsContentResolver
+    function isApprovedForAll(
+        address owner,
+        address operator
+    )
+        external
+        view
+        override
+        returns (bool)
+    {
+        return operators[owner][operator];
+    }
+
+    /// @notice Ensures caller is either the node owner or an approved operator
     /// @param node Node identifier
-    function _requireNodeOwner(bytes32 node) internal view {
+    function _requireNodeOwnerOrOperator(bytes32 node) internal view {
         address owner = registry.owner(node);
-        require(owner == msg.sender, NotAuthorised(node, msg.sender));
+        require(
+            msg.sender == owner || operators[owner][msg.sender], NotAuthorised(node, msg.sender)
+        );
     }
 
     /// @notice Returns implementation version
     /// @return versionString Current version string
     function version() external pure virtual returns (string memory versionString) {
         versionString = "1.0.0";
+    }
+
+    /// @inheritdoc ERC165Upgradeable
+    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
+        return interfaceId == type(IDotnsContentResolver).interfaceId
+            || super.supportsInterface(interfaceId);
     }
 
     /// @inheritdoc UUPSUpgradeable

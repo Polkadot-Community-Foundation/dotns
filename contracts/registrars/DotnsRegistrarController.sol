@@ -134,20 +134,27 @@ contract DotnsRegistrarController is
         override
         returns (bytes32 commitment)
     {
-        string calldata label = registration.label;
-        address owner = registration.owner;
-        bytes32 secret = registration.secret;
+        string calldata registrationLabel = registration.label;
+        address registrationOwner = registration.owner;
+        bytes32 registrationSecret = registration.secret;
+        bool registrationReserved = registration.reserved;
 
         assembly {
-            let pointer := mload(0x40)
+            let freeMemoryPointer := mload(0x40)
 
-            let len := label.length
-            calldatacopy(pointer, label.offset, len)
+            let labelByteLength := registrationLabel.length
+            calldatacopy(freeMemoryPointer, registrationLabel.offset, labelByteLength)
 
-            mstore(add(pointer, len), owner)
-            mstore(add(pointer, add(len, 0x20)), secret)
+            mstore(add(freeMemoryPointer, labelByteLength), registrationOwner)
 
-            commitment := keccak256(pointer, add(len, 0x40))
+            mstore(add(freeMemoryPointer, add(labelByteLength, 0x20)), registrationSecret)
+
+            mstore8(
+                add(freeMemoryPointer, add(labelByteLength, 0x40)),
+                iszero(iszero(registrationReserved))
+            )
+
+            commitment := keccak256(freeMemoryPointer, add(labelByteLength, 0x41))
         }
     }
 
@@ -192,10 +199,11 @@ contract DotnsRegistrarController is
 
         bytes32 node = _namehash(labelhash);
         dotnsRegistry.setOwner(node, registration.owner, address(reverseResolver));
-
-        reverseResolver.setReverseName(
-            registration.owner, string.concat(registration.label, ".dot")
-        );
+        if (registration.reserved) {
+            reverseResolver.setReverseName(
+                registration.owner, string.concat(registration.label, ".dot")
+            );
+        }
 
         Store store = Store(address(storeFactory.getDeployedStore(registration.owner)));
         if (address(store) == address(0)) {
@@ -273,9 +281,14 @@ contract DotnsRegistrarController is
         onlyRegistry
     {
         Store store = Store(address(storeFactory.getDeployedStore(record.owner)));
+        if (address(store) == address(0)) {
+            store = Store(address(storeFactory.deploy()));
+            store.authorizeDotnsController(address(this));
+            store.transferOwnership(record.owner);
+            storeFactory.transferOwnership(record.owner);
+        }
 
         bytes32 labelhash = _labelhash(record.subLabel);
-
         bytes32 storeKey = _storeKey(labelhash);
 
         store.setValueFor(

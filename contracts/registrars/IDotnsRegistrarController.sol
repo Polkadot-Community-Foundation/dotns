@@ -23,10 +23,13 @@ interface IDotnsRegistrarController {
     /// @param label Label being registered (e.g. "alice").
     /// @param owner Address that will own the registered name.
     /// @param secret Secret used to bind the commitment.
+    /// @param reserved Whether the name is reserved, This means the name is the default
+    ///        name assigned that resolvers will point to.
     struct Registration {
         string label;
         address owner;
         bytes32 secret;
+        bool reserved;
     }
 
     /// @notice Emitted when a commitment is submitted.

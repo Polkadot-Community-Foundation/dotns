@@ -260,11 +260,14 @@ abstract contract BaseDotns is Test {
     /// @notice Minimal commit–reveal helper aligned to IDotnsRegistrarController.
     /// @param label Label to register.
     /// @param nameOwner Address to assign as owner.
-    function _commitAndRegister(string memory label, address nameOwner) internal {
+    /// @param reserveName Whether the name is reserved.
+    function _commitAndRegister(string memory label, address nameOwner, bool reserveName) internal {
         bytes32 secret = keccak256(abi.encodePacked(label, nameOwner, block.timestamp));
 
         IDotnsRegistrarController.Registration memory registration =
-            IDotnsRegistrarController.Registration({label: label, owner: nameOwner, secret: secret});
+            IDotnsRegistrarController.Registration({
+                label: label, owner: nameOwner, secret: secret, reserved: reserveName
+            });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
 
@@ -298,10 +301,10 @@ abstract contract BaseDotns is Test {
     {
         if (status != IPopOracle.PopStatus.NoStatus) {
             vm.prank(labelOwner);
-            popOracle.setNamePopStatus(label, status);
+            popOracle.setUserPopStatus(status);
         }
 
-        _commitAndRegister(label, labelOwner);
+        _commitAndRegister(label, labelOwner, true);
         node = _namehash(dotNode, keccak256(bytes(label)));
     }
 

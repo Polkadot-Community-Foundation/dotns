@@ -12,7 +12,7 @@ pragma solidity ^0.8.30;
 ///      • Length ≥ 9 with 2 trailing digits: NoStatus (open)
 ///      Trailing digits beyond 2 are invalid. Internal digits do not affect classification.
 ///      Reservation rules apply to a label stripped of trailing digits.
-/// @dev The pricing applied is mainly for POP No status users as meansure to prevent spam
+/// @dev The pricing applied is mainly for POP No status users as measure to prevent spam
 /// @custom:security-contact admin@parity.io
 interface IPopOracle {
     /// @notice Proof-of-Personhood eligibility tier
@@ -24,12 +24,6 @@ interface IPopOracle {
         Reserved
     }
 
-    /// @notice Emitted when a name is assigned a Proof-of-Personhood tier
-    /// @param name The name label updated
-    /// @param status The tier assigned to the name
-    /// @param owner The owner of the name
-    event NamePopStatusSet(string indexed name, PopStatus indexed status, address indexed owner);
-
     /// @notice Emitted when a base name receives a reservation
     /// @param baseName The digit-stripped label receiving reservation
     /// @param owner Address obtaining the reservation right
@@ -40,6 +34,12 @@ interface IPopOracle {
     /// @param oldReg Currently set registry address
     /// @param newReg New address to set
     event RegistryUpdated(address indexed oldReg, address indexed newReg);
+
+    /// @notice Emitted when a user's PoP status is updated
+    /// @dev This is temporary until we have a Precompile for accessing PoP status
+    /// @param user Address of the user
+    /// @param status New PoP tier assigned
+    event UserPopStatusSet(address indexed user, PopStatus status);
 
     /// @notice Thrown when a name violates PoP-tier or reservation requirements
     /// @param reason Human-readable explanation of the failure condition
@@ -71,19 +71,6 @@ interface IPopOracle {
         address owner;
         uint64 expires;
     }
-
-    /// @notice Assigns a PoP verification tier to a name
-    /// @param name The name label
-    /// @param status The tier being assigned
-    /// @dev This is tied to the caller of this function such that when they register
-    ///      The name we check if the names status was setup by them
-    function setNamePopStatus(string calldata name, PopStatus status) external;
-
-    /// @notice Retrieves PoP status for a name
-    /// @param name Domain label
-    /// @param who Owner of the Domain label
-    /// @return status Assigned PoP tier for caller
-    function getNamePopStatus(string calldata name, address who) external view returns (PopStatus);
 
     /// @notice Classifies a name into a required PoP tier according to DotNS naming rules
     /// @param name The name label being evaluated
@@ -123,8 +110,6 @@ interface IPopOracle {
     /// @param name Domain label
     /// @param userAddress Registering user for the given label
     ///@dev We currently revert on names considered as reserved for Governance
-    ///     We will need more clarification on how to treat the path of allowing
-    ///     Names of this length to be registered
     ///     The price we apply here is merely for spam protection and is insignificant
     ///     It mainly applies to no status users
     /// @return metadata Price with PoP requirements
@@ -145,6 +130,12 @@ interface IPopOracle {
     /// @notice allows the Owner to update the dot/eth registry
     /// @param ethReg the address of the new registry
     function updateEthRegistry(address ethReg) external;
+    /// @notice Sets the Proof-of-Personhood (PoP) tier for the caller's profile
+    /// @param status The PoP tier to assign to the user (NoStatus, PopLite, or PopFull)
+    /// @dev Once set, this PoP status applies to all registrations by this user
+    ///      This replaces per-name PoP assignments
+    /// @dev This is temporary until we have a Precompile for accessing PoP status
+    function setUserPopStatus(PopStatus status) external;
 
     /// @notice Calculates registration cost
     /// @param name Domain label to price

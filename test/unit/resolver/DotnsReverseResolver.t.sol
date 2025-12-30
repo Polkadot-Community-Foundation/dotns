@@ -10,19 +10,19 @@ contract DotnsReverseResolverTests is BaseDotns {
     }
 
     function test_register_sets_reverse_for_owner() public {
-        _commitAndRegister("reverserecord01", ed);
+        _commitAndRegister("reverserecord01", ed, true);
         assertEq(dotnsReverseResolver.nameOf(ed), "reverserecord01.dot");
     }
 
     function test_register_overwrites_reverse_when_registering_again() public {
-        _commitAndRegister("reverseone01", ed);
-        _commitAndRegister("reversetwo01", ed);
+        _commitAndRegister("reverseone01", ed, true);
+        _commitAndRegister("reversetwo01", ed, true);
         assertEq(dotnsReverseResolver.nameOf(ed), "reversetwo01.dot");
     }
 
     function test_register_does_not_affect_other_addresses() public {
-        _commitAndRegister("edreverse01", ed);
-        _commitAndRegister("leoreverse01", leonardo);
+        _commitAndRegister("edreverse01", ed, true);
+        _commitAndRegister("leoreverse01", leonardo, true);
 
         assertEq(dotnsReverseResolver.nameOf(ed), "edreverse01.dot");
         assertEq(dotnsReverseResolver.nameOf(leonardo), "leoreverse01.dot");
@@ -43,7 +43,7 @@ contract DotnsReverseResolverTests is BaseDotns {
         vm.prank(owner);
         dotnsReverseResolver.updateRegistrar(address(dotnsRegistrarController));
 
-        _commitAndRegister("reverseafterupdate01", ed);
+        _commitAndRegister("reverseafterupdate01", ed, true);
         assertEq(dotnsReverseResolver.nameOf(ed), "reverseafterupdate01.dot");
     }
 }

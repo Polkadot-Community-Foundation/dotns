@@ -6,12 +6,15 @@ import {IPopOracle} from "../../contracts/pop/IPopOracle.sol";
 import {IDotnsRegistrarController} from "../../contracts/registrars/IDotnsRegistrarController.sol";
 
 contract BasicDotnsReverts is BaseDotns {
-    function test_revert_register_5_or_less_chars_governance_reserved() public {
+    function reserved_name_reverts_for_governance() public {
         string memory label = "alice";
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: ed, secret: keccak256(abi.encodePacked(label, block.timestamp))
+                reserved: true,
+                label: label,
+                owner: ed,
+                secret: keccak256(abi.encodePacked(label, block.timestamp))
             });
 
         _commitRegistrationAndWaitMinimumAge(registration);
@@ -23,12 +26,15 @@ contract BasicDotnsReverts is BaseDotns {
         dotnsRegistrarController.register{value: 0}(registration);
     }
 
-    function test_revert_6_to_8_chars_no_digits_without_pop_full() public {
+    function no_digits_6_to_8_chars_requires_full() public {
         string memory label = "testit";
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: ed, secret: keccak256(abi.encodePacked(label, block.timestamp))
+                reserved: true,
+                label: label,
+                owner: ed,
+                secret: keccak256(abi.encodePacked(label, block.timestamp))
             });
 
         _commitRegistrationAndWaitMinimumAge(registration);
@@ -42,13 +48,15 @@ contract BasicDotnsReverts is BaseDotns {
         dotnsRegistrarController.register{value: 0}(registration);
     }
 
-    function test_revert_6_to_8_chars_with_digits_without_pop_lite() public {
-        // base "testit" is 6 chars, + "01" => lite-eligible username
+    function two_digit_suffix_requires_lite() public {
         string memory label = "testit01";
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: ed, secret: keccak256(abi.encodePacked(label, block.timestamp))
+                label: label,
+                owner: ed,
+                secret: keccak256(abi.encodePacked(label, block.timestamp)),
+                reserved: true
             });
 
         _commitRegistrationAndWaitMinimumAge(registration);
@@ -62,14 +70,15 @@ contract BasicDotnsReverts is BaseDotns {
         dotnsRegistrarController.register{value: 0}(registration);
     }
 
-    function test_revert_9_plus_chars_no_digits_without_pop_full() public {
-        // This assumes oracle policy: 9+ base with no digits => PopFull required.
-        // We assert revert on the controller register path (after commit+wait).
+    function long_name_without_digits_requires_full() public {
         string memory label = "kitesurfing_guru";
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: ed, secret: keccak256(abi.encodePacked(label, block.timestamp))
+                label: label,
+                owner: ed,
+                secret: keccak256(abi.encodePacked(label, block.timestamp)),
+                reserved: true
             });
 
         _commitRegistrationAndWaitMinimumAge(registration);
@@ -83,15 +92,18 @@ contract BasicDotnsReverts is BaseDotns {
         dotnsRegistrarController.register{value: 0}(registration);
     }
 
-    function test_revert_more_than_two_suffix_digits() public {
+    function more_than_two_suffix_digits_reverts() public {
         string memory label = "test123";
 
         vm.prank(ed);
-        popOracle.setNamePopStatus(label, IPopOracle.PopStatus.PopLite);
+        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopLite);
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: ed, secret: keccak256(abi.encodePacked(label, block.timestamp))
+                label: label,
+                owner: ed,
+                secret: keccak256(abi.encodePacked(label, block.timestamp)),
+                reserved: true
             });
 
         _commitRegistrationAndWaitMinimumAge(registration);
@@ -105,30 +117,32 @@ contract BasicDotnsReverts is BaseDotns {
         dotnsRegistrarController.register{value: 0}(registration);
     }
 
-    function test_revert_other_user_claiming_reserved_base_name() public {
+    function other_user_cannot_claim_reserved_base() public {
         string memory suffixLabel = "reserved99";
         string memory baseLabel = "reserved";
 
         vm.prank(leonardo);
-        popOracle.setNamePopStatus(suffixLabel, IPopOracle.PopStatus.PopLite);
+        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopLite);
 
         IDotnsRegistrarController.Registration memory suffixRegistration =
             IDotnsRegistrarController.Registration({
                 label: suffixLabel,
                 owner: leonardo,
-                secret: keccak256(abi.encodePacked(suffixLabel, block.timestamp))
+                secret: keccak256(abi.encodePacked(suffixLabel, block.timestamp)),
+                reserved: true
             });
 
         _commitRegistrationAndRegister(suffixRegistration);
 
         vm.prank(tiago);
-        popOracle.setNamePopStatus(baseLabel, IPopOracle.PopStatus.PopFull);
+        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
 
         IDotnsRegistrarController.Registration memory baseRegistration =
             IDotnsRegistrarController.Registration({
                 label: baseLabel,
                 owner: tiago,
-                secret: keccak256(abi.encodePacked(baseLabel, block.timestamp))
+                secret: keccak256(abi.encodePacked(baseLabel, block.timestamp)),
+                reserved: true
             });
 
         _commitRegistrationAndWaitMinimumAge(baseRegistration);
@@ -142,31 +156,32 @@ contract BasicDotnsReverts is BaseDotns {
         dotnsRegistrarController.register{value: 0}(baseRegistration);
     }
 
-    function test_revert_registering_same_base_different_suffix() public {
-        // base "multix" is 6 chars (not governance reserved), + two digits => lite-eligible
+    function registering_same_base_different_suffix_reverts() public {
         string memory firstLabel = "multix01";
         string memory secondLabel = "multix02";
 
         vm.prank(ed);
-        popOracle.setNamePopStatus(firstLabel, IPopOracle.PopStatus.PopLite);
+        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopLite);
 
         IDotnsRegistrarController.Registration memory firstRegistration =
             IDotnsRegistrarController.Registration({
                 label: firstLabel,
                 owner: ed,
-                secret: keccak256(abi.encodePacked(firstLabel, block.timestamp))
+                secret: keccak256(abi.encodePacked(firstLabel, block.timestamp)),
+                reserved: true
             });
 
         _commitRegistrationAndRegister(firstRegistration);
 
         vm.prank(leonardo);
-        popOracle.setNamePopStatus(secondLabel, IPopOracle.PopStatus.PopLite);
+        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopLite);
 
         IDotnsRegistrarController.Registration memory secondRegistration =
             IDotnsRegistrarController.Registration({
                 label: secondLabel,
                 owner: leonardo,
-                secret: keccak256(abi.encodePacked(secondLabel, block.timestamp))
+                secret: keccak256(abi.encodePacked(secondLabel, block.timestamp)),
+                reserved: true
             });
 
         _commitRegistrationAndWaitMinimumAge(secondRegistration);

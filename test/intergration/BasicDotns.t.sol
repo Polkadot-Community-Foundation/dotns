@@ -2,7 +2,6 @@
 pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../base/BaseDotns.t.sol";
-
 import {IPopOracle} from "../../contracts/pop/PopOracle.sol";
 
 contract BasicDotns is BaseDotns {
@@ -10,9 +9,9 @@ contract BasicDotns is BaseDotns {
         string memory label = "way2tall";
 
         vm.prank(ed);
-        popOracle.setNamePopStatus(label, IPopOracle.PopStatus.PopFull);
+        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
 
-        _commitAndRegister(label, ed);
+        _commitAndRegister(label, ed, true);
 
         uint256 tokenId = uint256(keccak256(bytes(label)));
         assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
@@ -22,15 +21,13 @@ contract BasicDotns is BaseDotns {
     }
 
     function test_register_pop_full_8_chars_single_digit_no_reservation() public {
-        // Edge case: 8 chars with a single trailing digit is PopFull-required (not PopLite),
-        // and must not create a reservation.
         string memory label = "waytall1";
         string memory baseLabel = "waytall";
 
         vm.prank(ed);
-        popOracle.setNamePopStatus(label, IPopOracle.PopStatus.PopFull);
+        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
 
-        _commitAndRegister(label, ed);
+        _commitAndRegister(label, ed, true);
 
         uint256 tokenId = uint256(keccak256(bytes(label)));
         assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
@@ -44,9 +41,9 @@ contract BasicDotns is BaseDotns {
         string memory baseLabel = "way2tall";
 
         vm.prank(ed);
-        popOracle.setNamePopStatus(label, IPopOracle.PopStatus.PopLite);
+        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopLite);
 
-        _commitAndRegister(label, ed);
+        _commitAndRegister(label, ed, true);
 
         uint256 tokenId = uint256(keccak256(bytes(label)));
         assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
@@ -64,7 +61,7 @@ contract BasicDotns is BaseDotns {
         string memory baseLabel = "kitesurfing_guru";
 
         // For NoStatus, do not set any status. Registration should succeed.
-        _commitAndRegister(label, tiago);
+        _commitAndRegister(label, tiago, true);
 
         uint256 tokenId = uint256(keccak256(bytes(label)));
         assertEq(dotnsRegistrar.ownerOf(tokenId), tiago);
@@ -78,9 +75,9 @@ contract BasicDotns is BaseDotns {
         string memory label = "kitesurfing_guru";
 
         vm.prank(ed);
-        popOracle.setNamePopStatus(label, IPopOracle.PopStatus.PopFull);
+        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
 
-        _commitAndRegister(label, ed);
+        _commitAndRegister(label, ed, true);
 
         uint256 tokenId = uint256(keccak256(bytes(label)));
         assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
@@ -94,20 +91,20 @@ contract BasicDotns is BaseDotns {
         string memory baseLabel = "upgrade";
 
         vm.prank(ed);
-        popOracle.setNamePopStatus(suffixLabel, IPopOracle.PopStatus.PopLite);
+        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopLite);
 
-        _commitAndRegister(suffixLabel, ed);
+        _commitAndRegister(suffixLabel, ed, true);
 
         (bool isReserved, address reservationOwner,) = popOracle.isBaseNameReserved(baseLabel);
         assertTrue(isReserved);
         assertEq(reservationOwner, ed);
 
         vm.prank(ed);
-        popOracle.setNamePopStatus(baseLabel, IPopOracle.PopStatus.PopFull);
+        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
 
         vm.warp(block.timestamp + 1);
 
-        _commitAndRegister(baseLabel, ed);
+        _commitAndRegister(baseLabel, ed, true);
 
         uint256 tokenId = uint256(keccak256(bytes(baseLabel)));
         assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
@@ -118,9 +115,9 @@ contract BasicDotns is BaseDotns {
         string memory baseLabel = "expired";
 
         vm.prank(leonardo);
-        popOracle.setNamePopStatus(suffixLabel, IPopOracle.PopStatus.PopLite);
+        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopLite);
 
-        _commitAndRegister(suffixLabel, leonardo);
+        _commitAndRegister(suffixLabel, leonardo, true);
 
         (bool isReserved, address reservationOwner, uint64 expires) =
             popOracle.isBaseNameReserved(baseLabel);
@@ -134,21 +131,19 @@ contract BasicDotns is BaseDotns {
         assertFalse(stillReserved);
 
         vm.prank(tiago);
-        popOracle.setNamePopStatus(baseLabel, IPopOracle.PopStatus.PopFull);
+        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
 
-        _commitAndRegister(baseLabel, tiago);
+        _commitAndRegister(baseLabel, tiago, true);
 
         uint256 tokenId = uint256(keccak256(bytes(baseLabel)));
         assertEq(dotnsRegistrar.ownerOf(tokenId), tiago);
     }
 
     function test_get_name_pop_status_returns_correct_status() public {
-        string memory label = "statustest";
-
         vm.prank(ed);
-        popOracle.setNamePopStatus(label, IPopOracle.PopStatus.PopFull);
+        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
 
-        IPopOracle.PopStatus status = popOracle.getNamePopStatus(label, ed);
+        IPopOracle.PopStatus status = popOracle.userPopStatus(ed);
 
         assertEq(uint256(status), uint256(IPopOracle.PopStatus.PopFull));
     }

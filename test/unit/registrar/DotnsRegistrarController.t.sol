@@ -22,14 +22,15 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
     function test_makecommitment_matches_controller_encoding() public view {
         IDotnsRegistrarController.Registration memory r = IDotnsRegistrarController.Registration({
-            label: "alicebob", owner: ed, secret: keccak256("secret")
+            label: "alicebob", owner: ed, secret: keccak256("secret"), reserved: true
         });
 
         bytes32 got = dotnsRegistrarController.makeCommitment(r);
 
-        // Controller uses: keccak256(bytes(label) || bytes32(owner) || bytes32(secret))
         bytes32 expected = keccak256(
-            abi.encodePacked(bytes(r.label), bytes32(uint256(uint160(r.owner))), r.secret)
+            abi.encodePacked(
+                bytes(r.label), bytes32(uint256(uint160(r.owner))), r.secret, r.reserved
+            )
         );
 
         assertEq(got, expected);
@@ -37,7 +38,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
     function test_commit_sets_timestamp_and_emits() public {
         IDotnsRegistrarController.Registration memory r = IDotnsRegistrarController.Registration({
-            label: "alicebob", owner: ed, secret: keccak256("secret")
+            label: "alicebob", owner: ed, secret: keccak256("secret"), reserved: true
         });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(r);
@@ -53,7 +54,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
     function test_commit_allows_recommit_after_expiry() public {
         IDotnsRegistrarController.Registration memory r = IDotnsRegistrarController.Registration({
-            label: "alicebob", owner: ed, secret: keccak256("secret")
+            label: "alicebob", owner: ed, secret: keccak256("secret"), reserved: true
         });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(r);
@@ -74,7 +75,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         string memory label = "alicebob";
 
         vm.prank(ed);
-        popOracle.setNamePopStatus(label, IPopOracle.PopStatus.PopFull);
+        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
 
         vm.prank(ed);
         IStore s = storeFactory.deploy();
@@ -83,8 +84,9 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         Store(address(s)).authorizeDotnsController(address(dotnsRegistrarController));
 
         bytes32 secret = keccak256(abi.encodePacked(label, ed, "s"));
-        IDotnsRegistrarController.Registration memory r =
-            IDotnsRegistrarController.Registration({label: label, owner: ed, secret: secret});
+        IDotnsRegistrarController.Registration memory r = IDotnsRegistrarController.Registration({
+            label: label, owner: ed, secret: secret, reserved: true
+        });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(r);
 
@@ -121,11 +123,12 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         string memory label = "alicebob";
 
         vm.prank(ed);
-        popOracle.setNamePopStatus(label, IPopOracle.PopStatus.PopFull);
+        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
 
         bytes32 secret = keccak256(abi.encodePacked(label, ed, "refund"));
-        IDotnsRegistrarController.Registration memory r =
-            IDotnsRegistrarController.Registration({label: label, owner: ed, secret: secret});
+        IDotnsRegistrarController.Registration memory r = IDotnsRegistrarController.Registration({
+            label: label, owner: ed, secret: secret, reserved: true
+        });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(r);
 
@@ -148,11 +151,12 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         string memory label = "lights01";
 
         vm.prank(ed);
-        popOracle.setNamePopStatus(label, IPopOracle.PopStatus.PopLite);
+        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopLite);
 
         bytes32 secret = keccak256(abi.encodePacked(label, ed, "lite"));
-        IDotnsRegistrarController.Registration memory r =
-            IDotnsRegistrarController.Registration({label: label, owner: ed, secret: secret});
+        IDotnsRegistrarController.Registration memory r = IDotnsRegistrarController.Registration({
+            label: label, owner: ed, secret: secret, reserved: true
+        });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(r);
 
@@ -181,8 +185,9 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         Store(address(s)).authorizeDotnsController(address(dotnsRegistrarController));
 
         bytes32 secret = keccak256(abi.encodePacked(label, ed, "reserved"));
-        IDotnsRegistrarController.Registration memory r =
-            IDotnsRegistrarController.Registration({label: label, owner: ed, secret: secret});
+        IDotnsRegistrarController.Registration memory r = IDotnsRegistrarController.Registration({
+            label: label, owner: ed, secret: secret, reserved: true
+        });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(r);
 

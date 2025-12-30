@@ -85,19 +85,6 @@ contract DotnsRegistrar is
         emit NameRegistered(id, owner);
     }
 
-    /// @inheritdoc IERC721
-    function transferFrom(
-        address,
-        address,
-        uint256
-    )
-        public
-        virtual
-        override(IERC721, ERC721Upgradeable)
-    {
-        revert NotAllowed();
-    }
-
     /// @notice Returns implementation version
     /// @return versionString Current version string
     function version() external pure virtual returns (string memory versionString) {

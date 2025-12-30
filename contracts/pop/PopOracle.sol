@@ -25,15 +25,12 @@ contract PopOracle is
     using StringUtils for *;
 
     /// @notice Wei price for names with 9 characters and up
-    /// @dev Mainly for No status pop users
     uint256 public startingPrice;
 
-    /// @notice Tracks PoP status assignments per user and name
-    /// @dev Mapping: user => node => PopStatus
-    mapping(address user => mapping(bytes32 node => PopStatus status)) public namePopStatus;
+    /// @notice Tracks PoP status per user/profile
+    mapping(address => PopStatus) public userPopStatus;
 
     /// @notice Active reservations for base names
-    /// @dev Base name is digit-stripped form of label
     mapping(string baseName => Reservation reservation) public reservations;
 
     /// @notice Maximum time a base name can be reserved
@@ -47,7 +44,6 @@ contract PopOracle is
     address public ethRegistryController;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
-    // forge-lint: disable-next-line(mixed-case-variable)
     uint256[50] private __gap;
 
     /// @notice Restricts function to registry controller
@@ -63,7 +59,6 @@ contract PopOracle is
 
     /// @notice Initializes the oracle with pricing parameters
     /// @param _startingPrice Base price in wei for No pop status users
-    /// forge-lint: disable-next-line(mixed-case-variable)
     function _popOracleInit(uint256 _startingPrice) internal onlyInitializing {
         __Ownable_init(msg.sender);
         __ERC165_init();
@@ -77,62 +72,9 @@ contract PopOracle is
     }
 
     /// @inheritdoc IPopOracle
-    function setNamePopStatus(string calldata name, PopStatus status) external override {
-        bytes32 labelhash;
-        bytes32 node;
-
-        assembly {
-            let pointer := mload(0x40)
-            let length := name.length
-            calldatacopy(pointer, name.offset, length)
-            labelhash := keccak256(pointer, length)
-
-            mstore(pointer, DOT_NODE)
-            mstore(add(pointer, 0x20), labelhash)
-            node := keccak256(pointer, 0x40)
-
-            let usedMemory := 0x40
-            if gt(length, 0x40) {
-                usedMemory := length
-            }
-            mstore(0x40, add(pointer, usedMemory))
-        }
-
-        namePopStatus[msg.sender][node] = status;
-        emit NamePopStatusSet(name, status, msg.sender);
-    }
-
-    /// @inheritdoc IPopOracle
-    function getNamePopStatus(
-        string calldata name,
-        address who
-    )
-        public
-        view
-        override
-        returns (PopStatus status)
-    {
-        bytes32 labelhash;
-        bytes32 node;
-
-        assembly {
-            let pointer := mload(0x40)
-            let length := name.length
-            calldatacopy(pointer, name.offset, length)
-            labelhash := keccak256(pointer, length)
-
-            mstore(pointer, DOT_NODE)
-            mstore(add(pointer, 0x20), labelhash)
-            node := keccak256(pointer, 0x40)
-
-            let usedMemory := 0x40
-            if gt(length, 0x40) {
-                usedMemory := length
-            }
-            mstore(0x40, add(pointer, usedMemory))
-        }
-
-        return namePopStatus[who][node];
+    function setUserPopStatus(PopStatus status) external override {
+        userPopStatus[msg.sender] = status;
+        emit UserPopStatusSet(msg.sender, status);
     }
 
     /// @inheritdoc IPopOracle
@@ -186,8 +128,6 @@ contract PopOracle is
 
         Reservation memory existingReservation = reservations[strippedBase];
         if (existingReservation.owner == address(0)) {
-            // casting to 'uint64' is safe because  MAX_RESERVATION_TIME is less than 2^64 seconds
-            // forge-lint: disable-next-line(unsafe-typecast)
             uint64 expiryTime = uint64(block.timestamp + MAX_RESERVATION_TIME);
             reservations[strippedBase] = Reservation({owner: userAddress, expires: expiryTime});
             emit BaseNameReserved(strippedBase, userAddress, expiryTime);
@@ -244,7 +184,7 @@ contract PopOracle is
         _enforceReservationRules(name, userAddress);
 
         (PopStatus requiredStatus, string memory classification) = classifyName(name);
-        PopStatus userStatus = getNamePopStatus(name, userAddress);
+        PopStatus userStatus = userPopStatus[userAddress];
 
         metadata.price = price(name);
         metadata.status = requiredStatus;
@@ -365,7 +305,7 @@ contract PopOracle is
     }
 
     /// @notice Ensures the caller is the authorized registry controller
-    /// @dev Done this way to redue code size
+    /// @dev Done this way to reduce code size
     function _onlyRegistry() internal view {
         require(msg.sender == ethRegistryController, NotRegistry());
     }

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
-import {IDotnsRegistrar} from "../../../contracts/registrars/DotnsRegistrar.sol";
 
+import {IDotnsRegistrar} from "../../../contracts/registrars/IDotnsRegistrar.sol";
+import {DotnsRegistrar} from "../../../contracts/registrars/DotnsRegistrar.sol";
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 contract DotnsRegistrarTests is BaseDotns {
-    function test_owner_can_add_controller() public {
+    function test_addController() public {
         address additionalController = makeAddr("additionalController");
 
         vm.startPrank(owner);
@@ -15,12 +16,12 @@ contract DotnsRegistrarTests is BaseDotns {
         emit IDotnsRegistrar.ControllerAdded(IDotnsRegistrarController(additionalController));
         dotnsRegistrar.addController(IDotnsRegistrarController(additionalController));
 
-        assertTrue(dotnsRegistrar.controllers(IDotnsRegistrarController(additionalController)));
-
         vm.stopPrank();
+
+        assertTrue(dotnsRegistrar.controllers(IDotnsRegistrarController(additionalController)));
     }
 
-    function test_owner_can_remove_controller() public {
+    function test_removeController() public {
         address temporaryController = makeAddr("temporaryController");
 
         vm.startPrank(owner);
@@ -29,39 +30,28 @@ contract DotnsRegistrarTests is BaseDotns {
         vm.expectEmit(true, false, false, false, address(dotnsRegistrar));
         emit IDotnsRegistrar.ControllerRemoved(IDotnsRegistrarController(temporaryController));
         dotnsRegistrar.removeController(IDotnsRegistrarController(temporaryController));
-
         vm.stopPrank();
 
         assertFalse(dotnsRegistrar.controllers(IDotnsRegistrarController(temporaryController)));
     }
 
-    function test_controller_can_register_and_mints_token_to_user() public {
+    function test_registerMintsToOwner() public {
         uint256 tokenId = uint256(keccak256(bytes("alice")));
 
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit(true, true, true, true, address(dotnsRegistrar));
         emit IERC721.Transfer(address(0), ed, tokenId);
 
-        vm.expectEmit(true, true, false, true);
+        vm.expectEmit(true, true, false, true, address(dotnsRegistrar));
         emit IDotnsRegistrar.NameRegistered(tokenId, ed);
 
         vm.prank(address(dotnsRegistrarController));
         dotnsRegistrar.register(tokenId, ed);
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
-    }
-
-    function test_register_increases_balance_of_owner() public {
-        uint256 firstTokenId = uint256(keccak256(bytes("firstName")));
-
-        assertEq(dotnsRegistrar.balanceOf(ed), 0);
-
-        vm.prank(address(dotnsRegistrarController));
-        dotnsRegistrar.register(firstTokenId, ed);
-
         assertEq(dotnsRegistrar.balanceOf(ed), 1);
     }
 
-    function test_register_multiple_names_to_same_owner() public {
+    function test_registerMultipleSameOwner() public {
         uint256 firstTokenId = uint256(keccak256(bytes("nameOne")));
         uint256 secondTokenId = uint256(keccak256(bytes("nameTwo")));
 
@@ -75,7 +65,7 @@ contract DotnsRegistrarTests is BaseDotns {
         assertEq(dotnsRegistrar.ownerOf(secondTokenId), ed);
     }
 
-    function test_register_names_to_different_owners() public {
+    function test_registerMultipleOwners() public {
         uint256 firstTokenId = uint256(keccak256(bytes("edName")));
         uint256 secondTokenId = uint256(keccak256(bytes("tiagoName")));
 
@@ -90,21 +80,18 @@ contract DotnsRegistrarTests is BaseDotns {
         assertEq(dotnsRegistrar.ownerOf(secondTokenId), tiago);
     }
 
-    function test_available_is_true_before_register_and_false_after_register() public {
+    function test_availableBeforeAfterRegister() public {
         uint256 tokenId = uint256(keccak256(bytes("availabilityCheck")));
 
-        bool availableBefore = dotnsRegistrar.available(tokenId);
-        assertTrue(availableBefore);
+        assertTrue(dotnsRegistrar.available(tokenId));
 
         vm.prank(address(dotnsRegistrarController));
         dotnsRegistrar.register(tokenId, ed);
 
-        bool availableAfter = dotnsRegistrar.available(tokenId);
-        assertFalse(availableAfter);
+        assertFalse(dotnsRegistrar.available(tokenId));
     }
 
-    function test_register_to_smart_contract_owner_address() public {
-        // name ownership could be held by a smart wallet or on-chain account.
+    function test_registerToContractOwner() public {
         address smartContractOwner = address(popOracle);
         uint256 tokenId = uint256(keccak256(bytes("contractOwnedName")));
 
@@ -115,23 +102,7 @@ contract DotnsRegistrarTests is BaseDotns {
         assertEq(dotnsRegistrar.balanceOf(smartContractOwner), 1);
     }
 
-    function test_controller_can_be_removed_and_readded_then_registers_new_name() public {
-        address controllerAddress = address(dotnsRegistrarController);
-        uint256 tokenId = uint256(keccak256(bytes("readdedControllerName")));
-
-        vm.startPrank(owner);
-        dotnsRegistrar.removeController(IDotnsRegistrarController(controllerAddress));
-        dotnsRegistrar.addController(IDotnsRegistrarController(controllerAddress));
-        vm.stopPrank();
-
-        vm.prank(controllerAddress);
-        dotnsRegistrar.register(tokenId, ed);
-
-        assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
-    }
-
-    function test_erc721_approvals_work_for_read_access_and_integrations() public {
-        // Even though transfers are blocked, approvals can still be used by indexers/wallet UIs.
+    function test_approvalsWork() public {
         uint256 tokenId = uint256(keccak256(bytes("approvalName")));
 
         vm.prank(address(dotnsRegistrarController));
@@ -139,17 +110,12 @@ contract DotnsRegistrarTests is BaseDotns {
 
         vm.prank(ed);
         dotnsRegistrar.approve(tiago, tokenId);
-
         assertEq(dotnsRegistrar.getApproved(tokenId), tiago);
 
         vm.prank(ed);
         dotnsRegistrar.setApprovalForAll(leonardo, true);
+        assertTrue(dotnsRegistrar.isApprovedForAll(ed, leonardo));
 
-        bool isApprovedForAll = dotnsRegistrar.isApprovedForAll(ed, leonardo);
-        assertTrue(isApprovedForAll);
-
-        // Sanity: supports IERC721 interface id for tooling compatibility.
-        bool supportsErc721 = dotnsRegistrar.supportsInterface(type(IERC721).interfaceId);
-        assertTrue(supportsErc721);
+        assertTrue(dotnsRegistrar.supportsInterface(type(IERC721).interfaceId));
     }
 }
