@@ -17,6 +17,7 @@ import {IPopOracle} from "../pop/IPopOracle.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
 import {Store} from "../store/Store.sol";
+import {IStore} from "../store/IStore.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 
 /// @title DotNS Registrar Controller
@@ -73,12 +74,14 @@ contract DotnsRegistrarController is
     mapping(bytes32 hash => uint256 timestamp) public commitments;
 
     /// @notice Key prefix for DotNS-written Store entries ("dotns.registered")
-    bytes32 internal dotnsRegisteredKey;
+    // forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant DOTNS_REGISTERED_KEY = bytes32("dotns.registered");
 
     /// @dev Reserved storage space to allow for layout changes in the future.
     // forge-lint: disable-next-line(mixed-case-variable)
     uint256[50] private __gap;
 
+    /// @notice Restricts calls to the forward registry contract.
     modifier onlyRegistry() {
         _onlyRegistry();
         _;
@@ -91,6 +94,13 @@ contract DotnsRegistrarController is
 
     /// @notice Initializes the registrar controller.
     /// @dev Validates commitment window bounds and wires dependencies.
+    /// @param registrar Base registrar used for ERC721 minting.
+    /// @param registry Forward registry storing node ownership and resolver.
+    /// @param reverse Reverse resolver for primary name mapping.
+    /// @param popOracle PoP oracle used for eligibility and pricing.
+    /// @param factory Store factory used to resolve/deploy per-user stores.
+    /// @param minAge Minimum commitment age in seconds.
+    /// @param maxAge Maximum commitment age in seconds.
     function initialize(
         IDotnsRegistrar registrar,
         IDotnsRegistry registry,
@@ -117,7 +127,6 @@ contract DotnsRegistrarController is
 
         minCommitmentAge = minAge;
         maxCommitmentAge = maxAge;
-        dotnsRegisteredKey = hex"646f746e732e72656769737465726564000000000000000000000000000000";
     }
 
     /// @inheritdoc IDotnsRegistrarController
@@ -199,19 +208,14 @@ contract DotnsRegistrarController is
 
         bytes32 node = _namehash(labelhash);
         dotnsRegistry.setOwner(node, registration.owner, address(reverseResolver));
+
         if (registration.reserved) {
             reverseResolver.setReverseName(
                 registration.owner, string.concat(registration.label, ".dot")
             );
         }
 
-        Store store = Store(address(storeFactory.getDeployedStore(registration.owner)));
-        if (address(store) == address(0)) {
-            store = Store(address(storeFactory.deploy()));
-            store.authorizeDotnsController(address(this));
-            store.transferOwnership(registration.owner);
-            storeFactory.transferOwnership(registration.owner);
-        }
+        Store store = _getOrCreateStore(registration.owner);
 
         bytes32 storeKey = _storeKey(labelhash);
         store.setValueFor(registration.owner, storeKey, string.concat(registration.label, ".dot"));
@@ -234,7 +238,7 @@ contract DotnsRegistrarController is
     }
 
     /// @inheritdoc IDotnsRegistrarController
-    function registerReserved(Registration calldata registration) external payable override {
+    function registerReserved(Registration calldata registration) external override {
         require(available(registration.label), NameNotAvailable(registration.label));
 
         bytes32 labelhash = _labelhash(registration.label);
@@ -261,12 +265,7 @@ contract DotnsRegistrarController is
             registration.owner, string.concat(registration.label, ".dot")
         );
 
-        Store store = Store(address(storeFactory.getDeployedStore(registration.owner)));
-        if (address(store) == address(0)) {
-            store = Store(address(storeFactory.deploy()));
-            store.authorizeDotnsController(address(this));
-            store.transferOwnership(registration.owner);
-        }
+        Store store = _getOrCreateStore(registration.owner);
 
         bytes32 storeKey = _storeKey(labelhash);
         store.setValueFor(registration.owner, storeKey, string.concat(registration.label, ".dot"));
@@ -280,13 +279,7 @@ contract DotnsRegistrarController is
         override
         onlyRegistry
     {
-        Store store = Store(address(storeFactory.getDeployedStore(record.owner)));
-        if (address(store) == address(0)) {
-            store = Store(address(storeFactory.deploy()));
-            store.authorizeDotnsController(address(this));
-            store.transferOwnership(record.owner);
-            storeFactory.transferOwnership(record.owner);
-        }
+        Store store = _getOrCreateStore(record.owner);
 
         bytes32 labelhash = _labelhash(record.subLabel);
         bytes32 storeKey = _storeKey(labelhash);
@@ -294,7 +287,9 @@ contract DotnsRegistrarController is
         store.setValueFor(
             record.owner,
             storeKey,
-            string.concat(string.concat(record.subLabel, record.parentLabel), ".dot")
+            string.concat(
+                string.concat(record.subLabel, string.concat(".", record.parentLabel)), ".dot"
+            )
         );
     }
 
@@ -304,7 +299,36 @@ contract DotnsRegistrarController is
             || super.supportsInterface(interfaceId);
     }
 
+    /// @notice Returns the Store for `owner`, deploying/mapping one if needed.
+    /// @dev Unifies Store acquisition across `register`, `registerReserved`, and `writeSubnodeToStore`.
+    ///      Handles three cases:
+    ///      1) Store already mapped to `owner` in the factory.
+    ///      2) Store mapped to this controller in the factory (migrate mapping to `owner`).
+    ///      3) No store exists (deploy under controller, authorize controller, transfer store ownership,
+    ///         then move factory mapping to `owner`).
+    /// @param owner Target Store owner address.
+    /// @return store The resolved Store instance.
+    function _getOrCreateStore(address owner) internal returns (Store store) {
+        IStore existing = storeFactory.getDeployedStore(owner);
+        if (address(existing) != address(0)) return Store(address(existing));
+
+        IStore controllerMapped = storeFactory.getDeployedStore(address(this));
+        if (address(controllerMapped) != address(0)) {
+            storeFactory.transferOwnership(owner);
+            IStore moved = storeFactory.getDeployedStore(owner);
+            require(address(moved) != address(0), IStoreFactory.InvalidTransfer(owner));
+            return Store(address(moved));
+        }
+
+        store = Store(address(storeFactory.deploy()));
+        store.authorizeDotnsController(address(this));
+        store.transferOwnership(owner);
+        storeFactory.transferOwnership(owner);
+    }
+
     /// @notice Computes keccak256(label)
+    /// @param label Label string.
+    /// @return hash keccak256(label).
     function _labelhash(string calldata label) internal pure returns (bytes32 hash) {
         assembly {
             let pointer := mload(0x40)
@@ -315,6 +339,8 @@ contract DotnsRegistrarController is
     }
 
     /// @notice Computes namehash(DOT_NODE, labelhash)
+    /// @param labelhash keccak256(label).
+    /// @return node namehash.
     function _namehash(bytes32 labelhash) internal pure returns (bytes32 node) {
         assembly {
             let pointer := mload(0x40)
@@ -325,8 +351,10 @@ contract DotnsRegistrarController is
     }
 
     /// @notice Computes keccak256("dotns.registered", labelhash)
-    function _storeKey(bytes32 labelhash) internal view returns (bytes32 key) {
-        bytes32 prefix = dotnsRegisteredKey;
+    /// @param labelhash keccak256(label).
+    /// @return key Store key used for DotNS-written registration entry.
+    function _storeKey(bytes32 labelhash) internal pure returns (bytes32 key) {
+        bytes32 prefix = DOTNS_REGISTERED_KEY;
         assembly {
             let pointer := mload(0x40)
             mstore(pointer, prefix)
@@ -342,10 +370,10 @@ contract DotnsRegistrarController is
     }
 
     /// @notice Internal check enforcing registry-only access.
-    /// @dev Done this way to reduce code size
     function _onlyRegistry() internal view {
         require(msg.sender == address(dotnsRegistry), NotRegistry());
     }
+
     /// @inheritdoc UUPSUpgradeable
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }

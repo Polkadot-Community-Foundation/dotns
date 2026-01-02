@@ -119,10 +119,11 @@ interface IDotnsRegistrarController {
     /// @dev Registration parameters must match the committed values.
     /// @dev Can only be called by owner
     /// @param registration Registration parameters.
-    function registerReserved(Registration calldata registration) external payable;
+    function registerReserved(Registration calldata registration) external;
 
     /// @notice Writes a newly created subnode to the user's Store.
     /// @dev This function is intended to be called **only by the registry**.
+    /// @dev  Writes the computed `<sub>.<parent>.dot` value into the Store owned by `record.owner`.
     ///      It updates the user's Store with the subnode information so that all subnodes
     ///      for a user can be queried in real-time.
     ///      The Store must already exist for the `newOwner`. If the Store write fails, the call should revert.

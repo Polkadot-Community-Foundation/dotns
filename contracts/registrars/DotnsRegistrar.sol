@@ -7,8 +7,7 @@ import {
     OwnableUpgradeable
 } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {
-    ERC721Upgradeable,
-    IERC721
+    ERC721Upgradeable
 } from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 
 import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";

@@ -44,6 +44,7 @@ contract PopOracle is
     address public ethRegistryController;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
+    // forge-lint: disable-next-line(mixed-case-variable)
     uint256[50] private __gap;
 
     /// @notice Restricts function to registry controller
@@ -128,6 +129,8 @@ contract PopOracle is
 
         Reservation memory existingReservation = reservations[strippedBase];
         if (existingReservation.owner == address(0)) {
+            // casting to 'uint64' is safe because MAX_RESERVATION_TIME will never be large enough to cause a revert
+            // forge-lint: disable-next-line(unsafe-typecast)
             uint64 expiryTime = uint64(block.timestamp + MAX_RESERVATION_TIME);
             reservations[strippedBase] = Reservation({owner: userAddress, expires: expiryTime});
             emit BaseNameReserved(strippedBase, userAddress, expiryTime);

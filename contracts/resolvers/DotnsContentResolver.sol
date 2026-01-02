@@ -38,6 +38,7 @@ contract DotnsContentResolver is
     mapping(address owner => mapping(address operator => bool approved)) private operators;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
+    // forge-lint: disable-next-line(mixed-case-variable)
     uint256[50] private __gap;
 
     /// @custom:oz-upgrades-unsafe-allow constructor

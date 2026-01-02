@@ -326,4 +326,31 @@ abstract contract BaseDotns is Test {
 
         vm.stopPrank();
     }
+
+    /// @notice Computes the Store key used for DotNS registration entries.
+    /// @param labelHash keccak256(bytes(label)) for the registered label.
+    /// @return key The derived bytes32 key used in Store for the given label.
+    function _storeKey(bytes32 labelHash) internal pure returns (bytes32 key) {
+        key = keccak256(abi.encodePacked(bytes32("dotns.registered"), labelHash));
+    }
+
+    /// @notice Checks whether a string array contains a given string.
+    /// @dev Compares by keccak256(bytes(string)) to avoid costly byte-by-byte comparisons.
+    /// @param array The array to search.
+    /// @param needle The string to find.
+    /// @return found True if `needle` is present in `arr`.
+    function _contains(
+        string[] memory array,
+        string memory needle
+    )
+        internal
+        pure
+        returns (bool found)
+    {
+        bytes32 needleHash = keccak256(bytes(needle));
+        for (uint256 i = 0; i < array.length; i++) {
+            if (keccak256(bytes(array[i])) == needleHash) return true;
+        }
+        return false;
+    }
 }
