@@ -1,0 +1,201 @@
+name: 4naly3er Static Analysis
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'contracts/**.sol'
+      - 'foundry.toml'
+      - 'remappings.txt'
+      - '.github/workflows/4naly3er.yml'
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Install dependencies
+        run: forge install
+
+      - name: Build contracts
+        run: forge build --build-info
+
+      - name: Checkout 4naly3er
+        uses: actions/checkout@v4
+        with:
+          repository: Picodes/4naly3er
+          path: .4naly3er
+
+      - name: Remove problematic detector
+        run: rm -f .4naly3er/src/issues/NC/uselessOverride.ts
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'yarn'
+          cache-dependency-path: .4naly3er/yarn.lock
+
+      - name: Install 4naly3er dependencies
+        working-directory: .4naly3er
+        run: yarn install 
+
+      - name: Run 4naly3er
+        continue-on-error: true
+        run: |
+          cd .4naly3er
+          yarn analyze "../contracts" "" "${{ github.server_url }}/${{ github.repository }}" || true
+          cd ..
+
+      - name: Process 4naly3er output
+        if: always()
+        run: |
+          python3 << 'EOF'
+          import os
+          import re
+
+          report_path = '.4naly3er/report.md'
+          output_path = '4naly3er-results.md'
+
+          if not os.path.exists(report_path):
+              print("ERROR: report.md not found")
+              with open(output_path, 'w') as f:
+                  f.write('# 4naly3er Analysis Results\n\n4naly3er did not generate a report file.\n')
+              exit(0)
+
+          try:
+              with open(report_path, 'r', encoding='utf-8') as f:
+                  content = f.read()
+                  
+              if not content.strip():
+                  print("ERROR: report.md is empty")
+                  with open(output_path, 'w') as f:
+                      f.write('# 4naly3er Analysis Results\n\nReport file is empty.\n')
+                  exit(0)
+
+              # Extract summary statistics if present
+              lines = content.split('\n')
+              summary_lines = []
+              detail_start = 0
+              
+              for i, line in enumerate(lines):
+                  if line.strip().startswith('##') and i < 50:
+                      summary_lines.append(line)
+                  if '## Details' in line or '## Issues' in line:
+                      detail_start = i
+                      break
+
+              # Count issue types
+              issue_counts = {}
+              for line in lines:
+                  # Match patterns like "### Low Risk Issues" or "### NC-"
+                  match = re.search(r'###\s*(Low|Medium|High|Gas|NC|Informational)', line, re.IGNORECASE)
+                  if match:
+                      category = match.group(1).capitalize()
+                      if category not in issue_counts:
+                          issue_counts[category] = 0
+                      issue_counts[category] += 1
+
+              output = ['# 4naly3er Analysis Results\n']
+              
+              if issue_counts:
+                  total = sum(issue_counts.values())
+                  output.append(f'**Total Issue Categories:** {total}\n')
+                  output.append('## Summary\n')
+                  output.append('| Category | Count |')
+                  output.append('|----------|-------|')
+                  for category, count in sorted(issue_counts.items()):
+                      output.append(f'| {category} | {count} |')
+                  output.append('\n---\n')
+              
+              # Add full report
+              output.append(content)
+              
+              final_output = '\n'.join(output)
+              
+              # Truncate if too large (GitHub comment limit)
+              max_length = 65000
+              if len(final_output) > max_length:
+                  final_output = final_output[:max_length] + '\n\n... (report truncated, see artifacts for full report)'
+              
+              with open(output_path, 'w', encoding='utf-8') as f:
+                  f.write(final_output)
+              
+              print(f"Successfully processed report ({len(content)} characters)")
+          
+          except Exception as e:
+              print(f"ERROR: Failed to process report: {e}")
+              with open(output_path, 'w') as f:
+                  f.write(f'# 4naly3er Analysis Results\n\nFailed to process report: {str(e)}\n')
+              exit(0)
+          EOF
+
+      - name: Comment PR with results
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            if (!fs.existsSync('4naly3er-results.md')) {
+              core.setFailed('4naly3er-results.md does not exist');
+              return;
+            }
+            
+            const markdown = fs.readFileSync('4naly3er-results.md', 'utf8');
+            const commentBody = `${markdown}\n\n---\nAnalysis: ${context.sha.substring(0, 7)}`;
+            
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.login === 'github-actions[bot]' &&
+              comment.body.includes('4naly3er Analysis Results')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody
+              });
+              console.log('Updated existing comment');
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+              console.log('Created new comment');
+            }
+
+      - name: Upload 4naly3er report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 4naly3er-report
+          path: |
+            .4naly3er/report.md
+            4naly3er-results.md
+          retention-days: 30

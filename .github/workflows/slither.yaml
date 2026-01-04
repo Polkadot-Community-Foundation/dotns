@@ -1,0 +1,193 @@
+name: Slither Static Analysis
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'contracts/**.sol'
+      - 'foundry.toml'
+      - '.github/workflows/slither.yml'
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Install dependencies
+        run: forge install
+
+      - name: Build contracts
+        run: forge build --build-info
+
+      - name: Install Slither
+        run: pip3 install slither-analyzer
+
+      - name: Run Slither
+        continue-on-error: true
+        run: |
+          slither . \
+            --json slither-report.json \
+            --filter-paths "lib/|test/" \
+            --exclude-dependencies \
+            --compile-force-framework foundry \
+            || true
+
+      - name: Process Slither output
+        if: always()
+        run: |
+          python3 << 'EOF'
+          import json
+          import os
+          from collections import defaultdict
+
+          if not os.path.exists('slither-report.json'):
+              print("ERROR: slither-report.json not found")
+              with open('slither-results.md', 'w') as f:
+                  f.write('# Slither Analysis Results\n\nSlither did not generate a report file.\n')
+              exit(0)
+
+          try:
+              with open('slither-report.json', 'r') as f:
+                  content = f.read()
+                  if not content.strip():
+                      print("ERROR: slither-report.json is empty")
+                      with open('slither-results.md', 'w') as f:
+                          f.write('# Slither Analysis Results\n\nSlither report file is empty.\n')
+                      exit(0)
+                  data = json.loads(content)
+          except json.JSONDecodeError as e:
+              print(f"ERROR: Invalid JSON: {e}")
+              with open('slither-results.md', 'w') as f:
+                  f.write(f'# Slither Analysis Results\n\nFailed to parse Slither report: {str(e)}\n')
+              exit(0)
+
+          findings = defaultdict(list)
+          
+          for result in data.get('results', {}).get('detectors', []):
+              severity = result.get('impact', 'Informational').capitalize()
+              findings[severity].append({
+                  'check': result.get('check', 'Unknown'),
+                  'description': result.get('description', '').strip(),
+                  'confidence': result.get('confidence', 'Unknown').capitalize(),
+                  'elements': result.get('elements', [])
+              })
+
+          severity_order = ['High', 'Medium', 'Low', 'Informational', 'Optimization']
+          
+          output = ['# Slither Analysis Results\n']
+          total_issues = sum(len(v) for v in findings.values())
+          
+          if total_issues == 0:
+              output.append('No issues detected.\n')
+          else:
+              output.append(f'**Total Issues:** {total_issues}\n')
+              output.append('## Summary\n')
+              output.append('| Severity | Count |')
+              output.append('|----------|-------|')
+              
+              for severity in severity_order:
+                  count = len(findings.get(severity, []))
+                  if count > 0:
+                      output.append(f'| {severity} | {count} |')
+              
+              output.append('\n## Details\n')
+              
+              for severity in severity_order:
+                  issues = findings.get(severity, [])
+                  if not issues:
+                      continue
+                  
+                  output.append(f'\n### {severity} ({len(issues)})\n')
+                  output.append('| Check | Description | Confidence | Location |')
+                  output.append('|-------|-------------|------------|----------|')
+                  
+                  for issue in issues:
+                      check = issue['check'].replace('|', '\\|')
+                      desc = issue['description'].replace('\n', ' ').replace('|', '\\|')[:150]
+                      if len(issue['description']) > 150:
+                          desc += '...'
+                      confidence = issue['confidence']
+                      
+                      locations = []
+                      for elem in issue['elements'][:2]:
+                          if 'source_mapping' in elem:
+                              loc = elem['source_mapping'].get('filename_short', '')
+                              line = elem['source_mapping'].get('lines', [])
+                              if loc and line:
+                                  locations.append(f"{loc}:{line[0] if line else '?'}")
+                      
+                      location = '<br>'.join(locations) if locations else 'N/A'
+                      output.append(f'| {check} | {desc} | {confidence} | {location} |')
+
+          with open('slither-results.md', 'w') as f:
+              f.write('\n'.join(output))
+          
+          print(f"Successfully generated report with {total_issues} issues")
+          EOF
+
+      - name: Comment PR with results
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            if (!fs.existsSync('slither-results.md')) {
+              core.setFailed('slither-results.md does not exist');
+              return;
+            }
+            
+            const markdown = fs.readFileSync('slither-results.md', 'utf8');
+            const commentBody = `${markdown}\n\n---\nAnalysis: ${context.sha.substring(0, 7)}`;
+            
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.login === 'github-actions[bot]' &&
+              comment.body.includes('Slither Analysis Results')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+            }
+
+      - name: Upload Slither report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slither-report
+          path: |
+            slither-report.json
+            slither-results.md
+          retention-days: 30

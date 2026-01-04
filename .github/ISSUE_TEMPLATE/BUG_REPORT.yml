@@ -1,0 +1,55 @@
+name: Bug report
+description: File a bug report to help us improve the code
+title: "[Bug]: "
+labels: ["bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check that the bug is not already being tracked.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Select the area this bug affects
+      options:
+        - Frontend
+        - Smart contracts
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: Provide a clear and concise description of what the bug is and which contracts it affects.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: Provide a clear and concise description of the desired fix.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: To Reproduce
+      description: If you have written tests to showcase the bug, what can we run to reproduce the issue?
+      placeholder: "git checkout <branchname> / forge test --isolate --mt <testName>"
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: If there is any additional context needed like a dependency or integrating contract that is affected please describe it below.
+    validations:
+      required: false

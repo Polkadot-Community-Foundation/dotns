@@ -1,20 +1,12 @@
 {
 "contracts": {
-    "ENSRegistry": "0xdE6456C58748f13a8933A0468Aaddec25cc54A82",
-    "Root": "0x36F81bE6e8cba3480505799080cC9f73230182F0",
-    "ReverseRegistrar": "0x93aFbc84942E3a1AbeB10d03C8Ed85D4e0698a77",
-    "BaseRegistrarImplementation": "0xb6C758396CFc1C75983f4428E1b3e30724ec5251",
-    "StableOracle": "0xdc6d2e22F0A3c02BD4Bf40c13464e91Fe26644A2",
-    "StaticMetadataService": "0x3b3933C2d51383F4b4AA96b4795D83972268bFAA",
-    "NameWrapper": "0x4150ec3e54C6067b0C010E200e17D6291aEbE5C5",
-    "DefaultReverseRegistrar": "0xabCa6Eda571c7C0aC4Bde9D5267E3f3A46A53A9A",
-    "DotRegistrarController": "0x431b7F21FfF91041044e963DB8a12275D22FE4B4",
-    "StaticBulkRenewal": "0x75569Db4cd8c2EA7c852D55B91dFef831ca36386",
-    "PublicResolver": "0x2dbc77c5c7d153Dd05C965C9bC928e355b86cEAe",
-    "GatewayProvider": "0x63922893aff7B26d7968eEf40f5461547Ef1599D",
-    "UniversalResolver": "0x0241F008dF550C9c45AeB05ACf0542B30D1707B1",
-    "StoreFactory": "0x35e81810f3f5017C928ce35c7d926E42D654657B",
-    "DotnsRegistrar": "0xC60f126F055dE2ab8aF0069Eb8cF0D251d54c3E1",
-    "Multicall3": "0x4626bb0aA5261F85ab0e846650B21e98c7eA1C95"
+    "StoreFactory": "0xF8e838FF0E5955de7bdDD367fA89c89575722615",
+    "DotnsRegistrar": "0x68cE3f3b3819279861CcEf1d703Aa358b4993650",
+    "DotnsReverseResolver": "0xb8e019D716a718Ba2C7a8649215AcB7f31aa5147",
+    "DotnsRegistry": "0xd31ACEFD8E40078375BFF392805BBc0301f0aF4A",
+    "DotnsContentResolver": "0xb3d23aDC08dc3bb8b1130579e81449afbA5cc3c2",
+    "DotnsResolver": "0x34196DC986e600bDDbb5F43BF77D8cBe6ad05b20",
+    "PopOracle": "0xdE40254fF6470CE8b6683d2FCFD0599B2BcfC3Af",
+    "DotnsRegistrarController": "0x2CB1dE90013C55f779Ca6894a66142571e1af41D"
   }
 }

@@ -1,19 +1,28 @@
 [profile.default]
-src = "src"
+src = "contracts"
 out = "out"
 test = "test"
+libs = ["lib"]
 fs_permissions = [{ access = "read-write", path = "./" }]
 ffi = true
 ast = true
 build_info = true
+
 optimizer = true
 optimizer_runs = 2000
 via_ir = true
 extra_output = ["storageLayout"]
 allow_internal_expect_revert = true
+
 solc_version = "0.8.30"
 evm_version = "cancun"
-libs = ["lib", "node_modules"]
+
+ignored_error_codes = [
+    "unreachable"
+]
+
+[profile.default.optimizer_details]
+yul = true
 
 [fmt]
 line_length = 100
@@ -25,10 +34,7 @@ number_underscore = "preserve"
 single_line_statement_blocks = "preserve"
 multiline_func_header = "all"
 
-
-[profile.default.optimizer_details]
-yul = true
-
 [rpc_endpoints]
 paseo_local = "http://127.0.0.1:8545"
-paseo ="https://testnet-passet-hub-eth-rpc.polkadot.io"
+paseo = "https://testnet-passet-hub-eth-rpc.polkadot.io"
+
