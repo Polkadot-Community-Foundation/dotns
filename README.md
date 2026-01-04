@@ -1,7 +1,6 @@
 # Dotns
 
-Smart contracts for registering `.dot` names on Polkadot Asset Hub via an Ethereum-compatible environment (pallet-revive + eth-rpc adapter). The repo uses Foundry for builds and tests.
-
+Smart contracts for registering `.dot` names on Polkadot
 ## Overview
 
 Dotns provides:
@@ -58,7 +57,7 @@ Key responsibilities:
 Notes:
 
 - Some operations are restricted to the configured registrar controller
-- Subnode creation emits `NewOwner(parent, label, owner)` (ENS-style)
+- Subnode creation emits `NewOwner(parent, label, owner)` 
 
 ### Oracle
 
