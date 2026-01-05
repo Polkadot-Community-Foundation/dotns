@@ -6,6 +6,11 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -20,7 +25,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.2.6"
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
@@ -33,28 +38,134 @@ jobs:
 
       - name: Start Anvil
         run: |
-          anvil --chain-id 420420420 --port 8545 &
+          anvil --chain-id 420420420 --port 8545 > anvil.log 2>&1 &
+          echo $! > anvil.pid
           sleep 3
 
       - name: Wait for RPC to be ready
         run: |
+          set -e
           for i in {1..30}; do
             if curl -s -X POST -H "Content-Type: application/json" \
               --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' \
               http://127.0.0.1:8545 | grep -q "result"; then
               echo "✓ RPC ready"
-              break
+              exit 0
             fi
             sleep 2
           done
+          echo "RPC not ready after waiting"
+          exit 1
 
-      - name: Deploy contracts
-        run: bun run deploy:anvil
-
-      - name: Verify deployment artifact exists
+      - name: Deploy + verify artifact (capture logs)
+        id: run
+        shell: bash
         run: |
-          [ -f deployments/paseo-local/420420420.json ]
+          set +e
+
+          bun run deploy:anvil > deploy.log 2>&1
+          DEPLOY_CODE=$?
+
+          ARTIFACT_PATH="deployments/paseo-local/420420420.json"
+          if [ $DEPLOY_CODE -eq 0 ] && [ -f "$ARTIFACT_PATH" ]; then
+            echo "status=✅ Passed" >> "$GITHUB_OUTPUT"
+            echo "details=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "status=❌ Failed" >> "$GITHUB_OUTPUT"
+          echo "details<<EOF" >> "$GITHUB_OUTPUT"
+
+          if [ $DEPLOY_CODE -ne 0 ]; then
+            echo "Deploy failed (bun run deploy:anvil):"
+            tail -n 80 deploy.log
+            echo ""
+          fi
+
+          if [ ! -f "$ARTIFACT_PATH" ]; then
+            echo "Missing deployment artifact:"
+            echo "$ARTIFACT_PATH"
+            echo ""
+            echo "Directory listing (deployments/paseo-local):"
+            ls -la deployments/paseo-local || true
+            echo ""
+          fi
+
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+          exit 1
+
+      - name: Update PR summary comment
+        if: always() && github.event_name == "pull_request"
+        uses: actions/github-script@v7
+        env:
+          SECTION: Deploy Contracts
+          STATUS: ${{ steps.run.outputs.status }}
+          DETAILS: ${{ steps.run.outputs.details }}
+        with:
+          script: |
+            const marker = "<!-- dotns-ci-summary -->";
+            const section = process.env.SECTION ?? "Deploy Contracts";
+            const status = process.env.STATUS ?? "❌ Failed";
+            const details = process.env.DETAILS ?? "";
+
+            const sectionStart = `<!-- section:${section}:start -->`;
+            const sectionEnd = `<!-- section:${section}:end -->`;
+
+            const block =
+              `${sectionStart}\n` +
+              `#### ${section}\n` +
+              `Status: ${status}\n` +
+              (details ? `\n\`\`\`\n${details}\n\`\`\`\n` : "\n") +
+              `${sectionEnd}\n`;
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find(c =>
+              c.user?.login === "github-actions[bot]" &&
+              typeof c.body === "string" &&
+              c.body.includes(marker)
+            );
+
+            const baseBody = existing?.body ?? `${marker}\n### CI summary\n\n`;
+            const hasSection = baseBody.includes(sectionStart) && baseBody.includes(sectionEnd);
+
+            let nextBody;
+            if (hasSection) {
+              const re = new RegExp(`${sectionStart}[\\s\\S]*?${sectionEnd}\\n?`, "m");
+              nextBody = baseBody.replace(re, block);
+            } else {
+              nextBody = `${baseBody.trimEnd()}\n\n${block}`;
+            }
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body: nextBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body: nextBody,
+              });
+            }
 
       - name: Stop Anvil
         if: always()
-        run: pkill -f anvil || true
+        run: |
+          if [ -f anvil.pid ]; then
+            kill "$(cat anvil.pid)" || true
+          fi
+          pkill -f anvil || true

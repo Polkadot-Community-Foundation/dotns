@@ -1,19 +1,31 @@
 name: Test Solidity Contracts
 
 on:
-  push:
-    branches:
-      - main
+  pull_request:
+    branches: [main]
     paths:
-      - 'src/**'
-      - 'script/**'
-      - 'test/**'
-      - '**.sol'
+      - "src/**"
+      - "script/**"
+      - "test/**"
+      - "**.sol"
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "script/**"
+      - "test/**"
+      - "**.sol"
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
 
 jobs:
   test:
     name: Run contract tests
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,45 +35,130 @@ jobs:
         with:
           version: nightly
 
-      - name: Display Foundry version
-        run: |
-          forge --version
-          cast --version
-
       - name: Setup Bun runtime
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
-
-      - name: Display Bun version
-        run: bun --version
+          bun-version: "1.2.6"
 
       - name: Install project dependencies
-        run: |
-          echo "Installing dependencies with Bun..."
-          bun install --verbose
+        run: bun install
 
-      - name: Build contracts
+      - name: Build + test (capture logs)
+        id: run
+        shell: bash
         run: |
-          echo "Building Solidity contracts..."
-          forge build --sizes -vvvvv
+          set +e
 
-      - name: Run contract tests
-        run: |
-          echo "Running Foundry tests..."
-          forge test -vvvvv
+          forge --version > forge-version.log 2>&1
+          cast --version >> forge-version.log 2>&1
 
-      - name: Generate gas report
-        run: |
-          echo "Generating gas usage report..."
-          forge test --gas-report
+          forge build --sizes -vvvvv > forge-build.log 2>&1
+          BUILD_CODE=$?
 
-      - name: Test summary
-        if: success()
-        run: echo "✓ All tests passed successfully"
+          forge test -vvvvv > forge-test.log 2>&1
+          TEST_CODE=$?
 
-      - name: Test failed
-        if: failure()
-        run: |
-          echo "✗ Tests failed"
+          forge test --gas-report > forge-gas.log 2>&1
+          GAS_CODE=$?
+
+          if [ $BUILD_CODE -eq 0 ] && [ $TEST_CODE -eq 0 ] && [ $GAS_CODE -eq 0 ]; then
+            echo "status=✅ Passed" >> "$GITHUB_OUTPUT"
+            echo "details=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "status=❌ Failed" >> "$GITHUB_OUTPUT"
+          echo "details<<EOF" >> "$GITHUB_OUTPUT"
+
+          echo "Foundry versions:"
+          tail -n 20 forge-version.log || true
+          echo ""
+
+          if [ $BUILD_CODE -ne 0 ]; then
+            echo "Build failed:"
+            tail -n 80 forge-build.log
+            echo ""
+          fi
+
+          if [ $TEST_CODE -ne 0 ]; then
+            echo "Tests failed:"
+            tail -n 120 forge-test.log
+            echo ""
+          fi
+
+          if [ $GAS_CODE -ne 0 ]; then
+            echo "Gas report failed:"
+            tail -n 80 forge-gas.log
+            echo ""
+          fi
+
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
           exit 1
+
+      - name: Update PR summary comment
+        if: always() && github.event_name == "pull_request"
+        uses: actions/github-script@v7
+        env:
+          SECTION: Contract Tests
+          STATUS: ${{ steps.run.outputs.status }}
+          DETAILS: ${{ steps.run.outputs.details }}
+        with:
+          script: |
+            const marker = "<!-- dotns-ci-summary -->";
+            const section = process.env.SECTION ?? "Contract Tests";
+            const status = process.env.STATUS ?? "❌ Failed";
+            const details = process.env.DETAILS ?? "";
+
+            const sectionStart = `<!-- section:${section}:start -->`;
+            const sectionEnd = `<!-- section:${section}:end -->`;
+
+            const block =
+              `${sectionStart}\n` +
+              `#### ${section}\n` +
+              `Status: ${status}\n` +
+              (details ? `\n\`\`\`\n${details}\n\`\`\`\n` : "\n") +
+              `${sectionEnd}\n`;
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find(c =>
+              c.user?.login === "github-actions[bot]" &&
+              typeof c.body === "string" &&
+              c.body.includes(marker)
+            );
+
+            const baseBody = existing?.body ?? `${marker}\n### CI summary\n\n`;
+            const hasSection = baseBody.includes(sectionStart) && baseBody.includes(sectionEnd);
+
+            let nextBody;
+            if (hasSection) {
+              const re = new RegExp(`${sectionStart}[\\s\\S]*?${sectionEnd}\\n?`, "m");
+              nextBody = baseBody.replace(re, block);
+            } else {
+              nextBody = `${baseBody.trimEnd()}\n\n${block}`;
+            }
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body: nextBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body: nextBody,
+              });
+            }

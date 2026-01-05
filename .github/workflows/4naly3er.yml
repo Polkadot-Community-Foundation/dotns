@@ -6,18 +6,20 @@ on:
       - main
       - develop
     paths:
-      - 'contracts/**.sol'
-      - 'foundry.toml'
-      - 'remappings.txt'
-      - '.github/workflows/4naly3er.yml'
+      - "contracts/**.sol"
+      - "foundry.toml"
+      - "remappings.txt"
+      - ".github/workflows/4naly3er.yml"
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
 
 jobs:
   analyse:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -48,13 +50,13 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'yarn'
+          node-version: "18"
+          cache: "yarn"
           cache-dependency-path: .4naly3er/yarn.lock
 
       - name: Install 4naly3er dependencies
         working-directory: .4naly3er
-        run: yarn install 
+        run: yarn install
 
       - name: Run 4naly3er
         continue-on-error: true
@@ -74,120 +76,142 @@ jobs:
           output_path = '4naly3er-results.md'
 
           if not os.path.exists(report_path):
-              print("ERROR: report.md not found")
               with open(output_path, 'w') as f:
                   f.write('# 4naly3er Analysis Results\n\n4naly3er did not generate a report file.\n')
               exit(0)
 
-          try:
-              with open(report_path, 'r', encoding='utf-8') as f:
-                  content = f.read()
-                  
-              if not content.strip():
-                  print("ERROR: report.md is empty")
-                  with open(output_path, 'w') as f:
-                      f.write('# 4naly3er Analysis Results\n\nReport file is empty.\n')
-                  exit(0)
+          with open(report_path, 'r', encoding='utf-8') as f:
+              content = f.read()
 
-              # Extract summary statistics if present
-              lines = content.split('\n')
-              summary_lines = []
-              detail_start = 0
-              
-              for i, line in enumerate(lines):
-                  if line.strip().startswith('##') and i < 50:
-                      summary_lines.append(line)
-                  if '## Details' in line or '## Issues' in line:
-                      detail_start = i
-                      break
-
-              # Count issue types
-              issue_counts = {}
-              for line in lines:
-                  # Match patterns like "### Low Risk Issues" or "### NC-"
-                  match = re.search(r'###\s*(Low|Medium|High|Gas|NC|Informational)', line, re.IGNORECASE)
-                  if match:
-                      category = match.group(1).capitalize()
-                      if category not in issue_counts:
-                          issue_counts[category] = 0
-                      issue_counts[category] += 1
-
-              output = ['# 4naly3er Analysis Results\n']
-              
-              if issue_counts:
-                  total = sum(issue_counts.values())
-                  output.append(f'**Total Issue Categories:** {total}\n')
-                  output.append('## Summary\n')
-                  output.append('| Category | Count |')
-                  output.append('|----------|-------|')
-                  for category, count in sorted(issue_counts.items()):
-                      output.append(f'| {category} | {count} |')
-                  output.append('\n---\n')
-              
-              # Add full report
-              output.append(content)
-              
-              final_output = '\n'.join(output)
-              
-              # Truncate if too large (GitHub comment limit)
-              max_length = 65000
-              if len(final_output) > max_length:
-                  final_output = final_output[:max_length] + '\n\n... (report truncated, see artifacts for full report)'
-              
-              with open(output_path, 'w', encoding='utf-8') as f:
-                  f.write(final_output)
-              
-              print(f"Successfully processed report ({len(content)} characters)")
-          
-          except Exception as e:
-              print(f"ERROR: Failed to process report: {e}")
+          if not content.strip():
               with open(output_path, 'w') as f:
-                  f.write(f'# 4naly3er Analysis Results\n\nFailed to process report: {str(e)}\n')
+                  f.write('# 4naly3er Analysis Results\n\nReport file is empty.\n')
               exit(0)
+
+          lines = content.split('\n')
+
+          # Count issue headings (rough signal; not exact counts of findings)
+          issue_counts = {}
+          for line in lines:
+              match = re.search(r'###\s*(Low|Medium|High|Gas|NC|Informational)', line, re.IGNORECASE)
+              if match:
+                  category = match.group(1).capitalize()
+                  issue_counts[category] = issue_counts.get(category, 0) + 1
+
+          out = ['# 4naly3er Analysis Results\n']
+
+          if issue_counts:
+              out.append('## Summary\n')
+              out.append('| Category | Count |')
+              out.append('|----------|-------|')
+              for category, count in sorted(issue_counts.items()):
+                  out.append(f'| {category} | {count} |')
+              out.append('\n---\n')
+
+          out.append(content)
+
+          final_output = '\n'.join(out)
+
+          max_length = 65000
+          if len(final_output) > max_length:
+              final_output = final_output[:max_length] + '\n\n... (report truncated, see artifacts for full report)'
+
+          with open(output_path, 'w', encoding='utf-8') as f:
+              f.write(final_output)
           EOF
 
-      - name: Comment PR with results
-        if: always() && github.event_name == 'pull_request'
+      - name: Prepare CI summary outputs
+        id: run
+        if: always()
+        shell: bash
+        run: |
+          set +e
+
+          if [ ! -f 4naly3er-results.md ]; then
+            echo "status=❌ Failed" >> "$GITHUB_OUTPUT"
+            echo "details<<EOF" >> "$GITHUB_OUTPUT"
+            echo "4naly3er-results.md not found." >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # If report contains "did not generate" or "empty", mark as failed
+          if grep -qiE "did not generate|empty" 4naly3er-results.md; then
+            echo "status=❌ Failed" >> "$GITHUB_OUTPUT"
+          else
+            # 4naly3er is continue-on-error; treat presence of a report as passed
+            echo "status=✅ Passed" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "details<<EOF" >> "$GITHUB_OUTPUT"
+          tail -n 80 4naly3er-results.md | sed 's/`/\\`/g' >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Update PR summary comment
+        if: always() && github.event_name == "pull_request"
         uses: actions/github-script@v7
+        env:
+          SECTION: 4naly3er Static Analysis
+          STATUS: ${{ steps.run.outputs.status }}
+          DETAILS: ${{ steps.run.outputs.details }}
         with:
           script: |
-            const fs = require('fs');
-            
-            if (!fs.existsSync('4naly3er-results.md')) {
-              core.setFailed('4naly3er-results.md does not exist');
-              return;
-            }
-            
-            const markdown = fs.readFileSync('4naly3er-results.md', 'utf8');
-            const commentBody = `${markdown}\n\n---\nAnalysis: ${context.sha.substring(0, 7)}`;
-            
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
+            const marker = "<!-- dotns-ci-summary -->";
+            const section = process.env.SECTION ?? "4naly3er Static Analysis";
+            const status = process.env.STATUS ?? "❌ Failed";
+            const details = process.env.DETAILS ?? "";
+
+            const sectionStart = `<!-- section:${section}:start -->`;
+            const sectionEnd = `<!-- section:${section}:end -->`;
+
+            const block =
+              `${sectionStart}\n` +
+              `#### ${section}\n` +
+              `Status: ${status}\n` +
+              (details ? `\n\`\`\`\n${details}\n\`\`\`\n` : "\n") +
+              `${sectionEnd}\n`;
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
             });
-            
-            const botComment = comments.find(comment => 
-              comment.user.login === 'github-actions[bot]' &&
-              comment.body.includes('4naly3er Analysis Results')
+
+            const existing = comments.find(c =>
+              c.user?.login === "github-actions[bot]" &&
+              typeof c.body === "string" &&
+              c.body.includes(marker)
             );
-            
-            if (botComment) {
+
+            const baseBody = existing?.body ?? `${marker}\n### CI summary\n\n`;
+            const hasSection = baseBody.includes(sectionStart) && baseBody.includes(sectionEnd);
+
+            let nextBody;
+            if (hasSection) {
+              const re = new RegExp(`${sectionStart}[\\s\\S]*?${sectionEnd}\\n?`, "m");
+              nextBody = baseBody.replace(re, block);
+            } else {
+              nextBody = `${baseBody.trimEnd()}\n\n${block}`;
+            }
+
+            if (existing) {
               await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: botComment.id,
-                body: commentBody
+                owner,
+                repo,
+                comment_id: existing.id,
+                body: nextBody,
               });
-              console.log('Updated existing comment');
             } else {
               await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: commentBody
+                owner,
+                repo,
+                issue_number,
+                body: nextBody,
               });
-              console.log('Created new comment');
             }
 
       - name: Upload 4naly3er report
