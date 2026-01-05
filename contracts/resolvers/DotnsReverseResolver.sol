@@ -55,6 +55,7 @@ contract DotnsReverseResolver is
     /// @inheritdoc IDotnsReverseResolver
     function setReverseName(address addr, string calldata name) external override onlyRegistrar {
         reverseNames[addr] = name;
+        emit ReverseNameSet(addr, name);
     }
 
     /// @inheritdoc IDotnsReverseResolver
