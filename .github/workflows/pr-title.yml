@@ -19,7 +19,7 @@ jobs:
         with:
           script: |
             const title = context.payload.pull_request.title || "";
-            const re = /^\[(Bug|Feat|Chore|Docs)\](\[(Frontend|Smart contract)\])?:\s.+/;
+            const re = /^\[(Bug|Feat|Chore|Docs)\](\[(Smart contract)\])?:\s.+/;
 
             const ok = re.test(title);
 
@@ -28,7 +28,7 @@ jobs:
               "details",
               ok
                 ? ""
-                : `Invalid PR title.\nExpected: "[Bug][Frontend]: ...", "[Feat]: ...", "[Chore]: ...", "[Docs]: ..."\nGot: "${title}"`
+                : `Invalid PR title.\nExpected: "[Bug]: ...", "[Feat]: ...", "[Chore]: ...", "[Docs]: ..."\nGot: "${title}"`
             );
 
             if (!ok) core.setFailed("Invalid PR title.");
