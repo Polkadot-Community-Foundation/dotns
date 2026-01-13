@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import {Test} from "forge-std/Test.sol";
 
-import {PopRules, IPopRules} from "../../contracts/pop/popRules.sol";
+import {PopRules, IPopRules} from "../../contracts/pop/PopRules.sol";
 import {DotnsRegistrar, IDotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
 import {
     DotnsRegistrarController,

@@ -9,7 +9,7 @@ import {
 import {
     ERC165Upgradeable
 } from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
-import {StringUtils} from "../../../../contracts/utils/StringUtils.sol";
+import {StringUtils} from "../../contracts/utils/StringUtils.sol";
 import {IPopOracle} from "./IPopOracle.sol";
 
 /// @title Stable Oracle

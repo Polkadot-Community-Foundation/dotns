@@ -5,7 +5,7 @@ import {console} from "forge-std/Script.sol";
 import {BaseDeployer} from "./BaseDeployer.s.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 import {Options} from "openzeppelin-foundry-upgrades/Options.sol";
-import {PopRules} from "../contracts/pop/popRules.sol";
+import {PopRules} from "../contracts/pop/PopRules.sol";
 
 /// @title DotnsUpgradesDeployer
 contract DotnsUpgrades is BaseDeployer {
