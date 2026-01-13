@@ -13,7 +13,7 @@ import {
 import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
 import {IDotnsRegistry} from "../registry/IDotnsRegistry.sol";
 import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
-import {IPopOracle} from "../pop/IPopOracle.sol";
+import {IPopRules} from "../pop/IPopRules.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
 import {Store} from "../store/Store.sol";
@@ -58,8 +58,8 @@ contract DotnsRegistrarController is
     /// @notice Reverse resolver for address → primary name mapping.
     IDotnsReverseResolver public reverseResolver;
 
-    /// @notice Oracle enforcing PoP rules and pricing.
-    IPopOracle public oracle;
+    /// @notice Rules enforcing PoP rules and pricing.
+    IPopRules public popRules;
 
     /// @notice Factory for per-user Store instances.
     IStoreFactory public storeFactory;
@@ -97,7 +97,7 @@ contract DotnsRegistrarController is
     /// @param registrar Base registrar used for ERC721 minting.
     /// @param registry Forward registry storing node ownership and resolver.
     /// @param reverse Reverse resolver for primary name mapping.
-    /// @param popOracle PoP oracle used for eligibility and pricing.
+    /// @param rules PoP rules used for eligibility and pricing.
     /// @param factory Store factory used to resolve/deploy per-user stores.
     /// @param minAge Minimum commitment age in seconds.
     /// @param maxAge Maximum commitment age in seconds.
@@ -105,7 +105,7 @@ contract DotnsRegistrarController is
         IDotnsRegistrar registrar,
         IDotnsRegistry registry,
         IDotnsReverseResolver reverse,
-        IPopOracle popOracle,
+        IPopRules rules,
         IStoreFactory factory,
         uint256 minAge,
         uint256 maxAge
@@ -122,7 +122,7 @@ contract DotnsRegistrarController is
         dotnsRegistrar = registrar;
         dotnsRegistry = registry;
         reverseResolver = reverse;
-        oracle = popOracle;
+        popRules = rules;
         storeFactory = factory;
 
         minCommitmentAge = minAge;
@@ -199,8 +199,8 @@ contract DotnsRegistrarController is
 
         delete commitments[commitment];
 
-        IPopOracle.PriceWithMeta memory priced =
-            oracle.priceWithCheck(registration.label, registration.owner);
+        IPopRules.PriceWithMeta memory priced =
+            popRules.priceWithCheck(registration.label, registration.owner);
 
         require(msg.value >= priced.price, InsufficientValue());
 
@@ -225,10 +225,10 @@ contract DotnsRegistrarController is
         );
 
         if (
-            priced.status == IPopOracle.PopStatus.PopLite
-                && priced.userStatus == IPopOracle.PopStatus.PopLite
+            priced.status == IPopRules.PopStatus.PopLite
+                && priced.userStatus == IPopRules.PopStatus.PopLite
         ) {
-            oracle.reserveBaseName(registration.label, registration.owner);
+            popRules.reserveBaseName(registration.label, registration.owner);
         }
 
         if (msg.value > priced.price) {
@@ -306,6 +306,8 @@ contract DotnsRegistrarController is
     ///      2) Store mapped to this controller in the factory (migrate mapping to `owner`).
     ///      3) No store exists (deploy under controller, authorize controller, transfer store ownership,
     ///         then move factory mapping to `owner`).
+    ///.     There should be a non-rentrant modifer here but we dont see a scenario where the resulting
+    ///      Store can call this function again
     /// @param owner Target Store owner address.
     /// @return store The resolved Store instance.
     function _getOrCreateStore(address owner) internal returns (Store store) {

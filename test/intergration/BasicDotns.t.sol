@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../base/BaseDotns.t.sol";
-import {IPopOracle} from "../../contracts/pop/IPopOracle.sol";
+import {IPopRules} from "../../contracts/pop/IPopRules.sol";
 import {IDotnsRegistry} from "../../contracts/registry/IDotnsRegistry.sol";
 import {Store} from "../../contracts/store/Store.sol";
 
@@ -37,9 +37,9 @@ contract BasicDotnsIntegration is BaseDotns {
 
     function test_popfull_end_to_end() public {
         vm.prank(ed);
-        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
 
-        _flow_end_to_end(
+        _flowEndToEnd(
             FlowParams({
                 nameOwner: ed,
                 name: NAME_POPFULL,
@@ -56,9 +56,9 @@ contract BasicDotnsIntegration is BaseDotns {
 
     function test_poplite_end_to_end() public {
         vm.prank(leonardo);
-        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopLite);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
 
-        _flow_end_to_end(
+        _flowEndToEnd(
             FlowParams({
                 nameOwner: leonardo,
                 name: NAME_POPLITE,
@@ -74,7 +74,7 @@ contract BasicDotnsIntegration is BaseDotns {
     }
 
     function test_nostatus_end_to_end() public {
-        _flow_end_to_end(
+        _flowEndToEnd(
             FlowParams({
                 nameOwner: tiago,
                 name: NAME_NOSTATUS,
@@ -89,7 +89,18 @@ contract BasicDotnsIntegration is BaseDotns {
         );
     }
 
-    function _flow_end_to_end(FlowParams memory flow) internal {
+    function _flowEndToEnd(FlowParams memory flow) internal {
+        // For PopLite/PopFull, PopRules.priceWithCheck must return price == 0.
+        // For NoStatus, price may be > 0 (paid path).
+        uint256 quotedPriceBefore = popRules.priceWithCheck(flow.name, flow.nameOwner).price;
+
+        if (
+            popRules.userPopStatus(flow.nameOwner) == IPopRules.PopStatus.PopFull
+                || popRules.userPopStatus(flow.nameOwner) == IPopRules.PopStatus.PopLite
+        ) {
+            assertEq(quotedPriceBefore, 0);
+        }
+
         _commitAndRegister(flow.name, flow.nameOwner, flow.reserved);
 
         bytes32 labelHash = keccak256(bytes(flow.name));
@@ -101,43 +112,44 @@ contract BasicDotnsIntegration is BaseDotns {
         assertEq(dotnsRegistry.owner(node), flow.nameOwner);
         assertEq(dotnsRegistry.resolver(node), address(dotnsReverseResolver));
 
+        string memory fullName = string.concat(flow.name, ".dot");
+
         if (flow.reserved) {
-            assertEq(dotnsReverseResolver.nameOf(flow.nameOwner), string.concat(flow.name, ".dot"));
+            assertEq(dotnsReverseResolver.nameOf(flow.nameOwner), fullName);
         } else {
             assertEq(dotnsReverseResolver.nameOf(flow.nameOwner), "");
         }
 
-        // store has key + values[] contains the minted name
+        // Store has key + values[] contains the minted name
         Store ownerStore = Store(address(storeFactory.getDeployedStore(flow.nameOwner)));
         assertTrue(address(ownerStore) != address(0));
 
-        string memory fullName = string.concat(flow.name, ".dot");
-        bytes32 key = _storeKey(labelHash);
+        bytes32 storeKey = _storeKey(labelHash);
 
-        assertEq(ownerStore.getValueFor(flow.nameOwner, key), fullName);
-        assertTrue(ownerStore.isLocked(flow.nameOwner, key));
+        assertEq(ownerStore.getValueFor(flow.nameOwner, storeKey), fullName);
+        assertTrue(ownerStore.isLocked(flow.nameOwner, storeKey));
         _assertStoreContainsValue(flow.nameOwner, ownerStore, fullName);
 
-        // owner can set content for root node
+        // Owner can set content for root node
         vm.prank(flow.nameOwner);
         dotnsContentResolver.setContenthash(node, CID_A);
         assertEq(dotnsContentResolver.contenthash(node), CID_A);
 
-        // owner creates a subname for self
+        // Owner creates a subname for self
         bytes32 selfSubnode =
             _setSubnode(flow.nameOwner, node, flow.selfSub, flow.name, flow.nameOwner);
         assertEq(dotnsRegistry.owner(selfSubnode), flow.nameOwner);
         _assertStoreContainsValue(flow.nameOwner, ownerStore, _fullSubname(flow.selfSub, flow.name));
 
-        // owner creates a subname for someone else (record.owner)
+        // Owner creates a subname for someone else (record.owner)
         bytes32 otherSubnode =
             _setSubnode(flow.nameOwner, node, flow.otherSub, flow.name, flow.otherOwner);
         assertEq(dotnsRegistry.owner(otherSubnode), flow.otherOwner);
 
-        Store otherStore = Store(address(storeFactory.getDeployedStore(flow.otherOwner)));
-        assertTrue(address(otherStore) != address(0));
+        Store otherOwnerStore = Store(address(storeFactory.getDeployedStore(flow.otherOwner)));
+        assertTrue(address(otherOwnerStore) != address(0));
         _assertStoreContainsValue(
-            flow.otherOwner, otherStore, _fullSubname(flow.otherSub, flow.name)
+            flow.otherOwner, otherOwnerStore, _fullSubname(flow.otherSub, flow.name)
         );
 
         vm.prank(flow.otherOwner);
@@ -156,29 +168,43 @@ contract BasicDotnsIntegration is BaseDotns {
 
         _assertStoreContainsValue(flow.nameOwner, ownerStore, fullName);
 
-        // new ERC721 owner can still do "regular processes" for names they actually own in registry:
-        // register their own new name, set content, mint subnames, check store values updated.
+        // New ERC721 owner can still do regular processes for names they actually own in registry:
+        // Register their own new name, set content, mint subnames, check store values updated.
+        uint256 transferRecipientQuotedPrice =
+            popRules.priceWithCheck(flow.transferRecipientNewName, flow.transferTo).price;
+
+        if (
+            popRules.userPopStatus(flow.transferTo) == IPopRules.PopStatus.PopFull
+                || popRules.userPopStatus(flow.transferTo) == IPopRules.PopStatus.PopLite
+        ) {
+            assertEq(transferRecipientQuotedPrice, 0);
+        }
+
         _commitAndRegister(flow.transferRecipientNewName, flow.transferTo, false);
 
-        bytes32 tLabelHash = keccak256(bytes(flow.transferRecipientNewName));
-        bytes32 tNode = _namehash(dotNode, tLabelHash);
+        bytes32 transferRecipientLabelHash = keccak256(bytes(flow.transferRecipientNewName));
+        bytes32 transferRecipientNode = _namehash(dotNode, transferRecipientLabelHash);
 
-        assertTrue(dotnsRegistry.recordExists(tNode));
-        assertEq(dotnsRegistry.owner(tNode), flow.transferTo);
+        assertTrue(dotnsRegistry.recordExists(transferRecipientNode));
+        assertEq(dotnsRegistry.owner(transferRecipientNode), flow.transferTo);
 
-        Store transferStore = Store(address(storeFactory.getDeployedStore(flow.transferTo)));
-        assertTrue(address(transferStore) != address(0));
+        Store transferRecipientStore =
+            Store(address(storeFactory.getDeployedStore(flow.transferTo)));
+        assertTrue(address(transferRecipientStore) != address(0));
 
-        string memory tFull = string.concat(flow.transferRecipientNewName, ".dot");
-        _assertStoreContainsValue(flow.transferTo, transferStore, tFull);
+        string memory transferRecipientFullName =
+            string.concat(flow.transferRecipientNewName, ".dot");
+        _assertStoreContainsValue(
+            flow.transferTo, transferRecipientStore, transferRecipientFullName
+        );
 
         vm.prank(flow.transferTo);
-        dotnsContentResolver.setContenthash(tNode, CID_A);
-        assertEq(dotnsContentResolver.contenthash(tNode), CID_A);
+        dotnsContentResolver.setContenthash(transferRecipientNode, CID_A);
+        assertEq(dotnsContentResolver.contenthash(transferRecipientNode), CID_A);
 
         _setSubnode(
             flow.transferTo,
-            tNode,
+            transferRecipientNode,
             flow.transferRecipientSub,
             flow.transferRecipientNewName,
             flow.transferTo
@@ -186,7 +212,7 @@ contract BasicDotnsIntegration is BaseDotns {
 
         _assertStoreContainsValue(
             flow.transferTo,
-            transferStore,
+            transferRecipientStore,
             _fullSubname(flow.transferRecipientSub, flow.transferRecipientNewName)
         );
     }
@@ -201,15 +227,16 @@ contract BasicDotnsIntegration is BaseDotns {
         internal
         returns (bytes32 subnode)
     {
-        IDotnsRegistry.SubnodeRecord memory record = IDotnsRegistry.SubnodeRecord({
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
             parentNode: parentNode, subLabel: subLabel, parentLabel: parentLabel, owner: subOwner
         });
 
         vm.prank(parentOwner);
-        subnode = dotnsRegistry.setSubnodeOwner(record);
+        subnode = dotnsRegistry.setSubnodeOwner(subnodeRecord);
 
-        bytes32 expected = keccak256(abi.encodePacked(parentNode, keccak256(bytes(subLabel))));
-        assertEq(subnode, expected);
+        bytes32 expectedSubnode =
+            keccak256(abi.encodePacked(parentNode, keccak256(bytes(subLabel))));
+        assertEq(subnode, expectedSubnode);
 
         assertTrue(dotnsRegistry.recordExists(subnode));
         assertEq(dotnsRegistry.resolver(subnode), address(dotnsReverseResolver));
@@ -229,13 +256,13 @@ contract BasicDotnsIntegration is BaseDotns {
     }
 
     function _fullSubname(
-        string memory sub,
-        string memory parent
+        string memory subLabel,
+        string memory parentLabel
     )
         internal
         pure
         returns (string memory)
     {
-        return string.concat(string.concat(sub, string.concat(".", parent)), ".dot");
+        return string.concat(string.concat(subLabel, string.concat(".", parentLabel)), ".dot");
     }
 }

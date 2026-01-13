@@ -6,7 +6,7 @@ import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 contract DotnsRegistrarTests is BaseDotns {
-    function test_addController() public {
+    function test_add_controller() public {
         address additionalController = makeAddr("additionalController");
 
         vm.startPrank(owner);
@@ -20,7 +20,7 @@ contract DotnsRegistrarTests is BaseDotns {
         assertTrue(dotnsRegistrar.controllers(IDotnsRegistrarController(additionalController)));
     }
 
-    function test_removeController() public {
+    function test_remove_controller() public {
         address temporaryController = makeAddr("temporaryController");
 
         vm.startPrank(owner);
@@ -34,86 +34,97 @@ contract DotnsRegistrarTests is BaseDotns {
         assertFalse(dotnsRegistrar.controllers(IDotnsRegistrarController(temporaryController)));
     }
 
-    function test_registerMintsToOwner() public {
+    function test_register_mints_to_owner() public {
+        address nameOwner = ed;
         uint256 tokenId = uint256(keccak256(bytes("alice")));
 
         vm.expectEmit(true, true, true, true, address(dotnsRegistrar));
-        emit IERC721.Transfer(address(0), ed, tokenId);
+        emit IERC721.Transfer(address(0), nameOwner, tokenId);
 
         vm.expectEmit(true, true, false, true, address(dotnsRegistrar));
-        emit IDotnsRegistrar.NameRegistered(tokenId, ed);
+        emit IDotnsRegistrar.NameRegistered(tokenId, nameOwner);
 
         vm.prank(address(dotnsRegistrarController));
-        dotnsRegistrar.register(tokenId, ed);
+        dotnsRegistrar.register(tokenId, nameOwner);
 
-        assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
-        assertEq(dotnsRegistrar.balanceOf(ed), 1);
+        assertEq(dotnsRegistrar.ownerOf(tokenId), nameOwner);
+        assertEq(dotnsRegistrar.balanceOf(nameOwner), 1);
     }
 
-    function test_registerMultipleSameOwner() public {
+    function test_register_multiple_same_owner() public {
+        address nameOwner = ed;
+
         uint256 firstTokenId = uint256(keccak256(bytes("nameOne")));
         uint256 secondTokenId = uint256(keccak256(bytes("nameTwo")));
 
         vm.startPrank(address(dotnsRegistrarController));
-        dotnsRegistrar.register(firstTokenId, ed);
-        dotnsRegistrar.register(secondTokenId, ed);
+        dotnsRegistrar.register(firstTokenId, nameOwner);
+        dotnsRegistrar.register(secondTokenId, nameOwner);
         vm.stopPrank();
 
-        assertEq(dotnsRegistrar.balanceOf(ed), 2);
-        assertEq(dotnsRegistrar.ownerOf(firstTokenId), ed);
-        assertEq(dotnsRegistrar.ownerOf(secondTokenId), ed);
+        assertEq(dotnsRegistrar.balanceOf(nameOwner), 2);
+        assertEq(dotnsRegistrar.ownerOf(firstTokenId), nameOwner);
+        assertEq(dotnsRegistrar.ownerOf(secondTokenId), nameOwner);
     }
 
-    function test_registerMultipleOwners() public {
+    function test_register_multiple_owners() public {
+        address firstOwner = ed;
+        address secondOwner = tiago;
+
         uint256 firstTokenId = uint256(keccak256(bytes("edName")));
         uint256 secondTokenId = uint256(keccak256(bytes("tiagoName")));
 
         vm.startPrank(address(dotnsRegistrarController));
-        dotnsRegistrar.register(firstTokenId, ed);
-        dotnsRegistrar.register(secondTokenId, tiago);
+        dotnsRegistrar.register(firstTokenId, firstOwner);
+        dotnsRegistrar.register(secondTokenId, secondOwner);
         vm.stopPrank();
 
-        assertEq(dotnsRegistrar.balanceOf(ed), 1);
-        assertEq(dotnsRegistrar.balanceOf(tiago), 1);
-        assertEq(dotnsRegistrar.ownerOf(firstTokenId), ed);
-        assertEq(dotnsRegistrar.ownerOf(secondTokenId), tiago);
+        assertEq(dotnsRegistrar.balanceOf(firstOwner), 1);
+        assertEq(dotnsRegistrar.balanceOf(secondOwner), 1);
+        assertEq(dotnsRegistrar.ownerOf(firstTokenId), firstOwner);
+        assertEq(dotnsRegistrar.ownerOf(secondTokenId), secondOwner);
     }
 
-    function test_availableBeforeAfterRegister() public {
+    function test_available_before_after_register() public {
+        address nameOwner = ed;
         uint256 tokenId = uint256(keccak256(bytes("availabilityCheck")));
 
         assertTrue(dotnsRegistrar.available(tokenId));
 
         vm.prank(address(dotnsRegistrarController));
-        dotnsRegistrar.register(tokenId, ed);
+        dotnsRegistrar.register(tokenId, nameOwner);
 
         assertFalse(dotnsRegistrar.available(tokenId));
     }
 
-    function test_registerToContractOwner() public {
-        address smartContractOwner = address(popOracle);
+    function test_register_to_contract_owner() public {
+        address nameOwner = address(popRules);
         uint256 tokenId = uint256(keccak256(bytes("contractOwnedName")));
 
         vm.prank(address(dotnsRegistrarController));
-        dotnsRegistrar.register(tokenId, smartContractOwner);
+        dotnsRegistrar.register(tokenId, nameOwner);
 
-        assertEq(dotnsRegistrar.ownerOf(tokenId), smartContractOwner);
-        assertEq(dotnsRegistrar.balanceOf(smartContractOwner), 1);
+        assertEq(dotnsRegistrar.ownerOf(tokenId), nameOwner);
+        assertEq(dotnsRegistrar.balanceOf(nameOwner), 1);
     }
 
-    function test_approvalsWork() public {
+    function test_approvals_work() public {
+        address nameOwner = ed;
+        address tokenApproval = tiago;
+        address operator = leonardo;
+
         uint256 tokenId = uint256(keccak256(bytes("approvalName")));
 
         vm.prank(address(dotnsRegistrarController));
-        dotnsRegistrar.register(tokenId, ed);
+        dotnsRegistrar.register(tokenId, nameOwner);
 
-        vm.prank(ed);
-        dotnsRegistrar.approve(tiago, tokenId);
-        assertEq(dotnsRegistrar.getApproved(tokenId), tiago);
+        vm.prank(nameOwner);
+        dotnsRegistrar.approve(tokenApproval, tokenId);
+        assertEq(dotnsRegistrar.getApproved(tokenId), tokenApproval);
 
-        vm.prank(ed);
-        dotnsRegistrar.setApprovalForAll(leonardo, true);
-        assertTrue(dotnsRegistrar.isApprovedForAll(ed, leonardo));
+        vm.prank(nameOwner);
+        dotnsRegistrar.setApprovalForAll(operator, true);
+        assertTrue(dotnsRegistrar.isApprovedForAll(nameOwner, operator));
 
         assertTrue(dotnsRegistrar.supportsInterface(type(IERC721).interfaceId));
     }

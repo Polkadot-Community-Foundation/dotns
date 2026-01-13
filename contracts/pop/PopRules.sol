@@ -9,18 +9,18 @@ import {
 import {
     ERC165Upgradeable
 } from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
-import {StringUtils} from "../../../../contracts/utils/StringUtils.sol";
-import {IPopOracle} from "./IPopOracle.sol";
+import {StringUtils} from "../utils/StringUtils.sol";
+import {IPopRules} from "./IPopRules.sol";
 
-/// @title Stable Oracle
+/// @title PopRules
 /// @notice Implements DotNS pricing with PoP-tier validation and base-name reservations
 /// @custom:security-contact admin@parity.io
-contract PopOracle is
+contract PopRules is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,
     ERC165Upgradeable,
-    IPopOracle
+    IPopRules
 {
     using StringUtils for *;
 
@@ -60,7 +60,7 @@ contract PopOracle is
 
     /// @notice Initializes the oracle with pricing parameters
     /// @param _startingPrice Base price in wei for No pop status users
-    function _popOracleInit(uint256 _startingPrice) internal onlyInitializing {
+    function _popRulesInit(uint256 _startingPrice) internal onlyInitializing {
         __Ownable_init(msg.sender);
         __ERC165_init();
         startingPrice = _startingPrice;
@@ -69,16 +69,16 @@ contract PopOracle is
     /// @notice Initializes the oracle (public entry point)
     /// @param _startingPrice Base price in wei for No pop status users
     function initialize(uint256 _startingPrice) public initializer {
-        _popOracleInit(_startingPrice);
+        _popRulesInit(_startingPrice);
     }
 
-    /// @inheritdoc IPopOracle
+    /// @inheritdoc IPopRules
     function setUserPopStatus(PopStatus status) external override {
         userPopStatus[msg.sender] = status;
         emit UserPopStatusSet(msg.sender, status);
     }
 
-    /// @inheritdoc IPopOracle
+    /// @inheritdoc IPopRules
     function classifyName(string calldata name)
         public
         pure
@@ -110,7 +110,7 @@ contract PopOracle is
         return (PopStatus.PopFull, "Requires Full personhood verification");
     }
 
-    /// @inheritdoc IPopOracle
+    /// @inheritdoc IPopRules
     function reserveBaseName(
         string calldata name,
         address userAddress
@@ -137,19 +137,19 @@ contract PopOracle is
         }
     }
 
-    /// @inheritdoc IPopOracle
+    /// @inheritdoc IPopRules
     function updateEthRegistry(address newRegistry) external override onlyOwner {
         emit RegistryUpdated(ethRegistryController, newRegistry);
         ethRegistryController = newRegistry;
     }
 
-    /// @inheritdoc IPopOracle
+    /// @inheritdoc IPopRules
     function isBaseName(string calldata baseName) public pure override returns (bool isBase) {
         uint256 digits = _countTrailingDigits(baseName);
         return digits == 0;
     }
 
-    /// @inheritdoc IPopOracle
+    /// @inheritdoc IPopRules
     function getBaseNameReservation(string calldata baseName)
         external
         view
@@ -160,7 +160,7 @@ contract PopOracle is
         return (reserved.owner, reserved.expires);
     }
 
-    /// @inheritdoc IPopOracle
+    /// @inheritdoc IPopRules
     function isBaseNameReserved(string calldata baseName)
         external
         view
@@ -174,7 +174,7 @@ contract PopOracle is
         return (false, reservation.owner, reservation.expires);
     }
 
-    /// @inheritdoc IPopOracle
+    /// @inheritdoc IPopRules
     function priceWithCheck(
         string calldata name,
         address userAddress
@@ -189,7 +189,7 @@ contract PopOracle is
         (PopStatus requiredStatus, string memory classification) = classifyName(name);
         PopStatus userStatus = userPopStatus[userAddress];
 
-        metadata.price = price(name);
+        metadata.price = userStatus == PopStatus.NoStatus ? price(name) : 0;
         metadata.status = requiredStatus;
         metadata.userStatus = userStatus;
         metadata.message = classification;
@@ -216,7 +216,38 @@ contract PopOracle is
         return metadata;
     }
 
-    /// @inheritdoc IPopOracle
+    function priceWithoutCheck(
+        string calldata name,
+        address userAddress
+    )
+        external
+        view
+        override
+        returns (PriceWithMeta memory metadata)
+    {
+        (PopStatus requiredStatus, string memory classification) = classifyName(name);
+        PopStatus userStatus = userPopStatus[userAddress];
+
+        metadata.price = userStatus == PopStatus.NoStatus ? price(name) : 0;
+        metadata.status = requiredStatus;
+        metadata.userStatus = userStatus;
+        metadata.message = classification;
+
+        string memory baseName = _stripDigits(name);
+        Reservation memory reservation = reservations[baseName];
+
+        if (
+            reservation.owner != address(0) && reservation.expires > block.timestamp
+                && reservation.owner != userAddress
+        ) {
+            metadata.message = "Base name reserved for original Lite registrant";
+            metadata.status = IPopRules.PopStatus.Reserved;
+        }
+
+        return metadata;
+    }
+
+    /// @inheritdoc IPopRules
     function price(string calldata name) public view override returns (uint256) {
         uint256 namelength = name.strlen();
         if (namelength < 9) {
@@ -295,7 +326,7 @@ contract PopOracle is
         override
         returns (bool supported)
     {
-        return interfaceId == type(IPopOracle).interfaceId || super.supportsInterface(interfaceId);
+        return interfaceId == type(IPopRules).interfaceId || super.supportsInterface(interfaceId);
     }
 
     /// @inheritdoc UUPSUpgradeable
@@ -304,7 +335,7 @@ contract PopOracle is
     /// @notice Returns implementation version
     /// @return versionString Current version string
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.0.0";
+        versionString = "1.1.0";
     }
 
     /// @notice Ensures the caller is the authorized registry controller

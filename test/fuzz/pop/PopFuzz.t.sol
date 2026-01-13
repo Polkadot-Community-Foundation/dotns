@@ -2,180 +2,189 @@
 pragma solidity ^0.8.30;
 
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
-import {IPopOracle} from "../../../contracts/pop/IPopOracle.sol";
+import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 
 contract DotnsRegistrarControllerFuzzTest is BaseDotns {
-    function testFuzz_register_zeroPrice_acceptsZeroPayment(uint256 salt) public {
+    function testFuzz_register_zero_price_zero_payment(uint256 salt) public {
         address nameOwner = ed;
 
         vm.prank(nameOwner);
-        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
 
-        string memory label = _labelPriceZero(bytes32(salt));
-        IDotnsRegistrarController.Registration memory r =
-            _registration(label, nameOwner, salt, false);
+        string memory nameLabel = _labelPriceZero(bytes32(salt));
+        IDotnsRegistrarController.Registration memory registration =
+            _registration(nameLabel, nameOwner, salt, false);
 
-        _commit(r, nameOwner);
+        _commit(registration, nameOwner);
         _waitMinAge();
 
-        uint256 quoted = popOracle.priceWithCheck(label, nameOwner).price;
-        assertEq(quoted, 0);
+        uint256 quotedPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
+        assertEq(quotedPrice, 0);
 
-        uint256 balBefore = nameOwner.balance;
+        uint256 balanceBefore = nameOwner.balance;
         vm.prank(nameOwner);
-        dotnsRegistrarController.register{value: 0}(r);
-        uint256 balAfter = nameOwner.balance;
+        dotnsRegistrarController.register{value: 0}(registration);
+        uint256 balanceAfter = nameOwner.balance;
 
-        assertEq(balBefore, balAfter);
+        assertEq(balanceBefore, balanceAfter);
     }
 
-    function testFuzz_register_zeroPrice_refundsOverpayment(uint256 salt, uint256 extra) public {
-        address nameOwner = ed;
-
-        vm.prank(nameOwner);
-        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
-
-        string memory label = _labelPriceZero(bytes32(salt));
-        IDotnsRegistrarController.Registration memory r =
-            _registration(label, nameOwner, salt, false);
-
-        _commit(r, nameOwner);
-        _waitMinAge();
-
-        uint256 quoted = popOracle.priceWithCheck(label, nameOwner).price;
-        assertEq(quoted, 0);
-
-        extra = bound(extra, 0, 10 ether);
-
-        uint256 balBefore = nameOwner.balance;
-        vm.prank(nameOwner);
-        dotnsRegistrarController.register{value: extra}(r);
-        uint256 balAfter = nameOwner.balance;
-
-        assertEq(balBefore, balAfter);
-    }
-
-    function testFuzz_register_refundsOverpayment(uint256 salt, uint256 extra) public {
-        address nameOwner = ed;
-
-        vm.prank(nameOwner);
-        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
-
-        string memory label = _labelPopFullPriced(bytes32(salt));
-        IDotnsRegistrarController.Registration memory r =
-            _registration(label, nameOwner, salt, false);
-
-        _commit(r, nameOwner);
-        _waitMinAge();
-
-        uint256 price = popOracle.priceWithCheck(label, nameOwner).price;
-        assertGt(price, 0);
-
-        extra = bound(extra, 0, 10 ether);
-
-        uint256 balBefore = nameOwner.balance;
-        vm.prank(nameOwner);
-        dotnsRegistrarController.register{value: price + extra}(r);
-        uint256 balAfter = nameOwner.balance;
-
-        assertEq(balBefore - balAfter, price);
-    }
-
-    function testFuzz_register_refundsPayerWhenRegisteringForOther(
+    function testFuzz_register_zero_price_refund_overpay(
         uint256 salt,
-        uint256 extra
+        uint256 paymentExtra
     )
         public
     {
         address nameOwner = ed;
-        address payer = tiago;
 
         vm.prank(nameOwner);
-        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
 
-        string memory label = _labelPopFullPriced(bytes32(salt));
-        IDotnsRegistrarController.Registration memory r =
-            _registration(label, nameOwner, salt, false);
+        string memory nameLabel = _labelPriceZero(bytes32(salt));
+        IDotnsRegistrarController.Registration memory registration =
+            _registration(nameLabel, nameOwner, salt, false);
 
-        _commit(r, nameOwner);
+        _commit(registration, nameOwner);
         _waitMinAge();
 
-        uint256 price = popOracle.priceWithCheck(label, nameOwner).price;
-        assertGt(price, 0);
+        uint256 quotedPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
+        assertEq(quotedPrice, 0);
 
-        extra = bound(extra, 0, 10 ether);
+        paymentExtra = bound(paymentExtra, 0, 10 ether);
 
-        uint256 payerBefore = payer.balance;
-        vm.prank(payer);
-        dotnsRegistrarController.register{value: price + extra}(r);
-        uint256 payerAfter = payer.balance;
+        uint256 balanceBefore = nameOwner.balance;
+        vm.prank(nameOwner);
+        dotnsRegistrarController.register{value: paymentExtra}(registration);
+        uint256 balanceAfter = nameOwner.balance;
 
-        assertEq(payerBefore - payerAfter, price);
+        assertEq(balanceBefore, balanceAfter);
     }
 
-    function testFuzz_register_revertsOnInsufficientPayment(uint256 salt) public {
+    function testFuzz_register_refund_overpay(uint256 salt, uint256 paymentExtra) public {
+        address nameOwner = ed;
+
+        // Non-zero pricing path in PopRules.priceWithCheck requires NoStatus
+        vm.prank(nameOwner);
+        popRules.setUserPopStatus(IPopRules.PopStatus.NoStatus);
+
+        string memory nameLabel = _labelNoStatusPriced(bytes32(salt));
+        IDotnsRegistrarController.Registration memory registration =
+            _registration(nameLabel, nameOwner, salt, false);
+
+        _commit(registration, nameOwner);
+        _waitMinAge();
+
+        uint256 requiredPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
+        assertGt(requiredPrice, 0);
+
+        paymentExtra = bound(paymentExtra, 0, 10 ether);
+
+        uint256 balanceBefore = nameOwner.balance;
+        vm.prank(nameOwner);
+        dotnsRegistrarController.register{value: requiredPrice + paymentExtra}(registration);
+        uint256 balanceAfter = nameOwner.balance;
+
+        assertEq(balanceBefore - balanceAfter, requiredPrice);
+    }
+
+    function testFuzz_register_refund_payer_other(uint256 salt, uint256 paymentExtra) public {
+        address nameOwner = ed;
+        address payer = tiago;
+
+        // Make pricing consistent regardless of whether the controller checks `owner` or `msg.sender`
+        vm.prank(nameOwner);
+        popRules.setUserPopStatus(IPopRules.PopStatus.NoStatus);
+        vm.prank(payer);
+        popRules.setUserPopStatus(IPopRules.PopStatus.NoStatus);
+
+        string memory nameLabel = _labelNoStatusPriced(bytes32(salt));
+        IDotnsRegistrarController.Registration memory registration =
+            _registration(nameLabel, nameOwner, salt, false);
+
+        _commit(registration, payer);
+        _waitMinAge();
+
+        uint256 requiredPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
+        assertGt(requiredPrice, 0);
+
+        paymentExtra = bound(paymentExtra, 0, 10 ether);
+
+        uint256 payerBalanceBefore = payer.balance;
+        vm.prank(payer);
+        dotnsRegistrarController.register{value: requiredPrice + paymentExtra}(registration);
+        uint256 payerBalanceAfter = payer.balance;
+
+        assertEq(payerBalanceBefore - payerBalanceAfter, requiredPrice);
+    }
+
+    function testFuzz_register_revert_insufficient(uint256 salt) public {
         address nameOwner = ed;
 
         vm.prank(nameOwner);
-        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
+        popRules.setUserPopStatus(IPopRules.PopStatus.NoStatus);
 
-        string memory label = _labelPopFullPriced(bytes32(salt));
-        IDotnsRegistrarController.Registration memory r =
-            _registration(label, nameOwner, salt, false);
+        string memory nameLabel = _labelNoStatusPriced(bytes32(salt));
+        IDotnsRegistrarController.Registration memory registration =
+            _registration(nameLabel, nameOwner, salt, false);
 
-        _commit(r, nameOwner);
+        _commit(registration, nameOwner);
         _waitMinAge();
 
-        uint256 price = popOracle.priceWithCheck(label, nameOwner).price;
-        assertGt(price, 0);
+        uint256 requiredPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
+        assertGt(requiredPrice, 0);
 
         vm.expectRevert(IDotnsRegistrarController.InsufficientValue.selector);
         vm.prank(nameOwner);
-        dotnsRegistrarController.register{value: price - 1}(r);
+        dotnsRegistrarController.register{value: requiredPrice - 1}(registration);
     }
 
-    function testFuzz_register_succeedsOnExactPayment(uint256 salt) public {
+    function testFuzz_register_exact_payment(uint256 salt) public {
         address nameOwner = ed;
 
         vm.prank(nameOwner);
-        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
+        popRules.setUserPopStatus(IPopRules.PopStatus.NoStatus);
 
-        string memory label = _labelPopFullPriced(bytes32(salt));
-        IDotnsRegistrarController.Registration memory r =
-            _registration(label, nameOwner, salt, false);
+        string memory nameLabel = _labelNoStatusPriced(bytes32(salt));
+        IDotnsRegistrarController.Registration memory registration =
+            _registration(nameLabel, nameOwner, salt, false);
 
-        _commit(r, nameOwner);
+        _commit(registration, nameOwner);
         _waitMinAge();
 
-        uint256 price = popOracle.priceWithCheck(label, nameOwner).price;
-        assertGt(price, 0);
+        uint256 requiredPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
+        assertGt(requiredPrice, 0);
 
-        uint256 balBefore = nameOwner.balance;
+        uint256 balanceBefore = nameOwner.balance;
         vm.prank(nameOwner);
-        dotnsRegistrarController.register{value: price}(r);
-        uint256 balAfter = nameOwner.balance;
+        dotnsRegistrarController.register{value: requiredPrice}(registration);
+        uint256 balanceAfter = nameOwner.balance;
 
-        assertEq(balBefore - balAfter, price);
+        assertEq(balanceBefore - balanceAfter, requiredPrice);
     }
 
     function _registration(
-        string memory label,
+        string memory nameLabel,
         address owner,
         uint256 salt,
         bool reserved
     )
         internal
         view
-        returns (IDotnsRegistrarController.Registration memory r)
+        returns (IDotnsRegistrarController.Registration memory registration)
     {
-        bytes32 secret = keccak256(abi.encodePacked(label, owner, salt, block.timestamp));
-        r = IDotnsRegistrarController.Registration({
-            label: label, owner: owner, secret: secret, reserved: reserved
+        bytes32 secret = keccak256(abi.encodePacked(nameLabel, owner, salt, block.timestamp));
+        registration = IDotnsRegistrarController.Registration({
+            label: nameLabel, owner: owner, secret: secret, reserved: reserved
         });
     }
 
-    function _commit(IDotnsRegistrarController.Registration memory r, address committer) internal {
-        bytes32 commitment = dotnsRegistrarController.makeCommitment(r);
+    function _commit(
+        IDotnsRegistrarController.Registration memory registration,
+        address committer
+    )
+        internal
+    {
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
         vm.prank(committer);
         dotnsRegistrarController.commit(commitment);
     }
@@ -184,28 +193,23 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
     }
 
-    /// @notice Generates a PopLite-eligible label with zero price under the current pricing rules.
-    /// @dev Length is fixed at 8 (< 9) so `PopOracle.price()` returns 0.
-    ///      Uses `suffixDigits = 2` to keep a consistent NoStatus/PopLite path while staying within the 2-digit limit.
+    /// @notice Generates a PopLite-eligible label with zero price under current pricing rules.
+    /// @dev Total length fixed at 8 (< 9) so `popRules.price()` returns 0.
+    ///      Uses `suffixDigits = 2` to remain in the PopLite/NoStatus-with-suffix space while within 2-digit limit.
     function _labelPriceZero(bytes32 seed) internal pure returns (string memory) {
         return _makeName(seed, 6, 2);
     }
 
-    /// @notice Generates a PopFull-required label with non-zero price under the current pricing rules.
-    /// @dev Length is fixed at 10 (>= 9) so `PopOracle.price()` returns non-zero.
-    ///      Uses `suffixDigits = 1` to stay within the 2-digit limit.
-    function _labelPopFullPriced(bytes32 seed) internal pure returns (string memory) {
-        return _makeName(seed, 9, 1);
+    /// @notice Generates a NoStatus-required label with non-zero price under current pricing rules.
+    /// @dev Must satisfy: `trailingDigits == 2` and `baselength >= 9` to classify as NoStatus.
+    ///      Total length fixed at 11 (>= 9) so `popRules.price()` is non-zero for NoStatus users.
+    function _labelNoStatusPriced(bytes32 seed) internal pure returns (string memory) {
+        return _makeName(seed, 9, 2);
     }
 
     /// @notice Deterministically generates a lowercase label with an optional numeric suffix.
     /// @dev Produces `baseLength` lowercase letters ('a'..'z') followed by `suffixDigits` digits ('0'..'9').
-    ///      Characters are derived from `keccak256(seed, index)` to keep outputs stable across runs.
-    ///      Intended for fuzz tests where labels must be unique but reproducible.
-    /// @param seed Entropy source used to derive each character.
-    /// @param baseLength Number of leading alphabetic characters to generate.
-    /// @param suffixDigits Number of trailing numeric characters to generate.
-    /// @return name The generated label string.
+    ///      Characters derived from `keccak256(seed, index)` for stable outputs across runs.
     function _makeName(
         bytes32 seed,
         uint256 baseLength,
@@ -215,18 +219,19 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         pure
         returns (string memory name)
     {
-        bytes memory out = new bytes(baseLength + suffixDigits);
+        bytes memory output = new bytes(baseLength + suffixDigits);
 
-        for (uint256 i = 0; i < baseLength; i++) {
-            out[i] = bytes1(uint8(97 + (uint256(keccak256(abi.encodePacked(seed, i))) % 26)));
+        for (uint256 baseIndex = 0; baseIndex < baseLength; baseIndex++) {
+            output[baseIndex] =
+                bytes1(uint8(97 + (uint256(keccak256(abi.encodePacked(seed, baseIndex))) % 26)));
         }
 
-        for (uint256 j = 0; j < suffixDigits; j++) {
-            out[baseLength + j] = bytes1(
-                uint8(48 + (uint256(keccak256(abi.encodePacked(seed, baseLength + j))) % 10))
-            );
+        for (uint256 suffixIndex = 0; suffixIndex < suffixDigits; suffixIndex++) {
+            uint256 charIndex = baseLength + suffixIndex;
+            output[charIndex] =
+                bytes1(uint8(48 + (uint256(keccak256(abi.encodePacked(seed, charIndex))) % 10)));
         }
 
-        return string(out);
+        return string(output);
     }
 }

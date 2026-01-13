@@ -1,131 +1,78 @@
 # Dotns
 
 Smart contracts for registering `.dot` names on Polkadot
-## Overview
 
-Dotns provides:
+## Diagrams
 
-- A commit–reveal registration controller for `.dot` labels
-- A forward registry (node owner + resolver)
-- A reverse resolver (address → primary name)
-- A PoP-aware pricing oracle with base-name reservation rules
-- Per-user storage (Store) deployed through a factory and used to persist immutable registration records
-- Resolvers for contenthash and text records
+### Registration flow
+
+![Registration flow](./diagrams/registration.png)
+
+### Subnode creation flow
+
+![Subnode creation](./diagrams/subname.png)
+
+### CID flow (Bulletin Chain)
+
+![CID flow](./diagrams/cid.png)
+
+### System diagram
+
+![System diagram](./diagrams/system.png)
+
+## Deployment note
+
+To deploy on Paseo you need a local ETH-RPC adapter.
+
+A `docker-compose` file is provided. Start it first, then run the deployment scripts from `package.json`, for example:
+
+```bash
+bun run deploy:testnet
+```
 
 ## Contracts
 
-### Registrars
+### `DotnsRegistrarController`
 
-#### `DotnsRegistrar`
-ERC721-backed registrar that mints ownership of label IDs (labelhashes).
+Commit–reveal controller that validates commitments, enforces oracle checks, and orchestrates registration side effects (minting, registry wiring, reverse record, Store writes, refunds).
 
-Key responsibilities:
+### `DotnsRegistrar`
 
-- Track whether a label is available
-- Mint/register labels to an owner
-- Support controller-based registration flow (controller is configured during setup)
+ERC721-backed registrar that mints ownership of label IDs (labelhashes). Minting is restricted to authorised controllers.
 
-#### `DotnsRegistrarController`
-Commit–reveal controller that orchestrates the registration flow.
+### `DotnsRegistry`
 
-Core responsibilities:
+Forward registry mapping node → `(owner, resolver)` and supporting subnode creation. Privileged node wiring is restricted to the configured registrar controller.
 
-- Validate label availability and commitment age bounds
-- Enforce PoP rules and pricing via `PopOracle`
-- Mint ownership via `DotnsRegistrar`
-- Wire forward registry owner + resolver via `DotnsRegistry`
-- Set default reverse record via `DotnsReverseResolver`
-- Write an immutable “registered name” record to the user’s `Store` via `StoreFactory`
+### `PopOracle`
 
-Key behaviors:
+PoP-aware name classification and pricing. Enforces base-name reservation rules derived from Lite-eligible registrations.
 
-- `commit(bytes32 commitment)` stores the timestamp
-- `register(Registration)` validates the commitment window, calls oracle pricing checks, mints the name, wires records, writes to Store, emits `NameRegistered`, refunds excess payment
-- `registerReserved(Registration)` is a “reserved path” used for special allocations (no oracle price check)
+### `DotnsReverseResolver`
 
-### Registry
+Reverse records mapping address → primary name. Writes are restricted to an authorised registrar/controller.
 
-#### `DotnsRegistry`
-Forward registry for node ownership and resolution.
+### `DotnsContentResolver`
 
-Key responsibilities:
+Stores `contenthash` and text records per node. Writes require node ownership (or approved operator if enabled).
 
-- Track owner and resolver per node
-- Support controller-driven ownership wiring for registered nodes
-- Support subnode ownership for nested namespaces (e.g., subdomains)
+### `DotnsResolver`
 
-Notes:
+Stores forward-resolution address records per node. Writes require node ownership.
 
-- Some operations are restricted to the configured registrar controller
-- Subnode creation emits `NewOwner(parent, label, owner)` 
+### `StoreFactory` and `Store`
 
-### Oracle
-
-#### `PopOracle`
-Pricing + PoP enforcement for registrations.
-
-Key responsibilities:
-
-- Classify names by requirement tier (`Reserved`, `PopLite`, `PopFull`, `NoStatus`) based on base length + digit suffix rules
-- Enforce reservation rules for base names when Lite-eligible names are registered (e.g., `alice01` reserves `alice`)
-- Produce `priceWithCheck(label, user)` metadata used by the controller during registration
-
-Pricing note:
-- The “spam price” is applied to names of length >= 9 with a decreasing schedule up to length 15+
-
-### Resolvers
-
-#### `DotnsReverseResolver`
-Stores reverse records mapping `address -> string` (e.g., `ed -> "alice.dot"`).
-
-Key points:
-
-- Writes are restricted to an authorised registrar/controller address
-- Supports interface detection via ERC165
-
-#### `DotnsContentResolver`
-Stores off-chain references for nodes.
-
-Supported records:
-
-- `contenthash(node) -> bytes`
-- `text(node, key) -> string`
-
-Authorization:
-
-- Writes require `msg.sender` to be the node owner in `DotnsRegistry`
-
-#### `DotnsResolver`
-General forward resolver wrapper (where used in your stack) wired to the `DotnsRegistry` for ownership checks.
-
-### Store
-
-#### `Store`
-Per-user key-value storage.
-
-Key behaviors:
-
-- `setValue(key, value)` writes for `msg.sender`
-- `setValueFor(user, key, value)` allows authorised writers to write on behalf of a user
-- Permanent locking: keys written via a Dotns controller can be locked permanently, preventing overwrite or delete
-
-#### `StoreFactory`
-Deploys and tracks per-user `Store` instances.
-
-Key behaviors:
-
-- Each address can deploy exactly one store via `deploy()`
-- Tracks deployed stores by owner address
-- `transferOwnership(newOwner)` transfers the factory’s ownership mapping (not necessarily the Store’s Ownable owner)
-
-## Developer guide
-
-### Prerequisites
-
-- Foundry: https://getfoundry.sh
-- Bun or Node.js for scripts (if you use bun-based tooling in this repo)
+Per-user storage used to persist DotNS-written records. 
 
 ### Build
 
 ```bash
 forge build
+```
+
+### Test
+
+```bash
+forge clean
+forge test
+```

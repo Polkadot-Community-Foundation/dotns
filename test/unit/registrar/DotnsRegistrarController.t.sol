@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
+
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 
-import {IPopOracle} from "../../../contracts/pop/IPopOracle.sol";
+import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {IStore} from "../../../contracts/store/IStore.sol";
 import {Store} from "../../../contracts/store/Store.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
@@ -16,32 +17,37 @@ contract DotnsRegistrarControllerTest is BaseDotns {
     }
 
     function test_available_returns_false_after_registration() public {
-        _register("longnamehere01", ed, IPopOracle.PopStatus.NoStatus);
+        _register("longnamehere01", ed, IPopRules.PopStatus.NoStatus);
         assertFalse(dotnsRegistrarController.available("longnamehere01"));
     }
 
     function test_makecommitment_matches_controller_encoding() public view {
-        IDotnsRegistrarController.Registration memory r = IDotnsRegistrarController.Registration({
-            label: "alicebob", owner: ed, secret: keccak256("secret"), reserved: true
-        });
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: "alicebob", owner: ed, secret: keccak256("secret"), reserved: true
+            });
 
-        bytes32 got = dotnsRegistrarController.makeCommitment(r);
+        bytes32 gotCommitment = dotnsRegistrarController.makeCommitment(registration);
 
-        bytes32 expected = keccak256(
+        bytes32 expectedCommitment = keccak256(
             abi.encodePacked(
-                bytes(r.label), bytes32(uint256(uint160(r.owner))), r.secret, r.reserved
+                bytes(registration.label),
+                bytes32(uint256(uint160(registration.owner))),
+                registration.secret,
+                registration.reserved
             )
         );
 
-        assertEq(got, expected);
+        assertEq(gotCommitment, expectedCommitment);
     }
 
     function test_commit_sets_timestamp_and_emits() public {
-        IDotnsRegistrarController.Registration memory r = IDotnsRegistrarController.Registration({
-            label: "alicebob", owner: ed, secret: keccak256("secret"), reserved: true
-        });
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: "alicebob", owner: ed, secret: keccak256("secret"), reserved: true
+            });
 
-        bytes32 commitment = dotnsRegistrarController.makeCommitment(r);
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
 
         vm.expectEmit(true, false, false, false);
         emit IDotnsRegistrarController.NameCommitted(commitment);
@@ -53,17 +59,18 @@ contract DotnsRegistrarControllerTest is BaseDotns {
     }
 
     function test_commit_allows_recommit_after_expiry() public {
-        IDotnsRegistrarController.Registration memory r = IDotnsRegistrarController.Registration({
-            label: "alicebob", owner: ed, secret: keccak256("secret"), reserved: true
-        });
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: "alicebob", owner: ed, secret: keccak256("secret"), reserved: true
+            });
 
-        bytes32 commitment = dotnsRegistrarController.makeCommitment(r);
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
 
         vm.prank(ed);
         dotnsRegistrarController.commit(commitment);
 
-        uint256 first = dotnsRegistrarController.commitments(commitment);
-        vm.warp(first + dotnsRegistrarController.maxCommitmentAge() + 1);
+        uint256 firstCommitTimestamp = dotnsRegistrarController.commitments(commitment);
+        vm.warp(firstCommitTimestamp + dotnsRegistrarController.maxCommitmentAge() + 1);
 
         vm.prank(ed);
         dotnsRegistrarController.commit(commitment);
@@ -72,144 +79,174 @@ contract DotnsRegistrarControllerTest is BaseDotns {
     }
 
     function test_register_registers_popfull_name_and_wires_records() public {
-        string memory label = "alicebob";
+        string memory nameLabel = "alicebob";
+        address nameOwner = ed;
 
-        vm.prank(ed);
-        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
+        vm.prank(nameOwner);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
 
-        vm.prank(ed);
-        IStore s = storeFactory.deploy();
+        // PopFull should always have zero price
+        uint256 quotedPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
+        assertEq(quotedPrice, 0);
 
-        vm.prank(ed);
-        Store(address(s)).authorizeDotnsController(address(dotnsRegistrarController));
+        vm.prank(nameOwner);
+        IStore ownerStoreInterface = storeFactory.deploy();
 
-        bytes32 secret = keccak256(abi.encodePacked(label, ed, "s"));
-        IDotnsRegistrarController.Registration memory r = IDotnsRegistrarController.Registration({
-            label: label, owner: ed, secret: secret, reserved: true
-        });
+        Store ownerStore = Store(address(ownerStoreInterface));
 
-        bytes32 commitment = dotnsRegistrarController.makeCommitment(r);
+        vm.prank(nameOwner);
+        ownerStore.authorizeDotnsController(address(dotnsRegistrarController));
 
-        vm.prank(ed);
+        bytes32 secret = keccak256(abi.encodePacked(nameLabel, nameOwner, "store"));
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: nameLabel, owner: nameOwner, secret: secret, reserved: true
+            });
+
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
+
+        vm.prank(nameOwner);
         dotnsRegistrarController.commit(commitment);
 
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
 
-        IPopOracle.PriceWithMeta memory priced = popOracle.priceWithCheck(label, ed);
+        IPopRules.PriceWithMeta memory priceMetadata = popRules.priceWithCheck(nameLabel, nameOwner);
+        assertEq(priceMetadata.price, 0);
 
-        bytes32 labelhash = keccak256(bytes(label));
-        bytes32 node = _namehash(dotNode, labelhash);
+        bytes32 labelHash = keccak256(bytes(nameLabel));
+        bytes32 node = _namehash(dotNode, labelHash);
 
         vm.expectEmit(true, true, true, true);
         emit IDotnsRegistrarController.NameRegistered(
-            label, labelhash, ed, priced.price, address(s)
+            nameLabel, labelHash, nameOwner, priceMetadata.price, address(ownerStore)
         );
 
-        vm.prank(ed);
-        dotnsRegistrarController.register{value: priced.price}(r);
+        vm.prank(nameOwner);
+        dotnsRegistrarController.register{value: 0}(registration);
 
-        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(labelhash)), ed);
-        assertEq(dotnsRegistry.owner(node), ed);
-        assertEq(dotnsReverseResolver.nameOf(ed), string.concat(label, ".dot"));
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(labelHash)), nameOwner);
+        assertEq(dotnsRegistry.owner(node), nameOwner);
+        assertEq(dotnsReverseResolver.nameOf(nameOwner), string.concat(nameLabel, ".dot"));
 
-        bytes32 storeKey = keccak256(abi.encodePacked(DOTNS_REGISTERED_PREFIX, labelhash));
-        assertEq(Store(address(s)).getValueFor(ed, storeKey), string.concat(label, ".dot"));
-        assertTrue(Store(address(s)).isLocked(ed, storeKey));
+        bytes32 storeKey = keccak256(abi.encodePacked(DOTNS_REGISTERED_PREFIX, labelHash));
+        assertEq(ownerStore.getValueFor(nameOwner, storeKey), string.concat(nameLabel, ".dot"));
+        assertTrue(ownerStore.isLocked(nameOwner, storeKey));
     }
 
-    function test_register_refunds_excess_value() public {
+    function test_register_refunds_full_value_when_price_is_zero() public {
         vm.txGasPrice(0);
 
-        string memory label = "alicebob";
+        string memory nameLabel = "alicebob";
+        address nameOwner = ed;
 
-        vm.prank(ed);
-        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopFull);
+        vm.prank(nameOwner);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
 
-        bytes32 secret = keccak256(abi.encodePacked(label, ed, "refund"));
-        IDotnsRegistrarController.Registration memory r = IDotnsRegistrarController.Registration({
-            label: label, owner: ed, secret: secret, reserved: true
-        });
+        // PopFull should always have zero price
+        uint256 quotedPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
+        assertEq(quotedPrice, 0);
 
-        bytes32 commitment = dotnsRegistrarController.makeCommitment(r);
+        bytes32 secret = keccak256(abi.encodePacked(nameLabel, nameOwner, "refund"));
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: nameLabel, owner: nameOwner, secret: secret, reserved: true
+            });
 
-        vm.prank(ed);
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
+
+        vm.prank(nameOwner);
         dotnsRegistrarController.commit(commitment);
 
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
 
-        uint256 price = popOracle.priceWithCheck(label, ed).price;
+        uint256 requiredPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
+        assertEq(requiredPrice, 0);
 
-        uint256 beforeBal = ed.balance;
+        uint256 balanceBefore = nameOwner.balance;
 
-        vm.prank(ed);
-        dotnsRegistrarController.register{value: price + 1}(r);
+        vm.prank(nameOwner);
+        dotnsRegistrarController.register{value: 1}(registration);
 
-        assertEq(ed.balance, beforeBal - price);
+        // Entire payment should be refunded when price is 0
+        assertEq(nameOwner.balance, balanceBefore);
     }
 
     function test_register_reserves_base_name_for_poplite_user() public {
-        string memory label = "lights01";
+        string memory nameLabel = "lights01";
+        address nameOwner = ed;
 
-        vm.prank(ed);
-        popOracle.setUserPopStatus(IPopOracle.PopStatus.PopLite);
+        vm.prank(nameOwner);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
 
-        bytes32 secret = keccak256(abi.encodePacked(label, ed, "lite"));
-        IDotnsRegistrarController.Registration memory r = IDotnsRegistrarController.Registration({
-            label: label, owner: ed, secret: secret, reserved: true
-        });
+        // PopLite should always have zero price
+        uint256 quotedPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
+        assertEq(quotedPrice, 0);
 
-        bytes32 commitment = dotnsRegistrarController.makeCommitment(r);
+        bytes32 secret = keccak256(abi.encodePacked(nameLabel, nameOwner, "lite"));
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: nameLabel, owner: nameOwner, secret: secret, reserved: true
+            });
 
-        vm.prank(ed);
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
+
+        vm.prank(nameOwner);
         dotnsRegistrarController.commit(commitment);
 
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
 
-        uint256 price = popOracle.priceWithCheck(label, ed).price;
+        uint256 requiredPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
+        assertEq(requiredPrice, 0);
 
-        vm.prank(ed);
-        dotnsRegistrarController.register{value: price}(r);
+        vm.prank(nameOwner);
+        dotnsRegistrarController.register{value: 0}(registration);
 
-        (bool isReserved, address reservationOwner,) = popOracle.isBaseNameReserved("lights");
+        (bool isReserved, address reservationOwner,) = popRules.isBaseNameReserved("lights");
         assertTrue(isReserved);
-        assertEq(reservationOwner, ed);
+        assertEq(reservationOwner, nameOwner);
     }
 
     function test_registerreserved_registers_and_writes_to_existing_store() public {
-        string memory label = "hello";
+        string memory nameLabel = "hello";
+        address nameOwner = ed;
 
-        vm.prank(ed);
-        IStore s = storeFactory.deploy();
+        vm.prank(nameOwner);
+        IStore ownerStoreInterface = storeFactory.deploy();
 
-        vm.prank(ed);
-        Store(address(s)).authorizeDotnsController(address(dotnsRegistrarController));
+        Store ownerStore = Store(address(ownerStoreInterface));
 
-        bytes32 secret = keccak256(abi.encodePacked(label, ed, "reserved"));
-        IDotnsRegistrarController.Registration memory r = IDotnsRegistrarController.Registration({
-            label: label, owner: ed, secret: secret, reserved: true
-        });
+        vm.prank(nameOwner);
+        ownerStore.authorizeDotnsController(address(dotnsRegistrarController));
 
-        bytes32 commitment = dotnsRegistrarController.makeCommitment(r);
+        bytes32 secret = keccak256(abi.encodePacked(nameLabel, nameOwner, "reserved"));
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: nameLabel, owner: nameOwner, secret: secret, reserved: true
+            });
 
-        vm.prank(ed);
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
+
+        vm.prank(nameOwner);
         dotnsRegistrarController.commit(commitment);
 
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
 
-        bytes32 labelhash = keccak256(bytes(label));
-        bytes32 node = _namehash(dotNode, labelhash);
+        bytes32 labelHash = keccak256(bytes(nameLabel));
+        bytes32 node = _namehash(dotNode, labelHash);
 
         vm.expectEmit(true, true, true, true);
-        emit IDotnsRegistrarController.NameRegistered(label, labelhash, ed, 0, address(s));
+        emit IDotnsRegistrarController.NameRegistered(
+            nameLabel, labelHash, nameOwner, 0, address(ownerStore)
+        );
 
-        vm.prank(ed);
-        dotnsRegistrarController.registerReserved(r);
+        vm.prank(nameOwner);
+        dotnsRegistrarController.registerReserved(registration);
 
-        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(labelhash)), ed);
-        assertEq(dotnsRegistry.owner(node), ed);
-        assertEq(dotnsReverseResolver.nameOf(ed), string.concat(label, ".dot"));
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(labelHash)), nameOwner);
+        assertEq(dotnsRegistry.owner(node), nameOwner);
+        assertEq(dotnsReverseResolver.nameOf(nameOwner), string.concat(nameLabel, ".dot"));
 
-        bytes32 storeKey = keccak256(abi.encodePacked(DOTNS_REGISTERED_PREFIX, labelhash));
-        assertEq(Store(address(s)).getValueFor(ed, storeKey), string.concat(label, ".dot"));
+        bytes32 storeKey = keccak256(abi.encodePacked(DOTNS_REGISTERED_PREFIX, labelHash));
+        assertEq(ownerStore.getValueFor(nameOwner, storeKey), string.concat(nameLabel, ".dot"));
     }
 }

@@ -10,6 +10,9 @@
     "postinstall": "./setup.bash",
     "reset": "forge clean"
   },
+  "engines": {
+    "bun": ">=1.2.6"
+  },
   "devDependencies": {
     "cross-env": "^10.1.0",
     "dotenv": "^16.4.5",

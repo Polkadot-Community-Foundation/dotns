@@ -5,7 +5,7 @@ import {console} from "forge-std/Script.sol";
 import {BaseDeployer} from "./BaseDeployer.s.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
-import {PopOracle, IPopOracle} from "../contracts/pop/PopOracle.sol";
+import {PopRules, IPopRules} from "../contracts/pop/popRules.sol";
 import {DotnsRegistrar, IDotnsRegistrar} from "../contracts/registrars/DotnsRegistrar.sol";
 import {DotnsRegistrarController, IDotnsRegistrarController} from "../contracts/registrars/DotnsRegistrarController.sol";
 import {DotnsRegistry, IDotnsRegistry} from "../contracts/registry/DotnsRegistry.sol";
@@ -20,7 +20,7 @@ contract DotnsDeployer is BaseDeployer {
 
     StoreFactory public storeFactory;
 
-    PopOracle public popOracle;
+    PopRules public PopRules;
     DotnsRegistrar public dotnsRegistrar;
     DotnsRegistry public dotnsRegistry;
     DotnsReverseResolver public dotnsReverseResolver;
@@ -90,13 +90,13 @@ contract DotnsDeployer is BaseDeployer {
         vm.label(dotnsResolverProxy, "DotnsResolver");
         logDeployment("DotnsResolver", dotnsResolverProxy);
 
-        // PopOracle
-        address popOracleProxy = Upgrades.deployUUPSProxy(
-            "PopOracle.sol:PopOracle", abi.encodeCall(PopOracle.initialize, (rentPrice))
+        // PopRules
+        address PopRulesProxy = Upgrades.deployUUPSProxy(
+            "popRules.sol:PopRules", abi.encodeCall(popRules.initialize, (rentPrice))
         );
-        popOracle = PopOracle(popOracleProxy);
-        vm.label(popOracleProxy, "PopOracle");
-        logDeployment("PopOracle", popOracleProxy);
+        PopRules = PopRules(PopRulesProxy);
+        vm.label(PopRulesProxy, "PopRules");
+        logDeployment("PopRules", PopRulesProxy);
 
         // DotnsRegistrarController
         address dotnsRegistrarControllerProxy = Upgrades.deployUUPSProxy(
@@ -107,7 +107,7 @@ contract DotnsDeployer is BaseDeployer {
                     IDotnsRegistrar(dotnsRegistrarProxy),
                     IDotnsRegistry(dotnsRegistryProxy),
                     IDotnsReverseResolver(dotnsReverseResolverProxy),
-                    IPopOracle(popOracleProxy),
+                    IPopRules(PopRulesProxy),
                     IStoreFactory(address(storeFactory)),
                     6 seconds,
                     1 days
@@ -120,7 +120,7 @@ contract DotnsDeployer is BaseDeployer {
 
         // Wire dependencies
         dotnsReverseResolver.updateRegistrar(dotnsRegistrarControllerProxy);
-        popOracle.updateEthRegistry(dotnsRegistrarControllerProxy);
+        popRules.updateEthRegistry(dotnsRegistrarControllerProxy);
         dotnsRegistrar.addController(IDotnsRegistrarController(dotnsRegistrarControllerProxy));
         dotnsRegistry.updateRegistrarController(IDotnsRegistrarController(dotnsRegistrarControllerProxy));
 
