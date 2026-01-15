@@ -52,6 +52,8 @@ jobs:
       - name: Generate documentation
         id: docs
         shell: bash
+        env:
+          FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: |
           set +e
           
@@ -59,7 +61,9 @@ jobs:
           DOC_CODE=${PIPESTATUS[0]}
           
           if [ $DOC_CODE -eq 0 ] && [ -d "docs-output/book" ]; then
-            CONTRACT_COUNT=$(find docs-output/book/src -name "*.md" 2>/dev/null | wc -l || echo "?")
+            # Count docs, trim whitespace, default to 0
+            CONTRACT_COUNT=$(find docs-output/book/src -name "*.md" 2>/dev/null | wc -l | tr -d ' ' || echo "0")
+            CONTRACT_COUNT=${CONTRACT_COUNT:-0}
             echo "status=✅ Passed" >> "$GITHUB_OUTPUT"
             echo "summary=${CONTRACT_COUNT} docs generated" >> "$GITHUB_OUTPUT"
             echo "details=" >> "$GITHUB_OUTPUT"
