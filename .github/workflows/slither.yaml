@@ -10,13 +10,15 @@ on:
       - 'foundry.toml'
       - '.github/workflows/slither.yml'
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   analyse:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -57,8 +59,10 @@ jobs:
 
           if not os.path.exists('slither-report.json'):
               print("ERROR: slither-report.json not found")
-              with open('slither-results.md', 'w') as f:
-                  f.write('# Slither Analysis Results\n\nSlither did not generate a report file.\n')
+              with open('slither-summary.txt', 'w') as f:
+                  f.write('Slither did not generate a report file.')
+              with open('slither-status.txt', 'w') as f:
+                  f.write('❌ Failed')
               exit(0)
 
           try:
@@ -66,14 +70,18 @@ jobs:
                   content = f.read()
                   if not content.strip():
                       print("ERROR: slither-report.json is empty")
-                      with open('slither-results.md', 'w') as f:
-                          f.write('# Slither Analysis Results\n\nSlither report file is empty.\n')
+                      with open('slither-summary.txt', 'w') as f:
+                          f.write('Slither report file is empty.')
+                      with open('slither-status.txt', 'w') as f:
+                          f.write('❌ Failed')
                       exit(0)
                   data = json.loads(content)
           except json.JSONDecodeError as e:
               print(f"ERROR: Invalid JSON: {e}")
-              with open('slither-results.md', 'w') as f:
-                  f.write(f'# Slither Analysis Results\n\nFailed to parse Slither report: {str(e)}\n')
+              with open('slither-summary.txt', 'w') as f:
+                  f.write(f'Failed to parse Slither report: {str(e)}')
+              with open('slither-status.txt', 'w') as f:
+                  f.write('❌ Failed')
               exit(0)
 
           findings = defaultdict(list)
@@ -89,8 +97,51 @@ jobs:
 
           severity_order = ['High', 'Medium', 'Low', 'Informational', 'Optimization']
           
-          output = ['# Slither Analysis Results\n']
           total_issues = sum(len(v) for v in findings.values())
+          high_count = len(findings.get('High', []))
+          medium_count = len(findings.get('Medium', []))
+          
+          summary_lines = []
+          
+          if total_issues == 0:
+              summary_lines.append('No issues detected.')
+              status = '✅ Passed'
+          else:
+              summary_lines.append(f'Total: {total_issues} issues')
+              counts = []
+              for sev in severity_order:
+                  c = len(findings.get(sev, []))
+                  if c > 0:
+                      counts.append(f'{sev}: {c}')
+              summary_lines.append(' | '.join(counts))
+              
+              # Show top 5 high/medium issues in details
+              if high_count > 0 or medium_count > 0:
+                  summary_lines.append('')
+                  summary_lines.append('Top findings:')
+                  shown = 0
+                  for sev in ['High', 'Medium']:
+                      for issue in findings.get(sev, [])[:3]:
+                          if shown >= 5:
+                              break
+                          desc = issue['description'].replace('\n', ' ')[:100]
+                          summary_lines.append(f'  [{sev}] {issue["check"]}: {desc}...')
+                          shown += 1
+              
+              # Mark as failed only for high severity issues
+              if high_count > 0:
+                  status = '❌ Failed'
+              else:
+                  status = '⚠️ Passed with warnings'
+
+          with open('slither-summary.txt', 'w') as f:
+              f.write('\n'.join(summary_lines))
+          
+          with open('slither-status.txt', 'w') as f:
+              f.write(status)
+
+          # Also generate full markdown report for artifact
+          output = ['# Slither Analysis Results\n']
           
           if total_issues == 0:
               output.append('No issues detected.\n')
@@ -140,45 +191,91 @@ jobs:
           print(f"Successfully generated report with {total_issues} issues")
           EOF
 
-      - name: Comment PR with results
+      - name: Prepare CI summary outputs
+        id: run
+        if: always()
+        shell: bash
+        run: |
+          if [ -f slither-status.txt ]; then
+            STATUS=$(cat slither-status.txt)
+          else
+            STATUS="❌ Failed"
+          fi
+
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+
+          if [ -f slither-summary.txt ]; then
+            echo "details<<EOF" >> "$GITHUB_OUTPUT"
+            cat slither-summary.txt >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+          else
+            echo "details=Slither analysis did not complete." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update PR summary comment
         if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v7
+        env:
+          SECTION: Slither Analysis
+          STATUS: ${{ steps.run.outputs.status }}
+          DETAILS: ${{ steps.run.outputs.details }}
         with:
           script: |
-            const fs = require('fs');
-            
-            if (!fs.existsSync('slither-results.md')) {
-              core.setFailed('slither-results.md does not exist');
-              return;
-            }
-            
-            const markdown = fs.readFileSync('slither-results.md', 'utf8');
-            const commentBody = `${markdown}\n\n---\nAnalysis: ${context.sha.substring(0, 7)}`;
-            
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
+            const marker = "<!-- dotns-ci-summary -->";
+            const section = process.env.SECTION ?? "Slither Analysis";
+            const status = process.env.STATUS ?? "❌ Failed";
+            const details = process.env.DETAILS ?? "";
+
+            const sectionStart = `<!-- section:${section}:start -->`;
+            const sectionEnd = `<!-- section:${section}:end -->`;
+
+            const block =
+              `${sectionStart}\n` +
+              `#### ${section}\n` +
+              `Status: ${status}\n` +
+              (details ? `\n\`\`\`\n${details}\n\`\`\`\n` : "\n") +
+              `${sectionEnd}\n`;
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
             });
-            
-            const botComment = comments.find(comment => 
-              comment.user.login === 'github-actions[bot]' &&
-              comment.body.includes('Slither Analysis Results')
+
+            const existing = comments.find(c =>
+              c.user?.login === "github-actions[bot]" &&
+              typeof c.body === "string" &&
+              c.body.includes(marker)
             );
-            
-            if (botComment) {
+
+            const baseBody = existing?.body ?? `${marker}\n### CI Summary\n\n`;
+            const hasSection = baseBody.includes(sectionStart) && baseBody.includes(sectionEnd);
+
+            let nextBody;
+            if (hasSection) {
+              const re = new RegExp(`${sectionStart}[\\s\\S]*?${sectionEnd}\\n?`, "m");
+              nextBody = baseBody.replace(re, block);
+            } else {
+              nextBody = `${baseBody.trimEnd()}\n\n${block}`;
+            }
+
+            if (existing) {
               await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: botComment.id,
-                body: commentBody
+                owner,
+                repo,
+                comment_id: existing.id,
+                body: nextBody,
               });
             } else {
               await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: commentBody
+                owner,
+                repo,
+                issue_number,
+                body: nextBody,
               });
             }
 

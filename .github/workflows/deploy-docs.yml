@@ -1,131 +1,104 @@
-name: Test Solidity Contracts
+name: Deploy Documentation
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "src/**"
-      - "script/**"
-      - "test/**"
-      - "**.sol"
   push:
     branches: [main]
     paths:
       - "src/**"
-      - "script/**"
-      - "test/**"
+      - "contracts/**"
       - "**.sol"
+      - "foundry.toml"
+      - ".github/workflows/deploy-docs.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "contracts/**"
+      - "**.sol"
+      - "foundry.toml"
+  workflow_dispatch:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
   pull-requests: write
   issues: write
 
-jobs:
-  test:
-    name: Run contract tests
-    runs-on: ubuntu-latest
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      - name: Install Foundry toolchain
+      - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
 
-      - name: Setup Bun runtime
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.2.6"
+      - name: Install dependencies
+        run: forge install
 
-      - name: Install project dependencies
-        run: bun install
-
-      - name: Build + test (capture logs)
-        id: run
-        shell: bash
+      - name: Generate documentation
+        id: docs
         run: |
           set +e
-
-          forge --version > forge-version.log 2>&1
-          cast --version >> forge-version.log 2>&1
-
-          forge build --sizes -vvvvv > forge-build.log 2>&1
-          BUILD_CODE=$?
-
-          forge test -vvvvv > forge-test.log 2>&1
-          TEST_CODE=$?
-
-          forge test --gas-report > forge-gas.log 2>&1
-          GAS_CODE=$?
-
-          # Count test results
-          TESTS_PASSED=$(grep -oP 'Suite result: ok\. \K\d+' forge-test.log | awk '{s+=$1} END {print s+0}')
-          TESTS_FAILED=$(grep -oP 'Suite result: FAILED\. \K\d+' forge-test.log | head -1 || echo "0")
-
-          if [ $BUILD_CODE -eq 0 ] && [ $TEST_CODE -eq 0 ] && [ $GAS_CODE -eq 0 ]; then
-            echo "status=✅ Passed" >> "$GITHUB_OUTPUT"
-            echo "summary=${TESTS_PASSED:-0} tests passed" >> "$GITHUB_OUTPUT"
-            echo "details=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "status=❌ Failed" >> "$GITHUB_OUTPUT"
           
-          if [ $TEST_CODE -ne 0 ]; then
-            echo "summary=${TESTS_FAILED:-some} tests failed" >> "$GITHUB_OUTPUT"
-          elif [ $BUILD_CODE -ne 0 ]; then
-            echo "summary=Build failed" >> "$GITHUB_OUTPUT"
+          # Generate docs with forge doc (builds mdbook site)
+          forge doc --build --out docs-output 2>&1 | tee forge-doc.log
+          DOC_CODE=${PIPESTATUS[0]}
+          
+          if [ $DOC_CODE -eq 0 ] && [ -d "docs-output/book" ]; then
+            # Count documented contracts
+            CONTRACT_COUNT=$(find docs-output/book/src -name "*.md" 2>/dev/null | wc -l || echo "?")
+            echo "status=✅ Passed" >> "$GITHUB_OUTPUT"
+            echo "summary=${CONTRACT_COUNT} contract docs generated" >> "$GITHUB_OUTPUT"
+            echo "details=" >> "$GITHUB_OUTPUT"
           else
-            echo "summary=Gas report failed" >> "$GITHUB_OUTPUT"
+            echo "status=❌ Failed" >> "$GITHUB_OUTPUT"
+            echo "summary=Documentation build failed" >> "$GITHUB_OUTPUT"
+            {
+              echo "details<<EOF"
+              echo "### Forge Doc Output"
+              tail -n 50 forge-doc.log
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            exit 1
           fi
 
-          # Collect details
-          {
-            echo "details<<EOF"
+      - name: Setup Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/configure-pages@v4
 
-            if [ $BUILD_CODE -ne 0 ]; then
-              echo "### Build Output"
-              tail -n 50 forge-build.log
-              echo ""
-            fi
+      - name: Upload Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-output/book
 
-            if [ $TEST_CODE -ne 0 ]; then
-              echo "### Test Output"
-              # Extract failed tests
-              grep -A 5 "FAIL\|Error\|Failing" forge-test.log | head -60
-              echo ""
-            fi
-
-            if [ $GAS_CODE -ne 0 ]; then
-              echo "### Gas Report"
-              tail -n 30 forge-gas.log
-            fi
-
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-          exit 1
-
-      - name: Upload test logs
-        if: always()
+      - name: Upload docs artifact (for PRs)
+        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: test-logs
-          path: |
-            forge-*.log
+          name: documentation
+          path: docs-output/book
           retention-days: 7
 
       - name: Update PR summary comment
         if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v7
         env:
-          SECTION: Contract Tests
-          STATUS: ${{ steps.run.outputs.status }}
-          SUMMARY: ${{ steps.run.outputs.summary }}
-          DETAILS: ${{ steps.run.outputs.details }}
+          SECTION: Documentation
+          STATUS: ${{ steps.docs.outputs.status }}
+          SUMMARY: ${{ steps.docs.outputs.summary }}
+          DETAILS: ${{ steps.docs.outputs.details }}
           RUN_ID: ${{ github.run_id }}
           REPO: ${{ github.repository }}
         with:
@@ -143,11 +116,9 @@ jobs:
             const sectionStart = `<!-- section:${section}:start -->`;
             const sectionEnd = `<!-- section:${section}:end -->`;
 
-            // Build table row
             let block = `${sectionStart}\n`;
             block += `| **${section}** | ${status} | ${summary} |\n`;
 
-            // Add collapsible details if present
             if (details.trim()) {
               block += `<details><summary>📋 Details</summary>\n\n\`\`\`\n${details.trim()}\n\`\`\`\n\n`;
               block += `[View full logs](https://github.com/${repo}/actions/runs/${runId})\n</details>\n`;
@@ -197,3 +168,17 @@ jobs:
                 body: nextBody,
               });
             }
+
+  deploy-docs:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-docs
+    runs-on: ubuntu-latest
+    
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
