@@ -39,14 +39,15 @@ jobs:
 
           PASSED=$(grep -oE '[0-9]+ passed' test.log | head -1 | grep -oE '[0-9]+' || echo "0")
           FAILED=$(grep -oE '[0-9]+ failed' test.log | head -1 | grep -oE '[0-9]+' || echo "0")
+          TOTAL=$((PASSED + FAILED))
 
-          if [ $BUILD -eq 0 ] && [ $TEST -eq 0 ]; then
-            echo "status=Passed" >> "$GITHUB_OUTPUT"
-            echo "summary=${PASSED} tests passed" >> "$GITHUB_OUTPUT"
+          if [ $BUILD -ne 0 ]; then
+            echo "result=Failed - Build error" >> "$GITHUB_OUTPUT"
+            exit 1
+          elif [ $TEST -eq 0 ]; then
+            echo "result=Passed - ${PASSED}/${TOTAL} tests passed" >> "$GITHUB_OUTPUT"
           else
-            echo "status=Failed" >> "$GITHUB_OUTPUT"
-            [ $BUILD -ne 0 ] && echo "summary=Build failed" >> "$GITHUB_OUTPUT" && exit 1
-            echo "summary=${FAILED} tests failed" >> "$GITHUB_OUTPUT"
+            echo "result=Failed - ${FAILED}/${TOTAL} tests failed" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
@@ -62,15 +63,13 @@ jobs:
         uses: actions/github-script@v7
         env:
           SECTION: Contract Tests
-          STATUS: ${{ steps.run.outputs.status }}
-          SUMMARY: ${{ steps.run.outputs.summary }}
+          RESULT: ${{ steps.run.outputs.result }}
         with:
           script: |
             const marker = "<!-- ci-summary -->";
-            const tableEnd = "<!-- table-end -->";
+            const detailsMarker = "<!-- details-section -->";
             const section = process.env.SECTION;
-            const status = process.env.STATUS || 'Unknown';
-            const summary = process.env.SUMMARY || '';
+            const result = process.env.RESULT || 'Unknown';
 
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
@@ -85,21 +84,25 @@ jobs:
 
             let rows = {};
             let detailsSection = '';
+            
             if (existing?.body) {
-              const tableSection = existing.body.split(tableEnd)[0] || existing.body;
-              const rowRegex = /^\| ([^|]+) \| ([^|]+) \| ([^|]+) \|$/gm;
-              let match;
-              while ((match = rowRegex.exec(tableSection)) !== null) {
-                const name = match[1].trim();
-                if (name && name !== 'Check' && !name.startsWith(':')) {
-                  rows[name] = { status: match[2].trim(), summary: match[3].trim() };
+              const parts = existing.body.split(detailsMarker);
+              const tableSection = parts[0] || '';
+              if (parts[1]) detailsSection = `\n${detailsMarker}${parts[1]}`;
+              
+              const lines = tableSection.split('\n');
+              for (const line of lines) {
+                const match = line.match(/^\| ([^|]+) \| ([^|]+) \|$/);
+                if (match) {
+                  const name = match[1].trim();
+                  if (name && name !== 'Check' && !name.startsWith(':')) {
+                    rows[name] = match[2].trim();
+                  }
                 }
               }
-              const detailsMatch = existing.body.match(/<!-- table-end -->([\s\S]*$)/);
-              if (detailsMatch) detailsSection = detailsMatch[1];
             }
 
-            rows[section] = { status, summary };
+            rows[section] = result;
 
             const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
             const sortedKeys = Object.keys(rows).sort((a, b) => {
@@ -107,12 +110,12 @@ jobs:
               return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
             });
 
-            let table = `| Check | Status | Summary |\n|:------|:------:|:--------|\n`;
+            let table = `| Check | Result |\n|:------|:-------|\n`;
             for (const key of sortedKeys) {
-              table += `| ${key} | ${rows[key].status} | ${rows[key].summary} |\n`;
+              table += `| ${key} | ${rows[key]} |\n`;
             }
 
-            const body = `${marker}\n## CI Summary\n\n${table}${tableEnd}${detailsSection}`;
+            const body = `${marker}\n## CI Summary\n\n${table}${detailsSection}`;
 
             if (existing) {
               await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });

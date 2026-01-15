@@ -42,47 +42,41 @@ jobs:
       - run: forge build
 
       - name: Generate docs
-        id: run
+        id: docs
         env:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: |
           if ! forge doc --out docs-output; then
             echo "success=false" >> "$GITHUB_OUTPUT"
-            echo "summary=forge doc failed" >> "$GITHUB_OUTPUT"
-            echo "status=Failed" >> "$GITHUB_OUTPUT"
+            echo "error=forge doc failed" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           if [ ! -f "docs-output/book.toml" ]; then
             echo "success=false" >> "$GITHUB_OUTPUT"
-            echo "summary=No book.toml generated" >> "$GITHUB_OUTPUT"
-            echo "status=Failed" >> "$GITHUB_OUTPUT"
+            echo "error=No book.toml generated" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           cd docs-output
           if ! mdbook build; then
             echo "success=false" >> "$GITHUB_OUTPUT"
-            echo "summary=mdbook build failed" >> "$GITHUB_OUTPUT"
-            echo "status=Failed" >> "$GITHUB_OUTPUT"
+            echo "error=mdbook build failed" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           cd ..
 
           if [ -d "docs-output/book" ]; then
-            # Add .nojekyll to prevent GitHub from processing with Jekyll
             touch docs-output/book/.nojekyll
             COUNT=$(find docs-output/book -name "*.html" | wc -l | tr -d ' ')
             echo "success=true" >> "$GITHUB_OUTPUT"
             echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
-            echo "status=Passed" >> "$GITHUB_OUTPUT"
           else
             echo "success=false" >> "$GITHUB_OUTPUT"
-            echo "summary=No book directory created" >> "$GITHUB_OUTPUT"
-            echo "status=Failed" >> "$GITHUB_OUTPUT"
+            echo "error=No book directory created" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set paths
+      - name: Set deploy path and URL
         id: path
         run: |
           OWNER="${{ github.repository_owner }}"
@@ -96,12 +90,17 @@ jobs:
             echo "url=https://${OWNER}.github.io/${REPO_NAME}/" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Debug paths
+      - name: Prepare result
+        id: run
         run: |
-          echo "Target: ${{ steps.path.outputs.target }}"
-          echo "URL: ${{ steps.path.outputs.url }}"
-          echo "Success: ${{ steps.run.outputs.success }}"
-          ls -la docs-output/book/ || echo "No book directory"
+          if [ "${{ steps.docs.outputs.success }}" = "true" ]; then
+            COUNT="${{ steps.docs.outputs.count }}"
+            URL="${{ steps.path.outputs.url }}"
+            echo "result=Passed - ${COUNT} pages generated - [View Docs](${URL})" >> "$GITHUB_OUTPUT"
+          else
+            ERROR="${{ steps.docs.outputs.error }}"
+            echo "result=Failed - ${ERROR}" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -111,7 +110,7 @@ jobs:
           retention-days: 7
 
       - name: Deploy to GitHub Pages
-        if: steps.run.outputs.success == 'true'
+        if: steps.docs.outputs.success == 'true'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -125,30 +124,13 @@ jobs:
         uses: actions/github-script@v7
         env:
           SECTION: Documentation
-          STATUS: ${{ steps.run.outputs.status }}
-          COUNT: ${{ steps.run.outputs.count }}
-          SUMMARY: ${{ steps.run.outputs.summary }}
-          DOCS_URL: ${{ steps.path.outputs.url }}
+          RESULT: ${{ steps.run.outputs.result }}
         with:
           script: |
             const marker = "<!-- ci-summary -->";
-            const tableEnd = "<!-- table-end -->";
+            const detailsMarker = "<!-- details-section -->";
             const section = process.env.SECTION;
-            const status = process.env.STATUS || 'Unknown';
-            const count = process.env.COUNT || '0';
-            const errorSummary = process.env.SUMMARY || '';
-            const docsUrl = process.env.DOCS_URL || '';
-
-            console.log('Status:', status);
-            console.log('Count:', count);
-            console.log('URL:', docsUrl);
-
-            let summary;
-            if (status === 'Passed') {
-              summary = docsUrl ? `${count} pages - [View Docs](${docsUrl})` : `${count} pages`;
-            } else {
-              summary = errorSummary;
-            }
+            const result = process.env.RESULT || 'Unknown';
 
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
@@ -163,21 +145,25 @@ jobs:
 
             let rows = {};
             let detailsSection = '';
+            
             if (existing?.body) {
-              const tableSection = existing.body.split(tableEnd)[0] || existing.body;
-              const rowRegex = /^\| ([^|]+) \| ([^|]+) \| ([^|]+) \|$/gm;
-              let match;
-              while ((match = rowRegex.exec(tableSection)) !== null) {
-                const name = match[1].trim();
-                if (name && name !== 'Check' && !name.startsWith(':')) {
-                  rows[name] = { status: match[2].trim(), summary: match[3].trim() };
+              const parts = existing.body.split(detailsMarker);
+              const tableSection = parts[0] || '';
+              if (parts[1]) detailsSection = `\n${detailsMarker}${parts[1]}`;
+              
+              const lines = tableSection.split('\n');
+              for (const line of lines) {
+                const match = line.match(/^\| ([^|]+) \| ([^|]+) \|$/);
+                if (match) {
+                  const name = match[1].trim();
+                  if (name && name !== 'Check' && !name.startsWith(':')) {
+                    rows[name] = match[2].trim();
+                  }
                 }
               }
-              const detailsMatch = existing.body.match(/<!-- table-end -->([\s\S]*$)/);
-              if (detailsMatch) detailsSection = detailsMatch[1];
             }
 
-            rows[section] = { status, summary };
+            rows[section] = result;
 
             const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
             const sortedKeys = Object.keys(rows).sort((a, b) => {
@@ -185,12 +171,12 @@ jobs:
               return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
             });
 
-            let table = `| Check | Status | Summary |\n|:------|:------:|:--------|\n`;
+            let table = `| Check | Result |\n|:------|:-------|\n`;
             for (const key of sortedKeys) {
-              table += `| ${key} | ${rows[key].status} | ${rows[key].summary} |\n`;
+              table += `| ${key} | ${rows[key]} |\n`;
             }
 
-            const body = `${marker}\n## CI Summary\n\n${table}${tableEnd}${detailsSection}`;
+            const body = `${marker}\n## CI Summary\n\n${table}${detailsSection}`;
 
             if (existing) {
               await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
@@ -198,7 +184,7 @@ jobs:
               await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
 
-      - if: steps.run.outputs.success != 'true'
+      - if: steps.docs.outputs.success != 'true'
         run: exit 1
 
   cleanup:
