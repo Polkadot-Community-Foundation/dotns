@@ -42,7 +42,7 @@ jobs:
           
           # Try to run coverage - some projects may have tests that use vm.readFile
           # which doesn't work with forge coverage's instrumented recompile
-          forge coverage --report summary \
+          forge coverage --ir-minimum --report summary \
             --no-match-coverage "test/|lib/" \
             2>&1 | tee coverage.log
           CODE=$?
