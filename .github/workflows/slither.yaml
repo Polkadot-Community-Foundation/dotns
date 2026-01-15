@@ -48,7 +48,7 @@ jobs:
 
           data = json.load(open('slither.json'))
           findings = defaultdict(list)
-          
+
           for d in data.get('results', {}).get('detectors', []):
               sev = d.get('impact', 'Info').capitalize()
               loc = ''
@@ -91,7 +91,7 @@ jobs:
                   md.append(f"| `{x['check']}` | {x['desc']} | `{x['loc']}` |")
               if len(items) > 10:
                   md.append(f"| | *+{len(items)-10} more* | |")
-          
+
           open('slither-details.md', 'w').write('\n'.join(md))
           EOF
 
@@ -120,64 +120,74 @@ jobs:
             const marker = "<!-- ci-summary -->";
             const section = process.env.SECTION;
             const success = process.env.SUCCESS === 'true';
-            const summary = process.env.SUMMARY || '';
+            const summaryText = process.env.SUMMARY || '';
             const total = parseInt(process.env.TOTAL || '0');
             const runId = process.env.RUN_ID;
-            const repo = process.env.REPO;
-            
+            const repoFull = process.env.REPO;
+
             let status = "✅";
-            if (summary.includes('H:')) status = "❌";
-            else if (summary.includes('M:') || summary.includes('L:')) status = "⚠️";
-            
+            if (summaryText.includes('H:')) status = "❌";
+            else if (summaryText.includes('M:') || summaryText.includes('L:')) status = "⚠️";
+
             let details = '';
             try { details = fs.readFileSync('slither-details.md', 'utf8').trim(); } catch {}
-            
-            const sectionStart = `<!-- ${section}:start -->`;
-            const sectionEnd = `<!-- ${section}:end -->`;
-            const detailsStart = `<!-- ${section}-details:start -->`;
-            const detailsEnd = `<!-- ${section}-details:end -->`;
-            
-            const displaySummary = total > 0 ? `${summary} ↓` : summary;
-            const row = `| ${section} | ${status} | ${displaySummary} |\n`;
-            const block = `${sectionStart}\n${row}${sectionEnd}\n`;
-            
-            let detailsBlock = '';
-            if (total > 0 && details) {
-              detailsBlock = `${detailsStart}\n\n---\n\n<details>\n<summary><strong>🔍 ${section} Details</strong></summary>\n\n${details}\n\n[View full report](https://github.com/${repo}/actions/runs/${runId})\n\n</details>\n\n${detailsEnd}\n`;
-            }
 
-            const { owner, repo: repoName } = context.repo;
+            const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
 
             const comments = await github.paginate(github.rest.issues.listComments, {
-              owner, repo: repoName, issue_number, per_page: 100,
+              owner, repo, issue_number, per_page: 100,
             });
 
             const existing = comments.find(c =>
               c.user?.login === "github-actions[bot]" && c.body?.includes(marker)
             );
 
-            const header = `${marker}\n## CI Summary\n\n| Check | Status | Summary |\n|:------|:------:|:--------|\n`;
-            let body = existing?.body ?? header;
-            
-            if (body.includes(sectionStart)) {
-              const re = new RegExp(`${sectionStart}\\n[\\s\\S]*?${sectionEnd}\\n`, "m");
-              body = body.replace(re, block);
-            } else {
-              const insertPoint = body.indexOf('\n|:---');
-              const insertAfter = body.indexOf('\n', insertPoint + 1);
-              body = body.slice(0, insertAfter + 1) + block + body.slice(insertAfter + 1);
+            let rows = {};
+            let existingDetails = [];
+            if (existing?.body) {
+              const rowRegex = /^\| ([^|]+) \| ([^|]+) \| ([^|]+) \|$/gm;
+              let match;
+              while ((match = rowRegex.exec(existing.body)) !== null) {
+                const name = match[1].trim();
+                if (name && name !== 'Check' && !name.startsWith(':')) {
+                  rows[name] = { status: match[2].trim(), summary: match[3].trim() };
+                }
+              }
+              const detailsRegex = /<details>\s*<summary><strong>([^<]+)<\/strong><\/summary>[\s\S]*?<\/details>/g;
+              let detailMatch;
+              while ((detailMatch = detailsRegex.exec(existing.body)) !== null) {
+                if (!detailMatch[1].includes('Slither')) {
+                  existingDetails.push(detailMatch[0]);
+                }
+              }
             }
-            
-            if (body.includes(detailsStart)) {
-              const re = new RegExp(`${detailsStart}\\n[\\s\\S]*?${detailsEnd}\\n`, "m");
-              body = body.replace(re, detailsBlock);
-            } else if (detailsBlock) {
-              body = body.trimEnd() + '\n' + detailsBlock;
+
+            rows[section] = { status, summary: summaryText };
+
+            const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
+            const sortedKeys = Object.keys(rows).sort((a, b) => {
+              const ai = order.indexOf(a), bi = order.indexOf(b);
+              return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+            });
+
+            let table = `| Check | Status | Summary |\n|:------|:------:|:--------|\n`;
+            for (const key of sortedKeys) {
+              table += `| ${key} | ${rows[key].status} | ${rows[key].summary} |\n`;
+            }
+
+            let body = `${marker}\n## CI Summary\n\n${table}`;
+
+            let allDetails = [...existingDetails];
+            if (total > 0 && details) {
+              allDetails.push(`<details>\n<summary><strong>🔍 Slither Details</strong></summary>\n\n${details}\n\n[View full report](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`);
+            }
+            if (allDetails.length > 0) {
+              body += `\n---\n\n${allDetails.join('\n\n')}`;
             }
 
             if (existing) {
-              await github.rest.issues.updateComment({ owner, repo: repoName, comment_id: existing.id, body });
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
             } else {
-              await github.rest.issues.createComment({ owner, repo: repoName, issue_number, body });
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
