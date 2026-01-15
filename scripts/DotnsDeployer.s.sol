@@ -20,7 +20,7 @@ contract DotnsDeployer is BaseDeployer {
 
     StoreFactory public storeFactory;
 
-    PopRules public PopRules;
+    PopRules public popRules;
     DotnsRegistrar public dotnsRegistrar;
     DotnsRegistry public dotnsRegistry;
     DotnsReverseResolver public dotnsReverseResolver;
@@ -91,12 +91,12 @@ contract DotnsDeployer is BaseDeployer {
         logDeployment("DotnsResolver", dotnsResolverProxy);
 
         // PopRules
-        address PopRulesProxy = Upgrades.deployUUPSProxy(
-            "popRules.sol:PopRules", abi.encodeCall(popRules.initialize, (rentPrice))
+        address popRulesProxy = Upgrades.deployUUPSProxy(
+            "PopRules.sol:PopRules", abi.encodeCall(PopRules.initialize, (rentPrice))
         );
-        PopRules = PopRules(PopRulesProxy);
-        vm.label(PopRulesProxy, "PopRules");
-        logDeployment("PopRules", PopRulesProxy);
+        popRules = PopRules(popRulesProxy);
+        vm.label(popRulesProxy, "PopRules");
+        logDeployment("PopRules", popRulesProxy);
 
         // DotnsRegistrarController
         address dotnsRegistrarControllerProxy = Upgrades.deployUUPSProxy(
@@ -107,7 +107,7 @@ contract DotnsDeployer is BaseDeployer {
                     IDotnsRegistrar(dotnsRegistrarProxy),
                     IDotnsRegistry(dotnsRegistryProxy),
                     IDotnsReverseResolver(dotnsReverseResolverProxy),
-                    IPopRules(PopRulesProxy),
+                    IPopRules(popRulesProxy),
                     IStoreFactory(address(storeFactory)),
                     6 seconds,
                     1 days
