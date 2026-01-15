@@ -34,7 +34,7 @@ jobs:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: |
           set +e
-          forge coverage --report summary 2>&1 | tee coverage.log
+          forge coverage --ir-minimum --report summary 2>&1 | tee coverage.log
           CODE=$?
 
           python3 << 'EOF'
