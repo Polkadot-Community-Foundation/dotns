@@ -216,6 +216,7 @@ contract PopRules is
         return metadata;
     }
 
+    /// @inheritdoc IPopRules
     function priceWithoutCheck(
         string calldata name,
         address userAddress
