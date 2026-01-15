@@ -37,12 +37,16 @@ jobs:
       - name: Check Solidity formatting
         id: format
         continue-on-error: true
+        env:
+          FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: |
           forge fmt --check > format-output.txt 2>&1 || echo "FORMAT_FAILED=true" >> $GITHUB_ENV
 
       - name: Build contracts
         id: build
         continue-on-error: true
+        env:
+          FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: |
           forge build --sizes > build-output.txt 2>&1 || echo "BUILD_FAILED=true" >> $GITHUB_ENV
 
@@ -51,50 +55,40 @@ jobs:
         if: always()
         shell: bash
         run: |
-          set +e
-
           FORMAT_FAILED="${FORMAT_FAILED:-false}"
           BUILD_FAILED="${BUILD_FAILED:-false}"
 
           # Count unformatted files
           UNFORMATTED_COUNT=0
           if [ -f format-output.txt ]; then
-            UNFORMATTED_COUNT=$(grep -c "Diff in" format-output.txt || echo "0")
+            UNFORMATTED_COUNT=$(grep -c "Diff in" format-output.txt 2>/dev/null || echo "0")
           fi
 
           if [ "$FORMAT_FAILED" = "true" ] || [ "$BUILD_FAILED" = "true" ]; then
-            echo "status=❌ Failed" >> "$GITHUB_OUTPUT"
-            
-            if [ "$FORMAT_FAILED" = "true" ] && [ "$BUILD_FAILED" = "true" ]; then
-              echo "summary=Format (${UNFORMATTED_COUNT} files) + build failed" >> "$GITHUB_OUTPUT"
-            elif [ "$FORMAT_FAILED" = "true" ]; then
-              echo "summary=${UNFORMATTED_COUNT} files need formatting" >> "$GITHUB_OUTPUT"
-            else
-              echo "summary=Compilation failed" >> "$GITHUB_OUTPUT"
-            fi
+            echo "success=false" >> "$GITHUB_OUTPUT"
+            echo "format_failed=${FORMAT_FAILED}" >> "$GITHUB_OUTPUT"
+            echo "build_failed=${BUILD_FAILED}" >> "$GITHUB_OUTPUT"
+            echo "unformatted_count=${UNFORMATTED_COUNT}" >> "$GITHUB_OUTPUT"
 
+            # Write details to file
             {
-              echo "details<<EOF"
-
               if [ "$FORMAT_FAILED" = "true" ]; then
-                echo "### Formatting Issues"
-                echo "Run \`forge fmt\` to fix these files:"
-                echo ""
+                echo "=== Formatting Issues ==="
+                echo "Run 'forge fmt' to fix these files:"
                 head -n 30 format-output.txt 2>/dev/null || echo "(no output)"
                 echo ""
               fi
 
               if [ "$BUILD_FAILED" = "true" ]; then
-                echo "### Build Errors"
-                grep -A 3 "Error\|error" build-output.txt | head -40 || tail -n 40 build-output.txt
+                echo "=== Build Errors ==="
+                grep -iE "error" build-output.txt 2>/dev/null | head -30 || tail -n 30 build-output.txt
               fi
-
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
+            } > lint-error-details.txt 2>/dev/null
           else
-            echo "status=✅ Passed" >> "$GITHUB_OUTPUT"
-            echo "summary=All checks passed" >> "$GITHUB_OUTPUT"
-            echo "details=" >> "$GITHUB_OUTPUT"
+            echo "success=true" >> "$GITHUB_OUTPUT"
+            echo "format_failed=false" >> "$GITHUB_OUTPUT"
+            echo "build_failed=false" >> "$GITHUB_OUTPUT"
+            echo "unformatted_count=0" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Upload outputs
@@ -105,6 +99,7 @@ jobs:
           path: |
             format-output.txt
             build-output.txt
+            lint-error-details.txt
           retention-days: 7
 
       - name: Update PR summary comment
@@ -112,22 +107,48 @@ jobs:
         uses: actions/github-script@v7
         env:
           SECTION: Format & Lint
-          STATUS: ${{ steps.run.outputs.status }}
-          SUMMARY: ${{ steps.run.outputs.summary }}
-          DETAILS: ${{ steps.run.outputs.details }}
+          SUCCESS: ${{ steps.run.outputs.success }}
+          FORMAT_FAILED: ${{ steps.run.outputs.format_failed }}
+          BUILD_FAILED: ${{ steps.run.outputs.build_failed }}
+          UNFORMATTED_COUNT: ${{ steps.run.outputs.unformatted_count }}
           RUN_ID: ${{ github.run_id }}
           REPO: ${{ github.repository }}
         with:
           script: |
+            const fs = require('fs');
             const marker = "<!-- dotns-ci-summary -->";
             const tableHeader = "| Check | Status | Summary |\n|-------|--------|---------|";
             
             const section = process.env.SECTION;
-            const status = process.env.STATUS || "❌ Failed";
-            const summary = process.env.SUMMARY || "";
-            const details = process.env.DETAILS || "";
+            const success = process.env.SUCCESS === 'true';
+            const formatFailed = process.env.FORMAT_FAILED === 'true';
+            const buildFailed = process.env.BUILD_FAILED === 'true';
+            const unformattedCount = process.env.UNFORMATTED_COUNT || '0';
             const runId = process.env.RUN_ID;
             const repo = process.env.REPO;
+            
+            // Build status and summary
+            let status, summary;
+            if (success) {
+              status = "✅ Passed";
+              summary = "All checks passed";
+            } else {
+              status = "❌ Failed";
+              const issues = [];
+              if (formatFailed) issues.push(`${unformattedCount} files need formatting`);
+              if (buildFailed) issues.push("build failed");
+              summary = issues.join(", ");
+            }
+            
+            // Read details from file if exists
+            let details = "";
+            try {
+              if (fs.existsSync('lint-error-details.txt')) {
+                details = fs.readFileSync('lint-error-details.txt', 'utf8').trim().substring(0, 3000);
+              }
+            } catch (e) {
+              console.log('No error details file');
+            }
 
             const sectionStart = `<!-- section:${section}:start -->`;
             const sectionEnd = `<!-- section:${section}:end -->`;
@@ -135,8 +156,8 @@ jobs:
             let block = `${sectionStart}\n`;
             block += `| **${section}** | ${status} | ${summary} |\n`;
 
-            if (details.trim()) {
-              block += `<details><summary>📋 Details</summary>\n\n\`\`\`\n${details.trim()}\n\`\`\`\n\n`;
+            if (details) {
+              block += `<details><summary>📋 Details</summary>\n\n\`\`\`\n${details}\n\`\`\`\n\n`;
               block += `[View full logs](https://github.com/${repo}/actions/runs/${runId})\n</details>\n`;
             }
             

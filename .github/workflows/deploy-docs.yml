@@ -62,21 +62,15 @@ jobs:
           
           if [ $DOC_CODE -eq 0 ] && [ -d "docs-output/book" ]; then
             # Count docs, trim whitespace, default to 0
-            CONTRACT_COUNT=$(find docs-output/book/src -name "*.md" 2>/dev/null | wc -l | tr -d ' ' || echo "0")
-            CONTRACT_COUNT=${CONTRACT_COUNT:-0}
-            echo "status=✅ Passed" >> "$GITHUB_OUTPUT"
-            echo "summary=${CONTRACT_COUNT} docs generated" >> "$GITHUB_OUTPUT"
-            echo "details=" >> "$GITHUB_OUTPUT"
+            CONTRACT_COUNT=$(find docs-output/book/src -name "*.md" 2>/dev/null | wc -l | tr -d '[:space:]')
+            CONTRACT_COUNT="${CONTRACT_COUNT:-0}"
             echo "success=true" >> "$GITHUB_OUTPUT"
+            echo "doc_count=${CONTRACT_COUNT}" >> "$GITHUB_OUTPUT"
           else
-            echo "status=❌ Failed" >> "$GITHUB_OUTPUT"
-            echo "summary=Build failed" >> "$GITHUB_OUTPUT"
             echo "success=false" >> "$GITHUB_OUTPUT"
-            {
-              echo "details<<DOC_OUTPUT_END_12345"
-              tail -n 40 forge-doc.log
-              echo "DOC_OUTPUT_END_12345"
-            } >> "$GITHUB_OUTPUT"
+            echo "doc_count=0" >> "$GITHUB_OUTPUT"
+            # Write details to a file instead of GITHUB_OUTPUT
+            tail -n 40 forge-doc.log > doc-error.txt 2>/dev/null || echo "No log available" > doc-error.txt
           fi
 
       - name: Determine deploy path
@@ -117,28 +111,39 @@ jobs:
         uses: actions/github-script@v7
         env:
           SECTION: Documentation
-          STATUS: ${{ steps.docs.outputs.status }}
-          SUMMARY: ${{ steps.docs.outputs.summary }}
-          DETAILS: ${{ steps.docs.outputs.details }}
+          SUCCESS: ${{ steps.docs.outputs.success }}
+          DOC_COUNT: ${{ steps.docs.outputs.doc_count }}
           PREVIEW_URL: ${{ steps.preview.outputs.url }}
           RUN_ID: ${{ github.run_id }}
           REPO: ${{ github.repository }}
         with:
           script: |
+            const fs = require('fs');
             const marker = "<!-- dotns-ci-summary -->";
             const tableHeader = "| Check | Status | Summary |\n|-------|--------|---------|";
             
             const section = process.env.SECTION;
-            const status = process.env.STATUS || "❌ Failed";
+            const success = process.env.SUCCESS === 'true';
+            const docCount = process.env.DOC_COUNT || '0';
             const previewUrl = process.env.PREVIEW_URL || "";
-            const details = process.env.DETAILS || "";
             const runId = process.env.RUN_ID;
             const repo = process.env.REPO;
             
-            // Add preview link to summary if available
-            let summary = process.env.SUMMARY || "";
+            // Build status and summary
+            const status = success ? "✅ Passed" : "❌ Failed";
+            let summary = success ? `${docCount} docs generated` : "Build failed";
             if (previewUrl) {
               summary += ` [📖 Preview](${previewUrl})`;
+            }
+            
+            // Read details from file if exists
+            let details = "";
+            try {
+              if (fs.existsSync('doc-error.txt')) {
+                details = fs.readFileSync('doc-error.txt', 'utf8').trim();
+              }
+            } catch (e) {
+              console.log('No error details file');
             }
 
             const sectionStart = `<!-- section:${section}:start -->`;
@@ -147,8 +152,8 @@ jobs:
             let block = `${sectionStart}\n`;
             block += `| **${section}** | ${status} | ${summary} |\n`;
 
-            if (details.trim()) {
-              block += `<details><summary>📋 Details</summary>\n\n\`\`\`\n${details.trim()}\n\`\`\`\n\n`;
+            if (details) {
+              block += `<details><summary>📋 Details</summary>\n\n\`\`\`\n${details}\n\`\`\`\n\n`;
               block += `[View logs](https://github.com/${repo}/actions/runs/${runId})\n</details>\n`;
             }
             

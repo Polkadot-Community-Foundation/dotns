@@ -46,66 +46,69 @@ jobs:
       - name: Build + test (capture logs)
         id: run
         shell: bash
+        env:
+          FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: |
           set +e
 
           forge --version > forge-version.log 2>&1
           cast --version >> forge-version.log 2>&1
 
-          forge build --sizes -vvvvv > forge-build.log 2>&1
+          # Build without excessive verbosity
+          forge build --sizes > forge-build.log 2>&1
           BUILD_CODE=$?
 
-          forge test -vvvvv > forge-test.log 2>&1
+          # Test with moderate verbosity
+          forge test -vv > forge-test.log 2>&1
           TEST_CODE=$?
 
+          # Gas report
           forge test --gas-report > forge-gas.log 2>&1
           GAS_CODE=$?
 
-          # Count test results
-          TESTS_PASSED=$(grep -oP 'Suite result: ok\. \K\d+' forge-test.log | awk '{s+=$1} END {print s+0}')
-          TESTS_FAILED=$(grep -oP 'Suite result: FAILED\. \K\d+' forge-test.log | head -1 || echo "0")
+          # Count test results from summary line
+          TESTS_PASSED=$(grep -oE '[0-9]+ passed' forge-test.log | head -1 | grep -oE '[0-9]+' || echo "0")
+          TESTS_FAILED=$(grep -oE '[0-9]+ failed' forge-test.log | head -1 | grep -oE '[0-9]+' || echo "0")
 
           if [ $BUILD_CODE -eq 0 ] && [ $TEST_CODE -eq 0 ] && [ $GAS_CODE -eq 0 ]; then
-            echo "status=✅ Passed" >> "$GITHUB_OUTPUT"
-            echo "summary=${TESTS_PASSED:-0} tests passed" >> "$GITHUB_OUTPUT"
-            echo "details=" >> "$GITHUB_OUTPUT"
+            echo "success=true" >> "$GITHUB_OUTPUT"
+            echo "test_count=${TESTS_PASSED}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "status=❌ Failed" >> "$GITHUB_OUTPUT"
-          
-          if [ $TEST_CODE -ne 0 ]; then
-            echo "summary=${TESTS_FAILED:-some} tests failed" >> "$GITHUB_OUTPUT"
-          elif [ $BUILD_CODE -ne 0 ]; then
-            echo "summary=Build failed" >> "$GITHUB_OUTPUT"
+          echo "success=false" >> "$GITHUB_OUTPUT"
+          echo "test_count=${TESTS_FAILED}" >> "$GITHUB_OUTPUT"
+
+          # Determine failure type
+          if [ $BUILD_CODE -ne 0 ]; then
+            echo "failure_type=build" >> "$GITHUB_OUTPUT"
+          elif [ $TEST_CODE -ne 0 ]; then
+            echo "failure_type=test" >> "$GITHUB_OUTPUT"
           else
-            echo "summary=Gas report failed" >> "$GITHUB_OUTPUT"
+            echo "failure_type=gas" >> "$GITHUB_OUTPUT"
           fi
 
-          # Collect details
+          # Write condensed error details to file (not GITHUB_OUTPUT)
           {
-            echo "details<<EOF"
-
             if [ $BUILD_CODE -ne 0 ]; then
-              echo "### Build Output"
-              tail -n 50 forge-build.log
+              echo "=== Build Errors ==="
+              grep -iE "error|Error" forge-build.log | head -30 || tail -n 30 forge-build.log
               echo ""
             fi
 
             if [ $TEST_CODE -ne 0 ]; then
-              echo "### Test Output"
-              # Extract failed tests
-              grep -A 5 "FAIL\|Error\|Failing" forge-test.log | head -60
+              echo "=== Failed Tests ==="
+              grep -E "FAIL|Failing|failed" forge-test.log | head -20
               echo ""
+              echo "=== Error Details ==="
+              grep -A 3 -E "Error:|error:" forge-test.log | head -30
             fi
 
             if [ $GAS_CODE -ne 0 ]; then
-              echo "### Gas Report"
-              tail -n 30 forge-gas.log
+              echo "=== Gas Report Errors ==="
+              tail -n 20 forge-gas.log
             fi
-
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          } > test-error-details.txt 2>/dev/null
 
           exit 1
 
@@ -116,6 +119,7 @@ jobs:
           name: test-logs
           path: |
             forge-*.log
+            test-error-details.txt
           retention-days: 7
 
       - name: Update PR summary comment
@@ -123,33 +127,58 @@ jobs:
         uses: actions/github-script@v7
         env:
           SECTION: Contract Tests
-          STATUS: ${{ steps.run.outputs.status }}
-          SUMMARY: ${{ steps.run.outputs.summary }}
-          DETAILS: ${{ steps.run.outputs.details }}
+          SUCCESS: ${{ steps.run.outputs.success }}
+          TEST_COUNT: ${{ steps.run.outputs.test_count }}
+          FAILURE_TYPE: ${{ steps.run.outputs.failure_type }}
           RUN_ID: ${{ github.run_id }}
           REPO: ${{ github.repository }}
         with:
           script: |
+            const fs = require('fs');
             const marker = "<!-- dotns-ci-summary -->";
             const tableHeader = "| Check | Status | Summary |\n|-------|--------|---------|";
             
             const section = process.env.SECTION;
-            const status = process.env.STATUS || "❌ Failed";
-            const summary = process.env.SUMMARY || "";
-            const details = process.env.DETAILS || "";
+            const success = process.env.SUCCESS === 'true';
+            const testCount = process.env.TEST_COUNT || '0';
+            const failureType = process.env.FAILURE_TYPE || '';
             const runId = process.env.RUN_ID;
             const repo = process.env.REPO;
+            
+            // Build status and summary
+            let status, summary;
+            if (success) {
+              status = "✅ Passed";
+              summary = `${testCount} tests passed`;
+            } else {
+              status = "❌ Failed";
+              if (failureType === 'build') {
+                summary = "Build failed";
+              } else if (failureType === 'test') {
+                summary = `${testCount} tests failed`;
+              } else {
+                summary = "Gas report failed";
+              }
+            }
+            
+            // Read details from file if exists
+            let details = "";
+            try {
+              if (fs.existsSync('test-error-details.txt')) {
+                details = fs.readFileSync('test-error-details.txt', 'utf8').trim().substring(0, 3000);
+              }
+            } catch (e) {
+              console.log('No error details file');
+            }
 
             const sectionStart = `<!-- section:${section}:start -->`;
             const sectionEnd = `<!-- section:${section}:end -->`;
 
-            // Build table row
             let block = `${sectionStart}\n`;
             block += `| **${section}** | ${status} | ${summary} |\n`;
 
-            // Add collapsible details if present
-            if (details.trim()) {
-              block += `<details><summary>📋 Details</summary>\n\n\`\`\`\n${details.trim()}\n\`\`\`\n\n`;
+            if (details) {
+              block += `<details><summary>📋 Details</summary>\n\n\`\`\`\n${details}\n\`\`\`\n\n`;
               block += `[View full logs](https://github.com/${repo}/actions/runs/${runId})\n</details>\n`;
             }
             
