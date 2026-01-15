@@ -33,11 +33,6 @@ jobs:
         with:
           version: nightly
 
-      - name: Install mdBook
-        run: |
-          curl -sSL https://github.com/rust-lang/mdBook/releases/download/v0.4.40/mdbook-v0.4.40-x86_64-unknown-linux-gnu.tar.gz | tar -xz
-          sudo mv mdbook /usr/local/bin/
-
       - run: forge install
       - run: forge build
 
@@ -46,25 +41,11 @@ jobs:
         env:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: |
-          if ! forge doc --out docs-output; then
+          if ! forge doc --build --out docs-output 2>&1 | tee docs.log; then
             echo "success=false" >> "$GITHUB_OUTPUT"
             echo "error=forge doc failed" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
-          if [ ! -f "docs-output/book.toml" ]; then
-            echo "success=false" >> "$GITHUB_OUTPUT"
-            echo "error=No book.toml generated" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          cd docs-output
-          if ! mdbook build; then
-            echo "success=false" >> "$GITHUB_OUTPUT"
-            echo "error=mdbook build failed" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          cd ..
 
           if [ -d "docs-output/book" ]; then
             touch docs-output/book/.nojekyll
@@ -73,7 +54,7 @@ jobs:
             echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
           else
             echo "success=false" >> "$GITHUB_OUTPUT"
-            echo "error=No book directory created" >> "$GITHUB_OUTPUT"
+            echo "error=No documentation generated" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Set deploy path and URL
@@ -106,7 +87,9 @@ jobs:
         if: always()
         with:
           name: docs
-          path: docs-output/
+          path: |
+            docs-output/
+            docs.log
           retention-days: 7
 
       - name: Deploy to GitHub Pages
@@ -117,7 +100,6 @@ jobs:
           publish_dir: ./docs-output/book
           destination_dir: ${{ steps.path.outputs.target }}
           keep_files: true
-          force_orphan: false
 
       - name: Update PR comment
         if: always() && github.event_name == 'pull_request'

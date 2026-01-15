@@ -47,8 +47,14 @@ jobs:
         continue-on-error: true
         run: |
           cd .4naly3er
-          [ -d "../src" ] && yarn analyze "../src" "" "${{ github.server_url }}/${{ github.repository }}" || \
-          [ -d "../contracts" ] && yarn analyze "../contracts" "" "${{ github.server_url }}/${{ github.repository }}" || true
+          if [ -d "../src" ]; then
+            yarn analyze "../src" "" "${{ github.server_url }}/${{ github.repository }}" || true
+          elif [ -d "../contracts" ]; then
+            yarn analyze "../contracts" "" "${{ github.server_url }}/${{ github.repository }}" || true
+          fi
+          echo "=== Report location check ==="
+          find .. -name "report.md" -type f 2>/dev/null || echo "No report.md found"
+          ls -la report.md 2>/dev/null || echo "No report.md in current dir"
 
       - name: Process results
         id: run
@@ -59,28 +65,64 @@ jobs:
 
           out = lambda k,v: open(os.environ['GITHUB_OUTPUT'], 'a').write(f"{k}={v}\n")
 
-          path = '.4naly3er/report.md'
-          if not os.path.exists(path):
+          # Try multiple possible locations
+          possible_paths = [
+              '.4naly3er/report.md',
+              'report.md',
+              '.4naly3er/reports/report.md'
+          ]
+          
+          path = None
+          for p in possible_paths:
+              if os.path.exists(p):
+                  path = p
+                  print(f"Found report at: {p}")
+                  break
+          
+          if not path:
+              print("No report found in any location")
               out('result', 'Failed - No report generated')
               out('has_issues', 'false')
               exit(0)
 
           content = open(path, 'r', encoding='utf-8').read()
+          print(f"Report size: {len(content)} bytes")
+          
           if not content.strip():
               out('result', 'Failed - Empty report')
               out('has_issues', 'false')
               exit(0)
 
+          # Debug: print first 500 chars
+          print("Report preview:")
+          print(content[:500])
+
           findings = defaultdict(list)
-          pattern = r'###\s*\[([A-Z]+)-(\d+)\]\s*([^\n]+)'
-          for m in re.finditer(pattern, content):
-              cat, num, title = m.group(1), m.group(2), m.group(3).strip()
-              inst = re.search(r'\*Instances\s*\((\d+)\)\*', content[m.end():m.end()+500])
-              findings[cat].append({
-                  'id': f'{cat}-{num}',
-                  'title': title[:70].replace('|', '-'),
-                  'inst': inst.group(1) if inst else '?'
-              })
+          
+          # Try multiple patterns
+          patterns = [
+              r'###\s*\[([A-Z]+)-(\d+)\]\s*([^\n]+)',  # ### [H-01] Title
+              r'\|\s*\[([A-Z]+)-(\d+)\]\s*\|\s*([^|]+)\|',  # | [H-01] | Title |
+              r'##\s*\[([A-Z]+)-(\d+)\]\s*([^\n]+)',  # ## [H-01] Title
+          ]
+          
+          for pattern in patterns:
+              for m in re.finditer(pattern, content):
+                  cat, num, title = m.group(1), m.group(2), m.group(3).strip()
+                  # Look for instance count nearby
+                  search_area = content[m.end():m.end()+1000]
+                  inst_match = re.search(r'\*?Instances?\s*[:\(]\s*(\d+)', search_area, re.IGNORECASE)
+                  inst = inst_match.group(1) if inst_match else '?'
+                  
+                  finding_id = f'{cat}-{num}'
+                  # Avoid duplicates
+                  if not any(f['id'] == finding_id for f in findings[cat]):
+                      findings[cat].append({
+                          'id': finding_id,
+                          'title': title[:70].replace('|', '-').replace('\n', ' '),
+                          'inst': inst
+                      })
+                      print(f"Found: {finding_id} - {title[:50]}")
 
           names = {'H':'high','M':'medium','L':'low','G':'gas','NC':'info'}
 
@@ -91,8 +133,10 @@ jobs:
           g = len(findings.get('G',[]))
           nc = len(findings.get('NC',[]))
 
+          print(f"Total findings: {total} (H:{h} M:{m} L:{l} G:{g} NC:{nc})")
+
           if total == 0:
-              out('result', 'Passed - No issues found')
+              out('result', 'No issues found')
               out('has_issues', 'false')
           else:
               parts = []
@@ -117,7 +161,12 @@ jobs:
               if len(items) > 15:
                   md.append(f"| | +{len(items)-15} more | |")
 
-          open('4naly3er-details.md', 'w').write('\n'.join(md))
+          with open('4naly3er-details.md', 'w') as f:
+              f.write('\n'.join(md))
+          
+          # Also copy report for debugging
+          import shutil
+          shutil.copy(path, '4naly3er-report-copy.md')
           EOF
 
       - uses: actions/upload-artifact@v4
@@ -127,6 +176,8 @@ jobs:
           path: |
             .4naly3er/report.md
             4naly3er-details.md
+            4naly3er-report-copy.md
+            report.md
           retention-days: 30
 
       - name: Update PR comment
@@ -151,6 +202,10 @@ jobs:
 
             let details = '';
             try { details = fs.readFileSync('4naly3er-details.md', 'utf8').trim(); } catch {}
+
+            console.log('Result:', result);
+            console.log('Has issues:', hasIssues);
+            console.log('Details length:', details.length);
 
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
@@ -190,6 +245,13 @@ jobs:
 
             rows[section] = result;
 
+            // Update details
+            if (hasIssues && details) {
+              existingDetails[section] = `<details>\n<summary><strong>${section}</strong></summary>\n\n${details}\n\n[View full report](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`;
+            } else {
+              delete existingDetails[section];
+            }
+
             const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
             const sortedKeys = Object.keys(rows).sort((a, b) => {
               const ai = order.indexOf(a), bi = order.indexOf(b);
@@ -201,13 +263,7 @@ jobs:
               table += `| ${key} | ${rows[key]} |\n`;
             }
 
-            if (hasIssues && details) {
-              existingDetails[section] = `<details>\n<summary><strong>${section}</strong></summary>\n\n${details}\n\n[View full report](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`;
-            } else {
-              delete existingDetails[section];
-            }
-
-            const detailsOrder = ['4naly3er Analysis', 'Slither Analysis'];
+            const detailsOrder = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests'];
             const sortedDetails = Object.keys(existingDetails).sort((a, b) => {
               const ai = detailsOrder.indexOf(a), bi = detailsOrder.indexOf(b);
               return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);

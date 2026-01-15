@@ -34,20 +34,82 @@ jobs:
           set +e
           forge build --sizes > build.log 2>&1
           BUILD=$?
-          forge test -vv > test.log 2>&1
-          TEST=$?
+          
+          if [ $BUILD -ne 0 ]; then
+            echo "result=Failed - Build error" >> "$GITHUB_OUTPUT"
+            echo "has_details=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          
+          forge test -vv 2>&1 | tee test.log
+          TEST=${PIPESTATUS[0]}
 
           PASSED=$(grep -oE '[0-9]+ passed' test.log | head -1 | grep -oE '[0-9]+' || echo "0")
           FAILED=$(grep -oE '[0-9]+ failed' test.log | head -1 | grep -oE '[0-9]+' || echo "0")
-          TOTAL=$((PASSED + FAILED))
 
-          if [ $BUILD -ne 0 ]; then
-            echo "result=Failed - Build error" >> "$GITHUB_OUTPUT"
-            exit 1
-          elif [ $TEST -eq 0 ]; then
-            echo "result=Passed - ${PASSED}/${TOTAL} tests passed" >> "$GITHUB_OUTPUT"
-          else
-            echo "result=Failed - ${FAILED}/${TOTAL} tests failed" >> "$GITHUB_OUTPUT"
+          # Generate details markdown
+          python3 << 'EOF'
+          import re
+          import os
+
+          out = lambda k,v: open(os.environ['GITHUB_OUTPUT'], 'a').write(f"{k}={v}\n")
+
+          with open('test.log', 'r') as f:
+              content = f.read()
+
+          # Parse test results
+          passed_tests = []
+          failed_tests = []
+
+          # Match test results like [PASS] testSomething() (gas: 12345)
+          for match in re.finditer(r'\[(PASS|FAIL)\]\s+(\S+)\s*(?:\(([^)]+)\))?', content):
+              status, name, info = match.groups()
+              if status == 'PASS':
+                  passed_tests.append({'name': name, 'info': info or ''})
+              else:
+                  failed_tests.append({'name': name, 'info': info or ''})
+
+          total = len(passed_tests) + len(failed_tests)
+          
+          if len(failed_tests) > 0:
+              out('result', f'Failed - {len(failed_tests)} of {total} tests failed')
+              out('has_details', 'true')
+          elif total > 0:
+              out('result', 'All tests passed')
+              out('has_details', 'true')
+          else:
+              out('result', 'No tests found')
+              out('has_details', 'false')
+
+          # Build details markdown
+          md = []
+          
+          if failed_tests:
+              md.append(f"\n**Failed ({len(failed_tests)})**\n")
+              md.append("| Test | Info |")
+              md.append("|:-----|:-----|")
+              for t in failed_tests[:20]:
+                  md.append(f"| {t['name']} | {t['info'][:50]} |")
+              if len(failed_tests) > 20:
+                  md.append(f"| +{len(failed_tests)-20} more | |")
+
+          if passed_tests:
+              md.append(f"\n**Passed ({len(passed_tests)})**\n")
+              md.append("| Test | Gas |")
+              md.append("|:-----|----:|")
+              for t in passed_tests[:20]:
+                  gas = ''
+                  if 'gas:' in t['info']:
+                      gas = t['info'].replace('gas:', '').strip()
+                  md.append(f"| {t['name']} | {gas} |")
+              if len(passed_tests) > 20:
+                  md.append(f"| +{len(passed_tests)-20} more | |")
+
+          with open('test-details.md', 'w') as f:
+              f.write('\n'.join(md))
+          EOF
+
+          if [ $TEST -ne 0 ]; then
             exit 1
           fi
 
@@ -55,7 +117,9 @@ jobs:
         if: always()
         with:
           name: test-logs
-          path: '*.log'
+          path: |
+            *.log
+            test-details.md
           retention-days: 7
 
       - name: Update PR comment
@@ -64,12 +128,22 @@ jobs:
         env:
           SECTION: Contract Tests
           RESULT: ${{ steps.run.outputs.result }}
+          HAS_DETAILS: ${{ steps.run.outputs.has_details }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
         with:
           script: |
+            const fs = require('fs');
             const marker = "<!-- ci-summary -->";
             const detailsMarker = "<!-- details-section -->";
             const section = process.env.SECTION;
             const result = process.env.RESULT || 'Unknown';
+            const hasDetails = process.env.HAS_DETAILS === 'true';
+            const runId = process.env.RUN_ID;
+            const repoFull = process.env.REPO;
+
+            let details = '';
+            try { details = fs.readFileSync('test-details.md', 'utf8').trim(); } catch {}
 
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
@@ -83,12 +157,11 @@ jobs:
             );
 
             let rows = {};
-            let detailsSection = '';
+            let existingDetails = {};
             
             if (existing?.body) {
               const parts = existing.body.split(detailsMarker);
               const tableSection = parts[0] || '';
-              if (parts[1]) detailsSection = `\n${detailsMarker}${parts[1]}`;
               
               const lines = tableSection.split('\n');
               for (const line of lines) {
@@ -100,9 +173,22 @@ jobs:
                   }
                 }
               }
+              
+              const detailsRegex = /<details>\s*<summary><strong>([^<]+)<\/strong><\/summary>([\s\S]*?)<\/details>/g;
+              let detailMatch;
+              while ((detailMatch = detailsRegex.exec(existing.body)) !== null) {
+                existingDetails[detailMatch[1].trim()] = detailMatch[0];
+              }
             }
 
             rows[section] = result;
+
+            // Update details
+            if (hasDetails && details) {
+              existingDetails[section] = `<details>\n<summary><strong>${section}</strong></summary>\n\n${details}\n\n[View full logs](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`;
+            } else {
+              delete existingDetails[section];
+            }
 
             const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
             const sortedKeys = Object.keys(rows).sort((a, b) => {
@@ -115,7 +201,18 @@ jobs:
               table += `| ${key} | ${rows[key]} |\n`;
             }
 
-            const body = `${marker}\n## CI Summary\n\n${table}${detailsSection}`;
+            // Build details section
+            const detailsOrder = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests'];
+            const sortedDetails = Object.keys(existingDetails).sort((a, b) => {
+              const ai = detailsOrder.indexOf(a), bi = detailsOrder.indexOf(b);
+              return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+            });
+
+            let body = `${marker}\n## CI Summary\n\n${table}`;
+            
+            if (sortedDetails.length > 0) {
+              body += `\n${detailsMarker}\n\n---\n\n${sortedDetails.map(k => existingDetails[k]).join('\n\n')}`;
+            }
 
             if (existing) {
               await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });

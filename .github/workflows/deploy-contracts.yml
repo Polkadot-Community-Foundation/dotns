@@ -50,8 +50,7 @@ jobs:
           CODE=$?
           ARTIFACT="deployments/paseo-local/420420420.json"
           if [ $CODE -eq 0 ] && [ -f "$ARTIFACT" ]; then
-            COUNT=$(jq 'keys | length' "$ARTIFACT" 2>/dev/null || echo "0")
-            echo "result=Passed - ${COUNT} contracts deployed to Anvil" >> "$GITHUB_OUTPUT"
+            echo "result=All contracts deployed to Anvil" >> "$GITHUB_OUTPUT"
           else
             echo "result=Failed - Deployment error" >> "$GITHUB_OUTPUT"
             exit 1
