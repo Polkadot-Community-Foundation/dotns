@@ -34,7 +34,7 @@ bun run deploy:testnet
 
 ### `DotnsRegistrarController`
 
-Commit–reveal controller that validates commitments, enforces oracle checks, and orchestrates registration side effects (minting, registry wiring, reverse record, Store writes, refunds).
+Commit–reveal controller that validates commitments, enforces pop rules checks, and orchestrates registration side effects (minting, registry wiring, reverse record, Store writes, refunds).
 
 ### `DotnsRegistrar`
 
@@ -44,7 +44,7 @@ ERC721-backed registrar that mints ownership of label IDs (labelhashes). Minting
 
 Forward registry mapping node → `(owner, resolver)` and supporting subnode creation. Privileged node wiring is restricted to the configured registrar controller.
 
-### `PopOracle`
+### `PopRules`
 
 PoP-aware name classification and pricing. Enforces base-name reservation rules derived from Lite-eligible registrations.
 
