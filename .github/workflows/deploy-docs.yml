@@ -46,6 +46,11 @@ jobs:
         with:
           version: nightly
 
+      - name: Install mdbook
+        run: |
+          curl -sSL https://github.com/rust-lang/mdBook/releases/download/v0.4.40/mdbook-v0.4.40-x86_64-unknown-linux-gnu.tar.gz | tar -xz
+          sudo mv mdbook /usr/local/bin/
+
       - name: Install dependencies
         run: forge install
 
@@ -57,20 +62,46 @@ jobs:
         run: |
           set +e
           
-          forge doc --build --out docs-output 2>&1 | tee forge-doc.log
+          # Generate markdown docs first
+          forge doc --out docs-output 2>&1 | tee forge-doc.log
           DOC_CODE=${PIPESTATUS[0]}
           
-          if [ $DOC_CODE -eq 0 ] && [ -d "docs-output/book" ]; then
-            # Count docs, trim whitespace, default to 0
-            CONTRACT_COUNT=$(find docs-output/book/src -name "*.md" 2>/dev/null | wc -l | tr -d '[:space:]')
+          if [ $DOC_CODE -ne 0 ]; then
+            echo "success=false" >> "$GITHUB_OUTPUT"
+            echo "doc_count=0" >> "$GITHUB_OUTPUT"
+            tail -n 40 forge-doc.log > doc-error.txt 2>/dev/null
+            exit 0
+          fi
+          
+          # Build HTML with mdbook
+          cd docs-output
+          mdbook build 2>&1 | tee ../mdbook-build.log
+          BUILD_CODE=${PIPESTATUS[0]}
+          cd ..
+          
+          if [ $BUILD_CODE -eq 0 ] && [ -d "docs-output/book" ]; then
+            CONTRACT_COUNT=$(find docs-output/book -name "*.html" 2>/dev/null | wc -l | tr -d '[:space:]')
             CONTRACT_COUNT="${CONTRACT_COUNT:-0}"
             echo "success=true" >> "$GITHUB_OUTPUT"
             echo "doc_count=${CONTRACT_COUNT}" >> "$GITHUB_OUTPUT"
+            
+            # Debug: list output
+            echo "=== Generated files ==="
+            ls -la docs-output/
+            ls -la docs-output/book/ | head -20
           else
             echo "success=false" >> "$GITHUB_OUTPUT"
             echo "doc_count=0" >> "$GITHUB_OUTPUT"
-            # Write details to a file instead of GITHUB_OUTPUT
-            tail -n 40 forge-doc.log > doc-error.txt 2>/dev/null || echo "No log available" > doc-error.txt
+            {
+              echo "=== Forge Doc Output ==="
+              cat forge-doc.log
+              echo ""
+              echo "=== mdbook Build Output ==="
+              cat mdbook-build.log 2>/dev/null || echo "No mdbook log"
+              echo ""
+              echo "=== Directory Structure ==="
+              find docs-output -type f | head -30
+            } > doc-error.txt 2>/dev/null
           fi
 
       - name: Determine deploy path
@@ -84,6 +115,18 @@ jobs:
             echo "is_preview=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Upload docs artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation
+          path: |
+            docs-output/
+            forge-doc.log
+            mdbook-build.log
+            doc-error.txt
+          retention-days: 7
+
       - name: Deploy to GitHub Pages
         if: steps.docs.outputs.success == 'true'
         uses: peaceiris/actions-gh-pages@v4
@@ -92,6 +135,7 @@ jobs:
           publish_dir: ./docs-output/book
           destination_dir: ${{ steps.path.outputs.target }}
           keep_files: true
+          force_orphan: false
 
       - name: Set preview URL
         id: preview
