@@ -69,6 +69,7 @@ jobs:
               out('success', 'true')
               out('summary', 'No issues')
               out('total', '0')
+              out('status', 'Passed')
           else:
               parts = []
               if h: parts.append(f'H:{h}')
@@ -78,19 +79,24 @@ jobs:
               out('success', 'false' if h else 'true')
               out('summary', f"{total} issues ({' '.join(parts)})")
               out('total', str(total))
+              if h:
+                  out('status', 'Failed')
+              elif m or l:
+                  out('status', 'Warning')
+              else:
+                  out('status', 'Passed')
 
           md = []
-          icons = {'High':'🔴','Medium':'🟠','Low':'🟡','Informational':'🔵'}
           for sev in ['High','Medium','Low','Informational']:
               items = findings.get(sev, [])
               if not items: continue
-              md.append(f"\n**{icons.get(sev,'')} {sev} ({len(items)})**\n")
+              md.append(f"\n**{sev} ({len(items)})**\n")
               md.append("| Check | Description | Location |")
               md.append("|:------|:------------|:---------|")
               for x in items[:10]:
-                  md.append(f"| `{x['check']}` | {x['desc']} | `{x['loc']}` |")
+                  md.append(f"| {x['check']} | {x['desc']} | {x['loc']} |")
               if len(items) > 10:
-                  md.append(f"| | *+{len(items)-10} more* | |")
+                  md.append(f"| | +{len(items)-10} more | |")
 
           open('slither-details.md', 'w').write('\n'.join(md))
           EOF
@@ -109,7 +115,7 @@ jobs:
         uses: actions/github-script@v7
         env:
           SECTION: Slither Analysis
-          SUCCESS: ${{ steps.run.outputs.success }}
+          STATUS: ${{ steps.run.outputs.status }}
           SUMMARY: ${{ steps.run.outputs.summary }}
           TOTAL: ${{ steps.run.outputs.total }}
           RUN_ID: ${{ github.run_id }}
@@ -118,16 +124,13 @@ jobs:
           script: |
             const fs = require('fs');
             const marker = "<!-- ci-summary -->";
+            const tableEnd = "<!-- table-end -->";
             const section = process.env.SECTION;
-            const success = process.env.SUCCESS === 'true';
+            const status = process.env.STATUS || 'Unknown';
             const summaryText = process.env.SUMMARY || '';
             const total = parseInt(process.env.TOTAL || '0');
             const runId = process.env.RUN_ID;
             const repoFull = process.env.REPO;
-
-            let status = "✅";
-            if (summaryText.includes('H:')) status = "❌";
-            else if (summaryText.includes('M:') || summaryText.includes('L:')) status = "⚠️";
 
             let details = '';
             try { details = fs.readFileSync('slither-details.md', 'utf8').trim(); } catch {}
@@ -144,22 +147,21 @@ jobs:
             );
 
             let rows = {};
-            let existingDetails = [];
+            let existingDetails = {};
             if (existing?.body) {
+              const tableSection = existing.body.split(tableEnd)[0] || existing.body;
               const rowRegex = /^\| ([^|]+) \| ([^|]+) \| ([^|]+) \|$/gm;
               let match;
-              while ((match = rowRegex.exec(existing.body)) !== null) {
+              while ((match = rowRegex.exec(tableSection)) !== null) {
                 const name = match[1].trim();
                 if (name && name !== 'Check' && !name.startsWith(':')) {
                   rows[name] = { status: match[2].trim(), summary: match[3].trim() };
                 }
               }
-              const detailsRegex = /<details>\s*<summary><strong>([^<]+)<\/strong><\/summary>[\s\S]*?<\/details>/g;
+              const detailsRegex = /<details>\s*<summary><strong>([^<]+)<\/strong><\/summary>([\s\S]*?)<\/details>/g;
               let detailMatch;
               while ((detailMatch = detailsRegex.exec(existing.body)) !== null) {
-                if (!detailMatch[1].includes('Slither')) {
-                  existingDetails.push(detailMatch[0]);
-                }
+                existingDetails[detailMatch[1].trim()] = detailMatch[0];
               }
             }
 
@@ -176,14 +178,22 @@ jobs:
               table += `| ${key} | ${rows[key].status} | ${rows[key].summary} |\n`;
             }
 
-            let body = `${marker}\n## CI Summary\n\n${table}`;
+            let body = `${marker}\n## CI Summary\n\n${table}${tableEnd}`;
 
-            let allDetails = [...existingDetails];
             if (total > 0 && details) {
-              allDetails.push(`<details>\n<summary><strong>🔍 Slither Details</strong></summary>\n\n${details}\n\n[View full report](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`);
+              existingDetails['Slither Analysis'] = `<details>\n<summary><strong>Slither Analysis</strong></summary>\n\n${details}\n\n[View full report](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`;
+            } else {
+              delete existingDetails['Slither Analysis'];
             }
-            if (allDetails.length > 0) {
-              body += `\n---\n\n${allDetails.join('\n\n')}`;
+
+            const detailsOrder = ['4naly3er Analysis', 'Slither Analysis'];
+            const sortedDetails = Object.keys(existingDetails).sort((a, b) => {
+              const ai = detailsOrder.indexOf(a), bi = detailsOrder.indexOf(b);
+              return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+            });
+
+            if (sortedDetails.length > 0) {
+              body += `\n\n---\n\n${sortedDetails.map(k => existingDetails[k]).join('\n\n')}`;
             }
 
             if (existing) {

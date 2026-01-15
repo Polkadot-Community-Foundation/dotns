@@ -64,6 +64,7 @@ jobs:
               out('success', 'false')
               out('summary', 'No report')
               out('total', '0')
+              out('status', 'Failed')
               exit(0)
 
           content = open(path, 'r', encoding='utf-8').read()
@@ -71,6 +72,7 @@ jobs:
               out('success', 'false')
               out('summary', 'Empty report')
               out('total', '0')
+              out('status', 'Failed')
               exit(0)
 
           findings = defaultdict(list)
@@ -85,7 +87,6 @@ jobs:
               })
 
           names = {'H':'High','M':'Medium','L':'Low','G':'Gas','NC':'Non-Critical'}
-          icons = {'H':'🔴','M':'🟠','L':'🟡','G':'⛽','NC':'🔵'}
 
           total = sum(len(v) for v in findings.values())
           h, m, l, g, nc = len(findings.get('H',[])), len(findings.get('M',[])), len(findings.get('L',[])), len(findings.get('G',[])), len(findings.get('NC',[]))
@@ -94,6 +95,7 @@ jobs:
               out('success', 'true')
               out('summary', 'No issues')
               out('total', '0')
+              out('status', 'Passed')
           else:
               parts = []
               if h: parts.append(f'H:{h}')
@@ -104,18 +106,24 @@ jobs:
               out('success', 'false' if h else 'true')
               out('summary', f"{total} issues ({' '.join(parts)})")
               out('total', str(total))
+              if h:
+                  out('status', 'Failed')
+              elif m or l:
+                  out('status', 'Warning')
+              else:
+                  out('status', 'Passed')
 
           md = []
           for cat in ['H','M','L','G','NC']:
               items = findings.get(cat, [])
               if not items: continue
-              md.append(f"\n**{icons.get(cat,'')} {names.get(cat, cat)} ({len(items)})**\n")
+              md.append(f"\n**{names.get(cat, cat)} ({len(items)})**\n")
               md.append("| ID | Finding | Instances |")
               md.append("|:---|:--------|:---------:|")
               for x in items[:15]:
-                  md.append(f"| `{x['id']}` | {x['title']} | {x['inst']} |")
+                  md.append(f"| {x['id']} | {x['title']} | {x['inst']} |")
               if len(items) > 15:
-                  md.append(f"| | *+{len(items)-15} more* | |")
+                  md.append(f"| | +{len(items)-15} more | |")
 
           open('4naly3er-details.md', 'w').write('\n'.join(md))
           EOF
@@ -134,7 +142,7 @@ jobs:
         uses: actions/github-script@v7
         env:
           SECTION: 4naly3er Analysis
-          SUCCESS: ${{ steps.run.outputs.success }}
+          STATUS: ${{ steps.run.outputs.status }}
           SUMMARY: ${{ steps.run.outputs.summary }}
           TOTAL: ${{ steps.run.outputs.total }}
           RUN_ID: ${{ github.run_id }}
@@ -143,16 +151,13 @@ jobs:
           script: |
             const fs = require('fs');
             const marker = "<!-- ci-summary -->";
+            const tableEnd = "<!-- table-end -->";
             const section = process.env.SECTION;
-            const success = process.env.SUCCESS === 'true';
+            const status = process.env.STATUS || 'Unknown';
             const summaryText = process.env.SUMMARY || '';
             const total = parseInt(process.env.TOTAL || '0');
             const runId = process.env.RUN_ID;
             const repoFull = process.env.REPO;
-
-            let status = "✅";
-            if (summaryText.includes('H:')) status = "❌";
-            else if (summaryText.includes('M:') || summaryText.includes('L:')) status = "⚠️";
 
             let details = '';
             try { details = fs.readFileSync('4naly3er-details.md', 'utf8').trim(); } catch {}
@@ -169,14 +174,21 @@ jobs:
             );
 
             let rows = {};
+            let existingDetails = {};
             if (existing?.body) {
+              const tableSection = existing.body.split(tableEnd)[0] || existing.body;
               const rowRegex = /^\| ([^|]+) \| ([^|]+) \| ([^|]+) \|$/gm;
               let match;
-              while ((match = rowRegex.exec(existing.body)) !== null) {
+              while ((match = rowRegex.exec(tableSection)) !== null) {
                 const name = match[1].trim();
                 if (name && name !== 'Check' && !name.startsWith(':')) {
                   rows[name] = { status: match[2].trim(), summary: match[3].trim() };
                 }
+              }
+              const detailsRegex = /<details>\s*<summary><strong>([^<]+)<\/strong><\/summary>([\s\S]*?)<\/details>/g;
+              let detailMatch;
+              while ((detailMatch = detailsRegex.exec(existing.body)) !== null) {
+                existingDetails[detailMatch[1].trim()] = detailMatch[0];
               }
             }
 
@@ -193,10 +205,22 @@ jobs:
               table += `| ${key} | ${rows[key].status} | ${rows[key].summary} |\n`;
             }
 
-            let body = `${marker}\n## CI Summary\n\n${table}`;
+            let body = `${marker}\n## CI Summary\n\n${table}${tableEnd}`;
 
             if (total > 0 && details) {
-              body += `\n---\n\n<details>\n<summary><strong>📊 4naly3er Details</strong></summary>\n\n${details}\n\n[View full report](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`;
+              existingDetails['4naly3er Analysis'] = `<details>\n<summary><strong>4naly3er Analysis</strong></summary>\n\n${details}\n\n[View full report](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`;
+            } else {
+              delete existingDetails['4naly3er Analysis'];
+            }
+
+            const detailsOrder = ['4naly3er Analysis', 'Slither Analysis'];
+            const sortedDetails = Object.keys(existingDetails).sort((a, b) => {
+              const ai = detailsOrder.indexOf(a), bi = detailsOrder.indexOf(b);
+              return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+            });
+
+            if (sortedDetails.length > 0) {
+              body += `\n\n---\n\n${sortedDetails.map(k => existingDetails[k]).join('\n\n')}`;
             }
 
             if (existing) {

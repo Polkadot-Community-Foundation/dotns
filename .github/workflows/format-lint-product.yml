@@ -42,10 +42,15 @@ jobs:
         run: |
           if [ "${FORMAT_FAILED:-}" = "true" ] || [ "${BUILD_FAILED:-}" = "true" ]; then
             echo "success=false" >> "$GITHUB_OUTPUT"
-            [ "${FORMAT_FAILED:-}" = "true" ] && echo "format_failed=true" >> "$GITHUB_OUTPUT"
-            [ "${BUILD_FAILED:-}" = "true" ] && echo "build_failed=true" >> "$GITHUB_OUTPUT"
+            echo "status=Failed" >> "$GITHUB_OUTPUT"
+            ISSUES=""
+            [ "${FORMAT_FAILED:-}" = "true" ] && ISSUES="formatting"
+            [ "${BUILD_FAILED:-}" = "true" ] && ISSUES="${ISSUES:+$ISSUES & }build"
+            echo "summary=${ISSUES} failed" >> "$GITHUB_OUTPUT"
           else
             echo "success=true" >> "$GITHUB_OUTPUT"
+            echo "status=Passed" >> "$GITHUB_OUTPUT"
+            echo "summary=All checks passed" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/upload-artifact@v4
@@ -60,25 +65,15 @@ jobs:
         uses: actions/github-script@v7
         env:
           SECTION: Format & Lint
-          SUCCESS: ${{ steps.run.outputs.success }}
-          FORMAT_FAILED: ${{ steps.run.outputs.format_failed }}
-          BUILD_FAILED: ${{ steps.run.outputs.build_failed }}
+          STATUS: ${{ steps.run.outputs.status }}
+          SUMMARY: ${{ steps.run.outputs.summary }}
         with:
           script: |
             const marker = "<!-- ci-summary -->";
+            const tableEnd = "<!-- table-end -->";
             const section = process.env.SECTION;
-            const success = process.env.SUCCESS === 'true';
-            const formatFailed = process.env.FORMAT_FAILED === 'true';
-            const buildFailed = process.env.BUILD_FAILED === 'true';
-
-            const status = success ? "✅" : "❌";
-            let summary = "All checks passed";
-            if (!success) {
-              const issues = [];
-              if (formatFailed) issues.push("formatting");
-              if (buildFailed) issues.push("build");
-              summary = issues.join(" & ") + " failed";
-            }
+            const status = process.env.STATUS || 'Unknown';
+            const summary = process.env.SUMMARY || '';
 
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
@@ -94,16 +89,17 @@ jobs:
             let rows = {};
             let detailsSection = '';
             if (existing?.body) {
+              const tableSection = existing.body.split(tableEnd)[0] || existing.body;
               const rowRegex = /^\| ([^|]+) \| ([^|]+) \| ([^|]+) \|$/gm;
               let match;
-              while ((match = rowRegex.exec(existing.body)) !== null) {
+              while ((match = rowRegex.exec(tableSection)) !== null) {
                 const name = match[1].trim();
                 if (name && name !== 'Check' && !name.startsWith(':')) {
                   rows[name] = { status: match[2].trim(), summary: match[3].trim() };
                 }
               }
-              const detailsMatch = existing.body.match(/\n---\n[\s\S]*$/);
-              if (detailsMatch) detailsSection = detailsMatch[0];
+              const detailsMatch = existing.body.match(/<!-- table-end -->([\s\S]*$)/);
+              if (detailsMatch) detailsSection = detailsMatch[1];
             }
 
             rows[section] = { status, summary };
@@ -119,7 +115,7 @@ jobs:
               table += `| ${key} | ${rows[key].status} | ${rows[key].summary} |\n`;
             }
 
-            const body = `${marker}\n## CI Summary\n\n${table}${detailsSection}`;
+            const body = `${marker}\n## CI Summary\n\n${table}${tableEnd}${detailsSection}`;
 
             if (existing) {
               await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
