@@ -43,7 +43,7 @@ jobs:
       - name: Install project dependencies
         run: bun install
 
-      - name: Build + test (capture logs)
+      - name: Build + test
         id: run
         shell: bash
         env:
@@ -51,22 +51,15 @@ jobs:
         run: |
           set +e
 
-          forge --version > forge-version.log 2>&1
-          cast --version >> forge-version.log 2>&1
-
-          # Build without excessive verbosity
           forge build --sizes > forge-build.log 2>&1
           BUILD_CODE=$?
 
-          # Test with moderate verbosity
           forge test -vv > forge-test.log 2>&1
           TEST_CODE=$?
 
-          # Gas report
           forge test --gas-report > forge-gas.log 2>&1
           GAS_CODE=$?
 
-          # Count test results from summary line
           TESTS_PASSED=$(grep -oE '[0-9]+ passed' forge-test.log | head -1 | grep -oE '[0-9]+' || echo "0")
           TESTS_FAILED=$(grep -oE '[0-9]+ failed' forge-test.log | head -1 | grep -oE '[0-9]+' || echo "0")
 
@@ -79,7 +72,6 @@ jobs:
           echo "success=false" >> "$GITHUB_OUTPUT"
           echo "test_count=${TESTS_FAILED}" >> "$GITHUB_OUTPUT"
 
-          # Determine failure type
           if [ $BUILD_CODE -ne 0 ]; then
             echo "failure_type=build" >> "$GITHUB_OUTPUT"
           elif [ $TEST_CODE -ne 0 ]; then
@@ -88,25 +80,21 @@ jobs:
             echo "failure_type=gas" >> "$GITHUB_OUTPUT"
           fi
 
-          # Write condensed error details to file (not GITHUB_OUTPUT)
+          # Write error details to file
           {
             if [ $BUILD_CODE -ne 0 ]; then
-              echo "=== Build Errors ==="
-              grep -iE "error|Error" forge-build.log | head -30 || tail -n 30 forge-build.log
-              echo ""
+              echo "Build Errors:"
+              grep -iE "error|Error" forge-build.log | head -20 || tail -n 20 forge-build.log
             fi
-
             if [ $TEST_CODE -ne 0 ]; then
-              echo "=== Failed Tests ==="
-              grep -E "FAIL|Failing|failed" forge-test.log | head -20
+              echo "Failed Tests:"
+              grep -E "FAIL|Failing|failed" forge-test.log | head -15
               echo ""
-              echo "=== Error Details ==="
-              grep -A 3 -E "Error:|error:" forge-test.log | head -30
+              grep -A 2 -E "Error:|error:" forge-test.log | head -20
             fi
-
             if [ $GAS_CODE -ne 0 ]; then
-              echo "=== Gas Report Errors ==="
-              tail -n 20 forge-gas.log
+              echo "Gas Report Errors:"
+              tail -n 15 forge-gas.log
             fi
           } > test-error-details.txt 2>/dev/null
 
@@ -136,8 +124,6 @@ jobs:
           script: |
             const fs = require('fs');
             const marker = "<!-- dotns-ci-summary -->";
-            const tableHeader = "| Check | Status | Summary |\n|-------|--------|---------|";
-            
             const section = process.env.SECTION;
             const success = process.env.SUCCESS === 'true';
             const testCount = process.env.TEST_COUNT || '0';
@@ -145,41 +131,37 @@ jobs:
             const runId = process.env.RUN_ID;
             const repo = process.env.REPO;
             
-            // Build status and summary
-            let status, summary;
+            const status = success ? "✅" : "❌";
+            let summary;
             if (success) {
-              status = "✅ Passed";
               summary = `${testCount} tests passed`;
+            } else if (failureType === 'build') {
+              summary = "Build failed";
+            } else if (failureType === 'test') {
+              summary = `${testCount} tests failed`;
             } else {
-              status = "❌ Failed";
-              if (failureType === 'build') {
-                summary = "Build failed";
-              } else if (failureType === 'test') {
-                summary = `${testCount} tests failed`;
-              } else {
-                summary = "Gas report failed";
-              }
+              summary = "Gas report failed";
             }
             
-            // Read details from file if exists
+            // Read error details
             let details = "";
             try {
               if (fs.existsSync('test-error-details.txt')) {
-                details = fs.readFileSync('test-error-details.txt', 'utf8').trim().substring(0, 3000);
+                details = fs.readFileSync('test-error-details.txt', 'utf8').trim().substring(0, 2000);
               }
-            } catch (e) {
-              console.log('No error details file');
-            }
-
+            } catch (e) {}
+            
             const sectionStart = `<!-- section:${section}:start -->`;
             const sectionEnd = `<!-- section:${section}:end -->`;
 
             let block = `${sectionStart}\n`;
-            block += `| **${section}** | ${status} | ${summary} |\n`;
-
-            if (details) {
-              block += `<details><summary>📋 Details</summary>\n\n\`\`\`\n${details}\n\`\`\`\n\n`;
-              block += `[View full logs](https://github.com/${repo}/actions/runs/${runId})\n</details>\n`;
+            block += `| ${section} | ${status} | ${summary} |\n`;
+            
+            if (!success && details) {
+              block += `\n<details>\n<summary>📋 ${section} Details</summary>\n\n`;
+              block += `\`\`\`\n${details}\n\`\`\`\n\n`;
+              block += `[View full logs](https://github.com/${repo}/actions/runs/${runId})\n`;
+              block += `</details>\n`;
             }
             
             block += `${sectionEnd}\n`;
@@ -200,7 +182,9 @@ jobs:
               c.body.includes(marker)
             );
 
-            const baseBody = existing?.body ?? `${marker}\n## 🔍 CI Summary\n\n${tableHeader}\n`;
+            const tableHeader = "| Check | Status | Summary |\n|:------|:------:|:--------|\n";
+            const baseBody = existing?.body ?? `${marker}\n## 🔍 CI Summary\n\n${tableHeader}`;
+            
             const hasSection = baseBody.includes(sectionStart) && baseBody.includes(sectionEnd);
 
             let nextBody;
@@ -208,7 +192,12 @@ jobs:
               const re = new RegExp(`${sectionStart}[\\s\\S]*?${sectionEnd}\\n?`, "m");
               nextBody = baseBody.replace(re, block);
             } else {
-              nextBody = `${baseBody.trimEnd()}\n${block}`;
+              const headerEnd = baseBody.indexOf('\n', baseBody.indexOf('|:---'));
+              if (headerEnd !== -1) {
+                nextBody = baseBody.slice(0, headerEnd + 1) + block + baseBody.slice(headerEnd + 1);
+              } else {
+                nextBody = baseBody + block;
+              }
             }
 
             if (existing) {

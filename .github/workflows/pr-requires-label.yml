@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Validate labels (capture result)
+      - name: Validate labels
         id: run
         env:
           LABELS_JSON: ${{ toJson(github.event.pull_request.labels) }}
@@ -36,16 +36,13 @@ jobs:
           done
 
           if [ "$found" -eq 1 ]; then
-            echo "status=✅ Passed" >> "$GITHUB_OUTPUT"
-            echo "details=" >> "$GITHUB_OUTPUT"
+            echo "success=true" >> "$GITHUB_OUTPUT"
+            echo "labels=${labels//$'\n'/, }" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "status=❌ Failed" >> "$GITHUB_OUTPUT"
-          echo "details<<EOF" >> "$GITHUB_OUTPUT"
-          echo "PR must have at least one label: frontend | smartcontracts | other" >> "$GITHUB_OUTPUT"
-          echo "Current: ${labels:-"(none)"}" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "success=false" >> "$GITHUB_OUTPUT"
+          echo "labels=${labels:-none}" >> "$GITHUB_OUTPUT"
           exit 1
 
       - name: Update PR summary comment
@@ -53,24 +50,32 @@ jobs:
         uses: actions/github-script@v7
         env:
           SECTION: Labels
-          STATUS: ${{ steps.run.outputs.status }}
-          DETAILS: ${{ steps.run.outputs.details }}
+          SUCCESS: ${{ steps.run.outputs.success }}
+          LABELS: ${{ steps.run.outputs.labels }}
         with:
           script: |
             const marker = "<!-- dotns-ci-summary -->";
-            const section = process.env.SECTION ?? "Labels";
-            const status = process.env.STATUS ?? "❌ Failed";
-            const details = process.env.DETAILS ?? "";
-
+            const section = process.env.SECTION;
+            const success = process.env.SUCCESS === 'true';
+            const labels = process.env.LABELS || 'none';
+            
+            const status = success ? "✅" : "❌";
+            const summary = success ? "Valid" : "Missing required label";
+            
             const sectionStart = `<!-- section:${section}:start -->`;
             const sectionEnd = `<!-- section:${section}:end -->`;
 
-            const block =
-              `${sectionStart}\n` +
-              `#### ${section}\n` +
-              `Status: ${status}\n` +
-              (details ? `\n\`\`\`\n${details}\n\`\`\`\n` : "\n") +
-              `${sectionEnd}\n`;
+            let block = `${sectionStart}\n`;
+            block += `| ${section} | ${status} | ${summary} |\n`;
+            
+            if (!success) {
+              block += `\n<details>\n<summary>❌ ${section} Details</summary>\n\n`;
+              block += `**Required:** One of \`frontend\`, \`smartcontracts\`, \`other\`\n\n`;
+              block += `**Current:** \`${labels}\`\n`;
+              block += `</details>\n`;
+            }
+            
+            block += `${sectionEnd}\n`;
 
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
@@ -88,7 +93,9 @@ jobs:
               c.body.includes(marker)
             );
 
-            const baseBody = existing?.body ?? `${marker}\n### CI summary\n\n`;
+            const tableHeader = "| Check | Status | Summary |\n|:------|:------:|:--------|\n";
+            const baseBody = existing?.body ?? `${marker}\n## 🔍 CI Summary\n\n${tableHeader}`;
+            
             const hasSection = baseBody.includes(sectionStart) && baseBody.includes(sectionEnd);
 
             let nextBody;
@@ -96,7 +103,12 @@ jobs:
               const re = new RegExp(`${sectionStart}[\\s\\S]*?${sectionEnd}\\n?`, "m");
               nextBody = baseBody.replace(re, block);
             } else {
-              nextBody = `${baseBody.trimEnd()}\n\n${block}`;
+              const headerEnd = baseBody.indexOf('\n', baseBody.indexOf('|:---'));
+              if (headerEnd !== -1) {
+                nextBody = baseBody.slice(0, headerEnd + 1) + block + baseBody.slice(headerEnd + 1);
+              } else {
+                nextBody = baseBody + block;
+              }
             }
 
             if (existing) {

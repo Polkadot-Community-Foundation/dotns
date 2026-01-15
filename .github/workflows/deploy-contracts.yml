@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo (with submodules)
+      - name: Checkout repo
         uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -44,9 +44,8 @@ jobs:
           echo $! > anvil.pid
           sleep 3
 
-      - name: Wait for RPC to be ready
+      - name: Wait for RPC
         run: |
-          set -e
           for i in {1..30}; do
             if curl -s -X POST -H "Content-Type: application/json" \
               --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' \
@@ -56,10 +55,10 @@ jobs:
             fi
             sleep 2
           done
-          echo "RPC not ready after waiting"
+          echo "RPC not ready"
           exit 1
 
-      - name: Deploy + verify artifact (capture logs)
+      - name: Deploy contracts
         id: run
         shell: bash
         env:
@@ -73,7 +72,6 @@ jobs:
           ARTIFACT_PATH="deployments/paseo-local/420420420.json"
           
           if [ $DEPLOY_CODE -eq 0 ] && [ -f "$ARTIFACT_PATH" ]; then
-            # Extract deployed contract count
             CONTRACT_COUNT=$(jq 'keys | length' "$ARTIFACT_PATH" 2>/dev/null || echo "0")
             echo "success=true" >> "$GITHUB_OUTPUT"
             echo "contract_count=${CONTRACT_COUNT}" >> "$GITHUB_OUTPUT"
@@ -89,26 +87,20 @@ jobs:
             echo "failure_type=artifact" >> "$GITHUB_OUTPUT"
           fi
 
-          # Write details to file
           {
             if [ $DEPLOY_CODE -ne 0 ]; then
-              echo "=== Deployment Logs ==="
-              tail -n 50 deploy.log
-              echo ""
+              echo "Deployment failed:"
+              tail -n 40 deploy.log
             fi
-
             if [ ! -f "$ARTIFACT_PATH" ]; then
-              echo "=== Missing Artifact ==="
-              echo "Expected: $ARTIFACT_PATH"
-              echo ""
-              echo "Directory contents:"
+              echo "Missing artifact: $ARTIFACT_PATH"
               ls -la deployments/paseo-local 2>/dev/null || echo "(directory not found)"
             fi
           } > deploy-error-details.txt 2>/dev/null
 
           exit 1
 
-      - name: Upload deployment logs
+      - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -134,8 +126,6 @@ jobs:
           script: |
             const fs = require('fs');
             const marker = "<!-- dotns-ci-summary -->";
-            const tableHeader = "| Check | Status | Summary |\n|-------|--------|---------|";
-            
             const section = process.env.SECTION;
             const success = process.env.SUCCESS === 'true';
             const contractCount = process.env.CONTRACT_COUNT || '0';
@@ -143,35 +133,29 @@ jobs:
             const runId = process.env.RUN_ID;
             const repo = process.env.REPO;
             
-            // Build status and summary
-            let status, summary;
-            if (success) {
-              status = "✅ Passed";
-              summary = `${contractCount} contracts deployed`;
-            } else {
-              status = "❌ Failed";
-              summary = failureType === 'deploy' ? "Deployment failed" : "Missing artifact";
-            }
+            const status = success ? "✅" : "❌";
+            const summary = success 
+              ? `${contractCount} contracts deployed` 
+              : (failureType === 'deploy' ? "Deployment failed" : "Missing artifact");
             
-            // Read details from file if exists
             let details = "";
             try {
               if (fs.existsSync('deploy-error-details.txt')) {
-                details = fs.readFileSync('deploy-error-details.txt', 'utf8').trim().substring(0, 3000);
+                details = fs.readFileSync('deploy-error-details.txt', 'utf8').trim().substring(0, 2000);
               }
-            } catch (e) {
-              console.log('No error details file');
-            }
-
+            } catch (e) {}
+            
             const sectionStart = `<!-- section:${section}:start -->`;
             const sectionEnd = `<!-- section:${section}:end -->`;
 
             let block = `${sectionStart}\n`;
-            block += `| **${section}** | ${status} | ${summary} |\n`;
-
-            if (details) {
-              block += `<details><summary>📋 Details</summary>\n\n\`\`\`\n${details}\n\`\`\`\n\n`;
-              block += `[View full logs](https://github.com/${repo}/actions/runs/${runId})\n</details>\n`;
+            block += `| ${section} | ${status} | ${summary} |\n`;
+            
+            if (!success && details) {
+              block += `\n<details>\n<summary>📋 ${section} Details</summary>\n\n`;
+              block += `\`\`\`\n${details}\n\`\`\`\n\n`;
+              block += `[View full logs](https://github.com/${repo}/actions/runs/${runId})\n`;
+              block += `</details>\n`;
             }
             
             block += `${sectionEnd}\n`;
@@ -192,7 +176,9 @@ jobs:
               c.body.includes(marker)
             );
 
-            const baseBody = existing?.body ?? `${marker}\n## 🔍 CI Summary\n\n${tableHeader}\n`;
+            const tableHeader = "| Check | Status | Summary |\n|:------|:------:|:--------|\n";
+            const baseBody = existing?.body ?? `${marker}\n## 🔍 CI Summary\n\n${tableHeader}`;
+            
             const hasSection = baseBody.includes(sectionStart) && baseBody.includes(sectionEnd);
 
             let nextBody;
@@ -200,7 +186,12 @@ jobs:
               const re = new RegExp(`${sectionStart}[\\s\\S]*?${sectionEnd}\\n?`, "m");
               nextBody = baseBody.replace(re, block);
             } else {
-              nextBody = `${baseBody.trimEnd()}\n${block}`;
+              const headerEnd = baseBody.indexOf('\n', baseBody.indexOf('|:---'));
+              if (headerEnd !== -1) {
+                nextBody = baseBody.slice(0, headerEnd + 1) + block + baseBody.slice(headerEnd + 1);
+              } else {
+                nextBody = baseBody + block;
+              }
             }
 
             if (existing) {
@@ -222,7 +213,5 @@ jobs:
       - name: Stop Anvil
         if: always()
         run: |
-          if [ -f anvil.pid ]; then
-            kill "$(cat anvil.pid)" || true
-          fi
+          [ -f anvil.pid ] && kill "$(cat anvil.pid)" || true
           pkill -f anvil || true

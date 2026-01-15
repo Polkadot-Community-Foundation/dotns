@@ -142,7 +142,7 @@ abstract contract BaseDotns is Test {
         vm.label(dotnsContentResolverAddress, "DotnsContentResolver");
 
         address popRulesAddress = Upgrades.deployUUPSProxy(
-            "popRules.sol:PopRules", abi.encodeCall(popRules.initialize, (RENT_PRICE))
+            "PopRules.sol:PopRules", abi.encodeCall(popRules.initialize, (RENT_PRICE))
         );
         popRules = PopRules(popRulesAddress);
         vm.label(popRulesAddress, "PopRules");

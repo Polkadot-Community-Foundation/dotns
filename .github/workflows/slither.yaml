@@ -32,9 +32,13 @@ jobs:
           version: nightly
 
       - name: Install dependencies
+        env:
+          FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: forge install
 
       - name: Build contracts
+        env:
+          FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: forge build --build-info
 
       - name: Install Slither
@@ -61,149 +65,107 @@ jobs:
           from collections import defaultdict
 
           def write_output(name, value):
-              """Write to GITHUB_OUTPUT safely"""
               with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-                  if '\n' in value:
-                      # Use a unique delimiter for multiline
-                      delim = 'SLITHER_OUTPUT_END_12345'
-                      f.write(f"{name}<<{delim}\n{value}\n{delim}\n")
-                  else:
-                      f.write(f"{name}={value}\n")
+                  f.write(f"{name}={value}\n")
+
+          def escape_md(s):
+              return s.replace('|', '\\|').replace('\n', ' ').strip()
 
           if not os.path.exists('slither-report.json'):
-              print("ERROR: slither-report.json not found")
-              write_output('status', '❌ Failed')
+              write_output('success', 'false')
               write_output('summary', 'No report generated')
-              write_output('details', 'Slither did not generate a report file.')
+              write_output('total', '0')
               exit(0)
 
           try:
               with open('slither-report.json', 'r') as f:
-                  content = f.read()
-                  if not content.strip():
-                      print("ERROR: slither-report.json is empty")
-                      write_output('status', '❌ Failed')
-                      write_output('summary', 'Empty report')
-                      write_output('details', 'Slither report file is empty.')
-                      exit(0)
-                  data = json.loads(content)
-          except json.JSONDecodeError as e:
-              print(f"ERROR: Invalid JSON: {e}")
-              write_output('status', '❌ Failed')
-              write_output('summary', 'Invalid JSON')
-              write_output('details', f'Failed to parse Slither report: {str(e)}')
+                  data = json.loads(f.read())
+          except:
+              write_output('success', 'false')
+              write_output('summary', 'Invalid report')
+              write_output('total', '0')
               exit(0)
 
           findings = defaultdict(list)
-          
           for result in data.get('results', {}).get('detectors', []):
-              severity = result.get('impact', 'Informational').capitalize()
-              findings[severity].append({
+              sev = result.get('impact', 'Informational').capitalize()
+              
+              # Get location
+              locations = []
+              for elem in result.get('elements', [])[:2]:
+                  if 'source_mapping' in elem:
+                      loc = elem['source_mapping'].get('filename_short', '')
+                      lines = elem['source_mapping'].get('lines', [])
+                      if loc and lines:
+                          locations.append(f"`{loc}:{lines[0]}`")
+              
+              findings[sev].append({
                   'check': result.get('check', 'Unknown'),
-                  'description': result.get('description', '').strip(),
+                  'desc': escape_md(result.get('description', '')[:200]),
                   'confidence': result.get('confidence', 'Unknown').capitalize(),
-                  'elements': result.get('elements', [])
+                  'location': ', '.join(locations[:2]) if locations else 'N/A'
               })
 
-          severity_order = ['High', 'Medium', 'Low', 'Informational', 'Optimization']
-          
-          total_issues = sum(len(v) for v in findings.values())
-          high_count = len(findings.get('High', []))
-          medium_count = len(findings.get('Medium', []))
-          low_count = len(findings.get('Low', []))
-          
-          # Build summary line
-          if total_issues == 0:
-              summary = 'No issues found'
-              status = '✅ Passed'
-              details = ''
+          total = sum(len(v) for v in findings.values())
+          high = len(findings.get('High', []))
+          medium = len(findings.get('Medium', []))
+          low = len(findings.get('Low', []))
+          info = len(findings.get('Informational', []))
+          opt = len(findings.get('Optimization', []))
+
+          # Write summary
+          if total == 0:
+              write_output('success', 'true')
+              write_output('summary', 'No issues found')
+              write_output('total', '0')
           else:
-              counts = []
-              for sev in severity_order:
-                  c = len(findings.get(sev, []))
-                  if c > 0:
-                      counts.append(f'{sev}: {c}')
-              summary = ' | '.join(counts)
+              parts = []
+              if high > 0: parts.append(f'H:{high}')
+              if medium > 0: parts.append(f'M:{medium}')
+              if low > 0: parts.append(f'L:{low}')
+              if info > 0: parts.append(f'I:{info}')
+              if opt > 0: parts.append(f'O:{opt}')
               
-              # Build details with top findings
-              detail_lines = [f'Total: {total_issues} issues', '']
-              
-              if high_count > 0 or medium_count > 0:
-                  detail_lines.append('Top findings:')
-                  shown = 0
-                  for sev in ['High', 'Medium', 'Low']:
-                      for issue in findings.get(sev, [])[:3]:
-                          if shown >= 5:
-                              break
-                          desc = issue['description'].replace('\n', ' ')[:80]
-                          detail_lines.append(f'  [{sev}] {issue["check"]}: {desc}...')
-                          shown += 1
-                      if shown >= 5:
-                          break
-              
-              details = '\n'.join(detail_lines)
-              
-              # Determine status
-              if high_count > 0:
-                  status = '❌ Failed'
-              elif medium_count > 0:
-                  status = '⚠️ Warnings'
-              else:
-                  status = '✅ Passed'
+              write_output('success', 'false' if high > 0 else 'true')
+              write_output('summary', f"{total} findings ({' '.join(parts)}) · See details below ↓")
+              write_output('total', str(total))
 
-          write_output('status', status)
-          write_output('summary', summary)
-          write_output('details', details)
-
-          # Generate full markdown report for artifact
-          output = ['# Slither Analysis Results\n']
+          # Generate detailed markdown
+          severity_icons = {
+              'High': '🔴',
+              'Medium': '🟠', 
+              'Low': '🟡',
+              'Informational': '🔵',
+              'Optimization': '⚪'
+          }
           
-          if total_issues == 0:
-              output.append('No issues detected.\n')
-          else:
-              output.append(f'**Total Issues:** {total_issues}\n')
-              output.append('## Summary\n')
-              output.append('| Severity | Count |')
-              output.append('|----------|-------|')
-              
-              for severity in severity_order:
-                  count = len(findings.get(severity, []))
-                  if count > 0:
-                      output.append(f'| {severity} | {count} |')
-              
-              output.append('\n## Details\n')
-              
-              for severity in severity_order:
-                  issues = findings.get(severity, [])
-                  if not issues:
-                      continue
-                  
-                  output.append(f'\n### {severity} ({len(issues)})\n')
-                  
-                  for issue in issues:
-                      check = issue['check']
-                      desc = issue['description']
-                      confidence = issue['confidence']
-                      
-                      locations = []
-                      for elem in issue['elements'][:2]:
-                          if 'source_mapping' in elem:
-                              loc = elem['source_mapping'].get('filename_short', '')
-                              line = elem['source_mapping'].get('lines', [])
-                              if loc and line:
-                                  locations.append(f"{loc}:{line[0] if line else '?'}")
-                      
-                      location = ', '.join(locations) if locations else 'N/A'
-                      
-                      output.append(f'**{check}** ({confidence} confidence)')
-                      output.append(f'- Location: `{location}`')
-                      output.append(f'- {desc[:300]}')
-                      output.append('')
-
-          with open('slither-results.md', 'w') as f:
-              f.write('\n'.join(output))
+          md_lines = []
           
-          print(f"Generated report: {total_issues} issues ({status})")
+          for sev in ['High', 'Medium', 'Low', 'Informational', 'Optimization']:
+              items = findings.get(sev, [])
+              if not items:
+                  continue
+              
+              icon = severity_icons.get(sev, '⚪')
+              md_lines.append(f'<details>')
+              md_lines.append(f'<summary>{icon} <strong>{sev}</strong> ({len(items)})</summary>')
+              md_lines.append('')
+              md_lines.append('| # | Check | Description | Location |')
+              md_lines.append('|--:|-------|-------------|----------|')
+              
+              for i, item in enumerate(items[:15], 1):
+                  desc = item['desc'][:100] + ('...' if len(item['desc']) > 100 else '')
+                  md_lines.append(f"| {i} | `{item['check']}` | {desc} | {item['location']} |")
+              
+              if len(items) > 15:
+                  md_lines.append(f'| | | *...and {len(items) - 15} more* | |')
+              
+              md_lines.append('')
+              md_lines.append('</details>')
+              md_lines.append('')
+
+          with open('slither-findings.md', 'w') as f:
+              f.write('\n'.join(md_lines))
           PYTHON_EOF
 
       - name: Update PR summary comment
@@ -211,35 +173,56 @@ jobs:
         uses: actions/github-script@v7
         env:
           SECTION: Slither Analysis
-          STATUS: ${{ steps.run.outputs.status }}
+          SUCCESS: ${{ steps.run.outputs.success }}
           SUMMARY: ${{ steps.run.outputs.summary }}
-          DETAILS: ${{ steps.run.outputs.details }}
+          TOTAL: ${{ steps.run.outputs.total }}
           RUN_ID: ${{ github.run_id }}
           REPO: ${{ github.repository }}
         with:
           script: |
+            const fs = require('fs');
             const marker = "<!-- dotns-ci-summary -->";
-            const tableHeader = "| Check | Status | Summary |\n|-------|--------|---------|";
-            
             const section = process.env.SECTION;
-            const status = process.env.STATUS || "❌ Failed";
-            const summary = process.env.SUMMARY || "";
-            const details = process.env.DETAILS || "";
+            const success = process.env.SUCCESS === 'true';
+            const summary = process.env.SUMMARY || '';
+            const total = parseInt(process.env.TOTAL || '0');
             const runId = process.env.RUN_ID;
             const repo = process.env.REPO;
-
+            
+            // Determine status icon
+            let status = "✅";
+            if (summary.includes('H:')) status = "❌";
+            else if (summary.includes('M:') || summary.includes('L:')) status = "⚠️";
+            else if (total === 0) status = "✅";
+            
+            // Read detailed findings
+            let findings = "";
+            try {
+              if (fs.existsSync('slither-findings.md')) {
+                findings = fs.readFileSync('slither-findings.md', 'utf8').trim();
+              }
+            } catch (e) {}
+            
             const sectionStart = `<!-- section:${section}:start -->`;
             const sectionEnd = `<!-- section:${section}:end -->`;
+            const detailsStart = `<!-- details:${section}:start -->`;
+            const detailsEnd = `<!-- details:${section}:end -->`;
 
+            // Table row
             let block = `${sectionStart}\n`;
-            block += `| **${section}** | ${status} | ${summary} |\n`;
-
-            if (details.trim()) {
-              block += `<details><summary>📋 Details</summary>\n\n\`\`\`\n${details.trim()}\n\`\`\`\n\n`;
-              block += `[View full logs](https://github.com/${repo}/actions/runs/${runId})\n</details>\n`;
-            }
-            
+            block += `| ${section} | ${status} | ${summary} |\n`;
             block += `${sectionEnd}\n`;
+            
+            // Detailed findings section (placed after table)
+            let detailsBlock = '';
+            if (total > 0 && findings) {
+              detailsBlock = `${detailsStart}\n`;
+              detailsBlock += `\n---\n\n`;
+              detailsBlock += `### 🔍 ${section}\n\n`;
+              detailsBlock += `${findings}\n\n`;
+              detailsBlock += `[View full report](https://github.com/${repo}/actions/runs/${runId})\n\n`;
+              detailsBlock += `${detailsEnd}\n`;
+            }
 
             const { owner, repo: repoName } = context.repo;
             const issue_number = context.payload.pull_request.number;
@@ -257,15 +240,30 @@ jobs:
               c.body.includes(marker)
             );
 
-            const baseBody = existing?.body ?? `${marker}\n## 🔍 CI Summary\n\n${tableHeader}\n`;
+            const tableHeader = "| Check | Status | Summary |\n|:------|:------:|:--------|\n";
+            let baseBody = existing?.body ?? `${marker}\n## 🔍 CI Summary\n\n${tableHeader}`;
+            
+            // Update or insert table row
             const hasSection = baseBody.includes(sectionStart) && baseBody.includes(sectionEnd);
-
-            let nextBody;
             if (hasSection) {
               const re = new RegExp(`${sectionStart}[\\s\\S]*?${sectionEnd}\\n?`, "m");
-              nextBody = baseBody.replace(re, block);
+              baseBody = baseBody.replace(re, block);
             } else {
-              nextBody = `${baseBody.trimEnd()}\n${block}`;
+              const headerEnd = baseBody.indexOf('\n', baseBody.indexOf('|:---'));
+              if (headerEnd !== -1) {
+                baseBody = baseBody.slice(0, headerEnd + 1) + block + baseBody.slice(headerEnd + 1);
+              } else {
+                baseBody = baseBody + block;
+              }
+            }
+            
+            // Update or insert details section
+            const hasDetails = baseBody.includes(detailsStart) && baseBody.includes(detailsEnd);
+            if (hasDetails) {
+              const re = new RegExp(`${detailsStart}[\\s\\S]*?${detailsEnd}\\n?`, "m");
+              baseBody = baseBody.replace(re, detailsBlock);
+            } else if (detailsBlock) {
+              baseBody = baseBody.trimEnd() + '\n' + detailsBlock;
             }
 
             if (existing) {
@@ -273,14 +271,14 @@ jobs:
                 owner,
                 repo: repoName,
                 comment_id: existing.id,
-                body: nextBody,
+                body: baseBody,
               });
             } else {
               await github.rest.issues.createComment({
                 owner,
                 repo: repoName,
                 issue_number,
-                body: nextBody,
+                body: baseBody,
               });
             }
 
@@ -291,5 +289,5 @@ jobs:
           name: slither-report
           path: |
             slither-report.json
-            slither-results.md
+            slither-findings.md
           retention-days: 30
