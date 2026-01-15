@@ -3,10 +3,10 @@ name: Documentation
 on:
   push:
     branches: [main]
-    paths: ['src/**', 'contracts/**', '**.sol', 'foundry.toml']
+    paths: ["src/**", "contracts/**", "**.sol", "foundry.toml"]
   pull_request:
     branches: [main]
-    paths: ['src/**', 'contracts/**', '**.sol', 'foundry.toml']
+    paths: ["src/**", "contracts/**", "**.sol", "foundry.toml"]
   pull_request_target:
     types: [closed]
   workflow_dispatch:
@@ -57,6 +57,25 @@ jobs:
             echo "error=No documentation generated" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Copy diagrams into doc/src
+        if: steps.docs.outputs.success == 'true'
+        run: |
+          # Expects a repo-level ./diagrams directory.
+          # Copies into the mdBook source tree (docs-output/src) as requested.
+          # Also copies into the built site (docs-output/book) so assets are served even if build already ran.
+          if [ -d "diagrams" ]; then
+            mkdir -p docs-output/src
+
+            rm -rf docs-output/src/diagrams
+            cp -R diagrams docs-output/src/diagrams
+
+            mkdir -p docs-output/book/diagrams
+            rm -rf docs-output/book/diagrams
+            cp -R diagrams docs-output/book/diagrams
+          else
+            echo "No ./diagrams directory found; skipping copy."
+          fi
+
       - name: Set deploy path and URL
         id: path
         run: |
@@ -97,6 +116,7 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
           publish_dir: ./docs-output/book
           destination_dir: ${{ steps.path.outputs.target }}
           keep_files: true
@@ -127,12 +147,12 @@ jobs:
 
             let rows = {};
             let detailsSection = '';
-            
+
             if (existing?.body) {
               const parts = existing.body.split(detailsMarker);
               const tableSection = parts[0] || '';
               if (parts[1]) detailsSection = `\n${detailsMarker}${parts[1]}`;
-              
+
               const lines = tableSection.split('\n');
               for (const line of lines) {
                 const match = line.match(/^\| ([^|]+) \| ([^|]+) \|$/);

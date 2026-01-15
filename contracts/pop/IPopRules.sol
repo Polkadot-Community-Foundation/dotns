@@ -12,6 +12,9 @@ pragma solidity ^0.8.30;
 ///      • Length ≥ 9 with 2 trailing digits: NoStatus (open)
 ///      Trailing digits beyond 2 are invalid. Internal digits do not affect classification.
 ///      Reservation rules apply to a label stripped of trailing digits.
+///      Its also important to note that for Pop Full there are no restrictions to name registrations any
+///      Character combination is valid, the same is valid for Light and No status users with the exception of
+///      Requiring 2 suffix digits appended to the username being registered
 /// @dev The pricing applied is mainly for POP No status users as measure to prevent spam
 /// @custom:security-contact admin@parity.io
 interface IPopRules {
@@ -124,11 +127,10 @@ interface IPopRules {
     /// @notice Calculates price with PoP and reservation validation
     /// @param name Domain label
     /// @param userAddress Registering user for the given label
-    ///@dev We currently revert on names considered as reserved for Governance
+    ///@dev We currently dont revert on names considered as reserved for Governance
     ///     The price we apply here is merely for spam protection and is insignificant
     ///     It mainly applies to no status users
-    /// @dev THis function is the same as @custom:function priceWithCheck
-    /// We just implmeneted this one such that prices for statuses can be fetched without reverting
+    /// @dev This function is the same as @custom:function priceWithCheck
     /// @return metadata Price with PoP requirements
     function priceWithoutCheck(
         string calldata name,
@@ -147,6 +149,7 @@ interface IPopRules {
     /// @notice allows the Owner to update the dot/eth registry
     /// @param ethReg the address of the new registry
     function updateEthRegistry(address ethReg) external;
+
     /// @notice Sets the Proof-of-Personhood (PoP) tier for the caller's profile
     /// @param status The PoP tier to assign to the user (NoStatus, PopLite, or PopFull)
     /// @dev Once set, this PoP status applies to all registrations by this user
