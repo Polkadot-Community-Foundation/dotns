@@ -1,15 +1,9 @@
-name: Slither Static Analysis
+name: Slither Analysis
 
 on:
   pull_request:
-    branches:
-      - main
-      - develop
-    paths:
-      - 'contracts/**'
-      - 'src/**'
-      - 'foundry.toml'
-      - '.github/workflows/slither.yaml'
+    branches: [main, develop]
+    paths: ['contracts/**', 'src/**', 'foundry.toml']
 
 permissions:
   contents: read
@@ -17,159 +11,101 @@ permissions:
   issues: write
 
 jobs:
-  analyse:
+  analyze:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+      - uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
-
-      - name: Install dependencies
-        env:
+      - env:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
-        run: forge install
-
-      - name: Build contracts
-        env:
-          FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
-        run: forge build --build-info
-
-      - name: Install Slither
-        run: pip3 install slither-analyzer
+        run: forge install && forge build --build-info
+      - run: pip3 install slither-analyzer
 
       - name: Run Slither
         continue-on-error: true
         run: |
-          slither . \
-            --json slither-report.json \
-            --filter-paths "lib/|test/" \
-            --exclude-dependencies \
-            --compile-force-framework foundry \
-            || true
+          slither . --json slither.json --filter-paths "lib/|test/" \
+            --exclude-dependencies --compile-force-framework foundry || true
 
-      - name: Process Slither output
+      - name: Process results
         id: run
-        if: always()
-        shell: bash
         run: |
-          python3 << 'PYTHON_EOF'
-          import json
-          import os
+          python3 << 'EOF'
+          import json, os
           from collections import defaultdict
 
-          def write_output(name, value):
-              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-                  f.write(f"{name}={value}\n")
+          out = lambda k,v: open(os.environ['GITHUB_OUTPUT'], 'a').write(f"{k}={v}\n")
 
-          def escape_md(s):
-              return s.replace('|', '\\|').replace('\n', ' ').strip()
-
-          if not os.path.exists('slither-report.json'):
-              write_output('success', 'false')
-              write_output('summary', 'No report generated')
-              write_output('total', '0')
+          if not os.path.exists('slither.json'):
+              out('success', 'false')
+              out('summary', 'No report')
+              out('total', '0')
               exit(0)
 
-          try:
-              with open('slither-report.json', 'r') as f:
-                  data = json.loads(f.read())
-          except:
-              write_output('success', 'false')
-              write_output('summary', 'Invalid report')
-              write_output('total', '0')
-              exit(0)
-
+          data = json.load(open('slither.json'))
           findings = defaultdict(list)
-          for result in data.get('results', {}).get('detectors', []):
-              sev = result.get('impact', 'Informational').capitalize()
-              
-              # Get location
-              locations = []
-              for elem in result.get('elements', [])[:2]:
-                  if 'source_mapping' in elem:
-                      loc = elem['source_mapping'].get('filename_short', '')
-                      lines = elem['source_mapping'].get('lines', [])
-                      if loc and lines:
-                          locations.append(f"`{loc}:{lines[0]}`")
-              
+          
+          for d in data.get('results', {}).get('detectors', []):
+              sev = d.get('impact', 'Info').capitalize()
+              loc = ''
+              for e in d.get('elements', [])[:1]:
+                  sm = e.get('source_mapping', {})
+                  if sm.get('filename_short') and sm.get('lines'):
+                      loc = f"{sm['filename_short']}:{sm['lines'][0]}"
               findings[sev].append({
-                  'check': result.get('check', 'Unknown'),
-                  'desc': escape_md(result.get('description', '')[:200]),
-                  'confidence': result.get('confidence', 'Unknown').capitalize(),
-                  'location': ', '.join(locations[:2]) if locations else 'N/A'
+                  'check': d.get('check', '?'),
+                  'desc': d.get('description', '')[:100].replace('|', '-').replace('\n', ' '),
+                  'loc': loc
               })
 
           total = sum(len(v) for v in findings.values())
-          high = len(findings.get('High', []))
-          medium = len(findings.get('Medium', []))
-          low = len(findings.get('Low', []))
-          info = len(findings.get('Informational', []))
-          opt = len(findings.get('Optimization', []))
+          h, m, l, i = len(findings.get('High',[])), len(findings.get('Medium',[])), len(findings.get('Low',[])), len(findings.get('Informational',[]))
 
-          # Write summary
           if total == 0:
-              write_output('success', 'true')
-              write_output('summary', 'No issues found')
-              write_output('total', '0')
+              out('success', 'true')
+              out('summary', 'No issues')
+              out('total', '0')
           else:
               parts = []
-              if high > 0: parts.append(f'H:{high}')
-              if medium > 0: parts.append(f'M:{medium}')
-              if low > 0: parts.append(f'L:{low}')
-              if info > 0: parts.append(f'I:{info}')
-              if opt > 0: parts.append(f'O:{opt}')
-              
-              write_output('success', 'false' if high > 0 else 'true')
-              write_output('summary', f"{total} findings ({' '.join(parts)}) · See details below ↓")
-              write_output('total', str(total))
+              if h: parts.append(f'H:{h}')
+              if m: parts.append(f'M:{m}')
+              if l: parts.append(f'L:{l}')
+              if i: parts.append(f'I:{i}')
+              out('success', 'false' if h else 'true')
+              out('summary', f"{total} issues ({' '.join(parts)})")
+              out('total', str(total))
 
-          # Generate detailed markdown
-          severity_icons = {
-              'High': '🔴',
-              'Medium': '🟠', 
-              'Low': '🟡',
-              'Informational': '🔵',
-              'Optimization': '⚪'
-          }
-          
-          md_lines = []
-          
-          for sev in ['High', 'Medium', 'Low', 'Informational', 'Optimization']:
+          md = []
+          icons = {'High':'🔴','Medium':'🟠','Low':'🟡','Informational':'🔵'}
+          for sev in ['High','Medium','Low','Informational']:
               items = findings.get(sev, [])
-              if not items:
-                  continue
-              
-              icon = severity_icons.get(sev, '⚪')
-              md_lines.append(f'<details>')
-              md_lines.append(f'<summary>{icon} <strong>{sev}</strong> ({len(items)})</summary>')
-              md_lines.append('')
-              md_lines.append('| # | Check | Description | Location |')
-              md_lines.append('|--:|-------|-------------|----------|')
-              
-              for i, item in enumerate(items[:15], 1):
-                  desc = item['desc'][:100] + ('...' if len(item['desc']) > 100 else '')
-                  md_lines.append(f"| {i} | `{item['check']}` | {desc} | {item['location']} |")
-              
-              if len(items) > 15:
-                  md_lines.append(f'| | | *...and {len(items) - 15} more* | |')
-              
-              md_lines.append('')
-              md_lines.append('</details>')
-              md_lines.append('')
+              if not items: continue
+              md.append(f"\n**{icons.get(sev,'')} {sev} ({len(items)})**\n")
+              md.append("| Check | Description | Location |")
+              md.append("|:------|:------------|:---------|")
+              for x in items[:10]:
+                  md.append(f"| `{x['check']}` | {x['desc']} | `{x['loc']}` |")
+              if len(items) > 10:
+                  md.append(f"| | *+{len(items)-10} more* | |")
+          
+          open('slither-details.md', 'w').write('\n'.join(md))
+          EOF
 
-          with open('slither-findings.md', 'w') as f:
-              f.write('\n'.join(md_lines))
-          PYTHON_EOF
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: slither-report
+          path: |
+            slither.json
+            slither-details.md
+          retention-days: 30
 
-      - name: Update PR summary comment
-        if: always() && github.event_name == 'pull_request'
+      - name: Update PR comment
+        if: always()
         uses: actions/github-script@v7
         env:
           SECTION: Slither Analysis
@@ -181,7 +117,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const marker = "<!-- dotns-ci-summary -->";
+            const marker = "<!-- ci-summary -->";
             const section = process.env.SECTION;
             const success = process.env.SUCCESS === 'true';
             const summary = process.env.SUMMARY || '';
@@ -189,105 +125,59 @@ jobs:
             const runId = process.env.RUN_ID;
             const repo = process.env.REPO;
             
-            // Determine status icon
             let status = "✅";
             if (summary.includes('H:')) status = "❌";
             else if (summary.includes('M:') || summary.includes('L:')) status = "⚠️";
-            else if (total === 0) status = "✅";
             
-            // Read detailed findings
-            let findings = "";
-            try {
-              if (fs.existsSync('slither-findings.md')) {
-                findings = fs.readFileSync('slither-findings.md', 'utf8').trim();
-              }
-            } catch (e) {}
+            let details = '';
+            try { details = fs.readFileSync('slither-details.md', 'utf8').trim(); } catch {}
             
-            const sectionStart = `<!-- section:${section}:start -->`;
-            const sectionEnd = `<!-- section:${section}:end -->`;
-            const detailsStart = `<!-- details:${section}:start -->`;
-            const detailsEnd = `<!-- details:${section}:end -->`;
-
-            // Table row
-            let block = `${sectionStart}\n`;
-            block += `| ${section} | ${status} | ${summary} |\n`;
-            block += `${sectionEnd}\n`;
+            const sectionStart = `<!-- ${section}:start -->`;
+            const sectionEnd = `<!-- ${section}:end -->`;
+            const detailsStart = `<!-- ${section}-details:start -->`;
+            const detailsEnd = `<!-- ${section}-details:end -->`;
             
-            // Detailed findings section (placed after table)
+            const displaySummary = total > 0 ? `${summary} ↓` : summary;
+            const row = `| ${section} | ${status} | ${displaySummary} |\n`;
+            const block = `${sectionStart}\n${row}${sectionEnd}\n`;
+            
             let detailsBlock = '';
-            if (total > 0 && findings) {
-              detailsBlock = `${detailsStart}\n`;
-              detailsBlock += `\n---\n\n`;
-              detailsBlock += `### 🔍 ${section}\n\n`;
-              detailsBlock += `${findings}\n\n`;
-              detailsBlock += `[View full report](https://github.com/${repo}/actions/runs/${runId})\n\n`;
-              detailsBlock += `${detailsEnd}\n`;
+            if (total > 0 && details) {
+              detailsBlock = `${detailsStart}\n\n---\n\n<details>\n<summary><strong>🔍 ${section} Details</strong></summary>\n\n${details}\n\n[View full report](https://github.com/${repo}/actions/runs/${runId})\n\n</details>\n\n${detailsEnd}\n`;
             }
 
             const { owner, repo: repoName } = context.repo;
             const issue_number = context.payload.pull_request.number;
 
             const comments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo: repoName,
-              issue_number,
-              per_page: 100,
+              owner, repo: repoName, issue_number, per_page: 100,
             });
 
             const existing = comments.find(c =>
-              c.user?.login === "github-actions[bot]" &&
-              typeof c.body === "string" &&
-              c.body.includes(marker)
+              c.user?.login === "github-actions[bot]" && c.body?.includes(marker)
             );
 
-            const tableHeader = "| Check | Status | Summary |\n|:------|:------:|:--------|\n";
-            let baseBody = existing?.body ?? `${marker}\n## 🔍 CI Summary\n\n${tableHeader}`;
+            const header = `${marker}\n## CI Summary\n\n| Check | Status | Summary |\n|:------|:------:|:--------|\n`;
+            let body = existing?.body ?? header;
             
-            // Update or insert table row
-            const hasSection = baseBody.includes(sectionStart) && baseBody.includes(sectionEnd);
-            if (hasSection) {
-              const re = new RegExp(`${sectionStart}[\\s\\S]*?${sectionEnd}\\n?`, "m");
-              baseBody = baseBody.replace(re, block);
+            if (body.includes(sectionStart)) {
+              const re = new RegExp(`${sectionStart}\\n[\\s\\S]*?${sectionEnd}\\n`, "m");
+              body = body.replace(re, block);
             } else {
-              const headerEnd = baseBody.indexOf('\n', baseBody.indexOf('|:---'));
-              if (headerEnd !== -1) {
-                baseBody = baseBody.slice(0, headerEnd + 1) + block + baseBody.slice(headerEnd + 1);
-              } else {
-                baseBody = baseBody + block;
-              }
+              const insertPoint = body.indexOf('\n|:---');
+              const insertAfter = body.indexOf('\n', insertPoint + 1);
+              body = body.slice(0, insertAfter + 1) + block + body.slice(insertAfter + 1);
             }
             
-            // Update or insert details section
-            const hasDetails = baseBody.includes(detailsStart) && baseBody.includes(detailsEnd);
-            if (hasDetails) {
-              const re = new RegExp(`${detailsStart}[\\s\\S]*?${detailsEnd}\\n?`, "m");
-              baseBody = baseBody.replace(re, detailsBlock);
+            if (body.includes(detailsStart)) {
+              const re = new RegExp(`${detailsStart}\\n[\\s\\S]*?${detailsEnd}\\n`, "m");
+              body = body.replace(re, detailsBlock);
             } else if (detailsBlock) {
-              baseBody = baseBody.trimEnd() + '\n' + detailsBlock;
+              body = body.trimEnd() + '\n' + detailsBlock;
             }
 
             if (existing) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo: repoName,
-                comment_id: existing.id,
-                body: baseBody,
-              });
+              await github.rest.issues.updateComment({ owner, repo: repoName, comment_id: existing.id, body });
             } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo: repoName,
-                issue_number,
-                body: baseBody,
-              });
+              await github.rest.issues.createComment({ owner, repo: repoName, issue_number, body });
             }
-
-      - name: Upload Slither report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: slither-report
-          path: |
-            slither-report.json
-            slither-findings.md
-          retention-days: 30

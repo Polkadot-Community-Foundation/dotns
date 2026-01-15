@@ -1,4 +1,4 @@
-name: Deploy Contracts and Verify artifacts
+name: Deploy Contracts
 
 on:
   pull_request:
@@ -14,204 +14,109 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.2.6"
-
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-
-      - name: Make scripts executable
-        run: chmod +x setup.bash
-
-      - name: Install dependencies
-        run: bun install
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: chmod +x setup.bash
+      - run: bun install
 
       - name: Start Anvil
         env:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: |
-          anvil --chain-id 420420420 --port 8545 > anvil.log 2>&1 &
-          echo $! > anvil.pid
+          anvil --chain-id 420420420 --port 8545 &
           sleep 3
-
-      - name: Wait for RPC
-        run: |
           for i in {1..30}; do
-            if curl -s -X POST -H "Content-Type: application/json" \
+            curl -s -X POST -H "Content-Type: application/json" \
               --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' \
-              http://127.0.0.1:8545 | grep -q "result"; then
-              echo "RPC ready"
-              exit 0
-            fi
+              http://127.0.0.1:8545 | grep -q "result" && exit 0
             sleep 2
           done
-          echo "RPC not ready"
           exit 1
 
-      - name: Deploy contracts
+      - name: Deploy
         id: run
-        shell: bash
         env:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: |
           set +e
-
           bun run deploy:anvil > deploy.log 2>&1
-          DEPLOY_CODE=$?
-
-          ARTIFACT_PATH="deployments/paseo-local/420420420.json"
-          
-          if [ $DEPLOY_CODE -eq 0 ] && [ -f "$ARTIFACT_PATH" ]; then
-            CONTRACT_COUNT=$(jq 'keys | length' "$ARTIFACT_PATH" 2>/dev/null || echo "0")
+          CODE=$?
+          ARTIFACT="deployments/paseo-local/420420420.json"
+          if [ $CODE -eq 0 ] && [ -f "$ARTIFACT" ]; then
+            COUNT=$(jq 'keys | length' "$ARTIFACT" 2>/dev/null || echo "0")
             echo "success=true" >> "$GITHUB_OUTPUT"
-            echo "contract_count=${CONTRACT_COUNT}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "success=false" >> "$GITHUB_OUTPUT"
-          echo "contract_count=0" >> "$GITHUB_OUTPUT"
-
-          if [ $DEPLOY_CODE -ne 0 ]; then
-            echo "failure_type=deploy" >> "$GITHUB_OUTPUT"
+            echo "summary=${COUNT} contracts deployed" >> "$GITHUB_OUTPUT"
           else
-            echo "failure_type=artifact" >> "$GITHUB_OUTPUT"
+            echo "success=false" >> "$GITHUB_OUTPUT"
+            echo "summary=Deployment failed" >> "$GITHUB_OUTPUT"
+            exit 1
           fi
 
-          {
-            if [ $DEPLOY_CODE -ne 0 ]; then
-              echo "Deployment failed:"
-              tail -n 40 deploy.log
-            fi
-            if [ ! -f "$ARTIFACT_PATH" ]; then
-              echo "Missing artifact: $ARTIFACT_PATH"
-              ls -la deployments/paseo-local 2>/dev/null || echo "(directory not found)"
-            fi
-          } > deploy-error-details.txt 2>/dev/null
-
-          exit 1
-
-      - name: Upload logs
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: deployment-logs
+          name: deploy-logs
           path: |
             deploy.log
-            anvil.log
-            deploy-error-details.txt
             deployments/
           retention-days: 7
 
-      - name: Update PR summary comment
+      - name: Update PR comment
         if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v7
         env:
           SECTION: Deploy Contracts
           SUCCESS: ${{ steps.run.outputs.success }}
-          CONTRACT_COUNT: ${{ steps.run.outputs.contract_count }}
-          FAILURE_TYPE: ${{ steps.run.outputs.failure_type }}
-          RUN_ID: ${{ github.run_id }}
-          REPO: ${{ github.repository }}
+          SUMMARY: ${{ steps.run.outputs.summary }}
         with:
           script: |
-            const fs = require('fs');
-            const marker = "<!-- dotns-ci-summary -->";
+            const marker = "<!-- ci-summary -->";
             const section = process.env.SECTION;
             const success = process.env.SUCCESS === 'true';
-            const contractCount = process.env.CONTRACT_COUNT || '0';
-            const failureType = process.env.FAILURE_TYPE || '';
-            const runId = process.env.RUN_ID;
-            const repo = process.env.REPO;
-            
             const status = success ? "✅" : "❌";
-            const summary = success 
-              ? `${contractCount} contracts deployed` 
-              : (failureType === 'deploy' ? "Deployment failed" : "Missing artifact");
+            const summary = process.env.SUMMARY || (success ? "Passed" : "Failed");
             
-            let details = "";
-            try {
-              if (fs.existsSync('deploy-error-details.txt')) {
-                details = fs.readFileSync('deploy-error-details.txt', 'utf8').trim().substring(0, 2000);
-              }
-            } catch (e) {}
-            
-            const sectionStart = `<!-- section:${section}:start -->`;
-            const sectionEnd = `<!-- section:${section}:end -->`;
+            const sectionStart = `<!-- ${section}:start -->`;
+            const sectionEnd = `<!-- ${section}:end -->`;
+            const row = `| ${section} | ${status} | ${summary} |\n`;
+            const block = `${sectionStart}\n${row}${sectionEnd}\n`;
 
-            let block = `${sectionStart}\n`;
-            block += `| ${section} | ${status} | ${summary} |\n`;
-            
-            if (!success && details) {
-              block += `\n<details>\n<summary>📋 ${section} Details</summary>\n\n`;
-              block += `\`\`\`\n${details}\n\`\`\`\n\n`;
-              block += `[View full logs](https://github.com/${repo}/actions/runs/${runId})\n`;
-              block += `</details>\n`;
-            }
-            
-            block += `${sectionEnd}\n`;
-
-            const { owner, repo: repoName } = context.repo;
+            const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
 
             const comments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo: repoName,
-              issue_number,
-              per_page: 100,
+              owner, repo, issue_number, per_page: 100,
             });
 
             const existing = comments.find(c =>
-              c.user?.login === "github-actions[bot]" &&
-              typeof c.body === "string" &&
-              c.body.includes(marker)
+              c.user?.login === "github-actions[bot]" && c.body?.includes(marker)
             );
 
-            const tableHeader = "| Check | Status | Summary |\n|:------|:------:|:--------|\n";
-            const baseBody = existing?.body ?? `${marker}\n## 🔍 CI Summary\n\n${tableHeader}`;
+            const header = `${marker}\n## CI Summary\n\n| Check | Status | Summary |\n|:------|:------:|:--------|\n`;
+            let body = existing?.body ?? header;
             
-            const hasSection = baseBody.includes(sectionStart) && baseBody.includes(sectionEnd);
-
-            let nextBody;
-            if (hasSection) {
-              const re = new RegExp(`${sectionStart}[\\s\\S]*?${sectionEnd}\\n?`, "m");
-              nextBody = baseBody.replace(re, block);
+            if (body.includes(sectionStart)) {
+              const re = new RegExp(`${sectionStart}\\n[\\s\\S]*?${sectionEnd}\\n`, "m");
+              body = body.replace(re, block);
             } else {
-              const headerEnd = baseBody.indexOf('\n', baseBody.indexOf('|:---'));
-              if (headerEnd !== -1) {
-                nextBody = baseBody.slice(0, headerEnd + 1) + block + baseBody.slice(headerEnd + 1);
-              } else {
-                nextBody = baseBody + block;
-              }
+              const insertPoint = body.indexOf('\n|:---');
+              const insertAfter = body.indexOf('\n', insertPoint + 1);
+              body = body.slice(0, insertAfter + 1) + block + body.slice(insertAfter + 1);
             }
 
             if (existing) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo: repoName,
-                comment_id: existing.id,
-                body: nextBody,
-              });
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
             } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo: repoName,
-                issue_number,
-                body: nextBody,
-              });
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
 
       - name: Stop Anvil
         if: always()
-        run: |
-          [ -f anvil.pid ] && kill "$(cat anvil.pid)" || true
-          pkill -f anvil || true
+        run: pkill -f anvil || true

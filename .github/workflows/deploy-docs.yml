@@ -1,21 +1,12 @@
-name: Deploy Documentation
+name: Documentation
 
 on:
   push:
     branches: [main]
-    paths:
-      - "src/**"
-      - "contracts/**"
-      - "**.sol"
-      - "foundry.toml"
-      - ".github/workflows/deploy-docs.yml"
+    paths: ['src/**', 'contracts/**', '**.sol', 'foundry.toml']
   pull_request:
     branches: [main]
-    paths:
-      - "src/**"
-      - "contracts/**"
-      - "**.sol"
-      - "foundry.toml"
+    paths: ['src/**', 'contracts/**', '**.sol', 'foundry.toml']
   pull_request_target:
     types: [closed]
   workflow_dispatch:
@@ -26,26 +17,23 @@ permissions:
   issues: write
 
 concurrency:
-  group: "pages-deploy"
+  group: pages-deploy
   cancel-in-progress: false
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     if: github.event.action != 'closed'
-    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+      - uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
 
-      - name: Install mdbook
+      - name: Install mdBook
         run: |
           curl -sSL https://github.com/rust-lang/mdBook/releases/download/v0.4.40/mdbook-v0.4.40-x86_64-unknown-linux-gnu.tar.gz | tar -xz
           sudo mv mdbook /usr/local/bin/
@@ -53,206 +41,162 @@ jobs:
       - name: Install dependencies
         run: forge install
 
-      - name: Generate documentation
-        id: docs
-        shell: bash
+      - name: Build contracts
+        run: forge build
+
+      - name: Generate docs
+        id: run
         env:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: |
-          set +e
-          
-          forge doc --out docs-output 2>&1 | tee forge-doc.log
-          DOC_CODE=${PIPESTATUS[0]}
-          
-          if [ $DOC_CODE -ne 0 ]; then
+          if ! forge doc --out docs-output; then
             echo "success=false" >> "$GITHUB_OUTPUT"
-            echo "doc_count=0" >> "$GITHUB_OUTPUT"
-            tail -n 30 forge-doc.log > doc-error.txt 2>/dev/null
+            echo "error=forge doc failed" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          
-          cd docs-output
-          mdbook build 2>&1 | tee ../mdbook-build.log
-          BUILD_CODE=${PIPESTATUS[0]}
-          cd ..
-          
-          if [ $BUILD_CODE -eq 0 ] && [ -d "docs-output/book" ]; then
-            CONTRACT_COUNT=$(find docs-output/book -name "*.html" 2>/dev/null | wc -l | tr -d '[:space:]')
-            echo "success=true" >> "$GITHUB_OUTPUT"
-            echo "doc_count=${CONTRACT_COUNT:-0}" >> "$GITHUB_OUTPUT"
-          else
+
+          if [ ! -f "docs-output/book.toml" ]; then
             echo "success=false" >> "$GITHUB_OUTPUT"
-            echo "doc_count=0" >> "$GITHUB_OUTPUT"
-            {
-              cat forge-doc.log
-              echo ""
-              cat mdbook-build.log 2>/dev/null
-            } > doc-error.txt 2>/dev/null
+            echo "error=No book.toml generated" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-      - name: Determine deploy path
+          cd docs-output
+          if ! mdbook build; then
+            echo "success=false" >> "$GITHUB_OUTPUT"
+            echo "error=mdbook build failed" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cd ..
+
+          if [ -d "docs-output/book" ]; then
+            COUNT=$(find docs-output/book -name "*.html" | wc -l | tr -d ' ')
+            echo "success=true" >> "$GITHUB_OUTPUT"
+            echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
+          else
+            echo "success=false" >> "$GITHUB_OUTPUT"
+            echo "error=No book directory created" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set paths
         id: path
         run: |
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "target=preview/pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            echo "url=https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/preview/pr-${{ github.event.pull_request.number }}/" >> "$GITHUB_OUTPUT"
           else
             echo "target=." >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Upload docs artifact
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: documentation
-          path: |
-            docs-output/
-            forge-doc.log
-            mdbook-build.log
-            doc-error.txt
+          name: docs
+          path: docs-output/
           retention-days: 7
 
-      - name: Deploy to GitHub Pages
-        if: steps.docs.outputs.success == 'true'
-        uses: peaceiris/actions-gh-pages@v4
+      # Initialize gh-pages branch if it doesn't exist
+      - name: Check gh-pages branch
+        if: steps.run.outputs.success == 'true'
+        run: |
+          if ! git ls-remote --exit-code --heads origin gh-pages; then
+            echo "Creating gh-pages branch..."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git checkout --orphan gh-pages
+            git reset --hard
+            echo "# Documentation" > index.html
+            git add index.html
+            git commit -m "Initialize gh-pages"
+            git push origin gh-pages
+            git checkout -
+          fi
+
+      - uses: peaceiris/actions-gh-pages@v4
+        if: steps.run.outputs.success == 'true'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./docs-output/book
           destination_dir: ${{ steps.path.outputs.target }}
           keep_files: true
+          enable_jekyll: false
 
-      - name: Set preview URL
-        id: preview
-        if: github.event_name == 'pull_request' && steps.docs.outputs.success == 'true'
-        run: |
-          OWNER="${{ github.repository_owner }}"
-          REPO="${{ github.event.repository.name }}"
-          PR_NUM="${{ github.event.pull_request.number }}"
-          echo "url=https://${OWNER}.github.io/${REPO}/preview/pr-${PR_NUM}/" >> "$GITHUB_OUTPUT"
-
-      - name: Update PR summary comment
+      - name: Update PR comment
         if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v7
         env:
           SECTION: Documentation
-          SUCCESS: ${{ steps.docs.outputs.success }}
-          DOC_COUNT: ${{ steps.docs.outputs.doc_count }}
-          PREVIEW_URL: ${{ steps.preview.outputs.url }}
-          RUN_ID: ${{ github.run_id }}
-          REPO: ${{ github.repository }}
+          SUCCESS: ${{ steps.run.outputs.success }}
+          COUNT: ${{ steps.run.outputs.count }}
+          ERROR: ${{ steps.run.outputs.error }}
+          URL: ${{ steps.path.outputs.url }}
         with:
           script: |
-            const fs = require('fs');
-            const marker = "<!-- dotns-ci-summary -->";
+            const marker = "<!-- ci-summary -->";
             const section = process.env.SECTION;
             const success = process.env.SUCCESS === 'true';
-            const docCount = process.env.DOC_COUNT || '0';
-            const previewUrl = process.env.PREVIEW_URL || '';
-            const runId = process.env.RUN_ID;
-            const repo = process.env.REPO;
-            
+            const count = process.env.COUNT || '0';
+            const error = process.env.ERROR || '';
+            const url = process.env.URL || '';
+
             const status = success ? "✅" : "❌";
-            let summary = success ? `${docCount} pages` : "Build failed";
-            if (success && previewUrl) {
-              summary += ` [📖 Preview](${previewUrl})`;
-            }
-            
-            let details = "";
-            try {
-              if (fs.existsSync('doc-error.txt')) {
-                details = fs.readFileSync('doc-error.txt', 'utf8').trim().substring(0, 2000);
-              }
-            } catch (e) {}
-            
-            const sectionStart = `<!-- section:${section}:start -->`;
-            const sectionEnd = `<!-- section:${section}:end -->`;
+            let summary = success ? `${count} pages` : `Build failed: ${error}`;
+            if (success && url) summary += ` [📖 Preview](${url})`;
 
-            let block = `${sectionStart}\n`;
-            block += `| ${section} | ${status} | ${summary} |\n`;
-            
-            if (!success && details) {
-              block += `\n<details>\n<summary>📋 ${section} Details</summary>\n\n`;
-              block += `\`\`\`\n${details}\n\`\`\`\n\n`;
-              block += `[View logs](https://github.com/${repo}/actions/runs/${runId})\n`;
-              block += `</details>\n`;
-            }
-            
-            block += `${sectionEnd}\n`;
+            const sectionStart = `<!-- ${section}:start -->`;
+            const sectionEnd = `<!-- ${section}:end -->`;
+            const row = `| ${section} | ${status} | ${summary} |\n`;
+            const block = `${sectionStart}\n${row}${sectionEnd}\n`;
 
-            const { owner, repo: repoName } = context.repo;
+            const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
 
             const comments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo: repoName,
-              issue_number,
-              per_page: 100,
+              owner, repo, issue_number, per_page: 100,
             });
 
             const existing = comments.find(c =>
-              c.user?.login === "github-actions[bot]" &&
-              typeof c.body === "string" &&
-              c.body.includes(marker)
+              c.user?.login === "github-actions[bot]" && c.body?.includes(marker)
             );
 
-            const tableHeader = "| Check | Status | Summary |\n|:------|:------:|:--------|\n";
-            const baseBody = existing?.body ?? `${marker}\n## 🔍 CI Summary\n\n${tableHeader}`;
-            
-            const hasSection = baseBody.includes(sectionStart) && baseBody.includes(sectionEnd);
+            const header = `${marker}\n## CI Summary\n\n| Check | Status | Summary |\n|:------|:------:|:--------|\n`;
+            let body = existing?.body ?? header;
 
-            let nextBody;
-            if (hasSection) {
-              const re = new RegExp(`${sectionStart}[\\s\\S]*?${sectionEnd}\\n?`, "m");
-              nextBody = baseBody.replace(re, block);
+            if (body.includes(sectionStart)) {
+              const re = new RegExp(`${sectionStart}\\n[\\s\\S]*?${sectionEnd}\\n`, "m");
+              body = body.replace(re, block);
             } else {
-              const headerEnd = baseBody.indexOf('\n', baseBody.indexOf('|:---'));
-              if (headerEnd !== -1) {
-                nextBody = baseBody.slice(0, headerEnd + 1) + block + baseBody.slice(headerEnd + 1);
-              } else {
-                nextBody = baseBody + block;
-              }
+              const insertPoint = body.indexOf('\n|:---');
+              const insertAfter = body.indexOf('\n', insertPoint + 1);
+              body = body.slice(0, insertAfter + 1) + block + body.slice(insertAfter + 1);
             }
 
             if (existing) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo: repoName,
-                comment_id: existing.id,
-                body: nextBody,
-              });
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
             } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo: repoName,
-                issue_number,
-                body: nextBody,
-              });
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
 
-      - name: Fail if docs failed
-        if: steps.docs.outputs.success != 'true'
-        run: exit 1
+      - name: Fail if docs generation failed
+        if: steps.run.outputs.success != 'true'
+        run: |
+          echo "Documentation build failed: ${{ steps.run.outputs.error }}"
+          exit 1
 
-  cleanup-preview:
+  cleanup:
     runs-on: ubuntu-latest
     if: github.event.action == 'closed'
-    
     steps:
-      - name: Checkout gh-pages branch
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: gh-pages
           fetch-depth: 0
-
-      - name: Remove preview directory
-        run: |
-          PR_NUM="${{ github.event.pull_request.number }}"
-          PREVIEW_DIR="preview/pr-${PR_NUM}"
-          
-          if [ -d "$PREVIEW_DIR" ]; then
-            rm -rf "$PREVIEW_DIR"
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add -A
-            git commit -m "Clean up docs preview for PR #${PR_NUM}" || true
-            git push
-          fi
+      - run: |
+          DIR="preview/pr-${{ github.event.pull_request.number }}"
+          [ -d "$DIR" ] || exit 0
+          rm -rf "$DIR"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Clean up preview for PR #${{ github.event.pull_request.number }}" || true
+          git push
