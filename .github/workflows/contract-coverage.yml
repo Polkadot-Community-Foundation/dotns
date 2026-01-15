@@ -1,9 +1,9 @@
-name: Slither Analysis
+name: Contract Coverage
 
 on:
   pull_request:
-    branches: [main, develop]
-    paths: ['contracts/**', 'src/**', 'foundry.toml']
+    branches: [main]
+    paths: ['src/**', 'test/**', '**.sol']
 
 permissions:
   contents: read
@@ -11,108 +11,107 @@ permissions:
   issues: write
 
 jobs:
-  analyze:
+  coverage:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
       - uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
-      - env:
-          FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
-        run: forge install && forge build --build-info
-      - run: pip3 install slither-analyzer
 
-      - name: Run Slither
-        continue-on-error: true
-        run: |
-          slither . --json slither.json --filter-paths "lib/|test/" \
-            --exclude-dependencies --compile-force-framework foundry || true
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.6"
 
-      - name: Process results
+      - run: bun install
+
+      - name: Run coverage
         id: run
+        env:
+          FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: |
+          set +e
+          forge coverage --report summary 2>&1 | tee coverage.log
+          CODE=$?
+
           python3 << 'EOF'
-          import json, os
-          from collections import defaultdict
+          import re
+          import os
 
           out = lambda k,v: open(os.environ['GITHUB_OUTPUT'], 'a').write(f"{k}={v}\n")
 
-          if not os.path.exists('slither.json'):
-              out('result', 'Failed - No report generated')
-              out('total', '0')
-              out('has_issues', 'false')
-              exit(0)
+          with open('coverage.log', 'r') as f:
+              content = f.read()
 
-          data = json.load(open('slither.json'))
-          findings = defaultdict(list)
+          # Parse coverage summary
+          # Format: | File | % Lines | % Statements | % Branches | % Funcs |
+          files = []
+          total_lines = None
+          
+          for line in content.split('\n'):
+              # Match file rows
+              match = re.match(r'\|\s*([^|]+)\s*\|\s*([\d.]+)%\s*\|\s*([\d.]+)%\s*\|\s*([\d.]+)%\s*\|\s*([\d.]+)%\s*\|', line)
+              if match:
+                  name = match.group(1).strip()
+                  if name and name != 'File' and not name.startswith('-'):
+                      files.append({
+                          'name': name,
+                          'lines': float(match.group(2)),
+                          'statements': float(match.group(3)),
+                          'branches': float(match.group(4)),
+                          'funcs': float(match.group(5))
+                      })
+              
+              # Match total row
+              total_match = re.search(r'Total[^|]*\|\s*([\d.]+)%', line)
+              if total_match:
+                  total_lines = float(total_match.group(1))
 
-          for d in data.get('results', {}).get('detectors', []):
-              sev = d.get('impact', 'Info').capitalize()
-              loc = ''
-              for e in d.get('elements', [])[:1]:
-                  sm = e.get('source_mapping', {})
-                  if sm.get('filename_short') and sm.get('lines'):
-                      loc = f"{sm['filename_short']}:{sm['lines'][0]}"
-              findings[sev].append({
-                  'check': d.get('check', '?'),
-                  'desc': d.get('description', '')[:100].replace('|', '-').replace('\n', ' '),
-                  'loc': loc
-              })
-
-          total = sum(len(v) for v in findings.values())
-          h = len(findings.get('High',[]))
-          m = len(findings.get('Medium',[]))
-          l = len(findings.get('Low',[]))
-          i = len(findings.get('Informational',[]))
-
-          if total == 0:
-              out('result', 'Passed - No issues found')
-              out('total', '0')
-              out('has_issues', 'false')
+          if not files:
+              out('result', 'Failed - No coverage data')
+              out('has_details', 'false')
           else:
-              parts = []
-              if h: parts.append(f'{h} high')
-              if m: parts.append(f'{m} medium')
-              if l: parts.append(f'{l} low')
-              if i: parts.append(f'{i} info')
-              out('result', f'Found {total} issues: {", ".join(parts)}')
-              out('total', str(total))
-              out('has_issues', 'true')
+              # Calculate average if no total
+              if total_lines is None:
+                  total_lines = sum(f['lines'] for f in files) / len(files)
+              
+              out('result', f'{total_lines:.1f}% line coverage')
+              out('has_details', 'true')
 
+          # Build details markdown
           md = []
-          for sev in ['High','Medium','Low','Informational']:
-              items = findings.get(sev, [])
-              if not items: continue
-              md.append(f"\n**{sev} ({len(items)})**\n")
-              md.append("| Check | Description | Location |")
-              md.append("|:------|:------------|:---------|")
-              for x in items[:10]:
-                  md.append(f"| {x['check']} | {x['desc']} | {x['loc']} |")
-              if len(items) > 10:
-                  md.append(f"| | +{len(items)-10} more | |")
+          md.append("\n| File | Lines | Statements | Branches | Functions |")
+          md.append("|:-----|------:|-----------:|---------:|----------:|")
+          
+          for f in sorted(files, key=lambda x: x['lines']):
+              name = f['name']
+              if len(name) > 40:
+                  name = '...' + name[-37:]
+              md.append(f"| {name} | {f['lines']:.1f}% | {f['statements']:.1f}% | {f['branches']:.1f}% | {f['funcs']:.1f}% |")
 
-          open('slither-details.md', 'w').write('\n'.join(md))
+          with open('coverage-details.md', 'w') as f:
+              f.write('\n'.join(md))
           EOF
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: slither-report
+          name: coverage-report
           path: |
-            slither.json
-            slither-details.md
-          retention-days: 30
+            coverage.log
+            coverage-details.md
+          retention-days: 7
 
       - name: Update PR comment
         if: always()
         uses: actions/github-script@v7
         env:
-          SECTION: Slither Analysis
+          SECTION: Coverage
           RESULT: ${{ steps.run.outputs.result }}
-          HAS_ISSUES: ${{ steps.run.outputs.has_issues }}
+          HAS_DETAILS: ${{ steps.run.outputs.has_details }}
           RUN_ID: ${{ github.run_id }}
           REPO: ${{ github.repository }}
         with:
@@ -122,12 +121,12 @@ jobs:
             const detailsMarker = "<!-- details-section -->";
             const section = process.env.SECTION;
             const result = process.env.RESULT || 'Unknown';
-            const hasIssues = process.env.HAS_ISSUES === 'true';
+            const hasDetails = process.env.HAS_DETAILS === 'true';
             const runId = process.env.RUN_ID;
             const repoFull = process.env.REPO;
 
             let details = '';
-            try { details = fs.readFileSync('slither-details.md', 'utf8').trim(); } catch {}
+            try { details = fs.readFileSync('coverage-details.md', 'utf8').trim(); } catch {}
 
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
@@ -140,16 +139,13 @@ jobs:
               c.user?.login === "github-actions[bot]" && c.body?.includes(marker)
             );
 
-            // Parse existing data
             let rows = {};
             let existingDetails = {};
             
             if (existing?.body) {
-              // Split into table and details sections
               const parts = existing.body.split(detailsMarker);
               const tableSection = parts[0] || '';
               
-              // Parse table rows - only match lines with exactly 2 cells after Check|Result header
               const lines = tableSection.split('\n');
               for (const line of lines) {
                 const match = line.match(/^\| ([^|]+) \| ([^|]+) \|$/);
@@ -161,7 +157,6 @@ jobs:
                 }
               }
               
-              // Parse existing details
               const detailsRegex = /<details>\s*<summary><strong>([^<]+)<\/strong><\/summary>([\s\S]*?)<\/details>/g;
               let detailMatch;
               while ((detailMatch = detailsRegex.exec(existing.body)) !== null) {
@@ -169,10 +164,14 @@ jobs:
               }
             }
 
-            // Update this section's row
             rows[section] = result;
 
-            // Build table
+            if (hasDetails && details) {
+              existingDetails[section] = `<details>\n<summary><strong>${section}</strong></summary>\n\n${details}\n\n[View full report](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`;
+            } else {
+              delete existingDetails[section];
+            }
+
             const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Coverage', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
             const sortedKeys = Object.keys(rows).sort((a, b) => {
               const ai = order.indexOf(a), bi = order.indexOf(b);
@@ -184,14 +183,6 @@ jobs:
               table += `| ${key} | ${rows[key]} |\n`;
             }
 
-            // Update details
-            if (hasIssues && details) {
-              existingDetails[section] = `<details>\n<summary><strong>${section}</strong></summary>\n\n${details}\n\n[View full report](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`;
-            } else {
-              delete existingDetails[section];
-            }
-
-            // Build details section
             const detailsOrder = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Coverage'];
             const sortedDetails = Object.keys(existingDetails).sort((a, b) => {
               const ai = detailsOrder.indexOf(a), bi = detailsOrder.indexOf(b);
