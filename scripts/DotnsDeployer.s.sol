@@ -5,7 +5,7 @@ import {console} from "forge-std/Script.sol";
 import {BaseDeployer} from "./BaseDeployer.s.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
-import {PopRules, IPopRules} from "../contracts/pop/popRules.sol";
+import {PopRules, IPopRules} from "../contracts/pop/PopRules.sol";
 import {DotnsRegistrar, IDotnsRegistrar} from "../contracts/registrars/DotnsRegistrar.sol";
 import {DotnsRegistrarController, IDotnsRegistrarController} from "../contracts/registrars/DotnsRegistrarController.sol";
 import {DotnsRegistry, IDotnsRegistry} from "../contracts/registry/DotnsRegistry.sol";
