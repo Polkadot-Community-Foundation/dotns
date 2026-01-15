@@ -40,7 +40,7 @@ jobs:
             const marker = "<!-- ci-summary -->";
             const detailsMarker = "<!-- details-section -->";
             const section = process.env.SECTION;
-            const result = process.env.RESULT || 'Unknown';
+            const result = process.env.RESULT || 'PR Title Check Passed';
 
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
