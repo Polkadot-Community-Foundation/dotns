@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import {Test} from "forge-std/Test.sol";
 
-import {PopOracle, IPopOracle} from "../../contracts/pop/PopOracle.sol";
+import {PopRules, IPopRules} from "../../contracts/pop/PopRules.sol";
 import {DotnsRegistrar, IDotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
 import {
     DotnsRegistrarController,
@@ -28,7 +28,7 @@ import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 ///      - DotnsRegistry: forward registry used to set subnode ownership under .dot
 ///      - DotnsReverseResolver: reverse resolver used to set default reverse records
 ///      - DotnsContentResolver: resolver used for content records
-///      - PopOracle: PoP rules and spam-pricing oracle
+///      - PopRules: PoP rules and spam-pricing oracle
 ///      - DotnsRegistrarController: commit–reveal controller orchestrating registration flow
 ///
 /// @dev Testing conventions:
@@ -52,7 +52,7 @@ abstract contract BaseDotns is Test {
     uint256 public constant DEFAULT_BALANCE = 99_999_999_999_999 ether;
 
     /// @notice Deployed PoP oracle instance.
-    PopOracle public popOracle;
+    PopRules public popRules;
 
     /// @notice Deployed DotNS registrar instance.
     DotnsRegistrar public dotnsRegistrar;
@@ -76,7 +76,7 @@ abstract contract BaseDotns is Test {
     StoreFactory public storeFactory;
 
     /// @notice Rent price applied to PoP NoStatus users for spam resistance.
-    /// @dev This value is passed into PopOracle initialization in this base test.
+    /// @dev This value is passed into PopRules initialization in this base test.
     uint256 public constant RENT_PRICE = 2e15 wei;
 
     /// @notice Zero hash constant
@@ -141,11 +141,11 @@ abstract contract BaseDotns is Test {
         dotnsContentResolver = DotnsContentResolver(dotnsContentResolverAddress);
         vm.label(dotnsContentResolverAddress, "DotnsContentResolver");
 
-        address popOracleAddress = Upgrades.deployUUPSProxy(
-            "PopOracle.sol:PopOracle", abi.encodeCall(PopOracle.initialize, (RENT_PRICE))
+        address popRulesAddress = Upgrades.deployUUPSProxy(
+            "PopRules.sol:PopRules", abi.encodeCall(popRules.initialize, (RENT_PRICE))
         );
-        popOracle = PopOracle(popOracleAddress);
-        vm.label(popOracleAddress, "PopOracle");
+        popRules = PopRules(popRulesAddress);
+        vm.label(popRulesAddress, "PopRules");
 
         address dotnContentResolverAddress = Upgrades.deployUUPSProxy(
             "DotnsContentResolver.sol:DotnsContentResolver",
@@ -169,7 +169,7 @@ abstract contract BaseDotns is Test {
                     IDotnsRegistrar(dotnsRegistrarAddress),
                     IDotnsRegistry(dotnsRegistryAddress),
                     IDotnsReverseResolver(dotnsReverseResolverAddress),
-                    IPopOracle(popOracleAddress),
+                    IPopRules(popRulesAddress),
                     IStoreFactory(address(storeFactory)),
                     6 seconds,
                     1 days
@@ -179,7 +179,7 @@ abstract contract BaseDotns is Test {
         dotnsRegistrarController = DotnsRegistrarController(dotnsRegistrarControllerAddress);
         vm.label(dotnsRegistrarControllerAddress, "DotnsRegistrarController");
         dotnsReverseResolver.updateRegistrar(dotnsRegistrarControllerAddress);
-        popOracle.updateEthRegistry(dotnsRegistrarControllerAddress);
+        popRules.updateEthRegistry(dotnsRegistrarControllerAddress);
         dotnsRegistrar.addController(IDotnsRegistrarController(dotnsRegistrarControllerAddress));
         dotnsRegistry.updateRegistrarController(
             IDotnsRegistrarController(dotnsRegistrarControllerAddress)
@@ -241,7 +241,7 @@ abstract contract BaseDotns is Test {
     }
 
     /// @notice Submits a commitment, waits for the minimum age, then registers with the exact oracle price.
-    /// @dev Prices are obtained via `popOracle.priceWithCheck(label, owner)`.
+    /// @dev Prices are obtained via `popRules.priceWithCheck(label, owner)`.
     /// @param registration Registration parameters.
     function _commitRegistrationAndRegister(
         IDotnsRegistrarController.Registration memory registration
@@ -250,8 +250,8 @@ abstract contract BaseDotns is Test {
     {
         _commitRegistrationAndWaitMinimumAge(registration);
 
-        IPopOracle.PriceWithMeta memory priceMetadata =
-            popOracle.priceWithCheck(registration.label, registration.owner);
+        IPopRules.PriceWithMeta memory priceMetadata =
+            popRules.priceWithCheck(registration.label, registration.owner);
 
         vm.prank(registration.owner);
         dotnsRegistrarController.register{value: priceMetadata.price}(registration);
@@ -278,7 +278,7 @@ abstract contract BaseDotns is Test {
             DotnsRegistrarController(address(dotnsRegistrarController)).minCommitmentAge();
         vm.warp(block.timestamp + minAge + 1);
 
-        uint256 requiredPayment = popOracle.priceWithCheck(label, nameOwner).price;
+        uint256 requiredPayment = popRules.priceWithCheck(label, nameOwner).price;
 
         vm.prank(nameOwner);
         dotnsRegistrarController.register{value: requiredPayment}(registration);
@@ -294,14 +294,14 @@ abstract contract BaseDotns is Test {
     function _register(
         string memory label,
         address labelOwner,
-        IPopOracle.PopStatus status
+        IPopRules.PopStatus status
     )
         internal
         returns (bytes32 node)
     {
-        if (status != IPopOracle.PopStatus.NoStatus) {
+        if (status != IPopRules.PopStatus.NoStatus) {
             vm.prank(labelOwner);
-            popOracle.setUserPopStatus(status);
+            popRules.setUserPopStatus(status);
         }
 
         _commitAndRegister(label, labelOwner, true);
@@ -331,6 +331,8 @@ abstract contract BaseDotns is Test {
     /// @param labelHash keccak256(bytes(label)) for the registered label.
     /// @return key The derived bytes32 key used in Store for the given label.
     function _storeKey(bytes32 labelHash) internal pure returns (bytes32 key) {
+        // casting to 'bytes32' nothing is unsafe about this
+        // forge-lint: disable-next-line(unsafe-typecast)
         key = keccak256(abi.encodePacked(bytes32("dotns.registered"), labelHash));
     }
 

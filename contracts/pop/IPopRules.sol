@@ -1,20 +1,23 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-/// @title IPOPOracle
-/// @notice Oracle interface defining DotNS price calculation, PoP-tier requirements, and base-name reservation rules
+/// @title IPopRules
+/// @notice Proof of personhood interface defining DotNS price calculation, PoP-tier requirements, and base-name reservation rules
 /// @dev Provides the classification logic for DotNS labels, enforces suffix constraints, and exposes reservation metadata.
 ///      Names are evaluated according to the following rules:
 ///      • Length ≤ 5: Reserved
 ///      • Length 6–8 without trailing digits: PopFull required
-///      • Length 6–8 with 1–2 trailing digits: PopLite required
+///      • Length 6–8 with 2 trailing digits: PopLite required
 ///      • Length ≥ 9 without trailing digits: PopFull required
 ///      • Length ≥ 9 with 2 trailing digits: NoStatus (open)
 ///      Trailing digits beyond 2 are invalid. Internal digits do not affect classification.
 ///      Reservation rules apply to a label stripped of trailing digits.
+///      Its also important to note that for Pop Full there are no restrictions to name registrations any
+///      Character combination is valid, the same is valid for Light and No status users with the exception of
+///      Requiring 2 suffix digits appended to the username being registered
 /// @dev The pricing applied is mainly for POP No status users as measure to prevent spam
 /// @custom:security-contact admin@parity.io
-interface IPopOracle {
+interface IPopRules {
     /// @notice Proof-of-Personhood eligibility tier
     /// @dev Defines verification requirements for a given name classification
     enum PopStatus {
@@ -121,6 +124,22 @@ interface IPopOracle {
         view
         returns (PriceWithMeta memory metadata);
 
+    /// @notice Calculates price with PoP and reservation validation
+    /// @param name Domain label
+    /// @param userAddress Registering user for the given label
+    ///@dev We currently dont revert on names considered as reserved for Governance
+    ///     The price we apply here is merely for spam protection and is insignificant
+    ///     It mainly applies to no status users
+    /// @dev This function is the same as @custom:function priceWithCheck
+    /// @return metadata Price with PoP requirements
+    function priceWithoutCheck(
+        string calldata name,
+        address userAddress
+    )
+        external
+        view
+        returns (PriceWithMeta memory metadata);
+
     /// @notice Used to determine if a given name is a base name
     ///        Base name means has no trailing digits based on POP rules
     /// @param name The name to check
@@ -130,6 +149,7 @@ interface IPopOracle {
     /// @notice allows the Owner to update the dot/eth registry
     /// @param ethReg the address of the new registry
     function updateEthRegistry(address ethReg) external;
+
     /// @notice Sets the Proof-of-Personhood (PoP) tier for the caller's profile
     /// @param status The PoP tier to assign to the user (NoStatus, PopLite, or PopFull)
     /// @dev Once set, this PoP status applies to all registrations by this user

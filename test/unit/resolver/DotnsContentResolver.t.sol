@@ -3,103 +3,134 @@ pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IDotnsContentResolver} from "../../../contracts/resolvers/IDotnsContentResolver.sol";
-import {IPopOracle} from "../../../contracts/pop/IPopOracle.sol";
+import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 
 contract DotnsContentResolverTests is BaseDotns {
-    function test_setContenthash_and_read() public {
-        bytes32 node = _register("contenthash01", ed, IPopOracle.PopStatus.NoStatus);
-        bytes memory hash =
+    function test_set_contenthash_and_read() public {
+        address nameOwner = ed;
+
+        bytes32 node = _register("contenthash01", nameOwner, IPopRules.PopStatus.NoStatus);
+
+        bytes memory contentHash =
             hex"e30101701220aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
         vm.expectEmit(true, false, false, true);
-        emit IDotnsContentResolver.ContentHashUpdated(node, hash);
+        emit IDotnsContentResolver.ContentHashUpdated(node, contentHash);
 
-        vm.prank(ed);
-        dotnsContentResolver.setContenthash(node, hash);
+        vm.prank(nameOwner);
+        dotnsContentResolver.setContenthash(node, contentHash);
 
-        assertEq(dotnsContentResolver.contenthash(node), hash);
+        assertEq(dotnsContentResolver.contenthash(node), contentHash);
     }
 
-    function test_setText_and_read() public {
-        bytes32 node = _register("textrecord01", ed, IPopOracle.PopStatus.NoStatus);
+    function test_set_text_and_read() public {
+        address nameOwner = ed;
+
+        bytes32 node = _register("textrecord01", nameOwner, IPopRules.PopStatus.NoStatus);
+
+        string memory textKey = "ipfs";
+        string memory textValue = "bafytextcid1";
 
         vm.expectEmit(true, true, false, true);
-        emit IDotnsContentResolver.TextUpdated(node, "ipfs", "bafytextcid1");
+        emit IDotnsContentResolver.TextUpdated(node, textKey, textValue);
 
-        vm.prank(ed);
-        dotnsContentResolver.setText(node, "ipfs", "bafytextcid1");
+        vm.prank(nameOwner);
+        dotnsContentResolver.setText(node, textKey, textValue);
 
-        assertEq(dotnsContentResolver.text(node, "ipfs"), "bafytextcid1");
+        assertEq(dotnsContentResolver.text(node, textKey), textValue);
     }
 
-    function test_setMultipleTextKeys() public {
-        bytes32 node = _register("multikeys01", ed, IPopOracle.PopStatus.NoStatus);
+    function test_set_multiple_text_keys() public {
+        address nameOwner = ed;
 
-        vm.startPrank(ed);
+        bytes32 node = _register("multikeys01", nameOwner, IPopRules.PopStatus.NoStatus);
+
+        string memory firstKey = "ipfs";
+        string memory firstValue = "bafy1";
+        string memory secondKey = "avatar";
+        string memory secondValue = "bafy2";
+
+        vm.startPrank(nameOwner);
 
         vm.expectEmit(true, true, false, true);
-        emit IDotnsContentResolver.TextUpdated(node, "ipfs", "bafy1");
-        dotnsContentResolver.setText(node, "ipfs", "bafy1");
+        emit IDotnsContentResolver.TextUpdated(node, firstKey, firstValue);
+        dotnsContentResolver.setText(node, firstKey, firstValue);
 
         vm.expectEmit(true, true, false, true);
-        emit IDotnsContentResolver.TextUpdated(node, "avatar", "bafy2");
-        dotnsContentResolver.setText(node, "avatar", "bafy2");
+        emit IDotnsContentResolver.TextUpdated(node, secondKey, secondValue);
+        dotnsContentResolver.setText(node, secondKey, secondValue);
 
         vm.stopPrank();
 
-        assertEq(dotnsContentResolver.text(node, "ipfs"), "bafy1");
-        assertEq(dotnsContentResolver.text(node, "avatar"), "bafy2");
+        assertEq(dotnsContentResolver.text(node, firstKey), firstValue);
+        assertEq(dotnsContentResolver.text(node, secondKey), secondValue);
     }
 
-    function test_setText_onMultipleNodes() public {
-        bytes32 nodeA = _register("mysepcialnodeA01", ed, IPopOracle.PopStatus.NoStatus);
-        bytes32 nodeB = _register("mysepcialnodeB01", ed, IPopOracle.PopStatus.NoStatus);
+    function test_set_text_on_multiple_nodes() public {
+        address nameOwner = ed;
 
-        vm.startPrank(ed);
+        bytes32 firstNode = _register("myspecialnodea01", nameOwner, IPopRules.PopStatus.NoStatus);
+        bytes32 secondNode = _register("myspecialnodeb01", nameOwner, IPopRules.PopStatus.NoStatus);
+
+        string memory textKey = "ipfs";
+        string memory firstValue = "a";
+        string memory secondValue = "b";
+
+        vm.startPrank(nameOwner);
 
         vm.expectEmit(true, true, false, true);
-        emit IDotnsContentResolver.TextUpdated(nodeA, "ipfs", "a");
-        dotnsContentResolver.setText(nodeA, "ipfs", "a");
+        emit IDotnsContentResolver.TextUpdated(firstNode, textKey, firstValue);
+        dotnsContentResolver.setText(firstNode, textKey, firstValue);
 
         vm.expectEmit(true, true, false, true);
-        emit IDotnsContentResolver.TextUpdated(nodeB, "ipfs", "b");
-        dotnsContentResolver.setText(nodeB, "ipfs", "b");
+        emit IDotnsContentResolver.TextUpdated(secondNode, textKey, secondValue);
+        dotnsContentResolver.setText(secondNode, textKey, secondValue);
 
         vm.stopPrank();
 
-        assertEq(dotnsContentResolver.text(nodeA, "ipfs"), "a");
-        assertEq(dotnsContentResolver.text(nodeB, "ipfs"), "b");
+        assertEq(dotnsContentResolver.text(firstNode, textKey), firstValue);
+        assertEq(dotnsContentResolver.text(secondNode, textKey), secondValue);
     }
 
-    function test_operatorCanSetRecords() public {
-        bytes32 node = _register("operatoor01", ed, IPopOracle.PopStatus.NoStatus);
+    function test_operator_can_set_text_records() public {
+        address nameOwner = ed;
+        address operator = address(this);
 
-        vm.prank(ed);
+        bytes32 node = _register("operatorrr01", nameOwner, IPopRules.PopStatus.NoStatus);
+
+        vm.prank(nameOwner);
         vm.expectEmit(true, true, false, true);
-        emit IDotnsContentResolver.ApprovalForAll(ed, address(this), true);
-        dotnsContentResolver.setApprovalForAll(address(this), true);
+        emit IDotnsContentResolver.ApprovalForAll(nameOwner, operator, true);
+        dotnsContentResolver.setApprovalForAll(operator, true);
+
+        string memory textKey = "ipfs";
+        string memory textValue = "operatorCid";
 
         vm.expectEmit(true, true, false, true);
-        emit IDotnsContentResolver.TextUpdated(node, "ipfs", "operatorCid");
-        dotnsContentResolver.setText(node, "ipfs", "operatorCid");
+        emit IDotnsContentResolver.TextUpdated(node, textKey, textValue);
+        dotnsContentResolver.setText(node, textKey, textValue);
 
-        assertEq(dotnsContentResolver.text(node, "ipfs"), "operatorCid");
+        assertEq(dotnsContentResolver.text(node, textKey), textValue);
     }
 
-    function test_operatorCanSetContenthash() public {
-        bytes32 node = _register("operatorContent01", ed, IPopOracle.PopStatus.NoStatus);
-        bytes memory hash =
+    function test_operator_can_set_contenthash() public {
+        address nameOwner = ed;
+        address operator = address(this);
+
+        bytes32 node = _register("operatorcontent01", nameOwner, IPopRules.PopStatus.NoStatus);
+
+        bytes memory contentHash =
             hex"e30101701220bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
-        vm.prank(ed);
+        vm.prank(nameOwner);
         vm.expectEmit(true, true, false, true);
-        emit IDotnsContentResolver.ApprovalForAll(ed, address(this), true);
-        dotnsContentResolver.setApprovalForAll(address(this), true);
+        emit IDotnsContentResolver.ApprovalForAll(nameOwner, operator, true);
+        dotnsContentResolver.setApprovalForAll(operator, true);
 
         vm.expectEmit(true, false, false, true);
-        emit IDotnsContentResolver.ContentHashUpdated(node, hash);
-        dotnsContentResolver.setContenthash(node, hash);
+        emit IDotnsContentResolver.ContentHashUpdated(node, contentHash);
+        dotnsContentResolver.setContenthash(node, contentHash);
 
-        assertEq(dotnsContentResolver.contenthash(node), hash);
+        assertEq(dotnsContentResolver.contenthash(node), contentHash);
     }
 }

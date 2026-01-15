@@ -18,6 +18,11 @@ interface IDotnsReverseResolver {
     /// @param newRegistrar New registrar.
     event RegistrarUpdated(address indexed oldRegistrar, address indexed newRegistrar);
 
+    /// @notice Emitted when a name is associated with an address
+    /// @param addr The address for which the reverse name is being set.
+    /// @param name The human-readable name associated with the address.
+    event ReverseNameSet(address indexed addr, string indexed name);
+
     /// @notice Associates an address with a reverse name record.
     /// @dev This function overwrites any existing reverse record for `addr`.
     /// @param addr The address for which the reverse name is being set.

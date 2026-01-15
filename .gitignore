@@ -12,3 +12,4 @@ deployments/**/.pendingSafeTransactions
 deployments/localhost
 broadcast/*
 /bin/*
+.DS_Store
