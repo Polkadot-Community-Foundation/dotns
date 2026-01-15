@@ -6,7 +6,8 @@ on:
       - main
       - develop
     paths:
-      - "contracts/**.sol"
+      - "src/**"
+      - "contracts/**"
       - "foundry.toml"
       - "remappings.txt"
       - ".github/workflows/4naly3er.yml"
@@ -62,121 +63,178 @@ jobs:
         continue-on-error: true
         run: |
           cd .4naly3er
-          yarn analyze "../contracts" "" "${{ github.server_url }}/${{ github.repository }}" || true
+          # Try both src and contracts directories
+          if [ -d "../src" ]; then
+            yarn analyze "../src" "" "${{ github.server_url }}/${{ github.repository }}" || true
+          elif [ -d "../contracts" ]; then
+            yarn analyze "../contracts" "" "${{ github.server_url }}/${{ github.repository }}" || true
+          else
+            echo "No src/ or contracts/ directory found"
+          fi
           cd ..
 
       - name: Process 4naly3er output
+        id: run
         if: always()
+        shell: bash
         run: |
-          python3 << 'EOF'
+          python3 << 'PYTHON_EOF'
           import os
           import re
 
+          def write_output(name, value):
+              """Write to GITHUB_OUTPUT safely"""
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  if '\n' in value:
+                      delim = 'ANALYZER_OUTPUT_END_12345'
+                      f.write(f"{name}<<{delim}\n{value}\n{delim}\n")
+                  else:
+                      f.write(f"{name}={value}\n")
+
           report_path = '.4naly3er/report.md'
-          output_path = '4naly3er-results.md'
 
           if not os.path.exists(report_path):
-              with open(output_path, 'w') as f:
-                  f.write('# 4naly3er Analysis Results\n\n4naly3er did not generate a report file.\n')
+              write_output('status', '❌ Failed')
+              write_output('summary', 'No report generated')
+              write_output('details', '4naly3er did not generate a report file.\nCheck if src/ or contracts/ directory exists.')
               exit(0)
 
           with open(report_path, 'r', encoding='utf-8') as f:
               content = f.read()
 
           if not content.strip():
-              with open(output_path, 'w') as f:
-                  f.write('# 4naly3er Analysis Results\n\nReport file is empty.\n')
+              write_output('status', '❌ Failed')
+              write_output('summary', 'Empty report')
+              write_output('details', 'Report file is empty.')
               exit(0)
 
-          lines = content.split('\n')
-
-          # Count issue headings (rough signal; not exact counts of findings)
+          # Count issues by category
           issue_counts = {}
-          for line in lines:
-              match = re.search(r'###\s*(Low|Medium|High|Gas|NC|Informational)', line, re.IGNORECASE)
-              if match:
-                  category = match.group(1).capitalize()
-                  issue_counts[category] = issue_counts.get(category, 0) + 1
+          for match in re.finditer(r'###\s*\[([A-Za-z]+)-(\d+)\]', content):
+              category = match.group(1).upper()
+              issue_counts[category] = issue_counts.get(category, 0) + 1
 
-          out = ['# 4naly3er Analysis Results\n']
+          # Also try alternate format
+          if not issue_counts:
+              for line in content.split('\n'):
+                  match = re.search(r'###\s*(Low|Medium|High|Gas|NC|Informational)', line, re.IGNORECASE)
+                  if match:
+                      category = match.group(1).upper()
+                      if category == 'INFORMATIONAL':
+                          category = 'NC'
+                      issue_counts[category] = issue_counts.get(category, 0) + 1
 
-          if issue_counts:
-              out.append('## Summary\n')
-              out.append('| Category | Count |')
-              out.append('|----------|-------|')
-              for category, count in sorted(issue_counts.items()):
-                  out.append(f'| {category} | {count} |')
-              out.append('\n---\n')
+          total = sum(issue_counts.values())
+          high = issue_counts.get('HIGH', issue_counts.get('H', 0))
+          medium = issue_counts.get('MEDIUM', issue_counts.get('M', 0))
+          low = issue_counts.get('LOW', issue_counts.get('L', 0))
+          gas = issue_counts.get('GAS', issue_counts.get('G', 0))
+          nc = issue_counts.get('NC', 0)
 
-          out.append(content)
+          # Build summary
+          if total == 0:
+              summary = 'No issues found'
+              status = '✅ Passed'
+              details = ''
+          else:
+              parts = []
+              if high > 0:
+                  parts.append(f'H: {high}')
+              if medium > 0:
+                  parts.append(f'M: {medium}')
+              if low > 0:
+                  parts.append(f'L: {low}')
+              if gas > 0:
+                  parts.append(f'Gas: {gas}')
+              if nc > 0:
+                  parts.append(f'NC: {nc}')
+              
+              summary = ' | '.join(parts) if parts else f'{total} issues'
+              
+              # Determine status
+              if high > 0:
+                  status = '❌ Failed'
+              elif medium > 0:
+                  status = '⚠️ Warnings'
+              else:
+                  status = '✅ Passed'
+              
+              # Build details - extract first few findings
+              detail_lines = [f'Total: {total} issues', '']
+              
+              # Extract some issue titles
+              titles = re.findall(r'###\s*\[([^\]]+)\]\s*([^\n]+)', content)
+              if titles:
+                  detail_lines.append('Findings:')
+                  for tag, title in titles[:6]:
+                      detail_lines.append(f'  [{tag}] {title[:60]}...' if len(title) > 60 else f'  [{tag}] {title}')
+                  if len(titles) > 6:
+                      detail_lines.append(f'  ... and {len(titles) - 6} more')
+              
+              details = '\n'.join(detail_lines)
 
-          final_output = '\n'.join(out)
+          write_output('status', status)
+          write_output('summary', summary)
+          write_output('details', details)
 
-          max_length = 65000
-          if len(final_output) > max_length:
-              final_output = final_output[:max_length] + '\n\n... (report truncated, see artifacts for full report)'
+          # Save full report for artifact
+          with open('4naly3er-results.md', 'w', encoding='utf-8') as f:
+              f.write(f'# 4naly3er Analysis Results\n\n')
+              f.write(f'**Total Issues:** {total}\n\n')
+              if issue_counts:
+                  f.write('| Category | Count |\n')
+                  f.write('|----------|-------|\n')
+                  for cat in ['HIGH', 'MEDIUM', 'LOW', 'GAS', 'NC']:
+                      count = issue_counts.get(cat, issue_counts.get(cat[0], 0))
+                      if count > 0:
+                          f.write(f'| {cat} | {count} |\n')
+                  f.write('\n---\n\n')
+              f.write(content)
 
-          with open(output_path, 'w', encoding='utf-8') as f:
-              f.write(final_output)
-          EOF
-
-      - name: Prepare CI summary outputs
-        id: run
-        if: always()
-        shell: bash
-        run: |
-          set +e
-
-          if [ ! -f 4naly3er-results.md ]; then
-            echo "status=❌ Failed" >> "$GITHUB_OUTPUT"
-            echo "details<<EOF" >> "$GITHUB_OUTPUT"
-            echo "4naly3er-results.md not found." >> "$GITHUB_OUTPUT"
-            echo "EOF" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # If report contains "did not generate" or "empty", mark as failed
-          if grep -qiE "did not generate|empty" 4naly3er-results.md; then
-            echo "status=❌ Failed" >> "$GITHUB_OUTPUT"
-          else
-            # 4naly3er is continue-on-error; treat presence of a report as passed
-            echo "status=✅ Passed" >> "$GITHUB_OUTPUT"
-          fi
-
-          echo "details<<EOF" >> "$GITHUB_OUTPUT"
-          tail -n 80 4naly3er-results.md | sed 's/`/\\`/g' >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          print(f"4naly3er: {total} issues ({status})")
+          PYTHON_EOF
 
       - name: Update PR summary comment
-        if: always() && github.event_name == "pull_request"
+        if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v7
         env:
-          SECTION: 4naly3er Static Analysis
+          SECTION: 4naly3er Analysis
           STATUS: ${{ steps.run.outputs.status }}
+          SUMMARY: ${{ steps.run.outputs.summary }}
           DETAILS: ${{ steps.run.outputs.details }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
         with:
           script: |
             const marker = "<!-- dotns-ci-summary -->";
-            const section = process.env.SECTION ?? "4naly3er Static Analysis";
-            const status = process.env.STATUS ?? "❌ Failed";
-            const details = process.env.DETAILS ?? "";
+            const tableHeader = "| Check | Status | Summary |\n|-------|--------|---------|";
+            
+            const section = process.env.SECTION;
+            const status = process.env.STATUS || "❌ Failed";
+            const summary = process.env.SUMMARY || "";
+            const details = process.env.DETAILS || "";
+            const runId = process.env.RUN_ID;
+            const repo = process.env.REPO;
 
             const sectionStart = `<!-- section:${section}:start -->`;
             const sectionEnd = `<!-- section:${section}:end -->`;
 
-            const block =
-              `${sectionStart}\n` +
-              `#### ${section}\n` +
-              `Status: ${status}\n` +
-              (details ? `\n\`\`\`\n${details}\n\`\`\`\n` : "\n") +
-              `${sectionEnd}\n`;
+            let block = `${sectionStart}\n`;
+            block += `| **${section}** | ${status} | ${summary} |\n`;
 
-            const { owner, repo } = context.repo;
+            if (details.trim()) {
+              block += `<details><summary>📋 Details</summary>\n\n\`\`\`\n${details.trim()}\n\`\`\`\n\n`;
+              block += `[View full report](https://github.com/${repo}/actions/runs/${runId})\n</details>\n`;
+            }
+            
+            block += `${sectionEnd}\n`;
+
+            const { owner, repo: repoName } = context.repo;
             const issue_number = context.payload.pull_request.number;
 
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner,
-              repo,
+              repo: repoName,
               issue_number,
               per_page: 100,
             });
@@ -187,7 +245,7 @@ jobs:
               c.body.includes(marker)
             );
 
-            const baseBody = existing?.body ?? `${marker}\n### CI summary\n\n`;
+            const baseBody = existing?.body ?? `${marker}\n## 🔍 CI Summary\n\n${tableHeader}\n`;
             const hasSection = baseBody.includes(sectionStart) && baseBody.includes(sectionEnd);
 
             let nextBody;
@@ -195,20 +253,20 @@ jobs:
               const re = new RegExp(`${sectionStart}[\\s\\S]*?${sectionEnd}\\n?`, "m");
               nextBody = baseBody.replace(re, block);
             } else {
-              nextBody = `${baseBody.trimEnd()}\n\n${block}`;
+              nextBody = `${baseBody.trimEnd()}\n${block}`;
             }
 
             if (existing) {
               await github.rest.issues.updateComment({
                 owner,
-                repo,
+                repo: repoName,
                 comment_id: existing.id,
                 body: nextBody,
               });
             } else {
               await github.rest.issues.createComment({
                 owner,
-                repo,
+                repo: repoName,
                 issue_number,
                 body: nextBody,
               });

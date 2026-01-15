@@ -6,9 +6,10 @@ on:
       - main
       - develop
     paths:
-      - 'contracts/**.sol'
+      - 'contracts/**'
+      - 'src/**'
       - 'foundry.toml'
-      - '.github/workflows/slither.yml'
+      - '.github/workflows/slither.yaml'
 
 permissions:
   contents: read
@@ -50,19 +51,30 @@ jobs:
             || true
 
       - name: Process Slither output
+        id: run
         if: always()
+        shell: bash
         run: |
-          python3 << 'EOF'
+          python3 << 'PYTHON_EOF'
           import json
           import os
           from collections import defaultdict
 
+          def write_output(name, value):
+              """Write to GITHUB_OUTPUT safely"""
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  if '\n' in value:
+                      # Use a unique delimiter for multiline
+                      delim = 'SLITHER_OUTPUT_END_12345'
+                      f.write(f"{name}<<{delim}\n{value}\n{delim}\n")
+                  else:
+                      f.write(f"{name}={value}\n")
+
           if not os.path.exists('slither-report.json'):
               print("ERROR: slither-report.json not found")
-              with open('slither-summary.txt', 'w') as f:
-                  f.write('Slither did not generate a report file.')
-              with open('slither-status.txt', 'w') as f:
-                  f.write('❌ Failed')
+              write_output('status', '❌ Failed')
+              write_output('summary', 'No report generated')
+              write_output('details', 'Slither did not generate a report file.')
               exit(0)
 
           try:
@@ -70,18 +82,16 @@ jobs:
                   content = f.read()
                   if not content.strip():
                       print("ERROR: slither-report.json is empty")
-                      with open('slither-summary.txt', 'w') as f:
-                          f.write('Slither report file is empty.')
-                      with open('slither-status.txt', 'w') as f:
-                          f.write('❌ Failed')
+                      write_output('status', '❌ Failed')
+                      write_output('summary', 'Empty report')
+                      write_output('details', 'Slither report file is empty.')
                       exit(0)
                   data = json.loads(content)
           except json.JSONDecodeError as e:
               print(f"ERROR: Invalid JSON: {e}")
-              with open('slither-summary.txt', 'w') as f:
-                  f.write(f'Failed to parse Slither report: {str(e)}')
-              with open('slither-status.txt', 'w') as f:
-                  f.write('❌ Failed')
+              write_output('status', '❌ Failed')
+              write_output('summary', 'Invalid JSON')
+              write_output('details', f'Failed to parse Slither report: {str(e)}')
               exit(0)
 
           findings = defaultdict(list)
@@ -100,47 +110,52 @@ jobs:
           total_issues = sum(len(v) for v in findings.values())
           high_count = len(findings.get('High', []))
           medium_count = len(findings.get('Medium', []))
+          low_count = len(findings.get('Low', []))
           
-          summary_lines = []
-          
+          # Build summary line
           if total_issues == 0:
-              summary_lines.append('No issues detected.')
+              summary = 'No issues found'
               status = '✅ Passed'
+              details = ''
           else:
-              summary_lines.append(f'Total: {total_issues} issues')
               counts = []
               for sev in severity_order:
                   c = len(findings.get(sev, []))
                   if c > 0:
                       counts.append(f'{sev}: {c}')
-              summary_lines.append(' | '.join(counts))
+              summary = ' | '.join(counts)
               
-              # Show top 5 high/medium issues in details
+              # Build details with top findings
+              detail_lines = [f'Total: {total_issues} issues', '']
+              
               if high_count > 0 or medium_count > 0:
-                  summary_lines.append('')
-                  summary_lines.append('Top findings:')
+                  detail_lines.append('Top findings:')
                   shown = 0
-                  for sev in ['High', 'Medium']:
+                  for sev in ['High', 'Medium', 'Low']:
                       for issue in findings.get(sev, [])[:3]:
                           if shown >= 5:
                               break
-                          desc = issue['description'].replace('\n', ' ')[:100]
-                          summary_lines.append(f'  [{sev}] {issue["check"]}: {desc}...')
+                          desc = issue['description'].replace('\n', ' ')[:80]
+                          detail_lines.append(f'  [{sev}] {issue["check"]}: {desc}...')
                           shown += 1
+                      if shown >= 5:
+                          break
               
-              # Mark as failed only for high severity issues
+              details = '\n'.join(detail_lines)
+              
+              # Determine status
               if high_count > 0:
                   status = '❌ Failed'
+              elif medium_count > 0:
+                  status = '⚠️ Warnings'
               else:
-                  status = '⚠️ Passed with warnings'
+                  status = '✅ Passed'
 
-          with open('slither-summary.txt', 'w') as f:
-              f.write('\n'.join(summary_lines))
-          
-          with open('slither-status.txt', 'w') as f:
-              f.write(status)
+          write_output('status', status)
+          write_output('summary', summary)
+          write_output('details', details)
 
-          # Also generate full markdown report for artifact
+          # Generate full markdown report for artifact
           output = ['# Slither Analysis Results\n']
           
           if total_issues == 0:
@@ -164,14 +179,10 @@ jobs:
                       continue
                   
                   output.append(f'\n### {severity} ({len(issues)})\n')
-                  output.append('| Check | Description | Confidence | Location |')
-                  output.append('|-------|-------------|------------|----------|')
                   
                   for issue in issues:
-                      check = issue['check'].replace('|', '\\|')
-                      desc = issue['description'].replace('\n', ' ').replace('|', '\\|')[:150]
-                      if len(issue['description']) > 150:
-                          desc += '...'
+                      check = issue['check']
+                      desc = issue['description']
                       confidence = issue['confidence']
                       
                       locations = []
@@ -182,35 +193,18 @@ jobs:
                               if loc and line:
                                   locations.append(f"{loc}:{line[0] if line else '?'}")
                       
-                      location = '<br>'.join(locations) if locations else 'N/A'
-                      output.append(f'| {check} | {desc} | {confidence} | {location} |')
+                      location = ', '.join(locations) if locations else 'N/A'
+                      
+                      output.append(f'**{check}** ({confidence} confidence)')
+                      output.append(f'- Location: `{location}`')
+                      output.append(f'- {desc[:300]}')
+                      output.append('')
 
           with open('slither-results.md', 'w') as f:
               f.write('\n'.join(output))
           
-          print(f"Successfully generated report with {total_issues} issues")
-          EOF
-
-      - name: Prepare CI summary outputs
-        id: run
-        if: always()
-        shell: bash
-        run: |
-          if [ -f slither-status.txt ]; then
-            STATUS=$(cat slither-status.txt)
-          else
-            STATUS="❌ Failed"
-          fi
-
-          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
-
-          if [ -f slither-summary.txt ]; then
-            echo "details<<EOF" >> "$GITHUB_OUTPUT"
-            cat slither-summary.txt >> "$GITHUB_OUTPUT"
-            echo "EOF" >> "$GITHUB_OUTPUT"
-          else
-            echo "details=Slither analysis did not complete." >> "$GITHUB_OUTPUT"
-          fi
+          print(f"Generated report: {total_issues} issues ({status})")
+          PYTHON_EOF
 
       - name: Update PR summary comment
         if: always() && github.event_name == 'pull_request'
@@ -218,30 +212,41 @@ jobs:
         env:
           SECTION: Slither Analysis
           STATUS: ${{ steps.run.outputs.status }}
+          SUMMARY: ${{ steps.run.outputs.summary }}
           DETAILS: ${{ steps.run.outputs.details }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
         with:
           script: |
             const marker = "<!-- dotns-ci-summary -->";
-            const section = process.env.SECTION ?? "Slither Analysis";
-            const status = process.env.STATUS ?? "❌ Failed";
-            const details = process.env.DETAILS ?? "";
+            const tableHeader = "| Check | Status | Summary |\n|-------|--------|---------|";
+            
+            const section = process.env.SECTION;
+            const status = process.env.STATUS || "❌ Failed";
+            const summary = process.env.SUMMARY || "";
+            const details = process.env.DETAILS || "";
+            const runId = process.env.RUN_ID;
+            const repo = process.env.REPO;
 
             const sectionStart = `<!-- section:${section}:start -->`;
             const sectionEnd = `<!-- section:${section}:end -->`;
 
-            const block =
-              `${sectionStart}\n` +
-              `#### ${section}\n` +
-              `Status: ${status}\n` +
-              (details ? `\n\`\`\`\n${details}\n\`\`\`\n` : "\n") +
-              `${sectionEnd}\n`;
+            let block = `${sectionStart}\n`;
+            block += `| **${section}** | ${status} | ${summary} |\n`;
 
-            const { owner, repo } = context.repo;
+            if (details.trim()) {
+              block += `<details><summary>📋 Details</summary>\n\n\`\`\`\n${details.trim()}\n\`\`\`\n\n`;
+              block += `[View full logs](https://github.com/${repo}/actions/runs/${runId})\n</details>\n`;
+            }
+            
+            block += `${sectionEnd}\n`;
+
+            const { owner, repo: repoName } = context.repo;
             const issue_number = context.payload.pull_request.number;
 
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner,
-              repo,
+              repo: repoName,
               issue_number,
               per_page: 100,
             });
@@ -252,7 +257,7 @@ jobs:
               c.body.includes(marker)
             );
 
-            const baseBody = existing?.body ?? `${marker}\n### CI Summary\n\n`;
+            const baseBody = existing?.body ?? `${marker}\n## 🔍 CI Summary\n\n${tableHeader}\n`;
             const hasSection = baseBody.includes(sectionStart) && baseBody.includes(sectionEnd);
 
             let nextBody;
@@ -260,20 +265,20 @@ jobs:
               const re = new RegExp(`${sectionStart}[\\s\\S]*?${sectionEnd}\\n?`, "m");
               nextBody = baseBody.replace(re, block);
             } else {
-              nextBody = `${baseBody.trimEnd()}\n\n${block}`;
+              nextBody = `${baseBody.trimEnd()}\n${block}`;
             }
 
             if (existing) {
               await github.rest.issues.updateComment({
                 owner,
-                repo,
+                repo: repoName,
                 comment_id: existing.id,
                 body: nextBody,
               });
             } else {
               await github.rest.issues.createComment({
                 owner,
-                repo,
+                repo: repoName,
                 issue_number,
                 body: nextBody,
               });

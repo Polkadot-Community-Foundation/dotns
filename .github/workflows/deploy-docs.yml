@@ -16,22 +16,25 @@ on:
       - "contracts/**"
       - "**.sol"
       - "foundry.toml"
+  pull_request_target:
+    types: [closed]
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
   pull-requests: write
   issues: write
 
 concurrency:
-  group: "pages"
+  group: "pages-deploy"
   cancel-in-progress: false
 
 jobs:
-  build-docs:
+  build-and-deploy:
     runs-on: ubuntu-latest
+    # Don't run on PR close unless it's for cleanup
+    if: github.event.action != 'closed'
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -48,48 +51,62 @@ jobs:
 
       - name: Generate documentation
         id: docs
+        shell: bash
         run: |
           set +e
           
-          # Generate docs with forge doc (builds mdbook site)
           forge doc --build --out docs-output 2>&1 | tee forge-doc.log
           DOC_CODE=${PIPESTATUS[0]}
           
           if [ $DOC_CODE -eq 0 ] && [ -d "docs-output/book" ]; then
-            # Count documented contracts
             CONTRACT_COUNT=$(find docs-output/book/src -name "*.md" 2>/dev/null | wc -l || echo "?")
             echo "status=✅ Passed" >> "$GITHUB_OUTPUT"
-            echo "summary=${CONTRACT_COUNT} contract docs generated" >> "$GITHUB_OUTPUT"
+            echo "summary=${CONTRACT_COUNT} docs generated" >> "$GITHUB_OUTPUT"
             echo "details=" >> "$GITHUB_OUTPUT"
+            echo "success=true" >> "$GITHUB_OUTPUT"
           else
             echo "status=❌ Failed" >> "$GITHUB_OUTPUT"
-            echo "summary=Documentation build failed" >> "$GITHUB_OUTPUT"
+            echo "summary=Build failed" >> "$GITHUB_OUTPUT"
+            echo "success=false" >> "$GITHUB_OUTPUT"
             {
-              echo "details<<EOF"
-              echo "### Forge Doc Output"
-              tail -n 50 forge-doc.log
-              echo "EOF"
+              echo "details<<DOC_OUTPUT_END_12345"
+              tail -n 40 forge-doc.log
+              echo "DOC_OUTPUT_END_12345"
             } >> "$GITHUB_OUTPUT"
-            exit 1
           fi
 
-      - name: Setup Pages
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/configure-pages@v4
+      - name: Determine deploy path
+        id: path
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "target=preview/pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            echo "is_preview=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "target=." >> "$GITHUB_OUTPUT"
+            echo "is_preview=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Upload Pages artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@v3
+      - name: Deploy to GitHub Pages
+        if: steps.docs.outputs.success == 'true'
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: docs-output/book
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs-output/book
+          destination_dir: ${{ steps.path.outputs.target }}
+          keep_files: true
 
-      - name: Upload docs artifact (for PRs)
-        if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: documentation
-          path: docs-output/book
-          retention-days: 7
+      - name: Set preview URL
+        id: preview
+        if: github.event_name == 'pull_request' && steps.docs.outputs.success == 'true'
+        run: |
+          # Get repo owner and name
+          OWNER="${{ github.repository_owner }}"
+          REPO="${{ github.event.repository.name }}"
+          PR_NUM="${{ github.event.pull_request.number }}"
+          
+          # Construct GitHub Pages URL
+          PREVIEW_URL="https://${OWNER}.github.io/${REPO}/preview/pr-${PR_NUM}/"
+          echo "url=${PREVIEW_URL}" >> "$GITHUB_OUTPUT"
 
       - name: Update PR summary comment
         if: always() && github.event_name == 'pull_request'
@@ -99,6 +116,7 @@ jobs:
           STATUS: ${{ steps.docs.outputs.status }}
           SUMMARY: ${{ steps.docs.outputs.summary }}
           DETAILS: ${{ steps.docs.outputs.details }}
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
           RUN_ID: ${{ github.run_id }}
           REPO: ${{ github.repository }}
         with:
@@ -108,10 +126,16 @@ jobs:
             
             const section = process.env.SECTION;
             const status = process.env.STATUS || "❌ Failed";
-            const summary = process.env.SUMMARY || "";
+            const previewUrl = process.env.PREVIEW_URL || "";
             const details = process.env.DETAILS || "";
             const runId = process.env.RUN_ID;
             const repo = process.env.REPO;
+            
+            // Add preview link to summary if available
+            let summary = process.env.SUMMARY || "";
+            if (previewUrl) {
+              summary += ` [📖 Preview](${previewUrl})`;
+            }
 
             const sectionStart = `<!-- section:${section}:start -->`;
             const sectionEnd = `<!-- section:${section}:end -->`;
@@ -121,7 +145,7 @@ jobs:
 
             if (details.trim()) {
               block += `<details><summary>📋 Details</summary>\n\n\`\`\`\n${details.trim()}\n\`\`\`\n\n`;
-              block += `[View full logs](https://github.com/${repo}/actions/runs/${runId})\n</details>\n`;
+              block += `[View logs](https://github.com/${repo}/actions/runs/${runId})\n</details>\n`;
             }
             
             block += `${sectionEnd}\n`;
@@ -169,16 +193,34 @@ jobs:
               });
             }
 
-  deploy-docs:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: build-docs
-    runs-on: ubuntu-latest
-    
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      - name: Fail if docs failed
+        if: steps.docs.outputs.success != 'true'
+        run: exit 1
 
+  # Cleanup preview when PR is closed
+  cleanup-preview:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+    
     steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 0
+
+      - name: Remove preview directory
+        run: |
+          PR_NUM="${{ github.event.pull_request.number }}"
+          PREVIEW_DIR="preview/pr-${PR_NUM}"
+          
+          if [ -d "$PREVIEW_DIR" ]; then
+            rm -rf "$PREVIEW_DIR"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "Clean up docs preview for PR #${PR_NUM}" || echo "Nothing to clean up"
+            git push
+          else
+            echo "Preview directory doesn't exist, nothing to clean up"
+          fi
