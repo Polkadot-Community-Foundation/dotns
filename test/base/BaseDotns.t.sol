@@ -179,7 +179,7 @@ abstract contract BaseDotns is Test {
         dotnsRegistrarController = DotnsRegistrarController(dotnsRegistrarControllerAddress);
         vm.label(dotnsRegistrarControllerAddress, "DotnsRegistrarController");
         dotnsReverseResolver.updateRegistrar(dotnsRegistrarControllerAddress);
-        popRules.updateEthRegistry(dotnsRegistrarControllerAddress);
+        popRules.updateDotRegistry(dotnsRegistrarControllerAddress);
         dotnsRegistrar.addController(IDotnsRegistrarController(dotnsRegistrarControllerAddress));
         dotnsRegistry.updateRegistrarController(
             IDotnsRegistrarController(dotnsRegistrarControllerAddress)

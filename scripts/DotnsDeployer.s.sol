@@ -120,7 +120,7 @@ contract DotnsDeployer is BaseDeployer {
 
         // Wire dependencies
         dotnsReverseResolver.updateRegistrar(dotnsRegistrarControllerProxy);
-        popRules.updateEthRegistry(dotnsRegistrarControllerProxy);
+        popRules.updateDotRegistry(dotnsRegistrarControllerProxy);
         dotnsRegistrar.addController(IDotnsRegistrarController(dotnsRegistrarControllerProxy));
         dotnsRegistry.updateRegistrarController(IDotnsRegistrarController(dotnsRegistrarControllerProxy));
 

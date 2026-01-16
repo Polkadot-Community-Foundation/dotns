@@ -81,7 +81,7 @@ contract PopRulesTests is BaseDotns {
 
     function test_base_reservation_blocks_others() public {
         vm.prank(owner);
-        popRules.updateEthRegistry(address(this));
+        popRules.updateDotRegistry(address(this));
 
         popRules.reserveBaseName("lights01", leonardo);
 
@@ -111,7 +111,7 @@ contract PopRulesTests is BaseDotns {
 
     function test_price_without_check_reserved() public {
         vm.prank(owner);
-        popRules.updateEthRegistry(address(this));
+        popRules.updateDotRegistry(address(this));
 
         popRules.reserveBaseName("lights01", leonardo);
 
