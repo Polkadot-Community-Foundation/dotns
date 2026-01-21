@@ -24,13 +24,16 @@ contract DotnsRegistryTests is BaseDotns {
                 IDotnsRegistrarController(makeAddr("new_registrar_controller_alt"));
         }
 
+        vm.startPrank(owner);
+
         vm.expectEmit(true, true, false, false, address(dotnsRegistry));
         emit IDotnsRegistry.RegistrarControllerUpdated(
             oldRegistrarController, newRegistrarController
         );
 
-        vm.prank(owner);
         dotnsRegistry.updateRegistrarController(newRegistrarController);
+
+        vm.stopPrank();
 
         assertEq(address(dotnsRegistry.registrarController()), address(newRegistrarController));
     }
@@ -43,14 +46,15 @@ contract DotnsRegistryTests is BaseDotns {
             secondRegistrarController = makeAddr("second_registrar_controller_alt");
         }
 
-        vm.prank(owner);
+        vm.startPrank(owner);
         dotnsRegistry.updateRegistrarController(IDotnsRegistrarController(firstRegistrarController));
         assertEq(address(dotnsRegistry.registrarController()), firstRegistrarController);
 
-        vm.prank(owner);
         dotnsRegistry.updateRegistrarController(
             IDotnsRegistrarController(secondRegistrarController)
         );
+        vm.stopPrank();
+
         assertEq(address(dotnsRegistry.registrarController()), secondRegistrarController);
     }
 
@@ -58,14 +62,16 @@ contract DotnsRegistryTests is BaseDotns {
         bytes32 node = keccak256("node_b");
         address resolverAddress = address(dotnsReverseResolver);
 
-        vm.prank(owner);
+        vm.startPrank(owner);
         dotnsRegistry.updateRegistrarController(dotnsRegistrarController);
+        vm.stopPrank();
 
         vm.expectEmit(true, false, false, true, address(dotnsRegistry));
         emit IDotnsRegistry.NodeTransferred(node, ed);
 
-        vm.prank(address(dotnsRegistrarController));
+        vm.startPrank(address(dotnsRegistrarController));
         dotnsRegistry.setOwner(node, ed, resolverAddress);
+        vm.stopPrank();
 
         assertEq(dotnsRegistry.owner(node), ed);
         assertTrue(dotnsRegistry.recordExists(node));
@@ -77,8 +83,9 @@ contract DotnsRegistryTests is BaseDotns {
         bytes32 secondNode = keccak256("second_node");
         address resolverAddress = address(dotnsReverseResolver);
 
-        vm.prank(owner);
+        vm.startPrank(owner);
         dotnsRegistry.updateRegistrarController(dotnsRegistrarController);
+        vm.stopPrank();
 
         vm.startPrank(address(dotnsRegistrarController));
         dotnsRegistry.setOwner(firstNode, ed, resolverAddress);
@@ -112,8 +119,9 @@ contract DotnsRegistryTests is BaseDotns {
         vm.expectEmit(true, true, false, true, address(dotnsRegistry));
         emit IDotnsRegistry.NewOwner(parentNode, subLabelHash, ed);
 
-        vm.prank(owner);
+        vm.startPrank(owner);
         bytes32 returnedSubnode = dotnsRegistry.setSubnodeOwner(subnodeRecord);
+        vm.stopPrank();
 
         assertEq(returnedSubnode, expectedSubnode);
         assertEq(dotnsRegistry.owner(returnedSubnode), ed);
@@ -136,14 +144,16 @@ contract DotnsRegistryTests is BaseDotns {
             parentNode: parentNode, subLabel: subLabel, parentLabel: parentLabel, owner: ed
         });
 
-        vm.prank(owner);
+        vm.startPrank(owner);
         dotnsRegistry.setSubnodeOwner(subnodeRecord);
+        vm.stopPrank();
 
         vm.expectEmit(true, false, false, true, address(dotnsRegistry));
         emit IDotnsRegistry.NewResolver(node, newResolver);
 
-        vm.prank(ed);
+        vm.startPrank(ed);
         dotnsRegistry.setResolver(node, newResolver);
+        vm.stopPrank();
 
         assertEq(dotnsRegistry.resolver(node), newResolver);
     }
@@ -163,15 +173,17 @@ contract DotnsRegistryTests is BaseDotns {
             parentNode: parentNode, subLabel: subLabel, parentLabel: parentLabel, owner: ed
         });
 
-        vm.prank(owner);
+        vm.startPrank(owner);
         dotnsRegistry.setSubnodeOwner(subnodeRecord);
+        vm.stopPrank();
 
-        vm.prank(ed);
+        vm.startPrank(ed);
         dotnsRegistry.setResolver(node, newResolver);
         assertEq(dotnsRegistry.resolver(node), newResolver);
 
-        vm.prank(ed);
         dotnsRegistry.setResolver(node, address(0));
+        vm.stopPrank();
+
         assertEq(dotnsRegistry.resolver(node), address(0));
     }
 
@@ -189,8 +201,9 @@ contract DotnsRegistryTests is BaseDotns {
             parentNode: parentNode, subLabel: childLabel, parentLabel: parentLabel, owner: tiago
         });
 
-        vm.prank(ed);
+        vm.startPrank(ed);
         bytes32 returnedChildNode = dotnsRegistry.setSubnodeOwner(subnodeRecord);
+        vm.stopPrank();
 
         assertEq(returnedChildNode, expectedChildNode);
         assertEq(dotnsRegistry.owner(expectedChildNode), tiago);

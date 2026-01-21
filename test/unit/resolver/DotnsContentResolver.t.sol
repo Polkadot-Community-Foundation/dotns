@@ -17,8 +17,9 @@ contract DotnsContentResolverTests is BaseDotns {
         vm.expectEmit(true, false, false, true);
         emit IDotnsContentResolver.ContentHashUpdated(node, contentHash);
 
-        vm.prank(nameOwner);
+        vm.startPrank(nameOwner);
         dotnsContentResolver.setContenthash(node, contentHash);
+        vm.stopPrank();
 
         assertEq(dotnsContentResolver.contenthash(node), contentHash);
     }
@@ -34,8 +35,9 @@ contract DotnsContentResolverTests is BaseDotns {
         vm.expectEmit(true, true, false, true);
         emit IDotnsContentResolver.TextUpdated(node, textKey, textValue);
 
-        vm.prank(nameOwner);
+        vm.startPrank(nameOwner);
         dotnsContentResolver.setText(node, textKey, textValue);
+        vm.stopPrank();
 
         assertEq(dotnsContentResolver.text(node, textKey), textValue);
     }
@@ -98,17 +100,24 @@ contract DotnsContentResolverTests is BaseDotns {
 
         bytes32 node = _register("operatorrr01", nameOwner, IPopRules.PopStatus.NoStatus);
 
-        vm.prank(nameOwner);
+        vm.startPrank(nameOwner);
+
         vm.expectEmit(true, true, false, true);
         emit IDotnsContentResolver.ApprovalForAll(nameOwner, operator, true);
         dotnsContentResolver.setApprovalForAll(operator, true);
 
+        vm.stopPrank();
+
         string memory textKey = "ipfs";
         string memory textValue = "operatorCid";
+
+        vm.startPrank(operator);
 
         vm.expectEmit(true, true, false, true);
         emit IDotnsContentResolver.TextUpdated(node, textKey, textValue);
         dotnsContentResolver.setText(node, textKey, textValue);
+
+        vm.stopPrank();
 
         assertEq(dotnsContentResolver.text(node, textKey), textValue);
     }
@@ -122,14 +131,21 @@ contract DotnsContentResolverTests is BaseDotns {
         bytes memory contentHash =
             hex"e30101701220bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
-        vm.prank(nameOwner);
+        vm.startPrank(nameOwner);
+
         vm.expectEmit(true, true, false, true);
         emit IDotnsContentResolver.ApprovalForAll(nameOwner, operator, true);
         dotnsContentResolver.setApprovalForAll(operator, true);
 
+        vm.stopPrank();
+
+        vm.startPrank(operator);
+
         vm.expectEmit(true, false, false, true);
         emit IDotnsContentResolver.ContentHashUpdated(node, contentHash);
         dotnsContentResolver.setContenthash(node, contentHash);
+
+        vm.stopPrank();
 
         assertEq(dotnsContentResolver.contenthash(node), contentHash);
     }

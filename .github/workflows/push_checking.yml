@@ -3,10 +3,10 @@ name: Run Solidity Tests
 on:
   pull_request:
     branches: [main]
-    paths: ['src/**', 'script/**', 'test/**', '**.sol']
+    paths: ["src/**", "script/**", "test/**", "**.sol"]
   push:
     branches: [main]
-    paths: ['src/**', 'script/**', 'test/**', '**.sol']
+    paths: ["src/**", "script/**", "test/**", "**.sol"]
 
 permissions:
   contents: read
@@ -34,167 +34,114 @@ jobs:
           set +e
           forge build --sizes > build.log 2>&1
           BUILD=$?
-          
+
           if [ $BUILD -ne 0 ]; then
             echo "result=Failed - Build error" >> "$GITHUB_OUTPUT"
             echo "has_details=false" >> "$GITHUB_OUTPUT"
             exit 1
           fi
-          
-          # Run tests with summary for better parsing
+
           forge test -vv --summary 2>&1 | tee test.log
           TEST=${PIPESTATUS[0]}
 
-          # Process results
           python3 << 'EOF'
-          import re
           import os
-          from collections import defaultdict
+          import re
+          from collections import OrderedDict
 
-          out = lambda k,v: open(os.environ['GITHUB_OUTPUT'], 'a').write(f"{k}={v}\n")
+          def out(k, v):
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write(f"{k}={v}\n")
 
-          with open('test.log', 'r') as f:
+          with open("test.log", "r", encoding="utf-8", errors="ignore") as f:
               content = f.read()
 
-          # Parse ALL tests for accurate counts
-          all_contracts = defaultdict(lambda: {'passed': [], 'failed': []})
-          # Parse ONLY invariant tests for detailed display
-          invariant_tests = []
-          
-          current_contract = None
-          current_invariant = None
-          collecting_table = False
-          table_lines = []
+          suite_header_re = re.compile(r"^Running\s+\d+\s+tests?\s+for\s+(test/[^:]+):([A-Za-z0-9_]+)\s*$")
+          suite_result_re = re.compile(r"^Suite result:\s*(.*)\s*$")
+          test_line_re = re.compile(r"^\[(PASS|FAIL[^\]]*)\]\s+([A-Za-z0-9_]+)\(\)(?:\s*\(([^)]*)\))?.*$")
 
-          lines = content.split('\n')
-          for i, line in enumerate(lines):
-              # Match contract header
-              contract_match = re.search(r'for test/([^:]+):(\w+)', line)
-              if contract_match:
-                  current_contract = contract_match.group(2)
-              
-              # Match test results
-              pass_match = re.match(r'\[PASS\]\s+(\w+)\(\)\s*(\([^)]+\))?', line)
-              fail_match = re.match(r'\[FAIL[:\.]?\s*[^\]]*\]\s+(\w+)\(\)', line)
-              
-              if pass_match and current_contract:
-                  test_name = pass_match.group(1)
-                  test_details = pass_match.group(2) or ''
-                  is_invariant = test_name.startswith('invariant_')
-                  
-                  # Add to all_contracts for total count
-                  all_contracts[current_contract]['passed'].append({
-                      'name': test_name,
-                      'details': test_details,
-                      'is_invariant': is_invariant
-                  })
-                  
-                  # For invariant tests, start collecting detailed info
-                  if is_invariant:
-                      current_invariant = {
-                          'contract': current_contract,
-                          'name': test_name,
-                          'details': test_details,
-                          'table': []
-                      }
-                      collecting_table = True
-                      
-              elif fail_match and current_contract:
-                  test_name = fail_match.group(1)
-                  is_invariant = test_name.startswith('invariant_')
-                  
-                  all_contracts[current_contract]['failed'].append({
-                      'name': test_name,
-                      'is_invariant': is_invariant
-                  })
-                  
-                  if is_invariant:
-                      current_invariant = {
-                          'contract': current_contract,
-                          'name': test_name,
-                          'details': '',
-                          'failed': True,
-                          'table': []
-                      }
-                      collecting_table = True
-              
-              # Collect table lines for invariant tests
-              if collecting_table and current_invariant:
-                  # Check if we're in the statistics table
-                  if '╭' in line or '├' in line or '│' in line or '╰' in line or '═' in line:
-                      table_lines.append(line)
-                  elif line.strip().startswith('|') and ('Contract' in line or 'Selector' in line or 'Calls' in line):
-                      table_lines.append(line)
-                  elif line.strip() == '' and table_lines:
-                      # End of table
-                      current_invariant['table'] = table_lines
-                      invariant_tests.append(current_invariant)
-                      current_invariant = None
-                      collecting_table = False
-                      table_lines = []
+          suites = OrderedDict()
+          current_suite = None
 
-          # Calculate totals from ALL tests
-          total_passed = sum(len(c['passed']) for c in all_contracts.values())
-          total_failed = sum(len(c['failed']) for c in all_contracts.values())
-          total = total_passed + total_failed
-          
-          # Calculate invariant test counts
-          invariant_passed = sum(1 for t in invariant_tests if not t.get('failed'))
-          invariant_failed = sum(1 for t in invariant_tests if t.get('failed'))
-          invariant_total = len(invariant_tests)
+          for line in content.splitlines():
+              m = suite_header_re.match(line.strip())
+              if m:
+                  file_path, contract = m.group(1), m.group(2)
+                  current_suite = f"{file_path}:{contract}"
+                  if current_suite not in suites:
+                      suites[current_suite] = {
+                          "file": file_path,
+                          "contract": contract,
+                          "tests": [],
+                          "suite_result": None,
+                      }
+                  continue
+
+              m = test_line_re.match(line.strip())
+              if m and current_suite:
+                  tag = m.group(1)
+                  test_name = m.group(2)
+                  outcome = "PASS" if tag == "PASS" else "FAIL"
+                  error = ""
+                  if outcome == "FAIL":
+                      err = tag
+                      if err.startswith("FAIL"):
+                          err = err[4:].lstrip(": .").strip()
+                      error = err
+                  suites[current_suite]["tests"].append({
+                      "name": test_name,
+                      "outcome": outcome,
+                      "error": error,
+                  })
+                  continue
+
+              m = suite_result_re.match(line.strip())
+              if m and current_suite:
+                  suites[current_suite]["suite_result"] = f"Suite result: {m.group(1).strip()}"
+                  continue
+
+          total_passed = 0
+          total_failed = 0
+          total_skipped = 0
+
+          md = []
+          md.append("## Contract test results\n")
+
+          for suite_key, s in suites.items():
+              md.append(f"### {s['contract']} ({s['file']})\n")
+              md.append("| Test name | Outcome | Error |")
+              md.append("|:--|:--:|:--|")
+
+              for t in s["tests"]:
+                  name = t["name"]
+                  outcome = t["outcome"]
+                  error = t["error"].replace("|", "\\|")
+                  md.append(f"| {name} | {outcome} | {error} |")
+
+                  if outcome == "PASS":
+                      total_passed += 1
+                  else:
+                      total_failed += 1
+
+              md.append("")
+              if s["suite_result"]:
+                  md.append(s["suite_result"])
+              md.append("")
+
+          total = total_passed + total_failed + total_skipped
 
           if total_failed > 0:
-              out('result', f'Failed - {total_failed} of {total} tests failed')
-              out('has_details', 'true')
+              out("result", f"Failed - {total_failed} of {total} tests failed")
+              out("has_details", "true")
           elif total > 0:
-              out('result', f'All tests passed ({total} total)')
-              out('has_details', 'true')
+              out("result", f"All tests passed ({total} total)")
+              out("has_details", "true")
           else:
-              out('result', 'No tests found')
-              out('has_details', 'false')
+              out("result", "No tests found")
+              out("has_details", "false")
 
-          # Build markdown showing invariant tests with details
-          md = []
-          md.append(f"### Invariant Tests: {invariant_passed} passed, {invariant_failed} failed (of {invariant_total} total)")
-          md.append(f"### All Tests: {total_passed} passed, {total_failed} failed (of {total} total)\n")
-          
-          # Group by contract
-          contracts_dict = defaultdict(list)
-          for test in invariant_tests:
-              contracts_dict[test['contract']].append(test)
-          
-          # Failed tests first
-          for contract, tests in sorted(contracts_dict.items()):
-              failed_tests = [t for t in tests if t.get('failed')]
-              if failed_tests:
-                  md.append(f"\n## {contract} - Failed\n")
-                  for test in failed_tests:
-                      md.append(f"### {test['name']}()\n")
-                      if test.get('table'):
-                          md.append("```")
-                          md.extend(test['table'])
-                          md.append("```\n")
-          
-          # Passed tests
-          for contract, tests in sorted(contracts_dict.items()):
-              passed_tests = [t for t in tests if not t.get('failed')]
-              if passed_tests:
-                  md.append(f"\n## {contract}\n")
-                  for test in passed_tests[:10]:  # Limit to 10 per contract
-                      # Extract stats from details
-                      details = test.get('details', '')
-                      md.append(f"### {test['name']}() {details}\n")
-                      
-                      if test.get('table'):
-                          md.append("```")
-                          md.extend(test['table'])
-                          md.append("```\n")
-                  
-                  if len(passed_tests) > 10:
-                      md.append(f"\n*+{len(passed_tests)-10} more tests*\n")
-
-          with open('test-details.md', 'w') as f:
-              f.write('\n'.join(md))
+          with open("test-details.md", "w", encoding="utf-8") as f:
+              f.write("\n".join(md))
           EOF
 
           if [ $TEST -ne 0 ]; then
@@ -246,11 +193,11 @@ jobs:
 
             let rows = {};
             let existingDetails = {};
-            
+
             if (existing?.body) {
               const parts = existing.body.split(detailsMarker);
               const tableSection = parts[0] || '';
-              
+
               const lines = tableSection.split('\n');
               for (const line of lines) {
                 const match = line.match(/^\| ([^|]+) \| ([^|]+) \|$/);
@@ -261,7 +208,7 @@ jobs:
                   }
                 }
               }
-              
+
               const detailsRegex = /<details>\s*<summary><strong>([^<]+)<\/strong><\/summary>([\s\S]*?)<\/details>/g;
               let detailMatch;
               while ((detailMatch = detailsRegex.exec(existing.body)) !== null) {
@@ -295,7 +242,7 @@ jobs:
             });
 
             let body = `${marker}\n## CI Summary\n\n${table}`;
-            
+
             if (sortedDetails.length > 0) {
               body += `\n${detailsMarker}\n\n---\n\n${sortedDetails.map(k => existingDetails[k]).join('\n\n')}`;
             }

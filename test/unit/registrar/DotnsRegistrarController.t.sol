@@ -51,8 +51,9 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         vm.expectEmit(true, false, false, false);
         emit IDotnsRegistrarController.NameCommitted(commitment);
 
-        vm.prank(ed);
+        vm.startPrank(ed);
         dotnsRegistrarController.commit(commitment);
+        vm.stopPrank();
 
         assertEq(dotnsRegistrarController.commitments(commitment), block.timestamp);
     }
@@ -65,35 +66,31 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
 
-        vm.prank(ed);
+        vm.startPrank(ed);
         dotnsRegistrarController.commit(commitment);
 
         uint256 firstCommitTimestamp = dotnsRegistrarController.commitments(commitment);
         vm.warp(firstCommitTimestamp + dotnsRegistrarController.maxCommitmentAge() + 1);
 
-        vm.prank(ed);
         dotnsRegistrarController.commit(commitment);
+        vm.stopPrank();
 
         assertEq(dotnsRegistrarController.commitments(commitment), block.timestamp);
     }
 
     function test_register_registers_popfull_name_and_wires_records() public {
-        string memory nameLabel = "alicebob";
+        string memory nameLabel = "web2summit";
         address nameOwner = ed;
 
-        vm.prank(nameOwner);
+        vm.startPrank(nameOwner);
         popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
 
-        // PopFull should always have zero price
         uint256 quotedPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
         assertEq(quotedPrice, 0);
 
-        vm.prank(nameOwner);
         IStore ownerStoreInterface = storeFactory.deploy();
-
         Store ownerStore = Store(address(ownerStoreInterface));
 
-        vm.prank(nameOwner);
         ownerStore.authorizeDotnsController(address(dotnsRegistrarController));
 
         bytes32 secret = keccak256(abi.encodePacked(nameLabel, nameOwner, "store"));
@@ -103,8 +100,6 @@ contract DotnsRegistrarControllerTest is BaseDotns {
             });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
-
-        vm.prank(nameOwner);
         dotnsRegistrarController.commit(commitment);
 
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
@@ -120,8 +115,8 @@ contract DotnsRegistrarControllerTest is BaseDotns {
             nameLabel, labelHash, nameOwner, priceMetadata.price, address(ownerStore)
         );
 
-        vm.prank(nameOwner);
         dotnsRegistrarController.register{value: 0}(registration);
+        vm.stopPrank();
 
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(labelHash)), nameOwner);
         assertEq(dotnsRegistry.owner(node), nameOwner);
@@ -138,10 +133,9 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         string memory nameLabel = "alicebob";
         address nameOwner = ed;
 
-        vm.prank(nameOwner);
+        vm.startPrank(nameOwner);
         popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
 
-        // PopFull should always have zero price
         uint256 quotedPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
         assertEq(quotedPrice, 0);
 
@@ -152,8 +146,6 @@ contract DotnsRegistrarControllerTest is BaseDotns {
             });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
-
-        vm.prank(nameOwner);
         dotnsRegistrarController.commit(commitment);
 
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
@@ -163,10 +155,9 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         uint256 balanceBefore = nameOwner.balance;
 
-        vm.prank(nameOwner);
         dotnsRegistrarController.register{value: 1}(registration);
+        vm.stopPrank();
 
-        // Entire payment should be refunded when price is 0
         assertEq(nameOwner.balance, balanceBefore);
     }
 
@@ -174,10 +165,9 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         string memory nameLabel = "lights01";
         address nameOwner = ed;
 
-        vm.prank(nameOwner);
+        vm.startPrank(nameOwner);
         popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
 
-        // PopLite should always have zero price
         uint256 quotedPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
         assertEq(quotedPrice, 0);
 
@@ -188,8 +178,6 @@ contract DotnsRegistrarControllerTest is BaseDotns {
             });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
-
-        vm.prank(nameOwner);
         dotnsRegistrarController.commit(commitment);
 
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
@@ -197,8 +185,8 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         uint256 requiredPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
         assertEq(requiredPrice, 0);
 
-        vm.prank(nameOwner);
         dotnsRegistrarController.register{value: 0}(registration);
+        vm.stopPrank();
 
         (bool isReserved, address reservationOwner,) = popRules.isBaseNameReserved("lights");
         assertTrue(isReserved);
@@ -209,12 +197,10 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         string memory nameLabel = "hello";
         address nameOwner = ed;
 
-        vm.prank(nameOwner);
+        vm.startPrank(nameOwner);
         IStore ownerStoreInterface = storeFactory.deploy();
-
         Store ownerStore = Store(address(ownerStoreInterface));
 
-        vm.prank(nameOwner);
         ownerStore.authorizeDotnsController(address(dotnsRegistrarController));
 
         bytes32 secret = keccak256(abi.encodePacked(nameLabel, nameOwner, "reserved"));
@@ -224,8 +210,6 @@ contract DotnsRegistrarControllerTest is BaseDotns {
             });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
-
-        vm.prank(nameOwner);
         dotnsRegistrarController.commit(commitment);
 
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
@@ -238,8 +222,8 @@ contract DotnsRegistrarControllerTest is BaseDotns {
             nameLabel, labelHash, nameOwner, 0, address(ownerStore)
         );
 
-        vm.prank(nameOwner);
         dotnsRegistrarController.registerReserved(registration);
+        vm.stopPrank();
 
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(labelHash)), nameOwner);
         assertEq(dotnsRegistry.owner(node), nameOwner);
@@ -250,17 +234,10 @@ contract DotnsRegistrarControllerTest is BaseDotns {
     }
 
     function test_registration_fails_when_user_has_unauthorized_store() public {
-        // User deploys store independently (without authorizing DotNS)
-        vm.prank(ed);
-        Store userStore = Store(address(storeFactory.deploy()));
-
-        // User does NOT authorize controller/registry - intentionally skipped
-
-        // Set PoP status
-        vm.prank(ed);
+        vm.startPrank(ed);
+        storeFactory.deploy();
         popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
 
-        // Build registration
         string memory label = "myname";
         bytes32 secret = keccak256(abi.encodePacked(label, ed, block.timestamp));
 
@@ -269,23 +246,17 @@ contract DotnsRegistrarControllerTest is BaseDotns {
                 label: label, owner: ed, secret: secret, reserved: true
             });
 
-        // Commit (this succeeds)
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
-        vm.prank(ed);
         dotnsRegistrarController.commit(commitment);
 
-        // Warp past min commitment age
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
 
-        // Get price
         uint256 price = popRules.priceWithCheck(label, ed).price;
 
-        // NOW expect revert on register()
         vm.expectRevert(
             abi.encodeWithSelector(IStore.NotAuthorised.selector, address(dotnsRegistrarController))
         );
-
-        vm.prank(ed);
         dotnsRegistrarController.register{value: price}(registration);
+        vm.stopPrank();
     }
 }

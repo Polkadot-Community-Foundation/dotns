@@ -44,8 +44,9 @@ contract DotnsRegistrarTests is BaseDotns {
         vm.expectEmit(true, true, false, true, address(dotnsRegistrar));
         emit IDotnsRegistrar.NameRegistered(tokenId, nameOwner);
 
-        vm.prank(address(dotnsRegistrarController));
+        vm.startPrank(address(dotnsRegistrarController));
         dotnsRegistrar.register(tokenId, nameOwner);
+        vm.stopPrank();
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), nameOwner);
         assertEq(dotnsRegistrar.balanceOf(nameOwner), 1);
@@ -91,8 +92,9 @@ contract DotnsRegistrarTests is BaseDotns {
 
         assertTrue(dotnsRegistrar.available(tokenId));
 
-        vm.prank(address(dotnsRegistrarController));
+        vm.startPrank(address(dotnsRegistrarController));
         dotnsRegistrar.register(tokenId, nameOwner);
+        vm.stopPrank();
 
         assertFalse(dotnsRegistrar.available(tokenId));
     }
@@ -101,8 +103,9 @@ contract DotnsRegistrarTests is BaseDotns {
         address nameOwner = address(popRules);
         uint256 tokenId = uint256(keccak256(bytes("contractOwnedName")));
 
-        vm.prank(address(dotnsRegistrarController));
+        vm.startPrank(address(dotnsRegistrarController));
         dotnsRegistrar.register(tokenId, nameOwner);
+        vm.stopPrank();
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), nameOwner);
         assertEq(dotnsRegistrar.balanceOf(nameOwner), 1);
@@ -115,17 +118,18 @@ contract DotnsRegistrarTests is BaseDotns {
 
         uint256 tokenId = uint256(keccak256(bytes("approvalName")));
 
-        vm.prank(address(dotnsRegistrarController));
+        vm.startPrank(address(dotnsRegistrarController));
         dotnsRegistrar.register(tokenId, nameOwner);
+        vm.stopPrank();
 
-        vm.prank(nameOwner);
+        vm.startPrank(nameOwner);
         dotnsRegistrar.approve(tokenApproval, tokenId);
         assertEq(dotnsRegistrar.getApproved(tokenId), tokenApproval);
 
-        vm.prank(nameOwner);
         dotnsRegistrar.setApprovalForAll(operator, true);
-        assertTrue(dotnsRegistrar.isApprovedForAll(nameOwner, operator));
+        vm.stopPrank();
 
+        assertTrue(dotnsRegistrar.isApprovedForAll(nameOwner, operator));
         assertTrue(dotnsRegistrar.supportsInterface(type(IERC721).interfaceId));
     }
 }
