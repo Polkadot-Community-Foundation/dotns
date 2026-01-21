@@ -1,4 +1,4 @@
-name: Contract Tests
+name: Run Solidity Tests
 
 on:
   pull_request:
@@ -59,56 +59,79 @@ jobs:
           # Parse ALL tests for accurate counts
           all_contracts = defaultdict(lambda: {'passed': [], 'failed': []})
           # Parse ONLY invariant tests for detailed display
-          invariant_contracts = defaultdict(lambda: {'passed': [], 'failed': []})
+          invariant_tests = []
           
           current_contract = None
-          in_invariant_test = False
+          current_invariant = None
+          collecting_table = False
+          table_lines = []
 
-          for line in content.split('\n'):
-              # Match contract header like "Ran 5 tests for test/Registry.t.sol:RegistryTest"
+          lines = content.split('\n')
+          for i, line in enumerate(lines):
+              # Match contract header
               contract_match = re.search(r'for test/([^:]+):(\w+)', line)
               if contract_match:
                   current_contract = contract_match.group(2)
-                  in_invariant_test = 'Invariant' in current_contract
               
               # Match test results
-              pass_match = re.match(r'\[PASS\]\s+(\w+)\(\)\s*(?:\((?:gas:\s*(\d+)|runs:\s*\d+[^)]*)\))?', line)
+              pass_match = re.match(r'\[PASS\]\s+(\w+)\(\)\s*(\([^)]+\))?', line)
               fail_match = re.match(r'\[FAIL[:\.]?\s*[^\]]*\]\s+(\w+)\(\)', line)
               
               if pass_match and current_contract:
                   test_name = pass_match.group(1)
-                  gas_value = pass_match.group(2) or ''
+                  test_details = pass_match.group(2) or ''
                   is_invariant = test_name.startswith('invariant_')
                   
                   # Add to all_contracts for total count
                   all_contracts[current_contract]['passed'].append({
                       'name': test_name,
-                      'gas': gas_value,
+                      'details': test_details,
                       'is_invariant': is_invariant
                   })
                   
-                  # Add to invariant_contracts only if it's an invariant test
+                  # For invariant tests, start collecting detailed info
                   if is_invariant:
-                      invariant_contracts[current_contract]['passed'].append({
+                      current_invariant = {
+                          'contract': current_contract,
                           'name': test_name,
-                          'gas': gas_value
-                      })
+                          'details': test_details,
+                          'table': []
+                      }
+                      collecting_table = True
                       
               elif fail_match and current_contract:
                   test_name = fail_match.group(1)
                   is_invariant = test_name.startswith('invariant_')
                   
-                  # Add to all_contracts for total count
                   all_contracts[current_contract]['failed'].append({
                       'name': test_name,
                       'is_invariant': is_invariant
                   })
                   
-                  # Add to invariant_contracts only if it's an invariant test
                   if is_invariant:
-                      invariant_contracts[current_contract]['failed'].append({
-                          'name': test_name
-                      })
+                      current_invariant = {
+                          'contract': current_contract,
+                          'name': test_name,
+                          'details': '',
+                          'failed': True,
+                          'table': []
+                      }
+                      collecting_table = True
+              
+              # Collect table lines for invariant tests
+              if collecting_table and current_invariant:
+                  # Check if we're in the statistics table
+                  if '╭' in line or '├' in line or '│' in line or '╰' in line or '═' in line:
+                      table_lines.append(line)
+                  elif line.strip().startswith('|') and ('Contract' in line or 'Selector' in line or 'Calls' in line):
+                      table_lines.append(line)
+                  elif line.strip() == '' and table_lines:
+                      # End of table
+                      current_invariant['table'] = table_lines
+                      invariant_tests.append(current_invariant)
+                      current_invariant = None
+                      collecting_table = False
+                      table_lines = []
 
           # Calculate totals from ALL tests
           total_passed = sum(len(c['passed']) for c in all_contracts.values())
@@ -116,9 +139,9 @@ jobs:
           total = total_passed + total_failed
           
           # Calculate invariant test counts
-          invariant_passed = sum(len(c['passed']) for c in invariant_contracts.values())
-          invariant_failed = sum(len(c['failed']) for c in invariant_contracts.values())
-          invariant_total = invariant_passed + invariant_failed
+          invariant_passed = sum(1 for t in invariant_tests if not t.get('failed'))
+          invariant_failed = sum(1 for t in invariant_tests if t.get('failed'))
+          invariant_total = len(invariant_tests)
 
           if total_failed > 0:
               out('result', f'Failed - {total_failed} of {total} tests failed')
@@ -130,30 +153,45 @@ jobs:
               out('result', 'No tests found')
               out('has_details', 'false')
 
-          # Build markdown showing ONLY invariant tests
+          # Build markdown showing invariant tests with details
           md = []
           md.append(f"### Invariant Tests: {invariant_passed} passed, {invariant_failed} failed (of {invariant_total} total)")
           md.append(f"### All Tests: {total_passed} passed, {total_failed} failed (of {total} total)\n")
           
-          # Failed invariant tests first
-          for contract, data in sorted(invariant_contracts.items()):
-              if data['failed']:
-                  md.append(f"\n**{contract} - Failed ({len(data['failed'])})**\n")
-                  md.append("| Test |")
-                  md.append("|:-----|")
-                  for t in data['failed']:
-                      md.append(f"| {t['name']}() |")
-
-          # Passed invariant tests grouped by contract
-          for contract, data in sorted(invariant_contracts.items()):
-              if data['passed']:
-                  md.append(f"\n**{contract} ({len(data['passed'])} passed)**\n")
-                  md.append("| Test |")
-                  md.append("|:-----|")
-                  for t in data['passed'][:15]:
-                      md.append(f"| {t['name']}() |")
-                  if len(data['passed']) > 15:
-                      md.append(f"| +{len(data['passed'])-15} more |")
+          # Group by contract
+          contracts_dict = defaultdict(list)
+          for test in invariant_tests:
+              contracts_dict[test['contract']].append(test)
+          
+          # Failed tests first
+          for contract, tests in sorted(contracts_dict.items()):
+              failed_tests = [t for t in tests if t.get('failed')]
+              if failed_tests:
+                  md.append(f"\n## {contract} - Failed\n")
+                  for test in failed_tests:
+                      md.append(f"### {test['name']}()\n")
+                      if test.get('table'):
+                          md.append("```")
+                          md.extend(test['table'])
+                          md.append("```\n")
+          
+          # Passed tests
+          for contract, tests in sorted(contracts_dict.items()):
+              passed_tests = [t for t in tests if not t.get('failed')]
+              if passed_tests:
+                  md.append(f"\n## {contract}\n")
+                  for test in passed_tests[:10]:  # Limit to 10 per contract
+                      # Extract stats from details
+                      details = test.get('details', '')
+                      md.append(f"### {test['name']}() {details}\n")
+                      
+                      if test.get('table'):
+                          md.append("```")
+                          md.extend(test['table'])
+                          md.append("```\n")
+                  
+                  if len(passed_tests) > 10:
+                      md.append(f"\n*+{len(passed_tests)-10} more tests*\n")
 
           with open('test-details.md', 'w') as f:
               f.write('\n'.join(md))
