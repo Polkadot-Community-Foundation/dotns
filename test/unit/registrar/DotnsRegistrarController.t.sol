@@ -4,8 +4,7 @@ pragma solidity ^0.8.30;
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
-import {IStore} from "../../../contracts/store/IStore.sol";
-import {Store} from "../../../contracts/store/Store.sol";
+import {IStore, Store} from "../../../contracts/store/Store.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 contract DotnsRegistrarControllerTest is BaseDotns {
@@ -248,5 +247,45 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         bytes32 storeKey = keccak256(abi.encodePacked(DOTNS_REGISTERED_PREFIX, labelHash));
         assertEq(ownerStore.getValueFor(nameOwner, storeKey), string.concat(nameLabel, ".dot"));
+    }
+
+    function test_registration_fails_when_user_has_unauthorized_store() public {
+        // User deploys store independently (without authorizing DotNS)
+        vm.prank(ed);
+        Store userStore = Store(address(storeFactory.deploy()));
+
+        // User does NOT authorize controller/registry - intentionally skipped
+
+        // Set PoP status
+        vm.prank(ed);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+
+        // Build registration
+        string memory label = "myname";
+        bytes32 secret = keccak256(abi.encodePacked(label, ed, block.timestamp));
+
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: label, owner: ed, secret: secret, reserved: true
+            });
+
+        // Commit (this succeeds)
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
+        vm.prank(ed);
+        dotnsRegistrarController.commit(commitment);
+
+        // Warp past min commitment age
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+
+        // Get price
+        uint256 price = popRules.priceWithCheck(label, ed).price;
+
+        // NOW expect revert on register()
+        vm.expectRevert(
+            abi.encodeWithSelector(IStore.NotAuthorised.selector, address(dotnsRegistrarController))
+        );
+
+        vm.prank(ed);
+        dotnsRegistrarController.register{value: price}(registration);
     }
 }

@@ -2,8 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
-import {IStore} from "../../../contracts/store/IStore.sol";
-import {Store} from "../../../contracts/store/Store.sol";
+import {Store, IStore} from "../../../contracts/store/Store.sol";
 
 contract StoreTests is BaseDotns {
     function test_setvalue_stores_and_emits() public {
