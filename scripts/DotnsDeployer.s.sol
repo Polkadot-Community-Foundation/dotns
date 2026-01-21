@@ -74,7 +74,7 @@ contract DotnsDeployer is BaseDeployer {
         address dotnsRegistryProxy = Upgrades.deployUUPSProxy(
             "DotnsRegistry.sol:DotnsRegistry",
             abi.encodeCall(
-                DotnsRegistry.initialize, (IDotnsReverseResolver(dotnsReverseResolverProxy))
+                DotnsRegistry.initialize, (IDotnsReverseResolver(dotnsReverseResolverProxy),storeFactory)
             )
         );
         dotnsRegistry = DotnsRegistry(dotnsRegistryProxy);
