@@ -50,23 +50,30 @@ jobs:
           from collections import OrderedDict
 
           def out(k, v):
-              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
                   f.write(f"{k}={v}\n")
 
           with open("test.log", "r", encoding="utf-8", errors="ignore") as f:
               content = f.read()
 
-          suite_header_re = re.compile(r"^Running\s+\d+\s+tests?\s+for\s+(test/[^:]+):([A-Za-z0-9_]+)\s*$")
-          suite_result_re = re.compile(r"^Suite result:\s*(.*)\s*$")
-          test_line_re = re.compile(r"^\[(PASS|FAIL[^\]]*)\]\s+([A-Za-z0-9_]+)\(\)(?:\s*\(([^)]*)\))?.*$")
+          header_re = re.compile(
+              r"(?:^|\s)(?:Running|Ran)\s+\d+\s+tests?\s+for\s+(test/[^\s:]+):([A-Za-z0-9_]+)\s*$"
+          )
+          suite_result_re = re.compile(r"^\s*Suite result:\s*(.+)\s*$")
+          test_line_re = re.compile(
+              r"^\s*\[(PASS|FAIL[^\]]*)\]\s+([A-Za-z0-9_]+)\(\)(?:\s*\(([^)]*)\))?.*$"
+          )
 
           suites = OrderedDict()
           current_suite = None
 
-          for line in content.splitlines():
-              m = suite_header_re.match(line.strip())
-              if m:
-                  file_path, contract = m.group(1), m.group(2)
+          for raw in content.splitlines():
+              line = raw.rstrip("\n")
+
+              hm = header_re.search(line)
+              if hm:
+                  file_path = hm.group(1)
+                  contract = hm.group(2)
                   current_suite = f"{file_path}:{contract}"
                   if current_suite not in suites:
                       suites[current_suite] = {
@@ -77,10 +84,10 @@ jobs:
                       }
                   continue
 
-              m = test_line_re.match(line.strip())
-              if m and current_suite:
-                  tag = m.group(1)
-                  test_name = m.group(2)
+              tm = test_line_re.match(line)
+              if tm and current_suite:
+                  tag = tm.group(1)
+                  test_name = tm.group(2)
                   outcome = "PASS" if tag == "PASS" else "FAIL"
                   error = ""
                   if outcome == "FAIL":
@@ -95,9 +102,9 @@ jobs:
                   })
                   continue
 
-              m = suite_result_re.match(line.strip())
-              if m and current_suite:
-                  suites[current_suite]["suite_result"] = f"Suite result: {m.group(1).strip()}"
+              sm = suite_result_re.match(line)
+              if sm and current_suite:
+                  suites[current_suite]["suite_result"] = f"Suite result: {sm.group(1).strip()}"
                   continue
 
           total_passed = 0
@@ -107,25 +114,31 @@ jobs:
           md = []
           md.append("## Contract test results\n")
 
-          for suite_key, s in suites.items():
+          for _, s in suites.items():
               md.append(f"### {s['contract']} ({s['file']})\n")
               md.append("| Test name | Outcome | Error |")
               md.append("|:--|:--:|:--|")
 
+              passed = 0
+              failed = 0
+
               for t in s["tests"]:
                   name = t["name"]
                   outcome = t["outcome"]
-                  error = t["error"].replace("|", "\\|")
+                  error = (t["error"] or "").replace("|", "\\|")
                   md.append(f"| {name} | {outcome} | {error} |")
-
                   if outcome == "PASS":
+                      passed += 1
                       total_passed += 1
                   else:
+                      failed += 1
                       total_failed += 1
 
               md.append("")
               if s["suite_result"]:
                   md.append(s["suite_result"])
+              else:
+                  md.append(f"Suite result: {'ok' if failed == 0 else 'failed'}. {passed} passed; {failed} failed; {total_skipped} skipped;")
               md.append("")
 
           total = total_passed + total_failed + total_skipped
