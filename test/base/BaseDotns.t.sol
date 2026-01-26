@@ -174,7 +174,9 @@ abstract contract BaseDotns is Test {
         );
         dotnsRegistrarController = DotnsRegistrarController(dotnsRegistrarControllerAddress);
         vm.label(dotnsRegistrarControllerAddress, "DotnsRegistrarController");
-        dotnsReverseResolver.updateRegistrar(dotnsRegistrarControllerAddress);
+        dotnsReverseResolver.updateRegistrar(
+            IDotnsRegistrarController(dotnsRegistrarControllerAddress)
+        );
         popRules.updateDotRegistry(dotnsRegistrarControllerAddress);
         dotnsRegistrar.addController(IDotnsRegistrarController(dotnsRegistrarControllerAddress));
         dotnsRegistry.updateRegistrarController(

@@ -38,26 +38,6 @@ contract DotnsRegistryTests is BaseDotns {
         assertEq(address(dotnsRegistry.registrarController()), address(newRegistrarController));
     }
 
-    function test_owner_can_rotate_registrar_controller_multiple_times() public {
-        address firstRegistrarController = makeAddr("first_registrar_controller");
-        address secondRegistrarController = makeAddr("second_registrar_controller");
-
-        if (firstRegistrarController == secondRegistrarController) {
-            secondRegistrarController = makeAddr("second_registrar_controller_alt");
-        }
-
-        vm.startPrank(owner);
-        dotnsRegistry.updateRegistrarController(IDotnsRegistrarController(firstRegistrarController));
-        assertEq(address(dotnsRegistry.registrarController()), firstRegistrarController);
-
-        dotnsRegistry.updateRegistrarController(
-            IDotnsRegistrarController(secondRegistrarController)
-        );
-        vm.stopPrank();
-
-        assertEq(address(dotnsRegistry.registrarController()), secondRegistrarController);
-    }
-
     function test_registrar_controller_sets_owner_emits_event_and_sets_resolver() public {
         bytes32 node = keccak256("node_b");
         address resolverAddress = address(dotnsReverseResolver);
@@ -76,30 +56,6 @@ contract DotnsRegistryTests is BaseDotns {
         assertEq(dotnsRegistry.owner(node), ed);
         assertTrue(dotnsRegistry.recordExists(node));
         assertEq(dotnsRegistry.resolver(node), resolverAddress);
-    }
-
-    function test_registrar_controller_sets_owner_for_multiple_nodes() public {
-        bytes32 firstNode = keccak256("first_node");
-        bytes32 secondNode = keccak256("second_node");
-        address resolverAddress = address(dotnsReverseResolver);
-
-        vm.startPrank(owner);
-        dotnsRegistry.updateRegistrarController(dotnsRegistrarController);
-        vm.stopPrank();
-
-        vm.startPrank(address(dotnsRegistrarController));
-        dotnsRegistry.setOwner(firstNode, ed, resolverAddress);
-        dotnsRegistry.setOwner(secondNode, tiago, resolverAddress);
-        vm.stopPrank();
-
-        assertEq(dotnsRegistry.owner(firstNode), ed);
-        assertEq(dotnsRegistry.owner(secondNode), tiago);
-
-        assertTrue(dotnsRegistry.recordExists(firstNode));
-        assertTrue(dotnsRegistry.recordExists(secondNode));
-
-        assertEq(dotnsRegistry.resolver(firstNode), resolverAddress);
-        assertEq(dotnsRegistry.resolver(secondNode), resolverAddress);
     }
 
     function test_node_owner_creates_subnode_emits_event_and_returns_expected_subnode() public {

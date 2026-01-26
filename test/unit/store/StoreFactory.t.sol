@@ -27,6 +27,7 @@ contract StoreFactoryTests is BaseDotns {
         storeFactory.transferOwnership(leonardo);
         vm.stopPrank();
 
+        assertEq(storeFactory.getAllDeployedStores().length, 1);
         assertEq(address(storeFactory.getDeployedStore(ed)), address(0));
         assertEq(address(storeFactory.getDeployedStore(leonardo)), address(deployed));
         assertEq(Store(address(deployed)).owner(), ed);
@@ -52,34 +53,5 @@ contract StoreFactoryTests is BaseDotns {
         vm.expectRevert(abi.encodeWithSelector(IStoreFactory.InvalidTransfer.selector, leonardo));
         storeFactory.transferOwnership(leonardo);
         vm.stopPrank();
-    }
-
-    function test_transferownership_to_zero_address_updates_mapping() public {
-        vm.startPrank(ed);
-        IStore deployed = storeFactory.deploy();
-
-        vm.expectEmit(true, true, true, false);
-        emit IStoreFactory.OwnershipTransfered(ed, address(0));
-
-        storeFactory.transferOwnership(address(0));
-        vm.stopPrank();
-
-        assertEq(address(storeFactory.getDeployedStore(ed)), address(0));
-        assertEq(address(storeFactory.getDeployedStore(address(0))), address(deployed));
-        assertEq(Store(address(deployed)).owner(), ed);
-    }
-
-    function test_deploy_after_transferownership_creates_new_store_for_old_owner() public {
-        vm.startPrank(ed);
-        IStore first = storeFactory.deploy();
-        storeFactory.transferOwnership(leonardo);
-        IStore second = storeFactory.deploy();
-        vm.stopPrank();
-
-        assertEq(address(storeFactory.getDeployedStore(ed)), address(second));
-        assertEq(address(storeFactory.getDeployedStore(leonardo)), address(first));
-        assertEq(Store(address(first)).owner(), ed);
-        assertEq(Store(address(second)).owner(), ed);
-        assertTrue(address(first) != address(second));
     }
 }

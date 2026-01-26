@@ -10,6 +10,7 @@ import {
     ERC165Upgradeable
 } from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import {IDotnsReverseResolver} from "./IDotnsReverseResolver.sol";
+import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController.sol";
 
 /// @title Dot Reverse Resolver
 /// @notice Resolves an address to its associated .dot name.
@@ -28,7 +29,7 @@ contract DotnsReverseResolver is
     mapping(address owner => string name) private reverseNames;
 
     /// @notice Address authorised to modify reverse name records.
-    address public registrar;
+    IDotnsRegistrarController public registrarController;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
     // forge-lint: disable-next-line(mixed-case-variable)
@@ -64,10 +65,10 @@ contract DotnsReverseResolver is
     }
 
     /// @inheritdoc IDotnsReverseResolver
-    function updateRegistrar(address newRegistrar) external override onlyOwner {
-        require(newRegistrar != address(0), InvalidRegistrar());
-        address oldRegistrar = registrar;
-        registrar = newRegistrar;
+    function updateRegistrar(IDotnsRegistrarController newRegistrar) external override onlyOwner {
+        require(address(newRegistrar) != address(0), InvalidRegistrarController());
+        IDotnsRegistrarController oldRegistrar = registrarController;
+        registrarController = newRegistrar;
         emit RegistrarUpdated(oldRegistrar, newRegistrar);
     }
 
@@ -84,7 +85,7 @@ contract DotnsReverseResolver is
 
     /// @notice Internal check enforcing registrar-only access.
     function _onlyRegistrar() internal view {
-        require(msg.sender == registrar, NotRegistrar());
+        require(msg.sender == address(registrarController), NotRegistrarController(msg.sender));
     }
 
     /// @notice Returns implementation version

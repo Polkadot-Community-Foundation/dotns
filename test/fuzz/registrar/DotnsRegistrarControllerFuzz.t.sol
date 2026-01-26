@@ -5,27 +5,6 @@ import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 
 contract DotnsRegistrarControllerFuzzTest is BaseDotns {
-    function testFuzz_register_succeeds_when_payment_equals_price(uint256 salt) public {
-        address registrant = ed;
-        string memory nameLabel = _labelNoStatusPriced(bound(salt, 0, 64));
-
-        vm.startPrank(registrant);
-        popRules.setUserPopStatus(IPopRules.PopStatus.NoStatus);
-        vm.stopPrank();
-
-        IDotnsRegistrarController.Registration memory registration =
-            _commitFor(nameLabel, registrant, true);
-
-        uint256 requiredPrice = popRules.priceWithCheck(nameLabel, registrant).price;
-        assertGt(requiredPrice, 0);
-
-        vm.startPrank(registrant);
-        dotnsRegistrarController.register{value: requiredPrice}(registration);
-        vm.stopPrank();
-
-        assertEq(dotnsRegistrar.ownerOf(uint256(keccak256(bytes(nameLabel)))), registrant);
-    }
-
     function testFuzz_register_refunds_overpayment(uint256 extra, uint256 salt) public {
         address registrant = ed;
         string memory nameLabel = _labelNoStatusPriced(bound(salt, 0, 64));
@@ -40,7 +19,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         uint256 requiredPrice = popRules.priceWithCheck(nameLabel, registrant).price;
         assertGt(requiredPrice, 0);
 
-        extra = bound(extra, 1, 5 ether);
+        extra = bound(extra, 0, 5 ether);
 
         uint256 balanceBefore = registrant.balance;
 
@@ -50,26 +29,6 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
 
         uint256 balanceAfter = registrant.balance;
         assertEq(balanceBefore - balanceAfter, requiredPrice);
-    }
-
-    function testFuzz_register_accepts_exact_zero_payment_when_price_is_zero(uint256 salt) public {
-        address registrant = tiago;
-        string memory nameLabel = _labelPriceZero(bound(salt, 0, 64));
-
-        vm.startPrank(registrant);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
-        vm.stopPrank();
-
-        IDotnsRegistrarController.Registration memory registration =
-            _commitFor(nameLabel, registrant, false);
-
-        uint256 requiredPrice = popRules.priceWithCheck(nameLabel, registrant).price;
-        assertEq(requiredPrice, 0);
-
-        vm.startPrank(registrant);
-        dotnsRegistrarController.register{value: 0}(registration);
-        vm.stopPrank();
-
         assertEq(dotnsRegistrar.ownerOf(uint256(keccak256(bytes(nameLabel)))), registrant);
     }
 
@@ -92,7 +51,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         uint256 requiredPrice = popRules.priceWithCheck(nameLabel, registrant).price;
         assertEq(requiredPrice, 0);
 
-        extra = bound(extra, 1, 5 ether);
+        extra = bound(extra, 0, 5 ether);
         uint256 balanceBefore = registrant.balance;
 
         vm.startPrank(registrant);
@@ -101,6 +60,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
 
         uint256 balanceAfter = registrant.balance;
         assertEq(balanceBefore, balanceAfter);
+        assertEq(dotnsRegistrar.ownerOf(uint256(keccak256(bytes(nameLabel)))), registrant);
     }
 
     function testFuzz_register_refunds_to_payer_not_owner_when_registering_for_other(
@@ -128,7 +88,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         uint256 requiredPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
         assertEq(requiredPrice, 0);
 
-        extra = bound(extra, 1, 5 ether);
+        extra = bound(extra, 0, 5 ether);
 
         uint256 payerBalanceBefore = payer.balance;
         uint256 ownerBalanceBefore = nameOwner.balance;

@@ -75,23 +75,6 @@ contract StoreTests is BaseDotns {
         assertTrue(storeInstance.isAuthorized(leonardo));
     }
 
-    function test_dotnscontroller_bypasses_authorized_store_list() public {
-        vm.startPrank(owner);
-        Store storeInstance = new Store();
-        storeInstance.authorizeDotnsController(leonardo);
-        vm.stopPrank();
-
-        bytes32 key = keccak256(bytes("ipfs"));
-        string memory value = "bafybeigdyrzt";
-
-        vm.startPrank(leonardo);
-        storeInstance.setValueFor(ed, key, value);
-        vm.stopPrank();
-
-        assertEq(storeInstance.getValueFor(ed, key), value);
-        assertTrue(storeInstance.isDotnsController(leonardo));
-    }
-
     function test_setvaluefor_by_dotnscontroller_locks_key() public {
         vm.startPrank(owner);
         Store storeInstance = new Store();
@@ -108,6 +91,8 @@ contract StoreTests is BaseDotns {
         storeInstance.setValueFor(ed, key, value);
         vm.stopPrank();
 
+        assertEq(storeInstance.getValueFor(ed, key), value);
+        assertTrue(storeInstance.isDotnsController(leonardo));
         assertTrue(storeInstance.isLocked(ed, key));
 
         vm.startPrank(ed);

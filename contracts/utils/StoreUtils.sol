@@ -6,41 +6,47 @@ import {IStore} from "../store/IStore.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 
 /// @title DotNS Store Utilities Library
-/// @notice Provides Store acquisition and management
-///         utilities for any contract that requires a store.
+/// @notice Provides Store acquisition and management utilities for any contract that requires a store.
 ///
 /// @dev Store Resolution Strategy:
-///      The library implements a three-tier resolution strategy:
-///      1. Direct mapping: Store already exists and is mapped to the target owner.
-///      2. Controller mapping: Store exists under the controller's address and must be migrated.
-///      3. Fresh deployment: No store exists; deploy, authorize, and transfer ownership.
+///      The library implements a two-tier resolution strategy:
+///      1. Direct lookup: Store already exists and is mapped to the target owner.
+///      2. Fresh deployment: No store exists; deploy, authorize controllers, and transfer ownership.
+///
+/// @dev Ownership Model:
+///      Two distinct ownership concepts exist:
+///      - Factory mapping: Tracks which address has which Store for lookup purposes.
+///      - Store.owner (Ownable): Controls who can authorize contracts to write to the Store.
+///      Both must be transferred to the target owner for correct operation.
+///
 /// @custom:security-contact admin@parity.io
 library StoreUtils {
-    /// @notice Returns the Store for `owner`, deploying or migrating one if needed.
-    /// @dev Unifies Store acquisition across registration flows. Handles three cases:
+    /// @notice Returns the Store for `owner`, deploying one if needed.
+    /// @dev Unifies Store acquisition across registration flows. Handles two cases:
     ///
-    ///      Case 1 - Direct Mapping:
+    ///      Case 1 - Direct Lookup:
     ///      Store already mapped to `owner` in the factory. Returns immediately.
     ///
-    ///      Case 2 - Controller Migration:
-    ///      Store mapped to the calling controller in the factory. Transfers the factory
-    ///      mapping to `owner` and returns the migrated Store.
+    ///      Case 2 - Fresh Deployment:
+    ///      No store exists for owner. Deploys a new Store under the calling controller,
+    ///      authorizes all provided controllers for DotNS writes, transfers Store.owner
+    ///      to the target owner, then migrates the factory mapping to owner.
     ///
-    ///      Case 3 - Fresh Deployment:
-    ///      No store exists for either address. Deploys a new Store under the controller,
-    ///      authorizes the controller for DotNS writes, transfers Store ownership to `owner`,
-    ///      then migrates the factory mapping to `owner`.
+    /// @dev Deployment Flow:
+    ///      1. factory.deploy() creates Store with msg.sender as Ownable owner
+    ///      2. authorizeDotnsController() succeeds because msg.sender is owner
+    ///      3. store.transferOwnership(owner) transfers Ownable ownership
+    ///      4. factory.transferOwnership(owner) transfers factory mapping
+    ///      After step 4, msg.sender has no factory mapping and can deploy again.
     ///
     /// @dev Reentrancy Consideration:
-    ///      While no explicit reentrancy guard is applied, the deployed Store contract
-    ///      is not expected to call back into this function. Callers should ensure
-    ///      the Store implementation does not introduce unexpected callbacks.
-    ///       In any case the StoreFactory and Store arent upgradeable nor do they
-    ///       Make any external calls that could engender such a scenario
+    ///      No explicit reentrancy guard is applied. The deployed Store contract
+    ///      does not make external calls that could re-enter this function.
+    ///      StoreFactory and Store are not upgradeable.
     ///
     /// @param factory The StoreFactory instance used to resolve or deploy Stores.
-    /// @param controllers The addresses that should be approved for writes
-    /// @param owner The target Store owner address
+    /// @param controllers The addresses that should be authorized as DotNS controllers.
+    /// @param owner The target Store owner address.
     /// @return store The resolved or newly deployed Store instance.
     function getOrCreateStore(
         IStoreFactory factory,
@@ -55,18 +61,8 @@ library StoreUtils {
             return Store(address(existing));
         }
 
-        IStore controllerMapped = factory.getDeployedStore(msg.sender);
-
-        if (address(controllerMapped) != address(0) && owner == msg.sender) {
-            factory.transferOwnership(owner);
-
-            IStore migrated = factory.getDeployedStore(owner);
-            require(address(migrated) != address(0), IStoreFactory.InvalidTransfer(owner));
-
-            return Store(address(migrated));
-        }
-
         store = Store(address(factory.deploy()));
+
         for (uint256 i; i < controllers.length; i++) {
             store.authorizeDotnsController(controllers[i]);
         }
@@ -81,8 +77,7 @@ library StoreUtils {
     /// @param owner The address to check for an existing Store.
     /// @return exists True if a Store is mapped to `owner`, false otherwise.
     function hasStore(IStoreFactory factory, address owner) internal view returns (bool exists) {
-        IStore existing = factory.getDeployedStore(owner);
-        exists = address(existing) != address(0);
+        exists = address(factory.getDeployedStore(owner)) != address(0);
     }
 
     /// @notice Returns the Store address for an owner without deploying.
@@ -91,7 +86,6 @@ library StoreUtils {
     /// @param owner The address to look up.
     /// @return store The Store address, or zero if none exists.
     function getStore(IStoreFactory factory, address owner) internal view returns (address store) {
-        IStore existing = factory.getDeployedStore(owner);
-        store = address(existing);
+        store = address(factory.getDeployedStore(owner));
     }
 }
