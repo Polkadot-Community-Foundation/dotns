@@ -77,6 +77,28 @@ Per-user storage used to persist DotNS-written records. Deployed to Paseo
 | DotnsRegistrarController | 0x2CB1dE90013C55f779Ca6894a66142571e1af41D |
 
 
+### Mental model for new features
+
+Treat the chain as the database. Assume no servers and no indexers. If a feature needs an offchain service to be usable, it is not a DotNS feature.
+
+This has a practical implication: every feature must come with an explicit query path. A client should be able to start from a small set of known contracts and find everything it needs with a bounded number of calls.
+
+Rules of thumb:
+
+- State is the source of truth. Events are for observability.
+- Discovery must be deterministic. If something is created, store where to find it.
+- Avoid “scan and reconstruct”. Do not require replaying logs from genesis to recover user state.
+- Prefer simple keys. `node`, `labelhash`, `owner`, `commitment` should be enough to locate related data.
+- If you need lists, make them enumerable onchain with pagination. Do not assume an indexer will build the list.
+- If a rule matters for funds or correctness, enforce it onchain. Offchain checks are optional UX.
+
+A quick checklist for a PR adding a feature:
+
+- Where is the canonical state stored?
+- From which known contract can a client discover it?
+- What are the exact view functions needed to read it without scanning?
+- How does a client list relevant items (if listing is required), and how is it paginated?
+
 ### Build
 
 ```bash
