@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IDotnsRegistrar} from "../../../contracts/registrars/IDotnsRegistrar.sol";
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
@@ -29,7 +28,7 @@ contract DotnsRegistrarTests is BaseDotns {
 
     function test_register_mints_to_owner() public {
         address nameOwner = ed;
-        uint256 tokenId = uint256(keccak256(bytes("alice")));
+        uint256 tokenId = _tokenIdForLabel("alice");
 
         vm.startPrank(address(dotnsRegistrarController));
         dotnsRegistrar.register(tokenId, nameOwner);
@@ -41,7 +40,7 @@ contract DotnsRegistrarTests is BaseDotns {
 
     function test_available_before_after_register() public {
         address nameOwner = ed;
-        uint256 tokenId = uint256(keccak256(bytes("availabilityCheck")));
+        uint256 tokenId = _tokenIdForLabel("availabilityCheck");
 
         assertTrue(dotnsRegistrar.available(tokenId));
 
@@ -57,7 +56,7 @@ contract DotnsRegistrarTests is BaseDotns {
         address tokenApproval = tiago;
         address operator = leonardo;
 
-        uint256 tokenId = uint256(keccak256(bytes("approvalName")));
+        uint256 tokenId = _tokenIdForLabel("approvalName");
 
         vm.startPrank(address(dotnsRegistrarController));
         dotnsRegistrar.register(tokenId, nameOwner);

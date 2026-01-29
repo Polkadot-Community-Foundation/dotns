@@ -62,19 +62,19 @@ Stores forward-resolution address records per node. Writes require node ownershi
 
 ### `StoreFactory` and `Store`
 
-Per-user storage used to persist DotNS-written records. Deployed to Paseo
+Per-user storage used to persist Dotns-written immutable records. Deployed to Paseo
 
 ### Deployments
 | Contract                 | Address                                    |
 | ------------------------ | ------------------------------------------ |
-| StoreFactory             | 0xF8e838FF0E5955de7bdDD367fA89c89575722615 |
-| DotnsRegistrar           | 0x68cE3f3b3819279861CcEf1d703Aa358b4993650 |
-| DotnsReverseResolver     | 0xb8e019D716a718Ba2C7a8649215AcB7f31aa5147 |
-| DotnsRegistry            | 0xd31ACEFD8E40078375BFF392805BBc0301f0aF4A |
-| DotnsContentResolver     | 0xb3d23aDC08dc3bb8b1130579e81449afbA5cc3c2 |
-| DotnsResolver            | 0x34196DC986e600bDDbb5F43BF77D8cBe6ad05b20 |
-| PopRules                 | 0xdE40254fF6470CE8b6683d2FCFD0599B2BcfC3Af |
-| DotnsRegistrarController | 0x2CB1dE90013C55f779Ca6894a66142571e1af41D |
+| StoreFactory             | 0x030296782F4d3046B080BcB017f01837561D9702 |
+| DotnsRegistrar           | 0x329aAA5b6bEa94E750b2dacBa74Bf41291E6c2BD |
+| DotnsReverseResolver     | 0x95D57363B491CF743970c640fe419541386ac8BF |
+| DotnsRegistry            | 0x4Da0d37aBe96C06ab19963F31ca2DC0412057a6f |
+| DotnsContentResolver     | 0x7756DF72CBc7f062e7403cD59e45fBc78bed1cD7 |
+| DotnsResolver            | 0x95645C7fD0fF38790647FE13F87Eb11c1DCc8514 |
+| PopRules                 | 0x4e8920B1E69d0cEA9b23CBFC87A17Ee6fE02d2d3 |
+| DotnsRegistrarController | 0xd09e0F1c1E6CE8Cf40df929ef4FC778629573651 |
 
 
 ### Mental model for new features

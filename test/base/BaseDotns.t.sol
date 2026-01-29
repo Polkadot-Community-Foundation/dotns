@@ -124,7 +124,11 @@ abstract contract BaseDotns is Test {
             "DotnsRegistry.sol:DotnsRegistry",
             abi.encodeCall(
                 DotnsRegistry.initialize,
-                (IDotnsReverseResolver(dotnsReverseResolverAddress), storeFactory)
+                (
+                    IDotnsRegistrar(dotnsRegistrarAddress),
+                    IDotnsReverseResolver(dotnsReverseResolverAddress),
+                    storeFactory
+                )
             )
         );
         dotnsRegistry = DotnsRegistry(dotnsRegistryAddress);
@@ -138,24 +142,17 @@ abstract contract BaseDotns is Test {
         vm.label(dotnsContentResolverAddress, "DotnsContentResolver");
 
         address popRulesAddress = Upgrades.deployUUPSProxy(
-            "PopRules.sol:PopRules", abi.encodeCall(popRules.initialize, (RENT_PRICE))
+            "PopRules.sol:PopRules", abi.encodeCall(PopRules.initialize, (RENT_PRICE))
         );
         popRules = PopRules(popRulesAddress);
         vm.label(popRulesAddress, "PopRules");
 
-        address dotnContentResolverAddress = Upgrades.deployUUPSProxy(
-            "DotnsContentResolver.sol:DotnsContentResolver",
-            abi.encodeCall(DotnsContentResolver.initialize, (IDotnsRegistry(dotnsRegistryAddress)))
-        );
-        dotnsContentResolver = DotnsContentResolver(dotnContentResolverAddress);
-        vm.label(dotnContentResolverAddress, "DotnsContentResolver");
-
-        address dotnResolverAddress = Upgrades.deployUUPSProxy(
+        address dotnsResolverAddress = Upgrades.deployUUPSProxy(
             "DotnsResolver.sol:DotnsResolver",
             abi.encodeCall(DotnsResolver.initialize, (IDotnsRegistry(dotnsRegistryAddress)))
         );
-        dotnsResolver = DotnsResolver(dotnResolverAddress);
-        vm.label(dotnResolverAddress, "DotnsResolver");
+        dotnsResolver = DotnsResolver(dotnsResolverAddress);
+        vm.label(dotnsResolverAddress, "DotnsResolver");
 
         address dotnsRegistrarControllerAddress = Upgrades.deployUUPSProxy(
             "DotnsRegistrarController.sol:DotnsRegistrarController",
@@ -174,6 +171,7 @@ abstract contract BaseDotns is Test {
         );
         dotnsRegistrarController = DotnsRegistrarController(dotnsRegistrarControllerAddress);
         vm.label(dotnsRegistrarControllerAddress, "DotnsRegistrarController");
+
         dotnsReverseResolver.updateRegistrar(
             IDotnsRegistrarController(dotnsRegistrarControllerAddress)
         );
@@ -182,6 +180,7 @@ abstract contract BaseDotns is Test {
         dotnsRegistry.updateRegistrarController(
             IDotnsRegistrarController(dotnsRegistrarControllerAddress)
         );
+
         vm.stopPrank();
         vm.warp(block.timestamp + 365 days);
     }
@@ -193,6 +192,17 @@ abstract contract BaseDotns is Test {
     /// @return node The resulting node hash.
     function _namehash(bytes32 parent, bytes32 label) internal pure returns (bytes32 node) {
         node = keccak256(abi.encodePacked(parent, label));
+    }
+
+    /// @notice Computes the ERC721 tokenId used by DotnsRegistrar for a given label.
+    /// @dev DotnsRegistrar mints tokenId = uint256(node), where node = namehash(DOT_NODE, labelhash).
+    ///      This helper prevents tests from accidentally using uint256(node) as the tokenId.
+    /// @param label The label to compute for (without the `.dot` suffix).
+    /// @return tokenId The ERC721 tokenId (uint256(node)).
+    function _tokenIdForLabel(string memory label) internal pure returns (uint256 tokenId) {
+        bytes32 labelhash = keccak256(bytes(label));
+        bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
+        tokenId = uint256(node);
     }
 
     /// @notice Creates a new test user and funds it with DEFAULT_BALANCE.
@@ -272,8 +282,7 @@ abstract contract BaseDotns is Test {
         vm.prank(nameOwner);
         dotnsRegistrarController.commit(commitment);
 
-        uint256 minAge =
-            DotnsRegistrarController(address(dotnsRegistrarController)).minCommitmentAge();
+        uint256 minAge = dotnsRegistrarController.minCommitmentAge();
         vm.warp(block.timestamp + minAge + 1);
 
         uint256 requiredPayment = popRules.priceWithCheck(label, nameOwner).price;
@@ -303,7 +312,10 @@ abstract contract BaseDotns is Test {
         }
 
         _commitAndRegister(label, labelOwner, true);
-        node = _namehash(dotNode, keccak256(bytes(label)));
+
+        // IMPORTANT: tokenId is uint256(node) where node = namehash(DOT_NODE, labelhash)
+        // Do not use uint256(node) as the tokenId in tests.
+        node = keccak256(abi.encodePacked(DOT_NODE, keccak256(bytes(label))));
     }
 
     /// @notice Ensures a Store exists for `storeOwner`, deploying one if necessary.
@@ -319,7 +331,6 @@ abstract contract BaseDotns is Test {
         vm.startPrank(storeOwner);
 
         store = Store(address(storeFactory.deploy()));
-        // Must be authorised before the store is handed to the user.
         store.authorizeDotnsController(address(dotnsRegistrarController));
         store.authorizeDotnsController(address(dotnsRegistry));
         vm.stopPrank();
@@ -331,7 +342,6 @@ abstract contract BaseDotns is Test {
     function _storeKey(bytes32 labelhash) internal pure returns (bytes32 key) {
         assembly {
             let pointer := mload(0x40)
-            // bytes32("dotns.registered")
             mstore(pointer, 0x646f746e732e7265676973746572656400000000000000000000000000000000)
             mstore(add(pointer, 0x20), labelhash)
             key := keccak256(pointer, 0x40)

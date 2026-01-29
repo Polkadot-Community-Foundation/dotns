@@ -8,16 +8,19 @@ import {
 } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {IDotnsRegistry} from "./IDotnsRegistry.sol";
 import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController.sol";
+import {IDotnsRegistrar} from "../registrars/IDotnsRegistrar.sol";
 import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {Store} from "../store/Store.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
 
-/// @title Dot Registry
+/// @title Dotns Registry
 /// @notice Upgradeable on-chain registry for hierarchical name ownership and resolution.
 /// @dev Stores ownership and resolver data for DotNS nodes.
-///      Authorisation is enforced strictly via node ownership, except for privileged ownership writes
-///      performed by a designated `registrarController`.
+///      Explicit ownership is stored for subnodes.
+///      Tokenised base nodes use the sentinel owner pattern:
+///      - records[node].owner == address(0) means ownership is derived from the ERC721 registrar.
+///      Authorisation for tokenised nodes follows ERC721 owner/approvals.
 /// @custom:security-contact admin@parity.io
 contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, IDotnsRegistry {
     using StoreUtils for IStoreFactory;
@@ -25,23 +28,25 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     /// @notice Mapping of node identifiers to records.
     mapping(bytes32 node => Record record) private records;
 
-    /// @notice Address authorised to perform privileged ownership writes.
-    /// @dev Typically the DotnsRegistrarController proxy address.
+    /// @notice Address authorised to perform privileged node writes.
     IDotnsRegistrarController public registrarController;
 
-    /// @notice DotNS Reverse Resolver.
+    /// @notice ERC721 registrar backing base node ownership.
+    IDotnsRegistrar public dotnsRegistrar;
+
+    /// @notice DotNS reverse resolver.
     IDotnsReverseResolver public reverseResolver;
 
     /// @notice Factory for per-user Store instances.
     IStoreFactory public storeFactory;
 
-    /// @notice Key prefix for DotNS-written Store entries ("dotns.registered").
-    // forge-lint: disable-next-line(unsafe-typecast)
+    /// @notice Key prefix for Dotns-written Store immutable entries ("dotns.registered").
+    /// casting to 'bytes32' is safe because this is safe
+    /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant DOTNS_REGISTERED_KEY = bytes32("dotns.registered");
 
     /// @dev Reserved storage space to allow for layout changes in the future.
-    // forge-lint: disable-next-line(mixed-case-variable)
-    uint256[49] private __gap;
+    uint256[50] private __gap;
 
     /// @notice Restricts access to the current owner of `node`.
     /// @param node Node identifier.
@@ -62,11 +67,11 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     }
 
     /// @notice Initializes the registry.
-    /// @param _reverseResolver Address of the DotNS reverse resolver contract.
-    /// @param _factory The store factory used for per-user deployment stores.
-    /// @dev Sets the deployer as the owner and initializes the root node (bytes32(0)).
-    ///      Root node owner is set to the initializer caller.
+    /// @param _registrar Address of the ERC721 registrar for base nodes.
+    /// @param _reverseResolver Address of the Dotns reverse resolver contract.
+    /// @param _factory Store factory used for per-user deployment stores.
     function initialize(
+        IDotnsRegistrar _registrar,
         IDotnsReverseResolver _reverseResolver,
         IStoreFactory _factory
     )
@@ -74,8 +79,15 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         initializer
     {
         __Ownable_init(msg.sender);
+
+        require(address(_registrar) != address(0), NotAllowed());
+        require(address(_reverseResolver) != address(0), NotAllowed());
+        require(address(_factory) != address(0), NotAllowed());
+
+        dotnsRegistrar = _registrar;
         reverseResolver = _reverseResolver;
         storeFactory = _factory;
+
         records[bytes32(0)] = Record({owner: msg.sender, resolver: address(0), exists: true});
     }
 
@@ -138,10 +150,12 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         override
         onlyRegistrarController
     {
-        require(newOwner != address(0), NotRegistryController());
+        require(newOwner != address(0), NotAllowed());
         require(!records[node].exists, NodeAlreadyOwned(node));
+        address tokenOwner = dotnsRegistrar.ownerOf(uint256(node));
+        require(tokenOwner == newOwner, NotAuthorised());
 
-        records[node].owner = newOwner;
+        records[node].owner = address(0);
         records[node].resolver = resolverAddr;
         records[node].exists = true;
 
@@ -156,7 +170,10 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
 
     /// @inheritdoc IDotnsRegistry
     function owner(bytes32 node) external view override returns (address) {
-        return records[node].owner;
+        Record storage record = records[node];
+        if (!record.exists) return address(0);
+        if (record.owner != address(0)) return record.owner;
+        return dotnsRegistrar.ownerOf(uint256(node));
     }
 
     /// @inheritdoc IDotnsRegistry
@@ -176,6 +193,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     function _writeSubnodeToStore(SubnodeRecord calldata record, bytes32 labelhash) internal {
         address[] memory controllers = new address[](1);
         controllers[0] = address(this);
+
         Store store = storeFactory.getOrCreateStore(controllers, record.owner);
 
         bytes32 storeKey = _storeKey(labelhash);
@@ -198,9 +216,29 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     }
 
     /// @notice Internal authorisation check for node ownership.
+    /// @dev For explicit-owner nodes, caller must equal stored owner.
+    ///      For tokenised nodes (sentinel owner), caller must be ERC721 owner or approved.
     /// @param node Node identifier.
     function _authorised(bytes32 node) internal view {
-        require(records[node].owner == msg.sender, NotAuthorised());
+        Record storage record = records[node];
+        require(record.exists, NotAuthorised());
+
+        address storedOwner = record.owner;
+        if (storedOwner != address(0)) {
+            require(storedOwner == msg.sender, NotAuthorised());
+            return;
+        }
+
+        uint256 tokenId = uint256(node);
+        address tokenOwner = dotnsRegistrar.ownerOf(tokenId);
+
+        if (msg.sender == tokenOwner) return;
+
+        address approved = dotnsRegistrar.getApproved(tokenId);
+        if (approved == msg.sender) return;
+
+        bool approvedForAll = dotnsRegistrar.isApprovedForAll(tokenOwner, msg.sender);
+        require(approvedForAll, NotAuthorised());
     }
 
     /// @notice Internal check for registrar controller privileges.
@@ -211,7 +249,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.2.0";
+        versionString = "1.0.0";
     }
 
     /// @inheritdoc UUPSUpgradeable

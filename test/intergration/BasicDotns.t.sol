@@ -101,7 +101,7 @@ contract BasicDotnsIntegration is BaseDotns {
 
         bytes32 labelHash = keccak256(bytes(flow.name));
         bytes32 node = _namehash(dotNode, labelHash);
-        uint256 tokenId = uint256(labelHash);
+        uint256 tokenId = uint256(node);
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), flow.nameOwner);
         assertTrue(dotnsRegistry.recordExists(node));
@@ -155,13 +155,19 @@ contract BasicDotnsIntegration is BaseDotns {
         vm.stopPrank();
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), flow.transferTo);
-        assertEq(dotnsRegistry.owner(node), flow.nameOwner);
+
+        assertEq(dotnsRegistry.owner(node), flow.transferTo);
 
         if (flow.reserved) {
             assertEq(dotnsReverseResolver.nameOf(flow.nameOwner), fullName);
         }
 
         _assertStoreContainsValue(flow.nameOwner, ownerStore, fullName);
+
+        vm.startPrank(flow.transferTo);
+        dotnsContentResolver.setContenthash(node, CID_B);
+        vm.stopPrank();
+        assertEq(dotnsContentResolver.contenthash(node), CID_B);
 
         uint256 transferRecipientQuotedPrice =
             popRules.priceWithCheck(flow.transferRecipientNewName, flow.transferTo).price;

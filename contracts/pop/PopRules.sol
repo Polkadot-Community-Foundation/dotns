@@ -336,7 +336,7 @@ contract PopRules is
     /// @notice Returns implementation version
     /// @return versionString Current version string
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.1.0";
+        versionString = "1.0.0";
     }
 
     /// @notice Ensures the caller is the authorized registry controller

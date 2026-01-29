@@ -4,7 +4,7 @@
     "": {
       "name": "@dotns/dotns-contracts",
       "dependencies": {
-        "@openzeppelin/upgrades-core": "^1.44.2",
+        "@openzeppelin/upgrades-core": "1.44.2",
       },
       "devDependencies": {
         "cross-env": "^10.1.0",

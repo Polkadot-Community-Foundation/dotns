@@ -20,7 +20,6 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         assertGt(requiredPrice, 0);
 
         extra = bound(extra, 0, 5 ether);
-
         uint256 balanceBefore = registrant.balance;
 
         vm.startPrank(registrant);
@@ -29,7 +28,12 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
 
         uint256 balanceAfter = registrant.balance;
         assertEq(balanceBefore - balanceAfter, requiredPrice);
-        assertEq(dotnsRegistrar.ownerOf(uint256(keccak256(bytes(nameLabel)))), registrant);
+
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 node = _namehash(dotNode, labelhash);
+        uint256 tokenId = uint256(node);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), registrant);
     }
 
     function testFuzz_register_accepts_overpayment_when_price_is_zero(
@@ -60,7 +64,12 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
 
         uint256 balanceAfter = registrant.balance;
         assertEq(balanceBefore, balanceAfter);
-        assertEq(dotnsRegistrar.ownerOf(uint256(keccak256(bytes(nameLabel)))), registrant);
+
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 node = _namehash(dotNode, labelhash);
+        uint256 tokenId = uint256(node);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), registrant);
     }
 
     function testFuzz_register_refunds_to_payer_not_owner_when_registering_for_other(
@@ -71,7 +80,6 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
     {
         address nameOwner = ed;
         address payer = leonardo;
-
         string memory nameLabel = _labelPopfull(bound(salt, 0, 64));
 
         vm.startPrank(nameOwner);
@@ -103,7 +111,11 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         assertEq(payerBalanceBefore, payerBalanceAfter);
         assertEq(ownerBalanceBefore, ownerBalanceAfter);
 
-        assertEq(dotnsRegistrar.ownerOf(uint256(keccak256(bytes(nameLabel)))), nameOwner);
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 node = _namehash(dotNode, labelhash);
+        uint256 tokenId = uint256(node);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), nameOwner);
     }
 
     function _commitFor(
@@ -163,8 +175,8 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         returns (string memory output)
     {
         bytes memory buffer = new bytes(length);
-
         uint256 remaining = value;
+
         for (uint256 index = 0; index < length; index++) {
             buffer[index] = bytes1(uint8(97 + (remaining % 26)));
             remaining /= 26;

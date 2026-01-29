@@ -82,7 +82,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         bytes32 labelHash = keccak256(bytes(nameLabel));
         bytes32 node = _namehash(dotNode, labelHash);
 
-        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(labelHash)), nameOwner);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(node)), nameOwner);
         assertEq(dotnsRegistry.owner(node), nameOwner);
         assertEq(dotnsReverseResolver.nameOf(nameOwner), string.concat(nameLabel, ".dot"));
 
@@ -143,7 +143,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         bytes32 labelHash = keccak256(bytes(nameLabel));
         bytes32 node = _namehash(dotNode, labelHash);
 
-        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(labelHash)), nameOwner);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(node)), nameOwner);
         assertEq(dotnsRegistry.owner(node), nameOwner);
 
         bytes32 storeKey = keccak256(abi.encodePacked(DOTNS_REGISTERED_PREFIX, labelHash));

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-/// @title DotNS Resolver Interface
+/// @title Dotns Resolver
 /// @notice Defines forward-resolution address records for DotNS nodes
 /// @dev A resolver maps a deterministic node identifier to a resolved address.
 /// @custom:security-contact admin@parity.io

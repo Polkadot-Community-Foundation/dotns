@@ -1,20 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {Test} from "forge-std/Test.sol";
-import {StdInvariant} from "forge-std/StdInvariant.sol";
-
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
-import {
-    IDotnsRegistrarController
-} from "../../../contracts/registrars/IDotnsRegistrarController.sol";
-import {IDotnsRegistry} from "../../../contracts/registry/IDotnsRegistry.sol";
-import {IDotnsReverseResolver} from "../../../contracts/resolvers/IDotnsReverseResolver.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
-import {IStoreFactory} from "../../../contracts/store/IStoreFactory.sol";
 import {Store} from "../../../contracts/store/Store.sol";
-import {DotnsRegistrar} from "../../../contracts/registrars/DotnsRegistrar.sol";
-import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {RegistrarControllerHandler} from "./RegistrarControllerHandler.t.sol";
 
 contract DotnsRegistrarControllerInvariantTest is BaseDotns {
@@ -80,7 +69,7 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
 
             if (address(store) != address(0)) {
                 bytes32 labelhash = keccak256(bytes(registeredLabels[i]));
-                bytes32 storeKey = _computeStoreKey(labelhash);
+                bytes32 storeKey = _storeKey(labelhash);
 
                 assertTrue(
                     store.isLocked(registrationOwner, storeKey), "Store entry must be locked"
@@ -104,9 +93,11 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         );
 
         uint256 validTokenCount;
+
         for (uint256 i; i < registeredLabels.length; ++i) {
             bytes32 labelhash = keccak256(bytes(registeredLabels[i]));
-            uint256 tokenId = uint256(labelhash);
+            bytes32 node = _namehash(dotNode, labelhash);
+            uint256 tokenId = uint256(node);
 
             try dotnsRegistrar.ownerOf(tokenId) returns (address tokenOwner) {
                 if (tokenOwner != address(0)) {
@@ -132,28 +123,20 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         }
     }
 
-    function invariant_ownership_consistency_at_registration() public view {
+    function invariant_ownership_consistency() public view {
         string[] memory registeredLabels = handler.getRegisteredLabels();
-        address[] memory registeredOwners = handler.getRegisteredOwners();
 
         for (uint256 i; i < registeredLabels.length; ++i) {
             bytes32 labelhash = keccak256(bytes(registeredLabels[i]));
-            bytes32 node = _computeNode(labelhash);
+            bytes32 node = _namehash(dotNode, labelhash);
+            uint256 tokenId = uint256(node);
 
-            address registryOwner = dotnsRegistry.owner(node);
-
-            assertEq(
-                registryOwner, registeredOwners[i], "Registry owner must match registered owner"
-            );
+            try dotnsRegistrar.ownerOf(tokenId) returns (address tokenOwner) {
+                address registryOwner = dotnsRegistry.owner(node);
+                assertEq(
+                    registryOwner, tokenOwner, "Registry owner must match current ERC721 owner"
+                );
+            } catch {}
         }
-    }
-
-    function _computeNode(bytes32 labelhash) internal pure returns (bytes32 node) {
-        bytes32 dotNodeHash = 0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
-        node = keccak256(abi.encodePacked(dotNodeHash, labelhash));
-    }
-
-    function _computeStoreKey(bytes32 labelhash) internal pure returns (bytes32 key) {
-        key = keccak256(abi.encodePacked(bytes32("dotns.registered"), labelhash));
     }
 }

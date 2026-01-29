@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController.sol";
 
-/// @title Dot Reverse Resolver Interface
+/// @title Dotns Reverse Resolver
 /// @notice Interface for writing and reading reverse name records for addresses.
 /// @dev Defines the minimal surface required to associate an address with a human-readable name.
 ///      Implementations are expected to enforce authorization for writes.

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-/// @title DotNS Registrar Controller Interface
+/// @title Dotns Registrar Controller
 /// @notice Interface for registering .dot labels using a commit–reveal scheme.
 /// @dev This interface defines allocation only. Forward resolution, reverse lookup, pricing mechanics,
 ///      PoP validation, and store writing are handled by external contracts.
@@ -13,7 +13,7 @@ pragma solidity ^0.8.30;
 /// @dev Store writing:
 ///      - Implementations write the successfully registered name into the user’s Store
 ///        to create an immutable onchain record of the name registration.
-///      - This store serves as a quick lookup for all names registered
+///      - This store serves as a quick lookup for all names registered.
 /// @custom:security-contact admin@parity.io
 interface IDotnsRegistrarController {
     /// @notice Parameters used to generate and reveal a commitment.
@@ -21,8 +21,7 @@ interface IDotnsRegistrarController {
     /// @param label Label being registered (e.g. "alice").
     /// @param owner Address that will own the registered name.
     /// @param secret Secret used to bind the commitment.
-    /// @param reserved Whether the name is reserved, This means the name is the default
-    ///        name assigned that resolvers will point to.
+    /// @param reserved Whether the name is reserved.
     struct Registration {
         string label;
         address owner;
@@ -85,7 +84,6 @@ interface IDotnsRegistrarController {
     error MaxCommitmentAgeTooHigh();
 
     /// @notice Thrown when an invalid Store instance is encountered.
-    /// @dev This usually means the store has not been deployed for the user.
     error InvalidStore();
 
     /// @notice Thrown when the caller is not the registry.
@@ -115,7 +113,6 @@ interface IDotnsRegistrarController {
 
     /// @notice Registers a name after the commitment delay.
     /// @dev Registration parameters must match the committed values.
-    /// @dev Can only be called by owner
     /// @param registration Registration parameters.
     function registerReserved(Registration calldata registration) external;
 }
