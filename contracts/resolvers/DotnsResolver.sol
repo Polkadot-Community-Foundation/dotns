@@ -13,7 +13,7 @@ import {
 import {IDotnsResolver} from "./IDotnsResolver.sol";
 import {IDotnsRegistry} from "../registry/IDotnsRegistry.sol";
 
-/// @title DotNS Resolver
+/// @title Dotns Resolver
 /// @notice Stores forward-resolution address records for DotNS nodes
 /// @dev Maps node identifiers to a resolved address.
 ///      Write access is restricted to the owner of the node as recorded in the DotNS registry.

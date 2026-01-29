@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
-import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController.sol";
-import {IStoreFactory} from "../store/IStoreFactory.sol";
 
-/// @title Dot Registry Interface
+import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController.sol";
+
+/// @title Dot Registry
 /// @notice Minimal on-chain registry for hierarchical name ownership and resolution.
 /// @dev Defines the canonical storage and mutation surface for DotNS nodes.
-///      The registry is intentionally minimal and self-contained:
-///      - Tracks ownership of nodes in a hierarchy
-///      - Associates nodes with resolver contracts
-///      - Enforces authorisation strictly via node ownership (or explicit controller for privileged ops)
+///      The registry stores explicit owners for non-tokenised nodes (subnodes).
+///      For tokenised nodes (base .dot registrations), implementations may use a sentinel owner:
+///      - records[node].owner == address(0) means "owner is derived from the ERC721 registrar".
+///      In that mode, authorisation MUST be based on ERC721 owner/approvals.
 /// @custom:security-contact admin@parity.io
 interface IDotnsRegistry {
     /// @notice Record describing a subnode creation request
@@ -26,7 +26,7 @@ interface IDotnsRegistry {
     }
 
     /// @notice Record describing the state of a node.
-    /// @param owner Address that owns the node.
+    /// @param owner Address that owns the node, or address(0) sentinel for tokenised nodes.
     /// @param resolver Address of the resolver associated with the node.
     /// @param exists Whether the node has been explicitly created.
     struct Record {
@@ -77,28 +77,30 @@ interface IDotnsRegistry {
     error NodeAlreadyExists(bytes32 subnode);
 
     /// @notice Creates a new subnode and assigns its owner.
-    /// @dev Callable only by the current owner of `node`.
+    /// @dev Callable only by the current owner of `parentNode`.
     ///      Reverts if the derived subnode already exists.
-    /// @param record SubnodeRecord see @custom:structs SubnodeRecord.
+    /// @param record SubnodeRecord.
     /// @return subnode The derived subnode identifier.
     function setSubnodeOwner(SubnodeRecord calldata record) external returns (bytes32 subnode);
 
-    /// @notice Transfers ownership of an existing node.
+    /// @notice Creates a node record for a tokenised base registration.
     /// @dev Callable only by the configured `registrarController`.
-    ///      This is a privileged operation used by the registrar controller during registration flows.
+    ///      Implementations SHOULD use the sentinel owner pattern:
+    ///      - store owner as address(0) to derive ownership from the ERC721 registrar.
     /// @param node Node identifier.
-    /// @param newOwner New owner address.
+    /// @param newOwner New owner address for event emission and validation.
     /// @param resolverAddr Resolver address to set for the node.
-    /// @custom:reverts NotRegistryController if the caller is not the registrar controller.
     function setOwner(bytes32 node, address newOwner, address resolverAddr) external;
 
     /// @notice Sets or clears the resolver for a node.
     /// @dev Callable only by the current node owner.
+    ///      For tokenised nodes, authorisation is based on ERC721 owner/approvals.
     /// @param node Node identifier.
     /// @param resolverAddr Resolver contract address (zero clears).
     function setResolver(bytes32 node, address resolverAddr) external;
 
     /// @notice Returns the owner of a node.
+    /// @dev For tokenised nodes (sentinel owner), returns the ERC721 owner.
     /// @param node Node identifier.
     function owner(bytes32 node) external view returns (address);
 
@@ -110,7 +112,7 @@ interface IDotnsRegistry {
     /// @param node Node identifier.
     function recordExists(bytes32 node) external view returns (bool);
 
-    /// @notice Sets the registrar controller used for privileged node ownership writes.
+    /// @notice Sets the registrar controller used for privileged node writes.
     /// @dev Callable only by the registry owner.
     /// @param registrarController Address of the registrar controller contract.
     function updateRegistrarController(IDotnsRegistrarController registrarController) external;

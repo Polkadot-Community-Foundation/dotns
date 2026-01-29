@@ -10,9 +10,7 @@ import {IDotnsRegistry} from "../../../contracts/registry/IDotnsRegistry.sol";
 import {IDotnsReverseResolver} from "../../../contracts/resolvers/IDotnsReverseResolver.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {IStoreFactory} from "../../../contracts/store/IStoreFactory.sol";
-import {Store} from "../../../contracts/store/Store.sol";
 import {DotnsRegistrar} from "../../../contracts/registrars/DotnsRegistrar.sol";
-import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 /// @title Registrar Controller Handler
 /// @notice Handler contract that executes bounded random actions against the controller.

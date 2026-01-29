@@ -12,7 +12,7 @@ import {
 import {IDotnsReverseResolver} from "./IDotnsReverseResolver.sol";
 import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController.sol";
 
-/// @title Dot Reverse Resolver
+/// @title Dotns Reverse Resolver
 /// @notice Resolves an address to its associated .dot name.
 /// @dev Maintains an on-chain mapping from addresses to name strings.
 ///      Writes are restricted to an authorised registrar.

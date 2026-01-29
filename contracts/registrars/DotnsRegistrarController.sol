@@ -17,22 +17,19 @@ import {IPopRules} from "../pop/IPopRules.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
 import {Store} from "../store/Store.sol";
-import {IStore} from "../store/IStore.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
 
-/// @title DotNS Registrar Controller
+/// @title Dotns Registrar Controller
 /// @notice Allocates .dot labels using a commit–reveal scheme.
 /// @dev Orchestrates allocation, PoP validation, pricing enforcement, forward registry wiring,
 ///      default reverse resolution, and immutable store writing.
 ///
-/// @dev Commit–reveal:
-///      - Commitments are stored as timestamps.
-///      - A reveal is valid only if `minCommitmentAge <= now - committedAt < maxCommitmentAge`.
+/// @dev Tokenisation:
+///      - The minted ERC721 tokenId is uint256(node), where node = namehash(DOT_NODE, labelhash).
+///      - The registry stores a sentinel owner (address(0)) for tokenised nodes and derives ownership
+///        from the ERC721 registrar for authorisation.
 ///
-/// @dev Store writing:
-///      - On successful registration, the controller writes the full name `<label>.dot` to the user's Store.
-///      - The Store is expected to permanently lock DotNS-written entries, preventing deletion or overwrite.
 /// @custom:security-contact admin@parity.io
 contract DotnsRegistrarController is
     Initializable,
@@ -54,7 +51,7 @@ contract DotnsRegistrarController is
     /// @notice Base registrar responsible for minting name ownership.
     IDotnsRegistrar public dotnsRegistrar;
 
-    /// @notice Forward registry storing node ownership.
+    /// @notice Forward registry storing node ownership and resolver.
     IDotnsRegistry public dotnsRegistry;
 
     /// @notice Reverse resolver for address → primary name mapping.
@@ -72,15 +69,15 @@ contract DotnsRegistrarController is
     /// @notice Maximum age after which a commitment expires.
     uint256 public maxCommitmentAge;
 
-    /// @notice Commitment hash => timestamp when committed.
+    /// @notice Stores Mapping of commitment hashes to timestamp committed.
     mapping(bytes32 hash => uint256 timestamp) public commitments;
 
-    /// @notice Key prefix for DotNS-written Store entries ("dotns.registered")
-    // forge-lint: disable-next-line(unsafe-typecast)
+    /// @notice Key prefix for Dotns-written Store immutable entries ("dotns.registered").
+    /// casting to 'bytes32' is safe because this is safe
+    /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant DOTNS_REGISTERED_KEY = bytes32("dotns.registered");
 
     /// @dev Reserved storage space to allow for layout changes in the future.
-    // forge-lint: disable-next-line(mixed-case-variable)
     uint256[50] private __gap;
 
     /// @notice Restricts calls to the forward registry contract.
@@ -135,7 +132,8 @@ contract DotnsRegistrarController is
     function available(string calldata label) public view override returns (bool) {
         require(label.strlen() >= 3, NameNotAvailable(label));
         bytes32 labelhash = _labelhash(label);
-        return dotnsRegistrar.available(uint256(labelhash));
+        bytes32 node = _namehash(labelhash);
+        return dotnsRegistrar.available(uint256(node));
     }
 
     /// @inheritdoc IDotnsRegistrarController
@@ -186,6 +184,7 @@ contract DotnsRegistrarController is
         require(available(registration.label), NameNotAvailable(registration.label));
 
         bytes32 labelhash = _labelhash(registration.label);
+        bytes32 node = _namehash(labelhash);
         bytes32 commitment = makeCommitment(registration);
         uint256 committedAt = commitments[commitment];
 
@@ -206,9 +205,8 @@ contract DotnsRegistrarController is
 
         require(msg.value >= priced.price, InsufficientValue());
 
-        dotnsRegistrar.register(uint256(labelhash), registration.owner);
+        dotnsRegistrar.register(uint256(node), registration.owner);
 
-        bytes32 node = _namehash(labelhash);
         dotnsRegistry.setOwner(node, registration.owner, address(reverseResolver));
 
         if (registration.reserved) {
@@ -263,12 +261,13 @@ contract DotnsRegistrarController is
 
         delete commitments[commitment];
 
-        dotnsRegistrar.register(uint256(labelhash), registration.owner);
+        dotnsRegistrar.register(uint256(node), registration.owner);
         dotnsRegistry.setOwner(node, registration.owner, address(reverseResolver));
 
         reverseResolver.setReverseName(
             registration.owner, string.concat(registration.label, ".dot")
         );
+
         address[] memory controllers = new address[](2);
         controllers[0] = address(this);
         controllers[1] = address(dotnsRegistry);
@@ -286,7 +285,7 @@ contract DotnsRegistrarController is
             || super.supportsInterface(interfaceId);
     }
 
-    /// @notice Computes keccak256(label)
+    /// @notice Computes keccak256(label).
     /// @param label Label string.
     /// @return hash keccak256(label).
     function _labelhash(string calldata label) internal pure returns (bytes32 hash) {
@@ -298,7 +297,7 @@ contract DotnsRegistrarController is
         }
     }
 
-    /// @notice Computes namehash(DOT_NODE, labelhash)
+    /// @notice Computes namehash(DOT_NODE, labelhash).
     /// @param labelhash keccak256(label).
     /// @return node namehash.
     function _namehash(bytes32 labelhash) internal pure returns (bytes32 node) {
@@ -310,7 +309,7 @@ contract DotnsRegistrarController is
         }
     }
 
-    /// @notice Computes keccak256("dotns.registered", labelhash)
+    /// @notice Computes keccak256("dotns.registered", labelhash).
     /// @param labelhash keccak256(label).
     /// @return key Store key used for DotNS-written registration entry.
     function _storeKey(bytes32 labelhash) internal pure returns (bytes32 key) {
@@ -323,10 +322,10 @@ contract DotnsRegistrarController is
         }
     }
 
-    /// @notice Returns implementation version
-    /// @return versionString Current version string
+    /// @notice Returns implementation version.
+    /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.1.0";
+        versionString = "1.0.0";
     }
 
     /// @notice Internal check enforcing registry-only access.

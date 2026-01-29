@@ -1,34 +1,12 @@
-FROM rust:1.92-slim AS builder
+FROM --platform=linux/amd64 debian:trixie-slim
 
-RUN apt-get update && apt-get install -y \
-    clang \
-    llvm \
-    llvm-dev \
-    libclang-dev \
-    cmake \
-    protobuf-compiler \
-    libssl-dev \
-    pkg-config \
-    git \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+ARG TAG=polkadot-stable2512-1
+ARG BIN=eth-rpc
 
-RUN rustup component add rust-src
-RUN rustup target add wasm32-unknown-unknown
+RUN apt-get update && apt-get install -y ca-certificates curl libssl3 && rm -rf /var/lib/apt/lists/*
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    cargo install pallet-revive-eth-rpc
+RUN curl -L -o /usr/local/bin/${BIN} \
+  https://github.com/paritytech/polkadot-sdk/releases/download/${TAG}/${BIN} \
+  && chmod +x /usr/local/bin/${BIN}
 
-
-FROM debian:trixie-slim
-
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libssl3 \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY --from=builder /usr/local/cargo/bin/eth-rpc /usr/local/bin/eth-rpc
-
-EXPOSE 8545
 ENTRYPOINT ["eth-rpc"]

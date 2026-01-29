@@ -13,10 +13,10 @@ import {
 import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
 import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
 
-/// @title DotNS Base Registrar
-/// @author DotNS
+/// @title Dotns Registrar
 /// @notice ERC721-backed registrar implementing permanent name ownership.
-/// @dev This contract is deliberately policy-free
+/// @dev This contract is deliberately policy-free.
+///      Transfers are supported to allow ownership changes without registry hooks.
 /// @custom:security-contact admin@parity.io
 contract DotnsRegistrar is
     Initializable,
@@ -30,7 +30,6 @@ contract DotnsRegistrar is
     mapping(IDotnsRegistrarController controller => bool exists) public controllers;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
-    // forge-lint: disable-next-line(mixed-case-variable)
     uint256[50] private __gap;
 
     /// @notice Restricts function access to authorised controllers.
@@ -84,14 +83,13 @@ contract DotnsRegistrar is
         emit NameRegistered(id, owner);
     }
 
-    /// @notice Returns implementation version
-    /// @return versionString Current version string
+    /// @notice Returns implementation version.
+    /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
         versionString = "1.0.0";
     }
 
     /// @notice Internal function to check for controller access.
-    /// @dev Done this way to redue code size
     function _onlyController() internal view {
         require(controllers[IDotnsRegistrarController(msg.sender)], NotController(msg.sender));
     }

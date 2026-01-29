@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-/// @title IPopRules
-/// @notice Proof of personhood interface defining DotNS price calculation, PoP-tier requirements, and base-name reservation rules
-/// @dev Provides the classification logic for DotNS labels, enforces suffix constraints, and exposes reservation metadata.
+/// @title Proof of Personhood Rules for Dotns
+/// @notice Proof of personhood interface defining Dotns price calculation, PoP-tier requirements, and base-name reservation rules
+/// @dev Provides the classification logic for Dotns labels, enforces suffix constraints, and exposes reservation metadata.
 ///      Names are evaluated according to the following rules:
 ///      • Length ≤ 5: Reserved
 ///      • Length 6–8 without trailing digits: PopFull required

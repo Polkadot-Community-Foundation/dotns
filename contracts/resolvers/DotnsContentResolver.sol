@@ -13,7 +13,7 @@ import {
 import {IDotnsRegistry} from "../registry/IDotnsRegistry.sol";
 import {IDotnsContentResolver} from "./IDotnsContentResolver.sol";
 
-/// @title DotNS Content Resolver
+/// @title Dotns Content Resolver
 /// @notice Implements `IDotnsContentResolver` interface with content hash, text records, and operator approvals
 /// @dev Stores opaque content hash bytes and text key-value pairs per node
 ///      Authorisation enforced via DotNS registry ownership or approved operators
@@ -28,13 +28,13 @@ contract DotnsContentResolver is
     /// @notice DotNS registry used for ownership checks
     IDotnsRegistry public registry;
 
-    /// @notice Node → content hash mapping
+    /// @notice Stores all content hash mappings
     mapping(bytes32 node => bytes contentHash) private contenthashes;
 
-    /// @notice Node → (key → value) text records
+    /// @notice Stores all text records
     mapping(bytes32 node => mapping(string key => string value)) private textRecords;
 
-    /// @notice Owner → operator → approval mapping
+    /// @notice Store all approval mapping
     mapping(address owner => mapping(address operator => bool approved)) private operators;
 
     /// @dev Reserved storage space to allow for layout changes in the future.

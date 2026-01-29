@@ -46,10 +46,12 @@ contract DotnsRegistryTests is BaseDotns {
         dotnsRegistry.updateRegistrarController(dotnsRegistrarController);
         vm.stopPrank();
 
+        vm.startPrank(address(dotnsRegistrarController));
+        dotnsRegistrar.register(uint256(node), ed);
+
         vm.expectEmit(true, false, false, true, address(dotnsRegistry));
         emit IDotnsRegistry.NodeTransferred(node, ed);
 
-        vm.startPrank(address(dotnsRegistrarController));
         dotnsRegistry.setOwner(node, ed, resolverAddress);
         vm.stopPrank();
 

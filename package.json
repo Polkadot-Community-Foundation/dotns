@@ -6,7 +6,7 @@
   "scripts": {
     "test": "forge test -vvvvv",
     "deploy:anvil": "forge clean && forge script scripts/DotnsDeployer.s.sol:DotnsDeployer --rpc-url paseo_local --account anvil-polkadot --password 123456 --sender 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --broadcast -vvvvv --slow",
-    "deploy:testnet": "forge clean && forge script scripts/DotnsDeployer.s.sol:DotnsDeployer --rpc-url paseo_local --account revive --password 123456 --sender 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac --broadcast -vvvvv --slow",
+    "deploy:testnet": "forge script scripts/DotnsDeployer.s.sol:DotnsDeployer --rpc-url paseo_local --account revive --password 123456 --sender 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac --broadcast --timeout 1000 --gas-estimate-multiplier 300 -vvvvv",
     "postinstall": "./setup.bash",
     "reset": "forge clean"
   },
@@ -40,6 +40,6 @@
     "node": "24.6.0"
   },
   "dependencies": {
-    "@openzeppelin/upgrades-core": "^1.44.2"
+    "@openzeppelin/upgrades-core": "1.44.2"
   }
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-/// @title DotNS Content Resolver Interface
+/// @title Dotns Content Resolver
 /// @notice Defines storage and retrieval for content hash, text records, and operator approvals for DotNS nodes
 /// @dev Content hash and text records point to off-chain content such as IPFS CIDs or future schemes.
 ///      Operator approvals allow third parties to manage records on behalf of the owner.

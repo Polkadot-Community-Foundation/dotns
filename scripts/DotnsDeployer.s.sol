@@ -74,7 +74,12 @@ contract DotnsDeployer is BaseDeployer {
         address dotnsRegistryProxy = Upgrades.deployUUPSProxy(
             "DotnsRegistry.sol:DotnsRegistry",
             abi.encodeCall(
-                DotnsRegistry.initialize, (IDotnsReverseResolver(dotnsReverseResolverProxy),storeFactory)
+                DotnsRegistry.initialize,
+                (
+                    IDotnsRegistrar(dotnsRegistrarProxy),
+                    IDotnsReverseResolver(dotnsReverseResolverProxy),
+                    storeFactory
+                )
             )
         );
         dotnsRegistry = DotnsRegistry(dotnsRegistryProxy);
@@ -128,7 +133,9 @@ contract DotnsDeployer is BaseDeployer {
         logDeployment("DotnsRegistrarController", dotnsRegistrarControllerProxy);
 
         // Wire dependencies
-        dotnsReverseResolver.updateRegistrar(IDotnsRegistrarController(dotnsRegistrarControllerProxy));
+        dotnsReverseResolver.updateRegistrar(
+            IDotnsRegistrarController(dotnsRegistrarControllerProxy)
+        );
         popRules.updateDotRegistry(dotnsRegistrarControllerProxy);
         dotnsRegistrar.addController(IDotnsRegistrarController(dotnsRegistrarControllerProxy));
         dotnsRegistry.updateRegistrarController(
@@ -143,7 +150,10 @@ contract DotnsDeployer is BaseDeployer {
     function _getDeploymentFolder() internal view returns (string memory directory) {
         directory = "localhost";
         if (block.chainid == 420420422) {
-            directory = "paseo";
+            directory = "passethub-testnet";
+        }
+        if (block.chainid == 420420417) {
+            directory = "paseo-assethub";
         } else if (block.chainid == 420420420) {
             directory = "paseo-local";
         }
