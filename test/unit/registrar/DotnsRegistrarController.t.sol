@@ -6,6 +6,9 @@ import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {IStore, Store} from "../../../contracts/store/Store.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import {
+    OwnableUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 contract DotnsRegistrarControllerTest is BaseDotns {
     bytes32 private constant DOTNS_REGISTERED_PREFIX =
@@ -146,6 +149,31 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         Store edStore = Store(address(storeFactory.getDeployedStore(nameOwner)));
         bytes32 storeKey = keccak256(abi.encodePacked(DOTNS_REGISTERED_PREFIX, labelHash));
         assertEq(edStore.getValueFor(nameOwner, storeKey), string.concat(nameLabel, ".dot"));
+    }
+
+    function test_registerreserved_revertnon_owner() public {
+        string memory nameLabel = "hello";
+        address nameOwner = ed;
+
+        vm.startPrank(owner);
+
+        bytes32 secret = keccak256(abi.encodePacked(nameLabel, nameOwner, "reserved"));
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: nameLabel, owner: nameOwner, secret: secret, reserved: true
+            });
+
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
+        dotnsRegistrarController.commit(commitment);
+
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+        vm.stopPrank();
+
+        vm.prank(ed);
+        vm.expectRevert(
+            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, ed)
+        );
+        dotnsRegistrarController.registerReserved(registration);
     }
 
     function test_registration_reverts_unauthorized_store() public {
