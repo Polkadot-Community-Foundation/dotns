@@ -241,7 +241,7 @@ contract DotnsRegistrarController is
     }
 
     /// @inheritdoc IDotnsRegistrarController
-    function registerReserved(Registration calldata registration) external override {
+    function registerReserved(Registration calldata registration) external override onlyOwner {
         require(available(registration.label), NameNotAvailable(registration.label));
 
         bytes32 labelhash = _labelhash(registration.label);
@@ -325,7 +325,7 @@ contract DotnsRegistrarController is
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.0.0";
+        versionString = "1.1.0";
     }
 
     /// @notice Internal check enforcing registry-only access.

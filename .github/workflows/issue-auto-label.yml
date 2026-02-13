@@ -1,4 +1,5 @@
-name: issue-auto-label
+name: Issue Auto-Label
+
 on:
   issues:
     types: [opened, edited]
@@ -11,33 +12,59 @@ jobs:
   label:
     runs-on: ubuntu-latest
     steps:
-      - name: Extract component from form body
+      - name: Extract labels from form body
         id: extract
         env:
           BODY: ${{ github.event.issue.body }}
         run: |
-          comp="$(printf '%s\n' "$BODY" | awk '/^### Component/{getline; print}' | tr -d '\r')"
-          case "$comp" in
-            "Frontend") label="frontend" ;;
-            "Smart contracts"|"Smart Contracts") label="smartcontracts" ;;
-            *) label="" ;;
-          esac
-          echo "component=$comp" >> $GITHUB_OUTPUT
-          echo "label=$label" >> $GITHUB_OUTPUT
+          labels=""
 
-      - name: Apply label
-        if: steps.extract.outputs.label != ''
+          comp="$(printf '%s\n' "$BODY" | awk '/^### Component/{getline; print}' | tr -d '\r' | xargs)"
+          case "$comp" in
+            "Registration")                      labels="scope: registration" ;;
+            "Resolver")                          labels="scope: resolver" ;;
+            "Store")                             labels="scope: store" ;;
+            "Proof of Personhood"|"PoP")         labels="scope: pop" ;;
+          esac
+
+          priority="$(printf '%s\n' "$BODY" | awk '/^### Priority/{getline; print}' | tr -d '\r' | xargs)"
+          case "$priority" in
+            "P0"|"Critical")  [ -n "$labels" ] && labels="$labels,P0" || labels="P0" ;;
+            "P1"|"High")      [ -n "$labels" ] && labels="$labels,P1" || labels="P1" ;;
+            "P2"|"Normal")    [ -n "$labels" ] && labels="$labels,P2" || labels="P2" ;;
+          esac
+
+          echo "labels=$labels" >> $GITHUB_OUTPUT
+          echo "component=$comp" >> $GITHUB_OUTPUT
+          echo "priority=$priority" >> $GITHUB_OUTPUT
+
+      - name: Apply labels
+        if: steps.extract.outputs.labels != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          LABELS: ${{ steps.extract.outputs.labels }}
         run: |
+          IFS=',' read -ra LABEL_ARRAY <<< "$LABELS"
+          JSON="["
+          first=true
+          for label in "${LABEL_ARRAY[@]}"; do
+            if [ "$first" = true ]; then
+              first=false
+            else
+              JSON+=","
+            fi
+            JSON+="\"$label\""
+          done
+          JSON+="]"
+
           gh api \
             repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/labels \
-            -f labels='["'${{ steps.extract.outputs.label }}'"]'
+            --input - <<< "{\"labels\":$JSON}"
 
       - name: Comment when missing
-        if: steps.extract.outputs.label == ''
+        if: steps.extract.outputs.labels == ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh api repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments \
-            -f body='Please choose a Component in the issue form (Frontend or Smart contracts) so labels can be applied.'
+            -f body='Please choose a Component (Registration, Resolver, Store, or Proof of Personhood) and Priority (P0, P1, P2) in the issue form so labels can be applied.'

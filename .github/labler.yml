@@ -1,0 +1,46 @@
+"scope: registration":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "contracts/registrars/**"
+          - "test/**/Registrar*"
+          - "test/**/Registration*"
+          - "scripts/**/Registrar*"
+
+"scope: resolver":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "contracts/resolvers/**"
+          - "contracts/registry/**"
+          - "test/**/Resolver*"
+          - "test/**/Registry*"
+
+"scope: store":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "contracts/store/**"
+          - "test/**/Store*"
+
+"scope: pop":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "contracts/pop/**"
+          - "test/**/Pop*"
+
+"type: test":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "test/**"
+
+"type: docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+          - "docs/**"
+
+"dependencies":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "package.json"
+          - "bun.lock"
+          - "foundry.toml"
+          - "remappings.txt"

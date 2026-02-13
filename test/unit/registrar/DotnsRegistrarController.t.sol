@@ -121,10 +121,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         string memory nameLabel = "hello";
         address nameOwner = ed;
 
-        vm.startPrank(nameOwner);
-        IStore ownerStoreInterface = storeFactory.deploy();
-        Store ownerStore = Store(address(ownerStoreInterface));
-        ownerStore.authorizeDotnsController(address(dotnsRegistrarController));
+        vm.startPrank(owner);
 
         bytes32 secret = keccak256(abi.encodePacked(nameLabel, nameOwner, "reserved"));
         IDotnsRegistrarController.Registration memory registration =
@@ -146,8 +143,9 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(node)), nameOwner);
         assertEq(dotnsRegistry.owner(node), nameOwner);
 
+        Store edStore = Store(address(storeFactory.getDeployedStore(nameOwner)));
         bytes32 storeKey = keccak256(abi.encodePacked(DOTNS_REGISTERED_PREFIX, labelHash));
-        assertEq(ownerStore.getValueFor(nameOwner, storeKey), string.concat(nameLabel, ".dot"));
+        assertEq(edStore.getValueFor(nameOwner, storeKey), string.concat(nameLabel, ".dot"));
     }
 
     function test_registration_reverts_unauthorized_store() public {
