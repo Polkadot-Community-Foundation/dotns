@@ -22,7 +22,7 @@ import {StoreUtils} from "../utils/StoreUtils.sol";
 ///      - records[node].owner == address(0) means ownership is derived from the ERC721 registrar.
 ///      Authorisation for tokenised nodes follows ERC721 owner/approvals.
 /// @custom:security-contact admin@parity.io
-contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, IDotnsRegistry {
+contract DotnsRegistryOld is Initializable, UUPSUpgradeable, OwnableUpgradeable, IDotnsRegistry {
     using StoreUtils for IStoreFactory;
 
     /// @notice Mapping of node identifiers to records.
@@ -135,7 +135,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         records[subnode] =
             Record({owner: newOwner, resolver: address(reverseResolver), exists: true});
 
-        _writeSubnodeToStore(record, subnode);
+        _writeSubnodeToStore(record, labelhash);
 
         emit NewOwner(parentNode, labelhash, newOwner);
     }
@@ -249,7 +249,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.1.0";
+        versionString = "1.0.0";
     }
 
     /// @inheritdoc UUPSUpgradeable
