@@ -188,8 +188,11 @@ contract DotnsRegistryTests is BaseDotns {
         });
 
         vm.startPrank(owner);
-        dotnsRegistry.setSubnodeOwner(recordA);
-        dotnsRegistry.setSubnodeOwner(recordB);
+        bytes32 subnodeA = dotnsRegistry.setSubnodeOwner(recordA);
+        bytes32 subnodeB = dotnsRegistry.setSubnodeOwner(recordB);
+        assertTrue(subnodeA != subnodeB);
+        assertTrue(dotnsRegistry.recordExists(subnodeA));
+        assertTrue(dotnsRegistry.recordExists(subnodeB));
         vm.stopPrank();
     }
 }
