@@ -8,11 +8,12 @@ services:
     container_name: revive-eth-rpc
     environment:
       RUST_LOG: "info,eth-rpc=debug,error"
+      RUST_BACKTRACE: "1"
     ports:
       - "8545:8545"
     command:
       - "--node-rpc-url"
-      - "wss://sys.turboflakes.io/asset-hub-paseo"
+      - "wss://asset-hub-paseo-rpc.n.dwellir.com"
       - "--rpc-port"
       - "8545"
       - "--rpc-external"

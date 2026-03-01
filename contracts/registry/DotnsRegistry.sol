@@ -135,7 +135,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         records[subnode] =
             Record({owner: newOwner, resolver: address(reverseResolver), exists: true});
 
-        _writeSubnodeToStore(record, labelhash);
+        _writeSubnodeToStore(record, subnode);
 
         emit NewOwner(parentNode, labelhash, newOwner);
     }
@@ -249,7 +249,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.0.0";
+        versionString = "1.1.0";
     }
 
     /// @inheritdoc UUPSUpgradeable

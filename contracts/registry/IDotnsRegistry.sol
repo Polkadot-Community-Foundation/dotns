@@ -115,5 +115,6 @@ interface IDotnsRegistry {
     /// @notice Sets the registrar controller used for privileged node writes.
     /// @dev Callable only by the registry owner.
     /// @param registrarController Address of the registrar controller contract.
+    /// @custom:reverts NotAllowed if `registrarController` is the zero address.
     function updateRegistrarController(IDotnsRegistrarController registrarController) external;
 }
