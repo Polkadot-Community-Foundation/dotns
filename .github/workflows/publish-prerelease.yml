@@ -39,6 +39,7 @@ jobs:
 
           contracts=(
             "StoreFactory"
+            "Store"
             "DotnsRegistrar"
             "DotnsReverseResolver"
             "DotnsRegistry"
@@ -46,6 +47,17 @@ jobs:
             "DotnsResolver"
             "PopRules"
             "DotnsRegistrarController"
+            "IStore"
+            "IStoreFactory"
+            "IDotnsRegistrar"
+            "IDotnsRegistrarController"
+            "IDotnsRegistry"
+            "IDotnsReverseResolver"
+            "IDotnsContentResolver"
+            "IDotnsResolver"
+            "IPopRules"
+            "StoreUtils"
+            "StringUtils"
           )
 
           for name in "${contracts[@]}"; do
