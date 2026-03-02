@@ -44,3 +44,18 @@
           - "bun.lock"
           - "foundry.toml"
           - "remappings.txt"
+
+"smartcontracts":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "contracts/**"
+
+"other":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+          - "scripts/**"
+          - "docker-compose*.yml"
+          - "Dockerfile*"
+          - ".env*"
+          - "setup.bash"

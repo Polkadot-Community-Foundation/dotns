@@ -113,3 +113,15 @@
 - name: "upstream"
   color: "e99695"
   description: "Related to paritytech/dotns"
+
+- name: "dotns-sdk"
+  color: "5319e7"
+  description: "DotNS SDK (UI, CLI, libraries)"
+
+- name: "smartcontracts"
+  color: "e3a21a"
+  description: "Smart contract changes"
+
+- name: "other"
+  color: "ededed"
+  description: "CI, config, and other non-contract changes"
