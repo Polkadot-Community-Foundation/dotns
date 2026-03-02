@@ -47,8 +47,8 @@ interface IDotnsRegistrarController {
         address store
     );
 
-    /// @notice Emitted when a name is registered through the reserved registration function.
-    /// @param who The address being whitelisted
+    /// @notice Emitted when an address is added to or removed from the whitelist.
+    /// @param who The address being whitelisted.
     /// @param whiteListStatus Whether the address was added or removed from the whitelist.
     event WhiteListed(address indexed who, bool indexed whiteListStatus);
 

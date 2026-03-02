@@ -46,6 +46,8 @@ jobs:
       - name: Call whiteListAddress on-chain
         id: execute
         env:
+          # Private key for the contract owner/admin wallet, stored as a GitHub Actions secret.
+          # Used to sign the whiteListAddress transaction on-chain.
           DOTNS_ADMIN_KEY: ${{ secrets.DOTNS_ADMIN_KEY }}
           ADDRESS: ${{ steps.extract.outputs.address }}
         run: |
