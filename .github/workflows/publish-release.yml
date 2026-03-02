@@ -78,7 +78,40 @@ jobs:
           cd release
           zip -r "../dotns-abis-${TAG}.zip" abis/
 
+      - name: Generate release body
+        id: body
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          CONTRACTS=$(ls release/abis/ | sed 's/\.json$//' | sort)
+          COUNT=$(echo "$CONTRACTS" | wc -l | tr -d ' ')
+          LIST=$(echo "$CONTRACTS" | sed 's/^/- `/' | sed 's/$/`/')
+
+          cat > release-body.md << EOF
+          ## DotNS ABI Package
+
+          **\`dotns-abis-${TAG}.zip\`** contains the compiled ABI JSON files for all DotNS contracts.
+
+          ### Contents (${COUNT} contracts)
+
+          ${LIST}
+
+          ### Usage
+
+          1. Download and extract \`dotns-abis-${TAG}.zip\`
+          2. Import the ABI JSON files into your project
+          3. Use with any EVM-compatible SDK (viem, ethers, web3.js) to interact with DotNS contracts
+
+          \`\`\`ts
+          import StoreAbi from "./abis/Store.json";
+          import RegistrarAbi from "./abis/DotnsRegistrar.json";
+          \`\`\`
+          EOF
+
+          # Remove leading whitespace from heredoc
+          sed -i 's/^          //' release-body.md
+
       - name: Attach artifacts to release
         uses: softprops/action-gh-release@v2
         with:
           files: dotns-abis-*.zip
+          body_path: release-body.md
