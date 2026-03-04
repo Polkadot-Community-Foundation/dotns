@@ -41,11 +41,7 @@ contract DeployProtocolRegistryForkTest is Test {
         Options memory opts;
         opts.referenceContract = "DotnsRegistrarOld.sol:DotnsRegistrarOld";
         Upgrades.upgradeProxy(
-            REGISTRAR,
-            "DotnsRegistrar.sol:DotnsRegistrar",
-            "",
-            opts,
-            registrarOwner
+            REGISTRAR, "DotnsRegistrar.sol:DotnsRegistrar", "", opts, registrarOwner
         );
 
         vm.startPrank(registrarOwner);
@@ -77,9 +73,7 @@ contract DeployProtocolRegistryForkTest is Test {
         protocolRegistry.set(bytes32("popRules"), POP_RULES);
 
         // Step 4: Point the registrar to the new protocol registry.
-        dotnsRegistrar.updateProtocolRegistry(
-            IDotnsProtocolRegistry(protocolRegistryProxy)
-        );
+        dotnsRegistrar.updateProtocolRegistry(IDotnsProtocolRegistry(protocolRegistryProxy));
 
         vm.stopPrank();
     }
@@ -104,10 +98,7 @@ contract DeployProtocolRegistryForkTest is Test {
     }
 
     function test_registrar_points_to_protocol_registry() public view {
-        assertEq(
-            address(dotnsRegistrar.protocolRegistry()),
-            address(protocolRegistry)
-        );
+        assertEq(address(dotnsRegistrar.protocolRegistry()), address(protocolRegistry));
     }
 
     function test_protocol_registry_owned_by_deployer() public view {
