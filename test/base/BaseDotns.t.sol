@@ -18,6 +18,11 @@ import {
 } from "../../contracts/resolvers/DotnsReverseResolver.sol";
 import {Store} from "../../contracts/store/Store.sol";
 import {StoreFactory, IStoreFactory} from "../../contracts/store/StoreFactory.sol";
+import {
+    DotnsProtocolRegistry,
+    IDotnsProtocolRegistry
+} from "../../contracts/registry/DotnsProtocolRegistry.sol";
+import {StoreUtils} from "../../contracts/utils/StoreUtils.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 /// @title BaseDotns
@@ -69,6 +74,9 @@ abstract contract BaseDotns is Test {
 
     /// @notice Deployed Store factory instance.
     StoreFactory public storeFactory;
+
+    /// @notice Deployed protocol registry instance.
+    DotnsProtocolRegistry public protocolRegistry;
 
     /// @notice Rent price applied to PoP NoStatus users for spam resistance.
     /// @dev This value is passed into PopRules initialization in this base test.
@@ -180,6 +188,29 @@ abstract contract BaseDotns is Test {
         dotnsRegistry.updateRegistrarController(
             IDotnsRegistrarController(dotnsRegistrarControllerAddress)
         );
+
+        address protocolRegistryAddress = Upgrades.deployUUPSProxy(
+            "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
+            abi.encodeCall(DotnsProtocolRegistry.initialize, ())
+        );
+        protocolRegistry = DotnsProtocolRegistry(protocolRegistryAddress);
+        vm.label(protocolRegistryAddress, "DotnsProtocolRegistry");
+
+        // casting to 'bytes32' is safe because all key strings fit in 32 bytes
+        // forge-lint: disable-next-line(unsafe-typecast)
+        protocolRegistry.set(bytes32("registrar"), dotnsRegistrarAddress);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        protocolRegistry.set(bytes32("controller"), dotnsRegistrarControllerAddress);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        protocolRegistry.set(bytes32("registry"), dotnsRegistryAddress);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        protocolRegistry.set(bytes32("reverseResolver"), dotnsReverseResolverAddress);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        protocolRegistry.set(bytes32("popRules"), popRulesAddress);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        protocolRegistry.set(bytes32("storeFactory"), address(storeFactory));
+
+        dotnsRegistrar.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
 
         vm.stopPrank();
         vm.warp(block.timestamp + 365 days);
@@ -336,16 +367,12 @@ abstract contract BaseDotns is Test {
         vm.stopPrank();
     }
 
-    /// @notice Computes keccak256("dotns.registered", labelhash)
+    /// @notice Computes the Store key for a registered label.
+    /// @dev Delegates to `StoreUtils.storeKey` — single source of truth for the key derivation.
     /// @param labelhash keccak256(label).
     /// @return key Store key used for DotNS-written registration entry.
     function _storeKey(bytes32 labelhash) internal pure returns (bytes32 key) {
-        assembly {
-            let pointer := mload(0x40)
-            mstore(pointer, 0x646f746e732e7265676973746572656400000000000000000000000000000000)
-            mstore(add(pointer, 0x20), labelhash)
-            key := keccak256(pointer, 0x40)
-        }
+        key = StoreUtils.storeKey(labelhash);
     }
 
     /// @notice Checks whether a string array contains a given string.

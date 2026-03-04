@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
+import {Store} from "../../../contracts/store/Store.sol";
 
 contract DotnsRegistrarControllerFuzzTest is BaseDotns {
     function testFuzz_register_refunds_overpayment(uint256 extra, uint256 salt) public {
@@ -116,6 +117,39 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         uint256 tokenId = uint256(node);
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), nameOwner);
+    }
+
+    function testFuzz_transfer_writes_label_to_recipient_store(uint256 salt) public {
+        address sender = ed;
+        address recipient = leonardo;
+        string memory nameLabel = _labelPopfull(bound(salt, 0, 64));
+
+        vm.startPrank(sender);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+        vm.stopPrank();
+
+        IDotnsRegistrarController.Registration memory registration =
+            _commitFor(nameLabel, sender, true);
+
+        vm.startPrank(sender);
+        dotnsRegistrarController.register{value: 0}(registration);
+        vm.stopPrank();
+
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 node = _namehash(dotNode, labelhash);
+        uint256 tokenId = uint256(node);
+
+        vm.prank(sender);
+        dotnsRegistrar.transferFrom(sender, recipient, tokenId);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), recipient);
+
+        Store recipientStore = Store(address(storeFactory.getDeployedStore(recipient)));
+        assertTrue(address(recipientStore) != address(0));
+
+        bytes32 storeKey = _storeKey(labelhash);
+        assertEq(recipientStore.getValueFor(recipient, storeKey), string.concat(nameLabel, ".dot"));
+        assertTrue(recipientStore.isLocked(recipient, storeKey));
     }
 
     function _commitFor(

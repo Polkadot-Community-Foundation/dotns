@@ -21,6 +21,28 @@ import {IStoreFactory} from "../store/IStoreFactory.sol";
 ///
 /// @custom:security-contact admin@parity.io
 library StoreUtils {
+    /// @notice Key prefix for DotNS-written Store immutable entries ("dotns.registered").
+    /// @dev Used by all contracts that read or write registration labels to per-user Stores.
+    ///      The value is `bytes32("dotns.registered")` — safe because the string fits in 32 bytes.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant DOTNS_REGISTERED_KEY = bytes32("dotns.registered");
+
+    /// @notice Computes the Store key for a registered label.
+    /// @dev Returns `keccak256(abi.encodePacked(DOTNS_REGISTERED_KEY, labelhash))`.
+    ///      Uses scratch-space assembly to avoid ABI-encoding overhead.
+    /// @param labelhash `keccak256(bytes(label))`.
+    /// @return key Store key used for DotNS-written registration entries.
+    function storeKey(bytes32 labelhash) internal pure returns (bytes32 key) {
+        bytes32 prefix = DOTNS_REGISTERED_KEY;
+        assembly {
+            let pointer := mload(0x40)
+            mstore(pointer, prefix)
+            mstore(add(pointer, 0x20), labelhash)
+            key := keccak256(pointer, 0x40)
+        }
+    }
+
     /// @notice Returns the Store for `owner`, deploying one if needed.
     /// @dev Unifies Store acquisition across registration flows. Handles two cases:
     ///

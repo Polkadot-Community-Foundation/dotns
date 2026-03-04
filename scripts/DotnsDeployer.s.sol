@@ -19,6 +19,10 @@ import {
 import {DotnsContentResolver} from "../contracts/resolvers/DotnsContentResolver.sol";
 import {DotnsResolver} from "../contracts/resolvers/DotnsResolver.sol";
 import {StoreFactory, IStoreFactory} from "../contracts/store/StoreFactory.sol";
+import {
+    DotnsProtocolRegistry,
+    IDotnsProtocolRegistry
+} from "../contracts/registry/DotnsProtocolRegistry.sol";
 
 /// @title DotnsDeployer
 contract DotnsDeployer is BaseDeployer {
@@ -33,6 +37,7 @@ contract DotnsDeployer is BaseDeployer {
     DotnsContentResolver public dotnsContentResolver;
     DotnsResolver public dotnsResolver;
     DotnsRegistrarController public dotnsRegistrarController;
+    DotnsProtocolRegistry public protocolRegistry;
 
     function run() external {
         uint256 chainId = block.chainid;
@@ -132,6 +137,15 @@ contract DotnsDeployer is BaseDeployer {
         vm.label(dotnsRegistrarControllerProxy, "DotnsRegistrarController");
         logDeployment("DotnsRegistrarController", dotnsRegistrarControllerProxy);
 
+        // DotnsProtocolRegistry
+        address protocolRegistryProxy = Upgrades.deployUUPSProxy(
+            "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
+            abi.encodeCall(DotnsProtocolRegistry.initialize, ())
+        );
+        protocolRegistry = DotnsProtocolRegistry(protocolRegistryProxy);
+        vm.label(protocolRegistryProxy, "DotnsProtocolRegistry");
+        logDeployment("DotnsProtocolRegistry", protocolRegistryProxy);
+
         // Wire dependencies
         dotnsReverseResolver.updateRegistrar(
             IDotnsRegistrarController(dotnsRegistrarControllerProxy)
@@ -141,6 +155,17 @@ contract DotnsDeployer is BaseDeployer {
         dotnsRegistry.updateRegistrarController(
             IDotnsRegistrarController(dotnsRegistrarControllerProxy)
         );
+
+        // Wire protocol registry
+        protocolRegistry.set(bytes32("registrar"), dotnsRegistrarProxy);
+        protocolRegistry.set(bytes32("controller"), dotnsRegistrarControllerProxy);
+        protocolRegistry.set(bytes32("registry"), dotnsRegistryProxy);
+        protocolRegistry.set(bytes32("reverseResolver"), dotnsReverseResolverProxy);
+        protocolRegistry.set(bytes32("resolver"), dotnsResolverProxy);
+        protocolRegistry.set(bytes32("contentResolver"), dotnsContentResolverProxy);
+        protocolRegistry.set(bytes32("popRules"), popRulesProxy);
+        protocolRegistry.set(bytes32("storeFactory"), address(storeFactory));
+        dotnsRegistrar.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
 
         vm.stopBroadcast();
 

@@ -205,7 +205,7 @@ contract DotnsRegistrarController is
 
         require(msg.value >= priced.price, InsufficientValue());
 
-        dotnsRegistrar.register(uint256(node), registration.owner);
+        dotnsRegistrar.register(uint256(node), registration.owner, labelhash);
 
         dotnsRegistry.setOwner(node, registration.owner, address(reverseResolver));
 
@@ -215,9 +215,10 @@ contract DotnsRegistrarController is
             );
         }
 
-        address[] memory controllers = new address[](2);
+        address[] memory controllers = new address[](3);
         controllers[0] = address(this);
         controllers[1] = address(dotnsRegistry);
+        controllers[2] = address(dotnsRegistrar);
         Store store = storeFactory.getOrCreateStore(controllers, registration.owner);
 
         bytes32 storeKey = _storeKey(labelhash);
@@ -261,16 +262,17 @@ contract DotnsRegistrarController is
 
         delete commitments[commitment];
 
-        dotnsRegistrar.register(uint256(node), registration.owner);
+        dotnsRegistrar.register(uint256(node), registration.owner, labelhash);
         dotnsRegistry.setOwner(node, registration.owner, address(reverseResolver));
 
         reverseResolver.setReverseName(
             registration.owner, string.concat(registration.label, ".dot")
         );
 
-        address[] memory controllers = new address[](2);
+        address[] memory controllers = new address[](3);
         controllers[0] = address(this);
         controllers[1] = address(dotnsRegistry);
+        controllers[2] = address(dotnsRegistrar);
         Store store = storeFactory.getOrCreateStore(controllers, registration.owner);
 
         bytes32 storeKey = _storeKey(labelhash);

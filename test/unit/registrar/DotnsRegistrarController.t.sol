@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
+import {IDotnsProtocolRegistry} from "../../../contracts/registry/IDotnsProtocolRegistry.sol";
 
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {IStore, Store} from "../../../contracts/store/Store.sol";
@@ -201,5 +202,149 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         );
         dotnsRegistrarController.register{value: price}(registration);
         vm.stopPrank();
+    }
+
+    function test_transfer_writes_label_and_creates_store() public {
+        string memory nameLabel = "alicetransfer01";
+
+        _register(nameLabel, ed, IPopRules.PopStatus.PopFull);
+
+        assertEq(address(storeFactory.getDeployedStore(leonardo)), address(0));
+
+        uint256 tokenId = _tokenIdForLabel(nameLabel);
+
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), leonardo);
+
+        address leonardoStoreAddr = address(storeFactory.getDeployedStore(leonardo));
+        assertTrue(leonardoStoreAddr != address(0));
+
+        Store leonardoStore = Store(leonardoStoreAddr);
+        assertEq(leonardoStore.owner(), leonardo);
+
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 storeKey = _storeKey(labelhash);
+
+        assertEq(leonardoStore.getValueFor(leonardo, storeKey), string.concat(nameLabel, ".dot"));
+        assertTrue(leonardoStore.isLocked(leonardo, storeKey));
+    }
+
+    function test_transfer_back_skips_locked_entry() public {
+        string memory nameLabel = "carolreturn01";
+
+        _register(nameLabel, ed, IPopRules.PopStatus.PopFull);
+
+        uint256 tokenId = _tokenIdForLabel(nameLabel);
+
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+
+        vm.prank(leonardo);
+        dotnsRegistrar.transferFrom(leonardo, ed, tokenId);
+
+        Store edStore = Store(address(storeFactory.getDeployedStore(ed)));
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 storeKey = _storeKey(labelhash);
+        assertEq(edStore.getValueFor(ed, storeKey), string.concat(nameLabel, ".dot"));
+        assertTrue(edStore.isLocked(ed, storeKey));
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
+    }
+
+    function test_mint_does_not_trigger_store_write() public {
+        string memory nameLabel = "daveminting01";
+
+        assertEq(address(storeFactory.getDeployedStore(address(0))), address(0));
+
+        _register(nameLabel, tiago, IPopRules.PopStatus.PopFull);
+
+        Store tiagoStore = Store(address(storeFactory.getDeployedStore(tiago)));
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 storeKey = _storeKey(labelhash);
+        assertEq(tiagoStore.getValueFor(tiago, storeKey), string.concat(nameLabel, ".dot"));
+
+        assertEq(address(storeFactory.getDeployedStore(address(0))), address(0));
+    }
+
+    function test_transfer_succeeds_without_protocol_registry() public {
+        string memory nameLabel = "noregistry01";
+
+        _register(nameLabel, ed, IPopRules.PopStatus.PopFull);
+
+        uint256 tokenId = _tokenIdForLabel(nameLabel);
+
+        vm.prank(owner);
+        dotnsRegistrar.updateProtocolRegistry(IDotnsProtocolRegistry(address(0)));
+
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), leonardo);
+        assertEq(address(storeFactory.getDeployedStore(leonardo)), address(0));
+    }
+
+    function test_transfer_succeeds_when_sender_has_no_store() public {
+        string memory nameLabel = "nostore01";
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 node = _namehash(dotNode, labelhash);
+        uint256 tokenId = uint256(node);
+
+        vm.prank(address(dotnsRegistrarController));
+        dotnsRegistrar.register(tokenId, ed, labelhash);
+
+        assertEq(address(storeFactory.getDeployedStore(ed)), address(0));
+
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), leonardo);
+        assertEq(address(storeFactory.getDeployedStore(leonardo)), address(0));
+    }
+
+    function test_safe_transfer_writes_to_store() public {
+        string memory nameLabel = "safexfer01";
+
+        _register(nameLabel, ed, IPopRules.PopStatus.PopFull);
+
+        uint256 tokenId = _tokenIdForLabel(nameLabel);
+
+        vm.prank(ed);
+        dotnsRegistrar.safeTransferFrom(ed, leonardo, tokenId);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), leonardo);
+
+        Store leonardoStore = Store(address(storeFactory.getDeployedStore(leonardo)));
+        assertTrue(address(leonardoStore) != address(0));
+
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 storeKey = _storeKey(labelhash);
+        assertEq(leonardoStore.getValueFor(leonardo, storeKey), string.concat(nameLabel, ".dot"));
+        assertTrue(leonardoStore.isLocked(leonardo, storeKey));
+    }
+
+    function test_transfer_via_approved_operator_writes_to_store() public {
+        string memory nameLabel = "opxfer01";
+
+        _register(nameLabel, ed, IPopRules.PopStatus.PopFull);
+
+        uint256 tokenId = _tokenIdForLabel(nameLabel);
+
+        vm.prank(ed);
+        dotnsRegistrar.setApprovalForAll(tiago, true);
+
+        vm.prank(tiago);
+        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), leonardo);
+
+        Store leonardoStore = Store(address(storeFactory.getDeployedStore(leonardo)));
+        assertTrue(address(leonardoStore) != address(0));
+
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 storeKey = _storeKey(labelhash);
+        assertEq(leonardoStore.getValueFor(leonardo, storeKey), string.concat(nameLabel, ".dot"));
+        assertTrue(leonardoStore.isLocked(leonardo, storeKey));
     }
 }

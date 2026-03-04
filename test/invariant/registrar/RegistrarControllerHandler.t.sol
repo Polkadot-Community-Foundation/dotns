@@ -14,8 +14,12 @@ import {DotnsRegistrar} from "../../../contracts/registrars/DotnsRegistrar.sol";
 
 /// @title Registrar Controller Handler
 /// @notice Handler contract that executes bounded random actions against the controller.
-/// @dev Maintains ghost state to track registrations, commitments, and actors for invariant checks.
+/// @dev Maintains ghost state to track registrations, commitments, transfers, and actors
+///      for invariant checks.
 contract RegistrarControllerHandler is Test {
+    /// @notice Namehash of the .dot TLD.
+    bytes32 private constant DOT_NODE =
+        0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
     /// @notice The registrar controller under test.
     IDotnsRegistrarController public controller;
 
@@ -66,6 +70,15 @@ contract RegistrarControllerHandler is Test {
 
     /// @notice Total count of successful registrations.
     uint256 public registrationCount;
+
+    /// @notice Labels that have been transferred.
+    string[] internal _transferredLabels;
+
+    /// @notice Recipients of transferred labels (same index as _transferredLabels).
+    address[] internal _transferredRecipients;
+
+    /// @notice Total count of successful transfers.
+    uint256 public transferCount;
 
     /// @notice Minimum commitment age from the controller.
     uint256 public minCommitmentAge;
@@ -187,10 +200,18 @@ contract RegistrarControllerHandler is Test {
     /// @dev Sends more ETH than required and verifies refund mechanics.
     /// @param actorSeed Seed for selecting an actor.
     /// @param overpaymentSeed Seed for overpayment amount.
-    function registerWithOverpayment(uint256 actorSeed, uint256 overpaymentSeed) external {
+    /// @param reservedSeed Seed for determining if name should be reserved.
+    function registerWithOverpayment(
+        uint256 actorSeed,
+        uint256 overpaymentSeed,
+        uint256 reservedSeed
+    )
+        external
+    {
         if (actors.length == 0) return;
 
         address actor = actors[actorSeed % actors.length];
+        bool reserved = reservedSeed % 2 == 0;
         string memory label = _generateUniqueLabel();
         uint256 overpayment = (overpaymentSeed % 10) * 1e15;
 
@@ -198,7 +219,7 @@ contract RegistrarControllerHandler is Test {
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: actor, secret: secret, reserved: true
+                label: label, owner: actor, secret: secret, reserved: reserved
             });
 
         bytes32 commitment = controller.makeCommitment(registration);
@@ -225,8 +246,10 @@ contract RegistrarControllerHandler is Test {
         labelRegistered[keccak256(bytes(label))] = true;
         ++registrationCount;
 
-        _reservedLabels.push(label);
-        _reservedOwners.push(actor);
+        if (reserved) {
+            _reservedLabels.push(label);
+            _reservedOwners.push(actor);
+        }
     }
 
     /// @notice Advances block timestamp to simulate time passage.
@@ -277,6 +300,64 @@ contract RegistrarControllerHandler is Test {
     /// @return count Number of registrations.
     function getRegistrationCount() external view returns (uint256 count) {
         count = registrationCount;
+    }
+
+    /// @notice Transfers a registered name between actors.
+    /// @dev Picks a random registered name and transfers it to a different actor.
+    /// @param registrationSeed Seed for selecting which registered name to transfer.
+    /// @param recipientSeed Seed for selecting the recipient actor.
+    function transferName(uint256 registrationSeed, uint256 recipientSeed) external {
+        if (_registeredLabels.length == 0 || actors.length < 2) return;
+
+        uint256 index = registrationSeed % _registeredLabels.length;
+        string memory label = _registeredLabels[index];
+        address currentOwner = _registeredOwners[index];
+
+        address recipient = _pickDifferentActor(currentOwner, recipientSeed);
+        if (recipient == address(0)) return;
+
+        bytes32 labelhash = keccak256(bytes(label));
+        bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
+        uint256 tokenId = uint256(node);
+
+        vm.prank(currentOwner);
+        registrar.transferFrom(currentOwner, recipient, tokenId);
+
+        _registeredOwners[index] = recipient;
+        _transferredLabels.push(label);
+        _transferredRecipients.push(recipient);
+        ++transferCount;
+    }
+
+    /// @notice Returns labels that have been transferred.
+    /// @return labels Array of transferred label strings.
+    function getTransferredLabels() external view returns (string[] memory labels) {
+        labels = _transferredLabels;
+    }
+
+    /// @notice Returns recipients of transferred labels.
+    /// @return recipients Array of transfer recipient addresses.
+    function getTransferredRecipients() external view returns (address[] memory recipients) {
+        recipients = _transferredRecipients;
+    }
+
+    /// @notice Picks an actor different from `exclude`.
+    /// @param exclude Address to exclude from selection.
+    /// @param seed Seed for selecting among remaining actors.
+    /// @return actor A different actor, or address(0) if none found.
+    function _pickDifferentActor(
+        address exclude,
+        uint256 seed
+    )
+        internal
+        view
+        returns (address actor)
+    {
+        for (uint256 i; i < actors.length; ++i) {
+            address candidate = actors[(seed + i) % actors.length];
+            if (candidate != exclude) return candidate;
+        }
+        return address(0);
     }
 
     /// @notice Generates a unique label for registration.
