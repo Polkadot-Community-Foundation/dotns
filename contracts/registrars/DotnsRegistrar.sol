@@ -24,7 +24,7 @@ import {StoreUtils} from "../utils/StoreUtils.sol";
 ///
 /// @dev Store writes on transfer:
 ///      When an ERC721 name token is transferred between non-zero addresses (i.e. not mint or burn),
-///      the registrar reads the label from the sender's Store and writes it to the recipient's Store.
+///      the registrar writes the label to the recipient's Store using the label stored in `_labels`.
 ///      This ensures the recipient's Store contains a record of every name they have received.
 ///      Stores are immutable (locked by DotNS controllers), so the sender's entry is not removed.
 ///
@@ -47,11 +47,18 @@ contract DotnsRegistrar is
     ///      without storing individual references.
     IDotnsProtocolRegistry public protocolRegistry;
 
-    /// @notice Mapping from token ID to the labelhash stored at registration time.
-    /// @dev Required because the token ID is `uint256(namehash(DOT_NODE, labelhash))`, a one-way
-    ///      derivation that cannot be reversed. The labelhash is needed at transfer time to compute
-    ///      the Store key and read the label string from the sender's Store.
+    /// @notice DEPRECATED as of v1.2.0: Previously stored labelhashes per token ID.
+    /// @dev Retained for UUPS storage layout compatibility. No longer written to.
+    ///      The labelhash is now derived on-the-fly from `_labels[tokenId]` via `keccak256(bytes(label))`.
+    ///      REMOVE this mapping when deploying to a new environment (fresh deploy, not upgrade).
+    /// @custom:oz-retyped-from mapping(uint256 => bytes32)
     mapping(uint256 tokenId => bytes32 labelhash) private _labelhashes;
+
+    /// @notice Human-readable label per token ID. Single source of truth for name data.
+    /// @dev Stored at registration time. Used during transfers to write the label directly
+    ///      to the recipient's Store without needing to read from the sender's Store.
+    ///      The labelhash can always be derived as `keccak256(bytes(label))`.
+    mapping(uint256 tokenId => string label) private _labels;
 
     /// @notice Well-known protocol registry key for the store factory.
     /// casting to 'bytes32' is safe because the string fits in 32 bytes.
@@ -69,7 +76,7 @@ contract DotnsRegistrar is
     bytes32 internal constant KEY_REGISTRY = bytes32("registry");
 
     /// @dev Reserved storage space to allow for layout changes in the future.
-    uint256[48] private __gap;
+    uint256[47] private __gap;
 
     /// @notice Restricts function access to authorised controllers.
     modifier onlyController() {
@@ -118,14 +125,14 @@ contract DotnsRegistrar is
     function register(
         uint256 id,
         address owner,
-        bytes32 labelhash
+        string calldata label
     )
         external
         override
         onlyController
     {
         require(available(id), NameNotAvailable(id));
-        _labelhashes[id] = labelhash;
+        _labels[id] = label;
         _mint(owner, id);
         emit NameRegistered(id, owner);
     }
@@ -133,7 +140,7 @@ contract DotnsRegistrar is
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.1.0";
+        versionString = "1.2.0";
     }
 
     /// @notice Checks whether a token ID exists.
@@ -163,33 +170,27 @@ contract DotnsRegistrar is
         from = super._update(to, tokenId, auth);
 
         if (from != address(0) && to != address(0) && address(protocolRegistry) != address(0)) {
-            bytes32 labelhash = _labelhashes[tokenId];
-            if (labelhash != bytes32(0)) {
-                _writeToRecipientStore(from, to, labelhash);
+            string memory label = _labels[tokenId];
+            if (bytes(label).length > 0) {
+                bytes32 labelhash = keccak256(bytes(label));
+                _writeToRecipientStore(to, labelhash, label);
             }
         }
 
         return from;
     }
 
-    /// @notice Reads the label from the sender's Store and writes it to the recipient's Store.
-    /// @dev Silently returns (no revert) if the store factory is not set, the sender has no store,
-    ///      or the label cannot be read. This ensures transfers never fail due to missing stores.
-    /// @param from Address of the current token owner (sender).
+    /// @notice Writes the label to the recipient's Store during an ERC721 transfer.
+    /// @dev Silently returns (no revert) if the store factory is not set.
+    ///      This ensures transfers never fail due to missing stores.
     /// @param to Address of the new token owner (recipient).
     /// @param labelhash keccak256 of the label, used to compute the Store key.
-    function _writeToRecipientStore(address from, address to, bytes32 labelhash) internal {
+    /// @param label The human-readable label string to write.
+    function _writeToRecipientStore(address to, bytes32 labelhash, string memory label) internal {
         IStoreFactory factory = IStoreFactory(protocolRegistry.get(KEY_STORE_FACTORY));
         if (address(factory) == address(0)) return;
 
         bytes32 storeKey = StoreUtils.storeKey(labelhash);
-
-        address fromStoreAddr = address(factory.getDeployedStore(from));
-        if (fromStoreAddr == address(0)) return;
-
-        Store fromStore = Store(fromStoreAddr);
-        string memory label = fromStore.getValueFor(from, storeKey);
-        if (bytes(label).length == 0) return;
 
         address[] memory storeControllers = new address[](3);
         storeControllers[0] = address(this);
@@ -199,7 +200,7 @@ contract DotnsRegistrar is
         Store toStore = factory.getOrCreateStore(storeControllers, to);
 
         if (bytes(toStore.getValueFor(to, storeKey)).length == 0) {
-            toStore.setValueFor(to, storeKey, label);
+            toStore.setValueFor(to, storeKey, string.concat(label, ".dot"));
         }
     }
 

@@ -27,6 +27,12 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         handler.addActor(leonardo, IPopRules.PopStatus.PopLite);
         handler.addActor(tiago, IPopRules.PopStatus.NoStatus);
 
+        // Additional actors for richer multi-user transfer chains.
+        address alice = _createUser("alice");
+        address bob = _createUser("bob");
+        handler.addActor(alice, IPopRules.PopStatus.PopFull);
+        handler.addActor(bob, IPopRules.PopStatus.PopLite);
+
         targetContract(address(handler));
 
         excludeContract(address(dotnsRegistrarController));
@@ -144,6 +150,27 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
 
             assertTrue(
                 store.isLocked(recipient, storeKey), "Transfer-created store entry must be locked"
+            );
+        }
+    }
+
+    function invariant_current_owners_have_label_in_store() public view {
+        string[] memory registeredLabels = handler.getRegisteredLabels();
+        address[] memory registeredOwners = handler.getRegisteredOwners();
+
+        for (uint256 i; i < registeredLabels.length; ++i) {
+            address currentOwner = registeredOwners[i];
+            Store store = Store(address(storeFactory.getDeployedStore(currentOwner)));
+
+            assertTrue(address(store) != address(0), "Current owner must have a store");
+
+            bytes32 labelhash = keccak256(bytes(registeredLabels[i]));
+            bytes32 storeKey = _storeKey(labelhash);
+
+            assertEq(
+                store.getValueFor(currentOwner, storeKey),
+                string.concat(registeredLabels[i], ".dot"),
+                "Current owner store must contain correct label after any number of transfers"
             );
         }
     }

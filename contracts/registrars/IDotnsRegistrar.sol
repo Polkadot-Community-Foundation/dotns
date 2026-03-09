@@ -46,12 +46,12 @@ interface IDotnsRegistrar is IERC721 {
 
     /// @notice Registers a name permanently.
     /// @dev Callable only by an authorised controller.
-    ///      Registration mints the ERC721 token to `owner` and stores the labelhash
-    ///      for use during transfer store writes.
+    ///      Registration mints the ERC721 token to `owner` and stores both the human-readable
+    ///      label and its keccak256 hash for use during transfer store writes.
     /// @param id Token identifier.
     /// @param owner Owner of the name.
-    /// @param labelhash keccak256 of the label string, stored for transfer-time store writes.
-    function register(uint256 id, address owner, bytes32 labelhash) external;
+    /// @param label The human-readable label string (e.g. "alice").
+    function register(uint256 id, address owner, string calldata label) external;
 
     /// @notice Adds an authorised controller.
     /// @dev Callable only by the contract owner.

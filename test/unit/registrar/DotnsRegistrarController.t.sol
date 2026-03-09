@@ -362,15 +362,21 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         uint256 tokenId = uint256(node);
 
         vm.prank(address(dotnsRegistrarController));
-        dotnsRegistrar.register(tokenId, ed, labelhash);
+        dotnsRegistrar.register(tokenId, ed, nameLabel);
 
+        // Sender has no Store — transfer should still succeed
         assertEq(address(storeFactory.getDeployedStore(ed)), address(0));
 
         vm.prank(ed);
         dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), leonardo);
-        assertEq(address(storeFactory.getDeployedStore(leonardo)), address(0));
+
+        // Recipient gets a Store with the label written (label comes from _labels, not sender Store)
+        assertTrue(address(storeFactory.getDeployedStore(leonardo)) != address(0));
+        bytes32 storeKey = _storeKey(labelhash);
+        Store leonardoStore = Store(address(storeFactory.getDeployedStore(leonardo)));
+        assertEq(leonardoStore.getValueFor(leonardo, storeKey), "nostore01.dot");
     }
 
     function test_safe_transfer_writes_to_store() public {

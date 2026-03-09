@@ -47,7 +47,7 @@ contract DotnsRegistryTests is BaseDotns {
         vm.stopPrank();
 
         vm.startPrank(address(dotnsRegistrarController));
-        dotnsRegistrar.register(uint256(node), ed, keccak256("node_b_label"));
+        dotnsRegistrar.register(uint256(node), ed, "node_b_label");
 
         vm.expectEmit(true, false, false, true, address(dotnsRegistry));
         emit IDotnsRegistry.NodeTransferred(node, ed);

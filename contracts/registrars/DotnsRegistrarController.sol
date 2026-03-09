@@ -217,7 +217,7 @@ contract DotnsRegistrarController is
 
         require(msg.value >= priced.price, InsufficientValue());
 
-        dotnsRegistrar.register(uint256(node), registration.owner, labelhash);
+        dotnsRegistrar.register(uint256(node), registration.owner, registration.label);
 
         dotnsRegistry.setOwner(node, registration.owner, address(reverseResolver));
 
@@ -289,7 +289,7 @@ contract DotnsRegistrarController is
 
         delete commitments[commitment];
 
-        dotnsRegistrar.register(uint256(node), registration.owner, labelhash);
+        dotnsRegistrar.register(uint256(node), registration.owner, registration.label);
         dotnsRegistry.setOwner(node, registration.owner, address(reverseResolver));
 
         reverseResolver.setReverseName(
