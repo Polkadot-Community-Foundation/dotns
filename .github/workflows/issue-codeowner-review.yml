@@ -1,0 +1,31 @@
+name: Tag Code Owners on Whitelist Requests
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  notify-codeowners:
+    if: contains(github.event.issue.labels.*.name, 'whitelist-request')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tag code owners for review
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.issue.number;
+            const opener = context.payload.issue.user.login;
+
+            const body = [
+              "### 👋 Code Owner Review Required",
+              "",
+              `@filvecchiato @waytwotall @andrew-ifrita @corey-hathaway @sphamjoli`,
+              "",
+              `New whitelist request from @${opener}. Please review the address and apply the \`whitelist-approved\` label if valid.`,
+            ].join("\n");
+
+            await github.rest.issues.createComment({ owner, repo, issue_number, body });

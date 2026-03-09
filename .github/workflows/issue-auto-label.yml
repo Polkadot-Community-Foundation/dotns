@@ -33,6 +33,7 @@ jobs:
             "P0"|"Critical")  [ -n "$labels" ] && labels="$labels,P0" || labels="P0" ;;
             "P1"|"High")      [ -n "$labels" ] && labels="$labels,P1" || labels="P1" ;;
             "P2"|"Normal")    [ -n "$labels" ] && labels="$labels,P2" || labels="P2" ;;
+            *)                [ -n "$labels" ] && labels="$labels,P3" || labels="P3" ;;
           esac
 
           echo "labels=$labels" >> $GITHUB_OUTPUT
@@ -62,10 +63,14 @@ jobs:
             repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/labels \
             --input - <<< "{\"labels\":$JSON}"
 
-      - name: Comment when missing
+      - name: Apply default triage label when no labels extracted
         if: steps.extract.outputs.labels == ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          gh api \
+            repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/labels \
+            --input - <<< '{"labels":["triage"]}'
+
           gh api repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments \
-            -f body='Please choose a Component (Registration, Resolver, Store, or Proof of Personhood) and Priority (P0, P1, P2) in the issue form so labels can be applied.'
+            -f body='No component or priority detected — tagged as **triage**. Please update the issue with a Component and Priority so it can be labeled correctly.'
