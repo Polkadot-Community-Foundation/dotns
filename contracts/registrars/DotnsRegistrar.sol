@@ -174,8 +174,8 @@ contract DotnsRegistrar is
     }
 
     /// @inheritdoc ERC721Upgradeable
-    /// @dev Additionally writes the transferred label to the recipient's Store when both `from`
-    ///      and `to` are non-zero and a protocol registry has been configured.
+    /// @dev Additionally ensures the recipient has a Store and writes the transferred label
+    ///      to it when both `from` and `to` are non-zero and a protocol registry has been configured.
     function _update(
         address to,
         uint256 tokenId,
@@ -188,50 +188,40 @@ contract DotnsRegistrar is
         from = super._update(to, tokenId, auth);
 
         if (from != address(0) && to != address(0) && address(protocolRegistry) != address(0)) {
-            _ensureRecipientStore(to);
-
-            string memory label = _labels[tokenId];
-            if (bytes(label).length > 0) {
-                bytes32 labelhash = keccak256(bytes(label));
-                _writeLabelToStore(to, labelhash, label);
-            }
+            _syncRecipientStore(to, tokenId);
         }
 
         return from;
     }
 
-    /// @notice Deploys and authorises a Store for the recipient if one does not exist.
-    /// @dev Uses `getOrCreateStore` — same flow as the controller and registry.
-    ///      No-op when the store factory is not set.
-    /// @param to Address of the recipient.
-    function _ensureRecipientStore(address to) internal {
-        IStoreFactory factory = IStoreFactory(protocolRegistry.get(KEY_STORE_FACTORY));
-        if (address(factory) == address(0)) return;
-
-        address[] memory storeControllers = new address[](3);
-        storeControllers[0] = address(this);
-        storeControllers[1] = protocolRegistry.get(KEY_CONTROLLER);
-        storeControllers[2] = protocolRegistry.get(KEY_REGISTRY);
-
-        factory.getOrCreateStore(storeControllers, to);
-    }
-
-    /// @notice Writes the label to the recipient's Store.
-    /// @dev Silently returns if the store factory is not set or the recipient has no store.
-    ///      Skips writing if the key already has a value (locked entries).
-    /// @param to Address of the recipient.
-    /// @param labelhash keccak256 of the label, used to compute the Store key.
-    /// @param label The human-readable label string to write.
-    function _writeLabelToStore(address to, bytes32 labelhash, string memory label) internal {
+    /// @notice Ensures the recipient has a Store and writes the label to it if available.
+    /// @dev Deploys a Store for the recipient via `getOrCreateStore` when one does not exist,
+    ///      then writes the label entry if `_labels[tokenId]` is populated and the key
+    ///      does not already have a value (locked entries are skipped).
+    ///      Silently returns if the store factory is not set.
+    /// @param to Address of the transfer recipient.
+    /// @param tokenId The transferred token identifier.
+    function _syncRecipientStore(address to, uint256 tokenId) internal {
         IStoreFactory factory = IStoreFactory(protocolRegistry.get(KEY_STORE_FACTORY));
         if (address(factory) == address(0)) return;
 
         Store toStore = Store(address(factory.getDeployedStore(to)));
-        if (address(toStore) == address(0)) return;
 
-        bytes32 storeKey = StoreUtils.storeKey(labelhash);
-        if (bytes(toStore.getValueFor(to, storeKey)).length == 0) {
-            toStore.setValueFor(to, storeKey, string.concat(label, ".dot"));
+        if (address(toStore) == address(0)) {
+            address[] memory storeControllers = new address[](3);
+            storeControllers[0] = address(this);
+            storeControllers[1] = protocolRegistry.get(KEY_CONTROLLER);
+            storeControllers[2] = protocolRegistry.get(KEY_REGISTRY);
+
+            toStore = factory.getOrCreateStore(storeControllers, to);
+        }
+
+        string memory label = _labels[tokenId];
+        if (bytes(label).length > 0) {
+            bytes32 storeKey = StoreUtils.storeKey(keccak256(bytes(label)));
+            if (bytes(toStore.getValueFor(to, storeKey)).length == 0) {
+                toStore.setValueFor(to, storeKey, string.concat(label, ".dot"));
+            }
         }
     }
 
