@@ -28,10 +28,12 @@ contract DotnsRegistrarTests is BaseDotns {
 
     function test_register_mints_to_owner() public {
         address nameOwner = ed;
-        uint256 tokenId = _tokenIdForLabel("alice");
+        string memory label = "alice";
+        uint256 tokenId = _tokenIdForLabel(label);
+        bytes32 labelhash = keccak256(bytes(label));
 
         vm.startPrank(address(dotnsRegistrarController));
-        dotnsRegistrar.register(tokenId, nameOwner);
+        dotnsRegistrar.register(tokenId, nameOwner, labelhash);
         vm.stopPrank();
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), nameOwner);
@@ -40,12 +42,14 @@ contract DotnsRegistrarTests is BaseDotns {
 
     function test_available_before_after_register() public {
         address nameOwner = ed;
-        uint256 tokenId = _tokenIdForLabel("availabilityCheck");
+        string memory label = "availabilityCheck";
+        uint256 tokenId = _tokenIdForLabel(label);
+        bytes32 labelhash = keccak256(bytes(label));
 
         assertTrue(dotnsRegistrar.available(tokenId));
 
         vm.startPrank(address(dotnsRegistrarController));
-        dotnsRegistrar.register(tokenId, nameOwner);
+        dotnsRegistrar.register(tokenId, nameOwner, labelhash);
         vm.stopPrank();
 
         assertFalse(dotnsRegistrar.available(tokenId));
@@ -56,10 +60,12 @@ contract DotnsRegistrarTests is BaseDotns {
         address tokenApproval = tiago;
         address operator = leonardo;
 
-        uint256 tokenId = _tokenIdForLabel("approvalName");
+        string memory label = "approvalName";
+        uint256 tokenId = _tokenIdForLabel(label);
+        bytes32 labelhash = keccak256(bytes(label));
 
         vm.startPrank(address(dotnsRegistrarController));
-        dotnsRegistrar.register(tokenId, nameOwner);
+        dotnsRegistrar.register(tokenId, nameOwner, labelhash);
         vm.stopPrank();
 
         vm.startPrank(nameOwner);

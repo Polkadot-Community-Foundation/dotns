@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {IERC721} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
+import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 
 /// @title Dotns Registrar
 /// @notice ERC721-backed ownership for DotNS names with controller-gated registration.
@@ -33,6 +34,10 @@ interface IDotnsRegistrar is IERC721 {
     /// @param controller Address whose controller permissions were revoked.
     event ControllerRemoved(IDotnsRegistrarController indexed controller);
 
+    /// @notice Emitted when the protocol registry is updated.
+    /// @param newRegistry The address of the new protocol registry.
+    event ProtocolRegistryUpdated(IDotnsProtocolRegistry indexed newRegistry);
+
     /// @notice Returns whether a name is available for registration.
     /// @dev A name is available if and only if it has not been registered yet.
     /// @param id Token identifier.
@@ -41,10 +46,12 @@ interface IDotnsRegistrar is IERC721 {
 
     /// @notice Registers a name permanently.
     /// @dev Callable only by an authorised controller.
-    ///      Registration mints the ERC721 token to `owner`.
+    ///      Registration mints the ERC721 token to `owner` and stores the labelhash
+    ///      for use during transfer store writes.
     /// @param id Token identifier.
     /// @param owner Owner of the name.
-    function register(uint256 id, address owner) external;
+    /// @param labelhash keccak256 of the label string, stored for transfer-time store writes.
+    function register(uint256 id, address owner, bytes32 labelhash) external;
 
     /// @notice Adds an authorised controller.
     /// @dev Callable only by the contract owner.
@@ -55,4 +62,11 @@ interface IDotnsRegistrar is IERC721 {
     /// @dev Callable only by the contract owner.
     /// @param controller Address to deauthorise.
     function removeController(IDotnsRegistrarController controller) external;
+
+    /// @notice Updates the protocol registry address.
+    /// @dev Callable only by the contract owner.
+    /// @dev This is temporary as we need to upgrade the contract we need to remember to remove this function
+    ///       If we deploy to a new environment
+    /// @param registry The address of the new protocol registry.
+    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external;
 }

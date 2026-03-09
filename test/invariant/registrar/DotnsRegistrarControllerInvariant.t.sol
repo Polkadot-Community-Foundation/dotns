@@ -123,6 +123,31 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         }
     }
 
+    function invariant_transfer_recipients_have_store_entries() public view {
+        string[] memory transferredLabels = handler.getTransferredLabels();
+        address[] memory transferredRecipients = handler.getTransferredRecipients();
+
+        for (uint256 i; i < transferredLabels.length; ++i) {
+            address recipient = transferredRecipients[i];
+            Store store = Store(address(storeFactory.getDeployedStore(recipient)));
+
+            assertTrue(address(store) != address(0), "Transfer recipient must have a store");
+
+            bytes32 labelhash = keccak256(bytes(transferredLabels[i]));
+            bytes32 storeKey = _storeKey(labelhash);
+
+            assertEq(
+                store.getValueFor(recipient, storeKey),
+                string.concat(transferredLabels[i], ".dot"),
+                "Transfer-created store entry must contain correct label"
+            );
+
+            assertTrue(
+                store.isLocked(recipient, storeKey), "Transfer-created store entry must be locked"
+            );
+        }
+    }
+
     function invariant_ownership_consistency() public view {
         string[] memory registeredLabels = handler.getRegisteredLabels();
 
