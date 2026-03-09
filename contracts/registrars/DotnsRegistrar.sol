@@ -60,6 +60,10 @@ contract DotnsRegistrar is
     ///      The labelhash can always be derived as `keccak256(bytes(label))`.
     mapping(uint256 tokenId => string label) private _labels;
 
+    /// @notice Namehash of the .dot TLD node.
+    bytes32 private constant DOT_NODE =
+        0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
+
     /// @notice Well-known protocol registry key for the store factory.
     /// casting to 'bytes32' is safe because the string fits in 32 bytes.
     /// forge-lint: disable-next-line(unsafe-typecast)
@@ -137,6 +141,20 @@ contract DotnsRegistrar is
         emit NameRegistered(id, owner);
     }
 
+    /// @inheritdoc IDotnsRegistrar
+    function syncLabel(uint256 tokenId, string calldata label) external override {
+        require(_exists(tokenId), NameNotAvailable(tokenId));
+        require(ownerOf(tokenId) == msg.sender, NotTokenOwner(msg.sender, tokenId));
+        require(bytes(_labels[tokenId]).length == 0, LabelAlreadySet(tokenId));
+
+        bytes32 labelhash = keccak256(bytes(label));
+        bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
+        require(uint256(node) == tokenId, LabelMismatch(tokenId));
+
+        _labels[tokenId] = label;
+        emit LabelSynced(tokenId, label);
+    }
+
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
@@ -145,7 +163,7 @@ contract DotnsRegistrar is
 
     /// @notice Checks whether a token ID exists.
     /// @param tokenId Token identifier.
-    /// @return exists True if the token exists.
+    /// @return True if the token exists.
     function _exists(uint256 tokenId) internal view returns (bool) {
         return _ownerOf(tokenId) != address(0);
     }
@@ -170,35 +188,48 @@ contract DotnsRegistrar is
         from = super._update(to, tokenId, auth);
 
         if (from != address(0) && to != address(0) && address(protocolRegistry) != address(0)) {
+            _ensureRecipientStore(to);
+
             string memory label = _labels[tokenId];
             if (bytes(label).length > 0) {
                 bytes32 labelhash = keccak256(bytes(label));
-                _writeToRecipientStore(to, labelhash, label);
+                _writeLabelToStore(to, labelhash, label);
             }
         }
 
         return from;
     }
 
-    /// @notice Writes the label to the recipient's Store during an ERC721 transfer.
-    /// @dev Silently returns (no revert) if the store factory is not set.
-    ///      This ensures transfers never fail due to missing stores.
-    /// @param to Address of the new token owner (recipient).
-    /// @param labelhash keccak256 of the label, used to compute the Store key.
-    /// @param label The human-readable label string to write.
-    function _writeToRecipientStore(address to, bytes32 labelhash, string memory label) internal {
+    /// @notice Deploys and authorises a Store for the recipient if one does not exist.
+    /// @dev Uses `getOrCreateStore` — same flow as the controller and registry.
+    ///      No-op when the store factory is not set.
+    /// @param to Address of the recipient.
+    function _ensureRecipientStore(address to) internal {
         IStoreFactory factory = IStoreFactory(protocolRegistry.get(KEY_STORE_FACTORY));
         if (address(factory) == address(0)) return;
-
-        bytes32 storeKey = StoreUtils.storeKey(labelhash);
 
         address[] memory storeControllers = new address[](3);
         storeControllers[0] = address(this);
         storeControllers[1] = protocolRegistry.get(KEY_CONTROLLER);
         storeControllers[2] = protocolRegistry.get(KEY_REGISTRY);
 
-        Store toStore = factory.getOrCreateStore(storeControllers, to);
+        factory.getOrCreateStore(storeControllers, to);
+    }
 
+    /// @notice Writes the label to the recipient's Store.
+    /// @dev Silently returns if the store factory is not set or the recipient has no store.
+    ///      Skips writing if the key already has a value (locked entries).
+    /// @param to Address of the recipient.
+    /// @param labelhash keccak256 of the label, used to compute the Store key.
+    /// @param label The human-readable label string to write.
+    function _writeLabelToStore(address to, bytes32 labelhash, string memory label) internal {
+        IStoreFactory factory = IStoreFactory(protocolRegistry.get(KEY_STORE_FACTORY));
+        if (address(factory) == address(0)) return;
+
+        Store toStore = Store(address(factory.getDeployedStore(to)));
+        if (address(toStore) == address(0)) return;
+
+        bytes32 storeKey = StoreUtils.storeKey(labelhash);
         if (bytes(toStore.getValueFor(to, storeKey)).length == 0) {
             toStore.setValueFor(to, storeKey, string.concat(label, ".dot"));
         }
