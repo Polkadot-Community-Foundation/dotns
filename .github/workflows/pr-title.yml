@@ -15,21 +15,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check PR title
-        id: run
-        uses: actions/github-script@v7
+        id: title
+        uses: amannn/action-semantic-pull-request@v5
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          script: |
-            const title = context.payload.pull_request.title || "";
-            const re = /^\[(Bug|Feat|Chore|Docs|Refactor|Test|Security)\](\[(Smart contract)\])?:\s.+/;
-            const ok = re.test(title);
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            test
+            chore
+            ci
+            perf
+            revert
+          requireScope: false
+          subjectPattern: ^[a-zA-Z][-a-zA-Z0-9 .,():+]+$
 
-            if (ok) {
-              core.setOutput("result", "PR Title Valid");
-            } else {
-              core.setOutput("result", "Invalid - Use [Bug|Feat|Chore|Docs|Refactor|Test|Security]: title");
-            }
-
-            if (!ok) core.setFailed("Invalid PR title format");
+      - name: Process results
+        id: run
+        run: |
+          if [ "${{ steps.title.outcome }}" == "success" ]; then
+            echo "result=PR Title Valid" >> $GITHUB_OUTPUT
+          else
+            echo "result=Invalid - Use type(scope): description (e.g. feat(registry): add protocol lookup)" >> $GITHUB_OUTPUT
+          fi
 
       - name: Update PR comment
         if: always()
@@ -95,6 +108,10 @@ jobs:
             } else {
               await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
+
+      - name: Fail if title invalid
+        if: steps.title.outcome == 'failure'
+        run: exit 1
 
   labels:
     name: Labels
