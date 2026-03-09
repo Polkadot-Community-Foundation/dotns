@@ -1,15 +1,15 @@
 name: Publish Release Package
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
 
 permissions:
   contents: write
 
 jobs:
   release:
-    if: ${{ !github.event.release.prerelease }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -83,7 +83,6 @@ jobs:
           zip -r "../dotns-abis-${TAG}.zip" abis/
 
       - name: Generate release body
-        id: body
         run: |
           TAG="${GITHUB_REF_NAME}"
           CONTRACTS=$(ls release/abis/ | sed 's/\.json$//' | sort)
@@ -114,8 +113,11 @@ jobs:
           # Remove leading whitespace from heredoc
           sed -i 's/^          //' release-body.md
 
-      - name: Attach artifacts to release
+      - name: Create release with artifacts
         uses: softprops/action-gh-release@v2
         with:
           files: dotns-abis-*.zip
           body_path: release-body.md
+          draft: true
+          prerelease: true
+          generate_release_notes: true
