@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: foundry-rs/foundry-toolchain@v1
         with:
@@ -47,6 +49,7 @@ jobs:
             "DotnsResolver"
             "PopRules"
             "DotnsRegistrarController"
+            "DotnsProtocolRegistry"
             "IStore"
             "IStoreFactory"
             "IDotnsRegistrar"
@@ -56,6 +59,7 @@ jobs:
             "IDotnsContentResolver"
             "IDotnsResolver"
             "IPopRules"
+            "IDotnsProtocolRegistry"
             "StoreUtils"
             "StringUtils"
           )
