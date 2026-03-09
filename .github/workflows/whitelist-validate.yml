@@ -21,6 +21,7 @@ jobs:
           script: |
             const body = context.payload.issue.body || "";
             const addressMatch = body.match(/### Address\s*\n\s*(.+)/);
+            const typeMatch = body.match(/### Address Type\s*\n\s*(.+)/);
 
             if (!addressMatch) {
               core.setFailed("Could not extract address from issue body");
@@ -28,7 +29,9 @@ jobs:
             }
 
             const address = addressMatch[1].trim();
+            const addressType = typeMatch ? typeMatch[1].trim() : "";
             core.setOutput("address", address);
+            core.setOutput("address_type", addressType);
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -42,12 +45,14 @@ jobs:
         id: validate
         env:
           ADDRESS: ${{ steps.extract.outputs.address }}
+          ADDRESS_TYPE: ${{ steps.extract.outputs.address_type }}
         run: |
           node << 'SCRIPT'
           const { isAddress, getAddress } = require("viem");
           const { decodeAddress, encodeAddress } = require("@polkadot/util-crypto");
 
           const address = process.env.ADDRESS;
+          const selectedType = process.env.ADDRESS_TYPE;
 
           let type = "unknown";
           let valid = false;
@@ -58,7 +63,11 @@ jobs:
             type = "evm";
             valid = true;
             checksummed = getAddress(address);
-            message = `EVM (H160) address detected: \`${checksummed}\``;
+            if (selectedType && selectedType.includes("SS58")) {
+              message = `You selected **Substrate (SS58)** but provided an EVM address: \`${checksummed}\`\n\nThis looks like a valid EVM address so we will proceed with it.`;
+            } else {
+              message = `EVM (H160) address detected: \`${checksummed}\``;
+            }
           } else {
             try {
               const decoded = decodeAddress(address);
@@ -66,7 +75,11 @@ jobs:
               if (address === recoded) {
                 type = "substrate";
                 valid = true;
-                message = `Substrate (SS58) address detected: \`${address}\`\n\n> The contract requires an EVM (H160) address. Please provide the corresponding EVM address or a maintainer will resolve it before approval.`;
+                if (selectedType && selectedType.includes("H160")) {
+                  message = `You selected **EVM (H160)** but provided a Substrate address: \`${address}\`\n\n> The contract requires an EVM (H160) address. Please update the issue with your EVM address.`;
+                } else {
+                  message = `Substrate (SS58) address detected: \`${address}\`\n\n> The contract requires an EVM (H160) address. Please provide the corresponding EVM address or a maintainer will resolve it before approval.`;
+                }
               }
             } catch {}
           }
