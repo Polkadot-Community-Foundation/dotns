@@ -1,0 +1,56 @@
+name: Guard Whitelist Approval Label
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+
+jobs:
+  guard:
+    if: github.event.label.name == 'whitelist-approved'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove label if applied by non-code-owner
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const codeOwners = [
+              "filvecchiato",
+              "waytwotall",
+              "andrew-ifrita",
+              "corey-hathaway",
+              "sphamjoli",
+            ];
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.issue.number;
+            const sender = context.payload.sender.login;
+
+            if (codeOwners.includes(sender)) {
+              core.info(`${sender} is a code owner — label stays.`);
+              return;
+            }
+
+            await github.rest.issues.removeLabel({
+              owner,
+              repo,
+              issue_number,
+              name: "whitelist-approved",
+            });
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body: [
+                `**@${sender}** attempted to apply the \`whitelist-approved\` label.`,
+                "",
+                "Only code owners can approve whitelist requests. The label has been removed.",
+                "",
+                "If you need approval permissions, request to be added as a [code owner](https://github.com/paritytech/dotns/blob/main/.github/CODEOWNERS).",
+                "",
+                "cc @filvecchiato @waytwotall @andrew-ifrita @corey-hathaway @sphamjoli",
+              ].join("\n"),
+            });

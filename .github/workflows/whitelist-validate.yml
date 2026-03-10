@@ -107,11 +107,10 @@ jobs:
             const message = process.env.MESSAGE.replace(/%0A/g, "\n");
             const type = process.env.ADDR_TYPE;
 
-            const icon = valid ? ":white_check_mark:" : ":x:";
             const status = valid ? "Valid" : "Invalid";
 
             const body = [
-              `### ${icon} Address Validation: ${status}`,
+              `### Address Validation: ${status}`,
               "",
               message,
               "",

@@ -42,6 +42,10 @@
   color: "fbca04"
   description: "Normal priority"
 
+- name: "P3"
+  color: "e4e669"
+  description: "Low priority"
+
 - name: "blocked"
   color: "d73a4a"
   description: "Blocked"
@@ -132,3 +136,7 @@
 - name: "other"
   color: "ededed"
   description: "CI, config, and other non-contract changes"
+
+- name: "triage"
+  color: "c5def5"
+  description: "Needs component and priority assignment"
