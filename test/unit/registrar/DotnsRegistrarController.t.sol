@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
+import {IDotnsRegistrar} from "../../../contracts/registrars/IDotnsRegistrar.sol";
 import {IDotnsProtocolRegistry} from "../../../contracts/registry/IDotnsProtocolRegistry.sol";
 
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
@@ -362,15 +363,21 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         uint256 tokenId = uint256(node);
 
         vm.prank(address(dotnsRegistrarController));
-        dotnsRegistrar.register(tokenId, ed, labelhash);
+        dotnsRegistrar.register(tokenId, ed, nameLabel);
 
+        // Sender has no Store — transfer should still succeed
         assertEq(address(storeFactory.getDeployedStore(ed)), address(0));
 
         vm.prank(ed);
         dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), leonardo);
-        assertEq(address(storeFactory.getDeployedStore(leonardo)), address(0));
+
+        // Recipient gets a Store with the label written (label comes from _labels, not sender Store)
+        assertTrue(address(storeFactory.getDeployedStore(leonardo)) != address(0));
+        bytes32 storeKey = _storeKey(labelhash);
+        Store leonardoStore = Store(address(storeFactory.getDeployedStore(leonardo)));
+        assertEq(leonardoStore.getValueFor(leonardo, storeKey), "nostore01.dot");
     }
 
     function test_safe_transfer_writes_to_store() public {
@@ -416,5 +423,89 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         bytes32 storeKey = _storeKey(labelhash);
         assertEq(leonardoStore.getValueFor(leonardo, storeKey), string.concat(nameLabel, ".dot"));
         assertTrue(leonardoStore.isLocked(leonardo, storeKey));
+    }
+
+    function test_syncLabel_sets_label_for_owner() public {
+        string memory nameLabel = "synclabel01";
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 node = keccak256(abi.encodePacked(dotNode, labelhash));
+        uint256 tokenId = uint256(node);
+
+        vm.prank(address(dotnsRegistrarController));
+        dotnsRegistrar.register(tokenId, ed, "");
+
+        vm.prank(ed);
+        dotnsRegistrar.syncLabel(tokenId, nameLabel);
+
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+
+        Store leonardoStore = Store(address(storeFactory.getDeployedStore(leonardo)));
+        assertTrue(address(leonardoStore) != address(0));
+
+        bytes32 storeKey = _storeKey(labelhash);
+        assertEq(leonardoStore.getValueFor(leonardo, storeKey), string.concat(nameLabel, ".dot"));
+    }
+
+    function test_syncLabel_reverts_for_non_owner() public {
+        string memory nameLabel = "synclabel02";
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 node = keccak256(abi.encodePacked(dotNode, labelhash));
+        uint256 tokenId = uint256(node);
+
+        vm.prank(address(dotnsRegistrarController));
+        dotnsRegistrar.register(tokenId, ed, "");
+
+        vm.prank(leonardo);
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsRegistrar.NotTokenOwner.selector, leonardo, tokenId)
+        );
+        dotnsRegistrar.syncLabel(tokenId, nameLabel);
+    }
+
+    function test_syncLabel_reverts_wrong_label() public {
+        string memory nameLabel = "synclabel03";
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 node = keccak256(abi.encodePacked(dotNode, labelhash));
+        uint256 tokenId = uint256(node);
+
+        vm.prank(address(dotnsRegistrarController));
+        dotnsRegistrar.register(tokenId, ed, "");
+
+        vm.prank(ed);
+        vm.expectRevert(abi.encodeWithSelector(IDotnsRegistrar.LabelMismatch.selector, tokenId));
+        dotnsRegistrar.syncLabel(tokenId, "wronglabel");
+    }
+
+    function test_syncLabel_reverts_already_set() public {
+        string memory nameLabel = "synclabel04";
+        _register(nameLabel, ed, IPopRules.PopStatus.PopFull);
+        uint256 tokenId = _tokenIdForLabel(nameLabel);
+
+        vm.prank(ed);
+        vm.expectRevert(abi.encodeWithSelector(IDotnsRegistrar.LabelAlreadySet.selector, tokenId));
+        dotnsRegistrar.syncLabel(tokenId, nameLabel);
+    }
+
+    function test_transfer_deploys_store_without_label() public {
+        string memory nameLabel = "nolabel01";
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 node = keccak256(abi.encodePacked(dotNode, labelhash));
+        uint256 tokenId = uint256(node);
+
+        vm.prank(address(dotnsRegistrarController));
+        dotnsRegistrar.register(tokenId, ed, "");
+
+        assertEq(address(storeFactory.getDeployedStore(leonardo)), address(0));
+
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), leonardo);
+        assertTrue(address(storeFactory.getDeployedStore(leonardo)) != address(0));
+
+        bytes32 storeKey = _storeKey(labelhash);
+        Store leonardoStore = Store(address(storeFactory.getDeployedStore(leonardo)));
+        assertEq(leonardoStore.getValueFor(leonardo, storeKey), "");
     }
 }
