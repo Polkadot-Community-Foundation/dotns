@@ -21,6 +21,19 @@ interface IDotnsRegistrar is IERC721 {
     /// @param caller The caller address.
     error NotController(address caller);
 
+    /// @notice Thrown when the caller is not the token owner.
+    /// @param caller The caller address.
+    /// @param tokenId The token identifier.
+    error NotTokenOwner(address caller, uint256 tokenId);
+
+    /// @notice Thrown when the label does not match the token identifier.
+    /// @param tokenId The token identifier.
+    error LabelMismatch(uint256 tokenId);
+
+    /// @notice Thrown when the label is already set for a token.
+    /// @param tokenId The token identifier.
+    error LabelAlreadySet(uint256 tokenId);
+
     /// @notice Emitted when a name is registered.
     /// @param id Token identifier.
     /// @param owner Owner of the name.
@@ -38,6 +51,11 @@ interface IDotnsRegistrar is IERC721 {
     /// @param newRegistry The address of the new protocol registry.
     event ProtocolRegistryUpdated(IDotnsProtocolRegistry indexed newRegistry);
 
+    /// @notice Emitted when a label is synced to the labels mapping.
+    /// @param tokenId The token identifier.
+    /// @param label The synced label string.
+    event LabelSynced(uint256 indexed tokenId, string label);
+
     /// @notice Returns whether a name is available for registration.
     /// @dev A name is available if and only if it has not been registered yet.
     /// @param id Token identifier.
@@ -46,12 +64,12 @@ interface IDotnsRegistrar is IERC721 {
 
     /// @notice Registers a name permanently.
     /// @dev Callable only by an authorised controller.
-    ///      Registration mints the ERC721 token to `owner` and stores the labelhash
-    ///      for use during transfer store writes.
+    ///      Registration mints the ERC721 token to `owner` and stores both the human-readable
+    ///      label and its keccak256 hash for use during transfer store writes.
     /// @param id Token identifier.
     /// @param owner Owner of the name.
-    /// @param labelhash keccak256 of the label string, stored for transfer-time store writes.
-    function register(uint256 id, address owner, bytes32 labelhash) external;
+    /// @param label The human-readable label string (e.g. "alice").
+    function register(uint256 id, address owner, string calldata label) external;
 
     /// @notice Adds an authorised controller.
     /// @dev Callable only by the contract owner.
@@ -65,8 +83,16 @@ interface IDotnsRegistrar is IERC721 {
 
     /// @notice Updates the protocol registry address.
     /// @dev Callable only by the contract owner.
-    /// @dev This is temporary as we need to upgrade the contract we need to remember to remove this function
+    /// @dev  TODO: This is temporary as we need to upgrade the contract we need to remember to remove this function
     ///       If we deploy to a new environment
     /// @param registry The address of the new protocol registry.
     function updateProtocolRegistry(IDotnsProtocolRegistry registry) external;
+
+    /// @notice Syncs a label to the internal labels mapping for a token.
+    /// @dev Callable only by the token owner. The label is verified cryptographically
+    ///      against the token identifier. Reverts if the label is already set.
+    ///      TODO: We need to remove this before a fresh deployment
+    /// @param tokenId The token identifier.
+    /// @param label The human-readable label string (e.g. "alice").
+    function syncLabel(uint256 tokenId, string calldata label) external;
 }

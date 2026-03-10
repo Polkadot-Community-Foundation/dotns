@@ -329,6 +329,42 @@ contract RegistrarControllerHandler is Test {
         ++transferCount;
     }
 
+    /// @notice Transfers a registered name through a chain of actors (A→B→C→...→N).
+    /// @dev Exercises multi-hop label writes: the `_labels` mapping must persist across
+    ///      the entire chain so that every recipient's Store gets the correct label.
+    /// @param registrationSeed Seed for selecting which registered name to transfer.
+    /// @param hopSeed Seed for determining the number of hops and selecting recipients.
+    function chainTransfer(uint256 registrationSeed, uint256 hopSeed) external {
+        if (_registeredLabels.length == 0 || actors.length < 3) return;
+
+        uint256 index = registrationSeed % _registeredLabels.length;
+        string memory label = _registeredLabels[index];
+        address currentOwner = _registeredOwners[index];
+
+        bytes32 labelhash = keccak256(bytes(label));
+        bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
+        uint256 tokenId = uint256(node);
+
+        // Transfer through 2–4 hops
+        uint256 hops = 2 + (hopSeed % 3);
+
+        for (uint256 h; h < hops; ++h) {
+            address recipient = _pickDifferentActor(currentOwner, hopSeed + h);
+            if (recipient == address(0)) break;
+
+            vm.prank(currentOwner);
+            registrar.transferFrom(currentOwner, recipient, tokenId);
+
+            _transferredLabels.push(label);
+            _transferredRecipients.push(recipient);
+            ++transferCount;
+
+            currentOwner = recipient;
+        }
+
+        _registeredOwners[index] = currentOwner;
+    }
+
     /// @notice Returns labels that have been transferred.
     /// @return labels Array of transferred label strings.
     function getTransferredLabels() external view returns (string[] memory labels) {
