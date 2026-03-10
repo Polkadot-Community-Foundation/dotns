@@ -210,7 +210,15 @@ jobs:
               lines.push("This address is ready for whitelisting. A maintainer will review and apply the `whitelist-approved` label to proceed.");
             }
 
-            const body = lines.filter(Boolean).join("\n");
+            lines.push("");
+            lines.push("---");
+            lines.push("");
+            lines.push("**Available commands:**");
+            lines.push("| Command | Description |");
+            lines.push("|---------|-------------|");
+            lines.push("| `/retry` | Re-trigger whitelisting (after mapping or if a previous attempt failed) |");
+
+            const body = lines.join("\n");
 
             const { owner, repo } = context.repo;
             await github.rest.issues.createComment({
