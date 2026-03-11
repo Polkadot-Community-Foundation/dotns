@@ -63,6 +63,7 @@ jobs:
           let evmMapped = "";
           let isMapped = false;
           let message = "";
+          const warnings = [];
 
           async function resolveEvmAddress(ss58Address) {
             const decoded = decodeAddress(ss58Address);
@@ -126,6 +127,7 @@ jobs:
                     evmMapped = await resolveEvmAddress(address);
                   } catch (e) {
                     console.error(`EVM resolution failed: ${e.message}`);
+                    warnings.push("Could not resolve the EVM address for this Substrate account. This will be retried when a maintainer approves the request.");
                   }
 
                   if (evmMapped) {
@@ -133,6 +135,7 @@ jobs:
                       isMapped = await checkAccountMapped(evmMapped);
                     } catch (e) {
                       console.error(`Mapping check failed: ${e.message}`);
+                      warnings.push("Could not verify whether this account is mapped on-chain. Mapping status will be checked again during whitelisting.");
                     }
                   }
 
@@ -150,7 +153,9 @@ jobs:
                     message = `Substrate (SS58) address detected: \`${address}\`${evmLine}${mappingWarning}\n\n> The EVM address will be resolved automatically upon approval.`;
                   }
                 }
-              } catch {}
+              } catch (e) {
+                console.error(`Substrate address decode failed: ${e.message}`);
+              }
             }
 
             if (!valid) {
@@ -164,6 +169,7 @@ jobs:
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `evm_mapped=${evmMapped}\n`);
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `is_mapped=${isMapped}\n`);
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `message=${message.replace(/\n/g, "%0A")}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `warnings=${warnings.join("|")}\n`);
           })();
           SCRIPT
 
@@ -174,6 +180,7 @@ jobs:
           MESSAGE: ${{ steps.validate.outputs.message }}
           ADDR_TYPE: ${{ steps.validate.outputs.type }}
           IS_MAPPED: ${{ steps.validate.outputs.is_mapped }}
+          WARNINGS: ${{ steps.validate.outputs.warnings }}
         with:
           script: |
             const marker = "<!-- dotns-whitelist-bot -->";
@@ -181,6 +188,8 @@ jobs:
             const message = process.env.MESSAGE.replace(/%0A/g, "\n");
             const type = process.env.ADDR_TYPE;
             const isMapped = process.env.IS_MAPPED === "true";
+            const warningsRaw = process.env.WARNINGS || "";
+            const warnings = warningsRaw ? warningsRaw.split("|") : [];
             const author = context.payload.issue.user.login;
 
             const status = valid ? "Valid" : "Invalid";
@@ -208,6 +217,16 @@ jobs:
 
             if (valid) {
               lines.push("This address is ready for whitelisting. A maintainer will review and apply the `whitelist-approved` label to proceed.");
+            }
+
+            if (warnings.length > 0) {
+              lines.push("");
+              lines.push("**Warnings:**");
+              for (const w of warnings) {
+                lines.push(`- ${w}`);
+              }
+              lines.push("");
+              lines.push("cc @filvecchiato @waytwotall @andrew-ifrita @corey-hathaway @sphamjoli");
             }
 
             lines.push("");
