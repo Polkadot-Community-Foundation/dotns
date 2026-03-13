@@ -13,7 +13,7 @@ jobs:
     if: contains(github.event.issue.labels.*.name, 'whitelist-request')
     runs-on: ubuntu-latest
     env:
-      SUBSTRATE_RPC_URL: "https://asset-hub-paseo-rpc.n.dwellir.com"
+      SUBSTRATE_RPC_URL: "wss://asset-hub-paseo-rpc.n.dwellir.com"
 
     steps:
       - name: Extract address from issue body
@@ -35,152 +35,93 @@ jobs:
             core.setOutput("address", address);
             core.setOutput("address_type", addressType);
 
-      - name: Setup Node.js
+      - name: Install dotns CLI
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - run: |
+          gh release download --repo paritytech/dotns-sdk --pattern '*.tgz' --dir /tmp/dotns-cli
+          npm install -g /tmp/dotns-cli/*.tgz
+        env:
+          GH_TOKEN: ${{ github.token }}
 
-      - name: Install validation dependencies
-        run: npm install --no-save viem@^2.43.1 @polkadot/util-crypto@^14.0.1
-
-      - name: Validate address
+      - name: Check account mapped
         id: validate
         env:
           ADDRESS: ${{ steps.extract.outputs.address }}
           ADDRESS_TYPE: ${{ steps.extract.outputs.address_type }}
         run: |
-          node << 'SCRIPT'
-          const { isAddress, getAddress } = require("viem");
-          const { decodeAddress, encodeAddress, xxhashAsHex, blake2AsHex } = require("@polkadot/util-crypto");
+          RESULT=$(dotns account is-mapped "$ADDRESS" --rpc "$SUBSTRATE_RPC_URL" --json -k //Alice 2>/dev/null) || true
 
-          const address = process.env.ADDRESS;
-          const rpcUrl = process.env.SUBSTRATE_RPC_URL;
-          const selectedType = process.env.ADDRESS_TYPE;
+          if echo "$RESULT" | jq -e . > /dev/null 2>&1; then
+            IS_MAPPED=$(echo "$RESULT" | jq -r '.isMapped')
+            EVM_ADDRESS=$(echo "$RESULT" | jq -r '.evmAddress')
+            echo "valid=true" >> "$GITHUB_OUTPUT"
+            echo "is_mapped=$IS_MAPPED" >> "$GITHUB_OUTPUT"
+            echo "evm_mapped=$EVM_ADDRESS" >> "$GITHUB_OUTPUT"
 
-          let type = "unknown";
-          let valid = false;
-          let checksummed = address;
-          let evmMapped = "";
-          let isMapped = false;
-          let message = "";
-          const warnings = [];
+            if echo "$ADDRESS" | grep -qE '^0x[0-9a-fA-F]{40}$'; then
+              echo "type=evm" >> "$GITHUB_OUTPUT"
+            else
+              echo "type=substrate" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "valid=false" >> "$GITHUB_OUTPUT"
+            echo "is_mapped=false" >> "$GITHUB_OUTPUT"
+            echo "type=unknown" >> "$GITHUB_OUTPUT"
+          fi
 
-          async function resolveEvmAddress(ss58Address) {
-            const decoded = decodeAddress(ss58Address);
-            const hexBytes = Buffer.from(decoded).toString("hex");
-            const response = await fetch(rpcUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                jsonrpc: "2.0",
-                id: 1,
-                method: "state_call",
-                params: ["ReviveApi_address", "0x" + hexBytes],
-              }),
-            });
-            const result = await response.json();
-            if (result.error) throw new Error(JSON.stringify(result.error));
-            return result.result;
-          }
+      - name: Build validation message
+        id: message
+        env:
+          ADDRESS: ${{ steps.extract.outputs.address }}
+          ADDRESS_TYPE: ${{ steps.extract.outputs.address_type }}
+          VALID: ${{ steps.validate.outputs.valid }}
+          ADDR_TYPE: ${{ steps.validate.outputs.type }}
+          IS_MAPPED: ${{ steps.validate.outputs.is_mapped }}
+          EVM_MAPPED: ${{ steps.validate.outputs.evm_mapped }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const address = process.env.ADDRESS;
+            const selectedType = process.env.ADDRESS_TYPE;
+            const valid = process.env.VALID === "true";
+            const type = process.env.ADDR_TYPE;
+            const isMapped = process.env.IS_MAPPED === "true";
+            const evmMapped = process.env.EVM_MAPPED || "";
 
-          async function checkAccountMapped(evmAddr) {
-            const palletHash = xxhashAsHex("Revive", 128).slice(2);
-            const storageHash = xxhashAsHex("OriginalAccount", 128).slice(2);
-            const evmBytes = Buffer.from(evmAddr.slice(2), "hex");
-            const keyHash = blake2AsHex(evmBytes, 128).slice(2);
-            const storageKey = "0x" + palletHash + storageHash + keyHash + evmAddr.slice(2).toLowerCase();
-
-            const response = await fetch(rpcUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                jsonrpc: "2.0",
-                id: 2,
-                method: "state_getStorage",
-                params: [storageKey],
-              }),
-            });
-            const result = await response.json();
-            return result.result !== null && result.result !== undefined;
-          }
-
-          (async () => {
-            if (isAddress(address)) {
-              type = "evm";
-              valid = true;
-              isMapped = true;
-              checksummed = getAddress(address);
-              if (selectedType && selectedType.includes("SS58")) {
-                message = `You selected **Substrate (SS58)** but provided an EVM address: \`${checksummed}\`\n\nThis looks like a valid EVM address so we will proceed with it.`;
-              } else {
-                message = `EVM (H160) address detected: \`${checksummed}\``;
-              }
-            } else {
-              try {
-                const decoded = decodeAddress(address);
-                const recoded = encodeAddress(decoded, 42);
-                if (address === recoded) {
-                  type = "substrate";
-                  valid = true;
-
-                  try {
-                    evmMapped = await resolveEvmAddress(address);
-                  } catch (e) {
-                    console.error(`EVM resolution failed: ${e.message}`);
-                    warnings.push("Could not resolve the EVM address for this Substrate account. This will be retried when a maintainer approves the request.");
-                  }
-
-                  if (evmMapped) {
-                    try {
-                      isMapped = await checkAccountMapped(evmMapped);
-                    } catch (e) {
-                      console.error(`Mapping check failed: ${e.message}`);
-                      warnings.push("Could not verify whether this account is mapped on-chain. Mapping status will be checked again during whitelisting.");
-                    }
-                  }
-
-                  const evmLine = evmMapped
-                    ? `\n\n**Mapped EVM address:** \`${evmMapped}\``
-                    : "";
-
-                  const mappingWarning = evmMapped && !isMapped
-                    ? `\n\n> **Account not mapped on-chain.** You must map your account before your address can be whitelisted (see instructions below).`
-                    : "";
-
-                  if (selectedType && selectedType.includes("H160")) {
-                    message = `You selected **EVM (H160)** but provided a Substrate address: \`${address}\`${evmLine}${mappingWarning}\n\n> The EVM address will be resolved automatically upon approval.`;
-                  } else {
-                    message = `Substrate (SS58) address detected: \`${address}\`${evmLine}${mappingWarning}\n\n> The EVM address will be resolved automatically upon approval.`;
-                  }
-                }
-              } catch (e) {
-                console.error(`Substrate address decode failed: ${e.message}`);
-              }
-            }
+            let message = "";
 
             if (!valid) {
               message = `\`${address}\` is not a valid EVM or Substrate address.`;
+            } else if (type === "evm") {
+              if (selectedType && selectedType.includes("SS58")) {
+                message = `You selected **Substrate (SS58)** but provided an EVM address: \`${address}\`\n\nThis looks like a valid EVM address so we will proceed with it.`;
+              } else {
+                message = `EVM (H160) address detected: \`${address}\``;
+              }
+            } else {
+              const evmLine = evmMapped ? `\n\n**Mapped EVM address:** \`${evmMapped}\`` : "";
+              const mappingWarning = evmMapped && !isMapped
+                ? `\n\n> **Account not mapped on-chain.** You must map your account before your address can be whitelisted (see instructions below).`
+                : "";
+
+              if (selectedType && selectedType.includes("H160")) {
+                message = `You selected **EVM (H160)** but provided a Substrate address: \`${address}\`${evmLine}${mappingWarning}\n\n> The EVM address will be resolved automatically upon approval.`;
+              } else {
+                message = `Substrate (SS58) address detected: \`${address}\`${evmLine}${mappingWarning}\n\n> The EVM address will be resolved automatically upon approval.`;
+              }
             }
 
-            const fs = require("fs");
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `type=${type}\n`);
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `valid=${valid}\n`);
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `checksummed=${checksummed}\n`);
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `evm_mapped=${evmMapped}\n`);
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `is_mapped=${isMapped}\n`);
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `message=${message.replace(/\n/g, "%0A")}\n`);
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `warnings=${warnings.join("|")}\n`);
-          })();
-          SCRIPT
+            core.setOutput("message", message.replace(/\n/g, "%0A"));
 
       - name: Comment validation result
         uses: actions/github-script@v7
         env:
           VALID: ${{ steps.validate.outputs.valid }}
-          MESSAGE: ${{ steps.validate.outputs.message }}
+          MESSAGE: ${{ steps.message.outputs.message }}
           ADDR_TYPE: ${{ steps.validate.outputs.type }}
           IS_MAPPED: ${{ steps.validate.outputs.is_mapped }}
-          WARNINGS: ${{ steps.validate.outputs.warnings }}
         with:
           script: |
             const marker = "<!-- dotns-whitelist-bot -->";
@@ -188,8 +129,6 @@ jobs:
             const message = process.env.MESSAGE.replace(/%0A/g, "\n");
             const type = process.env.ADDR_TYPE;
             const isMapped = process.env.IS_MAPPED === "true";
-            const warningsRaw = process.env.WARNINGS || "";
-            const warnings = warningsRaw ? warningsRaw.split("|") : [];
             const author = context.payload.issue.user.login;
 
             const status = valid ? "Valid" : "Invalid";
@@ -217,16 +156,6 @@ jobs:
 
             if (valid) {
               lines.push("This address is ready for whitelisting. A maintainer will review and apply the `whitelist-approved` label to proceed.");
-            }
-
-            if (warnings.length > 0) {
-              lines.push("");
-              lines.push("**Warnings:**");
-              for (const w of warnings) {
-                lines.push(`- ${w}`);
-              }
-              lines.push("");
-              lines.push("cc @filvecchiato @waytwotall @andrew-ifrita @corey-hathaway @sphamjoli");
             }
 
             lines.push("");
