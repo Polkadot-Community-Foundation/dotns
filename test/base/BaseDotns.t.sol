@@ -209,8 +209,24 @@ abstract contract BaseDotns is Test {
         protocolRegistry.set(bytes32("popRules"), popRulesAddress);
         // forge-lint: disable-next-line(unsafe-typecast)
         protocolRegistry.set(bytes32("storeFactory"), address(storeFactory));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        protocolRegistry.set(bytes32("resolver"), dotnsResolverAddress);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        protocolRegistry.set(bytes32("contentResolver"), dotnsContentResolverAddress);
 
         dotnsRegistrar.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
+        dotnsRegistrarController.updateProtocolRegistry(
+            IDotnsProtocolRegistry(address(protocolRegistry))
+        );
+        dotnsRegistry.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
+        dotnsReverseResolver.updateProtocolRegistry(
+            IDotnsProtocolRegistry(address(protocolRegistry))
+        );
+        dotnsResolver.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
+        dotnsContentResolver.updateProtocolRegistry(
+            IDotnsProtocolRegistry(address(protocolRegistry))
+        );
+        popRules.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
 
         vm.stopPrank();
         vm.warp(block.timestamp + 365 days);

@@ -64,7 +64,7 @@ contract PopRulesFuzzTest is BaseDotns {
         string memory nameLabel = string(abi.encodePacked(_makeAlpha(seed, 6), "01"));
 
         vm.prank(owner);
-        popRules.updateDotRegistry(address(this));
+        protocolRegistry.set(bytes32("controller"), address(this));
 
         popRules.reserveBaseName(nameLabel, leonardo);
 

@@ -11,6 +11,7 @@ import {
 } from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {IPopRules} from "./IPopRules.sol";
+import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 
 /// @title PopRules
 /// @notice Implements DotNS pricing with PoP-tier validation and base-name reservations
@@ -40,12 +41,22 @@ contract PopRules is
     bytes32 private constant DOT_NODE =
         0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
 
-    /// @notice Authorized registry controller address
+    /// @notice DEPRECATED: Authorized registry controller address.
+    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
+    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
     address public dotRegistryController;
+
+    /// @notice Protocol-level address registry for all DotNS contracts.
+    IDotnsProtocolRegistry public protocolRegistry;
+
+    /// @notice Well-known protocol registry key for the registrar controller.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant KEY_CONTROLLER = bytes32("controller");
 
     /// @dev Reserved storage space to allow for layout changes in the future.
     // forge-lint: disable-next-line(mixed-case-variable)
-    uint256[50] private __gap;
+    uint256[49] private __gap;
 
     /// @notice Restricts function to registry controller
     modifier onlyRegistry() {
@@ -333,15 +344,21 @@ contract PopRules is
     /// @inheritdoc UUPSUpgradeable
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
+    /// @inheritdoc IPopRules
+    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
+        protocolRegistry = registry;
+        emit ProtocolRegistryUpdated(registry);
+    }
+
     /// @notice Returns implementation version
     /// @return versionString Current version string
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.0.0";
+        versionString = "1.1.0";
     }
 
     /// @notice Ensures the caller is the authorized registry controller
-    /// @dev Done this way to reduce code size
     function _onlyRegistry() internal view {
-        require(msg.sender == dotRegistryController, NotRegistry());
+        address controller = protocolRegistry.get(KEY_CONTROLLER);
+        require(msg.sender == controller, NotRegistry());
     }
 }

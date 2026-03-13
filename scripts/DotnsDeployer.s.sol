@@ -166,6 +166,18 @@ contract DotnsDeployer is BaseDeployer {
         protocolRegistry.set(bytes32("popRules"), popRulesProxy);
         protocolRegistry.set(bytes32("storeFactory"), address(storeFactory));
         dotnsRegistrar.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
+        dotnsRegistrarController.updateProtocolRegistry(
+            IDotnsProtocolRegistry(address(protocolRegistry))
+        );
+        dotnsRegistry.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
+        dotnsReverseResolver.updateProtocolRegistry(
+            IDotnsProtocolRegistry(address(protocolRegistry))
+        );
+        dotnsResolver.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
+        dotnsContentResolver.updateProtocolRegistry(
+            IDotnsProtocolRegistry(address(protocolRegistry))
+        );
+        popRules.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
 
         vm.stopBroadcast();
 

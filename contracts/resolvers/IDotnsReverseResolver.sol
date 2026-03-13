@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
+
 import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController.sol";
+import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 
 /// @title Dotns Reverse Resolver
 /// @notice Interface for writing and reading reverse name records for addresses.
@@ -46,4 +48,13 @@ interface IDotnsReverseResolver {
     /// @param newRegistrar The new registrar controller address.
     /// @custom:reverts InvalidRegistrarController if `newRegistrar` is the zero address.
     function updateRegistrar(IDotnsRegistrarController newRegistrar) external;
+
+    /// @notice Emitted when the protocol registry is updated.
+    /// @param newRegistry The address of the new protocol registry.
+    event ProtocolRegistryUpdated(IDotnsProtocolRegistry indexed newRegistry);
+
+    /// @notice Updates the protocol registry address.
+    /// @dev Callable only by the contract owner.
+    /// @param registry The address of the new protocol registry.
+    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external;
 }

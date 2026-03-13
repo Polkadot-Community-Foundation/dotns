@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController.sol";
+import {IDotnsProtocolRegistry} from "./IDotnsProtocolRegistry.sol";
 
 /// @title Dot Registry
 /// @notice Minimal on-chain registry for hierarchical name ownership and resolution.
@@ -117,4 +118,13 @@ interface IDotnsRegistry {
     /// @param registrarController Address of the registrar controller contract.
     /// @custom:reverts NotAllowed if `registrarController` is the zero address.
     function updateRegistrarController(IDotnsRegistrarController registrarController) external;
+
+    /// @notice Emitted when the protocol registry is updated.
+    /// @param newRegistry The address of the new protocol registry.
+    event ProtocolRegistryUpdated(IDotnsProtocolRegistry indexed newRegistry);
+
+    /// @notice Updates the protocol registry address.
+    /// @dev Callable only by the contract owner.
+    /// @param registry The address of the new protocol registry.
+    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external;
 }

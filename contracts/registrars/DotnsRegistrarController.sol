@@ -19,6 +19,7 @@ import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
 import {Store} from "../store/Store.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
+import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 
 /// @title Dotns Registrar Controller
 /// @notice Allocates .dot labels using a commit–reveal scheme.
@@ -48,19 +49,29 @@ contract DotnsRegistrarController is
     /// @notice Upper bound for commitment validity to cap storage griefing risk.
     uint256 public constant MAX_ALLOWED_COMMITMENT_AGE = 7 days;
 
-    /// @notice Base registrar responsible for minting name ownership.
+    /// @notice DEPRECATED: Base registrar responsible for minting name ownership.
+    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
+    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
     IDotnsRegistrar public dotnsRegistrar;
 
-    /// @notice Forward registry storing node ownership and resolver.
+    /// @notice DEPRECATED: Forward registry storing node ownership and resolver.
+    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
+    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
     IDotnsRegistry public dotnsRegistry;
 
-    /// @notice Reverse resolver for address → primary name mapping.
+    /// @notice DEPRECATED: Reverse resolver for address -> primary name mapping.
+    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
+    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
     IDotnsReverseResolver public reverseResolver;
 
-    /// @notice Rules enforcing PoP rules and pricing.
+    /// @notice DEPRECATED: Rules enforcing PoP rules and pricing.
+    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
+    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
     IPopRules public popRules;
 
-    /// @notice Factory for per-user Store instances.
+    /// @notice DEPRECATED: Factory for per-user Store instances.
+    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
+    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
     IStoreFactory public storeFactory;
 
     /// @notice Minimum age a commitment must reach before reveal.
@@ -80,8 +91,36 @@ contract DotnsRegistrarController is
     /// @notice Whitelist for addresses allowed to call `registerReserved`.
     mapping(address user => bool isWhiteListed) public whiteList;
 
+    /// @notice Protocol-level address registry for all DotNS contracts.
+    IDotnsProtocolRegistry public protocolRegistry;
+
+    /// @notice Well-known protocol registry key for the ERC721 registrar.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant KEY_REGISTRAR = bytes32("registrar");
+
+    /// @notice Well-known protocol registry key for the forward registry.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant KEY_REGISTRY = bytes32("registry");
+
+    /// @notice Well-known protocol registry key for the reverse resolver.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant KEY_REVERSE_RESOLVER = bytes32("reverseResolver");
+
+    /// @notice Well-known protocol registry key for the PoP rules.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant KEY_POP_RULES = bytes32("popRules");
+
+    /// @notice Well-known protocol registry key for the store factory.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant KEY_STORE_FACTORY = bytes32("storeFactory");
+
     /// @dev Reserved storage space to allow for layout changes in the future.
-    uint256[49] private __gap;
+    uint256[48] private __gap;
 
     /// @notice Restricts calls to the forward registry contract.
     modifier onlyRegistry() {
@@ -145,7 +184,8 @@ contract DotnsRegistrarController is
         require(label.strlen() >= 3, NameNotAvailable(label));
         bytes32 labelhash = _labelhash(label);
         bytes32 node = _namehash(labelhash);
-        return dotnsRegistrar.available(uint256(node));
+        IDotnsRegistrar registrar = IDotnsRegistrar(protocolRegistry.get(KEY_REGISTRAR));
+        return registrar.available(uint256(node));
     }
 
     /// @inheritdoc IDotnsRegistrarController
@@ -212,26 +252,31 @@ contract DotnsRegistrarController is
 
         delete commitments[commitment];
 
+        IPopRules rules = IPopRules(protocolRegistry.get(KEY_POP_RULES));
         IPopRules.PriceWithMeta memory priced =
-            popRules.priceWithCheck(registration.label, registration.owner);
+            rules.priceWithCheck(registration.label, registration.owner);
 
         require(msg.value >= priced.price, InsufficientValue());
 
-        dotnsRegistrar.register(uint256(node), registration.owner, registration.label);
+        IDotnsRegistrar registrar = IDotnsRegistrar(protocolRegistry.get(KEY_REGISTRAR));
+        IDotnsRegistry registry = IDotnsRegistry(protocolRegistry.get(KEY_REGISTRY));
+        IDotnsReverseResolver reverse =
+            IDotnsReverseResolver(protocolRegistry.get(KEY_REVERSE_RESOLVER));
 
-        dotnsRegistry.setOwner(node, registration.owner, address(reverseResolver));
+        registrar.register(uint256(node), registration.owner, registration.label);
+
+        registry.setOwner(node, registration.owner, address(reverse));
 
         if (registration.reserved) {
-            reverseResolver.setReverseName(
-                registration.owner, string.concat(registration.label, ".dot")
-            );
+            reverse.setReverseName(registration.owner, string.concat(registration.label, ".dot"));
         }
 
+        IStoreFactory factory = IStoreFactory(protocolRegistry.get(KEY_STORE_FACTORY));
         address[] memory controllers = new address[](3);
         controllers[0] = address(this);
-        controllers[1] = address(dotnsRegistry);
-        controllers[2] = address(dotnsRegistrar);
-        Store store = storeFactory.getOrCreateStore(controllers, registration.owner);
+        controllers[1] = address(registry);
+        controllers[2] = address(registrar);
+        Store store = factory.getOrCreateStore(controllers, registration.owner);
 
         bytes32 storeKey = _storeKey(labelhash);
         store.setValueFor(registration.owner, storeKey, string.concat(registration.label, ".dot"));
@@ -244,7 +289,7 @@ contract DotnsRegistrarController is
             priced.status == IPopRules.PopStatus.PopLite
                 && priced.userStatus == IPopRules.PopStatus.PopLite
         ) {
-            popRules.reserveBaseName(registration.label, registration.owner);
+            rules.reserveBaseName(registration.label, registration.owner);
         }
 
         if (msg.value > priced.price) {
@@ -289,18 +334,22 @@ contract DotnsRegistrarController is
 
         delete commitments[commitment];
 
-        dotnsRegistrar.register(uint256(node), registration.owner, registration.label);
-        dotnsRegistry.setOwner(node, registration.owner, address(reverseResolver));
+        IDotnsRegistrar registrar = IDotnsRegistrar(protocolRegistry.get(KEY_REGISTRAR));
+        IDotnsRegistry registry = IDotnsRegistry(protocolRegistry.get(KEY_REGISTRY));
+        IDotnsReverseResolver reverse =
+            IDotnsReverseResolver(protocolRegistry.get(KEY_REVERSE_RESOLVER));
 
-        reverseResolver.setReverseName(
-            registration.owner, string.concat(registration.label, ".dot")
-        );
+        registrar.register(uint256(node), registration.owner, registration.label);
+        registry.setOwner(node, registration.owner, address(reverse));
 
+        reverse.setReverseName(registration.owner, string.concat(registration.label, ".dot"));
+
+        IStoreFactory factory = IStoreFactory(protocolRegistry.get(KEY_STORE_FACTORY));
         address[] memory controllers = new address[](3);
         controllers[0] = address(this);
-        controllers[1] = address(dotnsRegistry);
-        controllers[2] = address(dotnsRegistrar);
-        Store store = storeFactory.getOrCreateStore(controllers, registration.owner);
+        controllers[1] = address(registry);
+        controllers[2] = address(registrar);
+        Store store = factory.getOrCreateStore(controllers, registration.owner);
 
         bytes32 storeKey = _storeKey(labelhash);
         store.setValueFor(registration.owner, storeKey, string.concat(registration.label, ".dot"));
@@ -354,7 +403,7 @@ contract DotnsRegistrarController is
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.2.0";
+        versionString = "1.3.0";
     }
 
     /// @notice Internal check enforcing whitelist-or-owner access.
@@ -362,9 +411,16 @@ contract DotnsRegistrarController is
         require(whiteList[msg.sender] || msg.sender == owner(), NotWhiteListedOrOwner(msg.sender));
     }
 
+    /// @inheritdoc IDotnsRegistrarController
+    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
+        protocolRegistry = registry;
+        emit ProtocolRegistryUpdated(registry);
+    }
+
     /// @notice Internal check enforcing registry-only access.
     function _onlyRegistry() internal view {
-        require(msg.sender == address(dotnsRegistry), NotRegistry());
+        address registry = protocolRegistry.get(KEY_REGISTRY);
+        require(msg.sender == registry, NotRegistry());
     }
 
     /// @inheritdoc UUPSUpgradeable

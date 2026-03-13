@@ -12,6 +12,7 @@ import {
 
 import {IDotnsResolver} from "./IDotnsResolver.sol";
 import {IDotnsRegistry} from "../registry/IDotnsRegistry.sol";
+import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 
 /// @title Dotns Resolver
 /// @notice Stores forward-resolution address records for DotNS nodes
@@ -25,12 +26,22 @@ contract DotnsResolver is
     ERC165Upgradeable,
     IDotnsResolver
 {
-    /// @notice Registry used to resolve node ownership
+    /// @notice DEPRECATED: Registry used to resolve node ownership.
+    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
+    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
     IDotnsRegistry public registry;
+
+    /// @notice Protocol-level address registry for all DotNS contracts.
+    IDotnsProtocolRegistry public protocolRegistry;
+
+    /// @notice Well-known protocol registry key for the forward registry.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant KEY_REGISTRY = bytes32("registry");
 
     /// @dev Reserved storage space to allow for layout changes in the future.
     // forge-lint: disable-next-line(mixed-case-variable)
-    uint256[50] private __gap;
+    uint256[49] private __gap;
 
     /// @notice Node → resolved address
     mapping(bytes32 node => address owner) private addresses;
@@ -72,16 +83,23 @@ contract DotnsResolver is
             interfaceId == type(IDotnsResolver).interfaceId || super.supportsInterface(interfaceId);
     }
 
+    /// @inheritdoc IDotnsResolver
+    function updateProtocolRegistry(IDotnsProtocolRegistry _registry) external override onlyOwner {
+        protocolRegistry = _registry;
+        emit ProtocolRegistryUpdated(_registry);
+    }
+
     /// @notice Internal ownership check for a registry node
     /// @param node Node identifier
     function _onlyNodeOwner(bytes32 node) internal view {
-        require(registry.owner(node) == msg.sender, NotAuthorised(node, msg.sender));
+        IDotnsRegistry _registry = IDotnsRegistry(protocolRegistry.get(KEY_REGISTRY));
+        require(_registry.owner(node) == msg.sender, NotAuthorised(node, msg.sender));
     }
 
     /// @notice Returns implementation version
     /// @return versionString Current version string
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.0.0";
+        versionString = "1.1.0";
     }
 
     /// @inheritdoc UUPSUpgradeable

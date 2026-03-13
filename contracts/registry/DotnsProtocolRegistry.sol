@@ -51,6 +51,16 @@ contract DotnsProtocolRegistry is
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 public constant STORE_FACTORY = bytes32("storeFactory");
 
+    /// @notice Well-known key for the forward resolver storing address records.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 public constant RESOLVER = bytes32("resolver");
+
+    /// @notice Well-known key for the content resolver storing content hashes and text records.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 public constant CONTENT_RESOLVER = bytes32("contentResolver");
+
     /// @dev Internal mapping from well-known key to contract address.
     mapping(bytes32 key => address addr) private _addresses;
 
