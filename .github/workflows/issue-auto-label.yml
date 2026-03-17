@@ -20,20 +20,22 @@ jobs:
         run: |
           labels=""
 
-          comp="$(printf '%s\n' "$BODY" | awk '/^### Component/{getline; print}' | tr -d '\r' | xargs)"
+          comp="$(printf '%s\n' "$BODY" | awk '/^### Component/{getline; while(/^[[:space:]]*$/)getline; print}' | tr -d '\r' | xargs)"
           case "$comp" in
             "Registration")                      labels="scope: registration" ;;
             "Resolver")                          labels="scope: resolver" ;;
             "Store")                             labels="scope: store" ;;
             "Proof of Personhood"|"PoP")         labels="scope: pop" ;;
+            "Other"|"")                          ;;
           esac
 
-          priority="$(printf '%s\n' "$BODY" | awk '/^### Priority/{getline; print}' | tr -d '\r' | xargs)"
+          priority="$(printf '%s\n' "$BODY" | awk '/^### Priority/{getline; while(/^[[:space:]]*$/)getline; print}' | tr -d '\r' | xargs)"
           case "$priority" in
-            "P0"|"Critical")  [ -n "$labels" ] && labels="$labels,P0" || labels="P0" ;;
-            "P1"|"High")      [ -n "$labels" ] && labels="$labels,P1" || labels="P1" ;;
-            "P2"|"Normal")    [ -n "$labels" ] && labels="$labels,P2" || labels="P2" ;;
-            *)                [ -n "$labels" ] && labels="$labels,P3" || labels="P3" ;;
+            "P0")  [ -n "$labels" ] && labels="$labels,P0" || labels="P0" ;;
+            "P1")  [ -n "$labels" ] && labels="$labels,P1" || labels="P1" ;;
+            "P2")  [ -n "$labels" ] && labels="$labels,P2" || labels="P2" ;;
+            "")    ;;
+            *)     [ -n "$labels" ] && labels="$labels,P3" || labels="P3" ;;
           esac
 
           echo "labels=$labels" >> $GITHUB_OUTPUT
