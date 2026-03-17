@@ -51,7 +51,7 @@ jobs:
           ADDRESS: ${{ steps.extract.outputs.address }}
           ADDRESS_TYPE: ${{ steps.extract.outputs.address_type }}
         run: |
-          RESULT=$(dotns account is-mapped "$ADDRESS" --rpc "$SUBSTRATE_RPC_URL" --json -k //Alice 2>/dev/null) || true
+          RESULT=$(dotns account is-mapped "$ADDRESS" --rpc "$SUBSTRATE_RPC_URL" --json -k //Alice 2>&1) || true
 
           if echo "$RESULT" | jq -e . > /dev/null 2>&1; then
             IS_MAPPED=$(echo "$RESULT" | jq -r '.isMapped')

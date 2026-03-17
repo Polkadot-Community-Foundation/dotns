@@ -62,7 +62,10 @@ jobs:
         env:
           ADDRESS: ${{ steps.extract.outputs.address }}
         run: |
-          RESULT=$(dotns account is-mapped "$ADDRESS" --rpc "$SUBSTRATE_RPC_URL" --json -k //Alice)
+          if ! RESULT=$(dotns account is-mapped "$ADDRESS" --rpc "$SUBSTRATE_RPC_URL" --json -k //Alice 2>&1); then
+            echo "::error::dotns account is-mapped failed: $RESULT"
+            exit 1
+          fi
 
           IS_MAPPED=$(echo "$RESULT" | jq -r '.isMapped')
           EVM_ADDRESS=$(echo "$RESULT" | jq -r '.evmAddress')
