@@ -190,7 +190,7 @@ jobs:
         if: steps.resolve.outputs.is_mapped == 'true' && steps.precheck.outputs.already_whitelisted != 'true'
         id: execute
         env:
-          DOTNS_MNEMONIC: ${{ secrets.DOTNS_ADMIN_MNEMONIC }}
+          DOTNS_MNEMONIC: ${{ secrets.DOTNS_MNEMONIC }}
           ADDRESS: ${{ steps.resolve.outputs.evm_address }}
         run: |
           RESULT=$(dotns account whitelist "$ADDRESS" --rpc "$SUBSTRATE_RPC_URL" --json -m "$DOTNS_MNEMONIC")
