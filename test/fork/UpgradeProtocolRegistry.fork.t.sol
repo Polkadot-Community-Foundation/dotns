@@ -27,7 +27,7 @@ contract UpgradeProtocolRegistryForkTest is Test {
     address constant PROTOCOL_REGISTRY = 0xF8531342444fAC0A75719130eECcf45314584EFe;
     address constant CONTROLLER_PROXY = 0xd09e0F1c1E6CE8Cf40df929ef4FC778629573651;
     address constant REGISTRAR_PROXY = 0x329aAA5b6bEa94E750b2dacBa74Bf41291E6c2BD;
-    address constant OWNER = 0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac;
+    address constant OWNER = 0xD908E5A6C88E9263f8fd0756Bd0b77916008bb72;
 
     DotnsProtocolRegistry public protocolRegistry;
     DotnsRegistrarController public controller;

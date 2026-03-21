@@ -61,8 +61,9 @@ jobs:
         id: resolve
         env:
           ADDRESS: ${{ steps.extract.outputs.address }}
+          DOTNS_MNEMONIC: ${{ secrets.DOTNS_MNEMONIC }}
         run: |
-          if ! RESULT=$(dotns account is-mapped "$ADDRESS" --rpc "$SUBSTRATE_RPC_URL" --json -k //Alice 2>&1); then
+          if ! RESULT=$(dotns account is-mapped "$ADDRESS" --rpc "$SUBSTRATE_RPC_URL" --json -m "$DOTNS_MNEMONIC" 2>&1); then
             echo "::error::dotns account is-mapped failed: $RESULT"
             exit 1
           fi
@@ -113,6 +114,8 @@ jobs:
               "Run `dotns account --help` for all authentication options (keystore, key URI, etc.).",
               "",
               "Once your account is mapped, comment `/retry` on this issue to try again.",
+              "",
+              "cc @filvecchiato @waytwotall @andrew-ifrita @corey-hathaway @sphamjoli",
             ].join("\n");
 
             const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
@@ -131,8 +134,9 @@ jobs:
         id: precheck
         env:
           ADDRESS: ${{ steps.resolve.outputs.evm_address }}
+          DOTNS_MNEMONIC: ${{ secrets.DOTNS_MNEMONIC }}
         run: |
-          RESULT=$(dotns account is-whitelisted "$ADDRESS" --rpc "$SUBSTRATE_RPC_URL" --json -k //Alice)
+          RESULT=$(dotns account is-whitelisted "$ADDRESS" --rpc "$SUBSTRATE_RPC_URL" --json -m "$DOTNS_MNEMONIC")
           ALREADY=$(echo "$RESULT" | jq -r '.isWhitelisted')
           echo "already_whitelisted=$ALREADY" >> "$GITHUB_OUTPUT"
 
@@ -148,6 +152,7 @@ jobs:
             const marker = "<!-- dotns-whitelist-bot -->";
             const { owner, repo } = context.repo;
             const issue_number = context.payload.issue.number;
+            const author = context.payload.issue.user.login;
             const address = process.env.ADDRESS;
             const originalAddress = process.env.ORIGINAL_ADDRESS;
             const wasConverted = process.env.WAS_CONVERTED === "true";
@@ -169,9 +174,11 @@ jobs:
             }
 
             lines.push("");
-            lines.push(`This address is already whitelisted on-chain. No action needed.`);
+            lines.push(`@${author} This address is already whitelisted on-chain. No action needed.`);
             lines.push("");
             lines.push(`[View on Blockscout](${explorerUrl}/address/${address})`);
+            lines.push("");
+            lines.push("cc @filvecchiato @waytwotall @andrew-ifrita @corey-hathaway @sphamjoli");
 
             const section = lines.join("\n");
 
@@ -215,6 +222,7 @@ jobs:
             const marker = "<!-- dotns-whitelist-bot -->";
             const { owner, repo } = context.repo;
             const issue_number = context.payload.issue.number;
+            const author = context.payload.issue.user.login;
             const txHash = process.env.TX_HASH;
             const address = process.env.ADDRESS;
             const originalAddress = process.env.ORIGINAL_ADDRESS;
@@ -241,6 +249,10 @@ jobs:
             lines.push(`**On-chain verified:** \`isWhiteListed\` = \`${whitelisted}\``);
             lines.push("");
             lines.push(`[View on Blockscout](${explorerUrl}/address/${address})`);
+            lines.push("");
+            lines.push(`@${author} Your address has been whitelisted. This means your address can now bypass Proof of Personhood (POP) rules when registering .dot names. Note that whitelisting does not register a name for you -- it only allows your address to skip POP verification during the registration process.`);
+            lines.push("");
+            lines.push("cc @filvecchiato @waytwotall @andrew-ifrita @corey-hathaway @sphamjoli");
 
             const section = lines.join("\n");
 
@@ -263,6 +275,7 @@ jobs:
             const marker = "<!-- dotns-whitelist-bot -->";
             const { owner, repo } = context.repo;
             const issue_number = context.payload.issue.number;
+            const author = context.payload.issue.user.login;
 
             const section = [
               "",
@@ -270,9 +283,11 @@ jobs:
               "",
               "### Whitelisting Failed",
               "",
-              "The on-chain transaction failed. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.",
+              `@${author} The on-chain transaction failed. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.`,
               "",
               "Comment `/retry` on this issue to try again.",
+              "",
+              "cc @filvecchiato @waytwotall @andrew-ifrita @corey-hathaway @sphamjoli",
             ].join("\n");
 
             const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
