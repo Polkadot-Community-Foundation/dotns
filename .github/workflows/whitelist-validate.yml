@@ -40,7 +40,8 @@ jobs:
         with:
           node-version: "22"
       - run: |
-          gh release download --repo paritytech/dotns-sdk --pattern '*.tgz' --dir /tmp/dotns-cli
+          TAG=$(gh release list --repo paritytech/dotns-sdk --limit 1 --json tagName --jq '.[0].tagName')
+          gh release download "$TAG" --repo paritytech/dotns-sdk --pattern '*.tgz' --dir /tmp/dotns-cli
           npm install -g /tmp/dotns-cli/*.tgz
         env:
           GH_TOKEN: ${{ github.token }}
