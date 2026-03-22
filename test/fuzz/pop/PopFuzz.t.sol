@@ -64,6 +64,8 @@ contract PopRulesFuzzTest is BaseDotns {
         string memory nameLabel = string(abi.encodePacked(_makeAlpha(seed, 6), "01"));
 
         vm.prank(owner);
+        /// casting to 'bytes32' is safe because this is safe
+        /// forge-lint: disable-next-line(unsafe-typecast)
         protocolRegistry.set(bytes32("controller"), address(this));
 
         popRules.reserveBaseName(nameLabel, leonardo);
@@ -86,6 +88,35 @@ contract PopRulesFuzzTest is BaseDotns {
         IPopRules.PriceWithMeta memory priceMetadata = popRules.priceWithoutCheck(nameLabel, ed);
 
         assertEq(priceMetadata.price, popRules.price(nameLabel));
+    }
+
+    function testFuzz_expired_reservation_rolls_forward_to_next_lite_registrant(uint256 seed) public {
+        string memory baseName = _makeAlpha(seed, 6);
+        string memory firstName = string(abi.encodePacked(baseName, "01"));
+        string memory secondName = string(abi.encodePacked(baseName, "02"));
+
+        vm.prank(owner);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        protocolRegistry.set(bytes32("controller"), address(this));
+
+        popRules.reserveBaseName(firstName, leonardo);
+
+        (bool isReserved, address firstOwner, uint64 firstExpiry) =
+            popRules.isBaseNameReserved(baseName);
+
+        assertTrue(isReserved);
+        assertEq(firstOwner, leonardo);
+
+        vm.warp(uint256(firstExpiry) + 1);
+
+        popRules.reserveBaseName(secondName, tiago);
+
+        (bool rolledReserved, address rolledOwner, uint64 rolledExpiry) =
+            popRules.isBaseNameReserved(baseName);
+
+        assertTrue(rolledReserved);
+        assertEq(rolledOwner, tiago);
+        assertGt(rolledExpiry, firstExpiry);
     }
 
     function _makeAlpha(uint256 seed, uint256 length) internal pure returns (string memory) {

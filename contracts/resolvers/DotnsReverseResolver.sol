@@ -42,6 +42,11 @@ contract DotnsReverseResolver is
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant KEY_CONTROLLER = bytes32("controller");
 
+    /// @notice Well-known protocol registry key for the ERC721 registrar.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant KEY_REGISTRAR = bytes32("registrar");
+
     /// @dev Reserved storage space to allow for layout changes in the future.
     // forge-lint: disable-next-line(mixed-case-variable)
     uint256[49] private __gap;
@@ -75,14 +80,6 @@ contract DotnsReverseResolver is
         return reverseNames[addr];
     }
 
-    /// @inheritdoc IDotnsReverseResolver
-    function updateRegistrar(IDotnsRegistrarController newRegistrar) external override onlyOwner {
-        require(address(newRegistrar) != address(0), InvalidRegistrarController());
-        IDotnsRegistrarController oldRegistrar = registrarController;
-        registrarController = newRegistrar;
-        emit RegistrarUpdated(oldRegistrar, newRegistrar);
-    }
-
     /// @inheritdoc ERC165Upgradeable
     function supportsInterface(bytes4 interfaceId)
         public
@@ -103,7 +100,11 @@ contract DotnsReverseResolver is
     /// @notice Internal check enforcing registrar-only access.
     function _onlyRegistrar() internal view {
         address controller = protocolRegistry.get(KEY_CONTROLLER);
-        require(msg.sender == controller, NotRegistrarController(msg.sender));
+        address registrar = protocolRegistry.get(KEY_REGISTRAR);
+        require(
+            msg.sender == controller || msg.sender == registrar,
+            NotRegistrarController(msg.sender)
+        );
     }
 
     /// @notice Returns implementation version

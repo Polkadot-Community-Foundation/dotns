@@ -36,6 +36,18 @@ library StringUtils {
         }
     }
 
+    function isSingleLabel(string calldata s) internal pure returns (bool isValid) {
+        bytes calldata label = bytes(s);
+        uint256 length = label.length;
+        if (length == 0) return false;
+
+        for (uint256 i = 0; i < length; ++i) {
+            if (label[i] == bytes1(0x2e)) return false;
+        }
+
+        return true;
+    }
+
     /// @notice Converts a uint256 to its decimal string representation.
     /// @dev Wraps OpenZeppelin's Strings.toString().
     /// @param value The unsigned integer to convert.

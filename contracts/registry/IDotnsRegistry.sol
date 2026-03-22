@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController.sol";
 import {IDotnsProtocolRegistry} from "./IDotnsProtocolRegistry.sol";
 
 /// @title Dot Registry
@@ -16,7 +15,7 @@ interface IDotnsRegistry {
     /// @notice Record describing a subnode creation request
     /// @param parentNode Parent node
     /// @param subLabel Human readable subnode label e.g "alice"
-    /// @param parentLabel Human readable parent label e.g. bob
+    /// @param parentLabel Canonical parent name without the `.dot` suffix e.g. bob or child.bob
     /// @param owner Address to assign as owner of the created subnode
     /// @dev Label string is included for convenience, for the store
     struct SubnodeRecord {
@@ -52,14 +51,6 @@ interface IDotnsRegistry {
     /// @param resolver New resolver for the node.
     event NewResolver(bytes32 indexed node, address resolver);
 
-    /// @notice Emitted when the registrar controller address is updated.
-    /// @param oldRegistrarController Previous registrar controller.
-    /// @param newRegistrarController New registrar controller.
-    event RegistrarControllerUpdated(
-        IDotnsRegistrarController indexed oldRegistrarController,
-        IDotnsRegistrarController indexed newRegistrarController
-    );
-
     /// @notice Thrown when an invalid (zero) address is provided.
     error NotAllowed();
 
@@ -76,6 +67,12 @@ interface IDotnsRegistry {
     /// @notice Thrown when attempting to create a subnode that already exists.
     /// @param subnode The derived node identifier that already exists.
     error NodeAlreadyExists(bytes32 subnode);
+
+    /// @notice Thrown when a sublabel is not a single DNS label.
+    error InvalidLabel();
+
+    /// @notice Thrown when the supplied parent label does not match the parent node.
+    error ParentLabelMismatch();
 
     /// @notice Creates a new subnode and assigns its owner.
     /// @dev Callable only by the current owner of `parentNode`.
@@ -112,12 +109,6 @@ interface IDotnsRegistry {
     /// @notice Returns whether a node exists.
     /// @param node Node identifier.
     function recordExists(bytes32 node) external view returns (bool);
-
-    /// @notice Sets the registrar controller used for privileged node writes.
-    /// @dev Callable only by the registry owner.
-    /// @param registrarController Address of the registrar controller contract.
-    /// @custom:reverts NotAllowed if `registrarController` is the zero address.
-    function updateRegistrarController(IDotnsRegistrarController registrarController) external;
 
     /// @notice Emitted when the protocol registry is updated.
     /// @param newRegistry The address of the new protocol registry.

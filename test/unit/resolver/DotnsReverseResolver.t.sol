@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
+import {BaseDotns} from "../../base/BaseDotns.t.sol";
+import {IDotnsProtocolRegistry} from "../../../contracts/registry/IDotnsProtocolRegistry.sol";
 import {IDotnsReverseResolver} from "../../../contracts/resolvers/IDotnsReverseResolver.sol";
 
 contract DotnsReverseResolverTests is BaseDotns {
@@ -20,16 +21,15 @@ contract DotnsReverseResolverTests is BaseDotns {
         assertEq(dotnsReverseResolver.nameOf(ed), "reversetwo01.dot");
     }
 
-    function test_updateregistrar_emits_event_and_persists() public {
-        IDotnsRegistrarController oldRegistrar = dotnsReverseResolver.registrarController();
-        IDotnsRegistrarController newRegistrar = IDotnsRegistrarController(makeAddr("newregistrar"));
+    function test_updateprotocolregistry_emits_event_and_persists() public {
+        IDotnsProtocolRegistry newRegistry = IDotnsProtocolRegistry(makeAddr("newRegistry"));
 
-        vm.expectEmit(true, true, false, false);
-        emit IDotnsReverseResolver.RegistrarUpdated(oldRegistrar, newRegistrar);
+        vm.expectEmit(true, false, false, false);
+        emit IDotnsReverseResolver.ProtocolRegistryUpdated(newRegistry);
 
         vm.prank(owner);
-        dotnsReverseResolver.updateRegistrar(newRegistrar);
+        dotnsReverseResolver.updateProtocolRegistry(newRegistry);
 
-        assertEq(address(dotnsReverseResolver.registrarController()), address(newRegistrar));
+        assertEq(address(dotnsReverseResolver.protocolRegistry()), address(newRegistry));
     }
 }

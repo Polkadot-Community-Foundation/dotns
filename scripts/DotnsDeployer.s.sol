@@ -146,15 +146,7 @@ contract DotnsDeployer is BaseDeployer {
         vm.label(protocolRegistryProxy, "DotnsProtocolRegistry");
         logDeployment("DotnsProtocolRegistry", protocolRegistryProxy);
 
-        // Wire dependencies
-        dotnsReverseResolver.updateRegistrar(
-            IDotnsRegistrarController(dotnsRegistrarControllerProxy)
-        );
-        popRules.updateDotRegistry(dotnsRegistrarControllerProxy);
         dotnsRegistrar.addController(IDotnsRegistrarController(dotnsRegistrarControllerProxy));
-        dotnsRegistry.updateRegistrarController(
-            IDotnsRegistrarController(dotnsRegistrarControllerProxy)
-        );
 
         // Wire protocol registry
         protocolRegistry.set(bytes32("registrar"), dotnsRegistrarProxy);

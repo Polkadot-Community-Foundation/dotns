@@ -181,9 +181,8 @@ contract DotnsRegistrarController is
 
     /// @inheritdoc IDotnsRegistrarController
     function available(string calldata label) public view override returns (bool) {
-        require(label.strlen() >= 3, NameNotAvailable(label));
-        bytes32 labelhash = _labelhash(label);
-        bytes32 node = _namehash(labelhash);
+        bytes32 node;
+        (, node) = _validatedLabelNode(label);
         IDotnsRegistrar registrar = IDotnsRegistrar(protocolRegistry.get(KEY_REGISTRAR));
         return registrar.available(uint256(node));
     }
@@ -200,7 +199,7 @@ contract DotnsRegistrarController is
         bytes32 registrationSecret = registration.secret;
         bool registrationReserved = registration.reserved;
 
-        assembly {
+        assembly ("memory-safe") {
             let freeMemoryPointer := mload(0x40)
 
             let labelByteLength := registrationLabel.length
@@ -233,24 +232,9 @@ contract DotnsRegistrarController is
 
     /// @inheritdoc IDotnsRegistrarController
     function register(Registration calldata registration) external payable override {
-        require(available(registration.label), NameNotAvailable(registration.label));
-
-        bytes32 labelhash = _labelhash(registration.label);
-        bytes32 node = _namehash(labelhash);
-        bytes32 commitment = makeCommitment(registration);
-        uint256 committedAt = commitments[commitment];
-
-        require(committedAt != 0, CommitmentNotFound(commitment));
-        require(
-            committedAt + minCommitmentAge <= block.timestamp,
-            CommitmentTooNew(commitment, committedAt + minCommitmentAge, block.timestamp)
-        );
-        require(
-            committedAt + maxCommitmentAge > block.timestamp,
-            CommitmentTooOld(commitment, committedAt + maxCommitmentAge, block.timestamp)
-        );
-
-        delete commitments[commitment];
+        (IDotnsRegistrar registrar, bytes32 labelhash, bytes32 node) =
+            _requireAvailableLabel(registration.label);
+        _consumeCommitment(registration);
 
         IPopRules rules = IPopRules(protocolRegistry.get(KEY_POP_RULES));
         IPopRules.PriceWithMeta memory priced =
@@ -258,31 +242,9 @@ contract DotnsRegistrarController is
 
         require(msg.value >= priced.price, InsufficientValue());
 
-        IDotnsRegistrar registrar = IDotnsRegistrar(protocolRegistry.get(KEY_REGISTRAR));
-        IDotnsRegistry registry = IDotnsRegistry(protocolRegistry.get(KEY_REGISTRY));
-        IDotnsReverseResolver reverse =
-            IDotnsReverseResolver(protocolRegistry.get(KEY_REVERSE_RESOLVER));
-
-        registrar.register(uint256(node), registration.owner, registration.label);
-
-        registry.setOwner(node, registration.owner, address(reverse));
-
-        if (registration.reserved) {
-            reverse.setReverseName(registration.owner, string.concat(registration.label, ".dot"));
-        }
-
-        IStoreFactory factory = IStoreFactory(protocolRegistry.get(KEY_STORE_FACTORY));
-        address[] memory controllers = new address[](3);
-        controllers[0] = address(this);
-        controllers[1] = address(registry);
-        controllers[2] = address(registrar);
-        Store store = factory.getOrCreateStore(controllers, registration.owner);
-
-        bytes32 storeKey = _storeKey(labelhash);
-        store.setValueFor(registration.owner, storeKey, string.concat(registration.label, ".dot"));
-
-        emit NameRegistered(
-            registration.label, labelhash, registration.owner, priced.price, address(store)
+        bool setReverseRecord = registration.reserved && msg.sender == registration.owner;
+        _completeRegistration(
+            registration, registrar, labelhash, node, priced.price, setReverseRecord
         );
 
         if (
@@ -315,10 +277,65 @@ contract DotnsRegistrarController is
         override
         onlyWhiteListedOrOwner
     {
-        require(available(registration.label), NameNotAvailable(registration.label));
+        (IDotnsRegistrar registrar, bytes32 labelhash, bytes32 node) =
+            _requireAvailableLabel(registration.label);
+        _consumeCommitment(registration);
 
-        bytes32 labelhash = _labelhash(registration.label);
-        bytes32 node = _namehash(labelhash);
+        _completeRegistration(registration, registrar, labelhash, node, 0, true);
+    }
+
+    /// @inheritdoc ERC165Upgradeable
+    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
+        return interfaceId == type(IDotnsRegistrarController).interfaceId
+            || super.supportsInterface(interfaceId);
+    }
+
+    /// @notice Computes keccak256(label).
+    /// @param label Label string.
+    /// @return hash keccak256(label).
+    function _labelhash(string calldata label) internal pure returns (bytes32 hash) {
+        assembly ("memory-safe") {
+            let pointer := mload(0x40)
+            let len := label.length
+            calldatacopy(pointer, label.offset, len)
+            hash := keccak256(pointer, len)
+        }
+    }
+
+    /// @notice Computes namehash(DOT_NODE, labelhash).
+    /// @param labelhash keccak256(label).
+    /// @return node namehash.
+    function _namehash(bytes32 labelhash) internal pure returns (bytes32 node) {
+        assembly ("memory-safe") {
+            let pointer := mload(0x40)
+            mstore(pointer, DOT_NODE)
+            mstore(add(pointer, 0x20), labelhash)
+            node := keccak256(pointer, 0x40)
+        }
+    }
+
+    function _validatedLabelNode(string calldata label)
+        internal
+        pure
+        returns (bytes32 labelhash, bytes32 node)
+    {
+        require(label.isSingleLabel(), InvalidLabel());
+        require(label.strlen() >= 3, NameNotAvailable(label));
+        labelhash = _labelhash(label);
+        node = _namehash(labelhash);
+    }
+
+    function _requireAvailableLabel(string calldata label)
+        internal
+        view
+        returns (IDotnsRegistrar registrar, bytes32 labelhash, bytes32 node)
+    {
+        (labelhash, node) = _validatedLabelNode(label);
+        registrar = IDotnsRegistrar(protocolRegistry.get(KEY_REGISTRAR));
+        require(registrar.available(uint256(node)), NameNotAvailable(label));
+    }
+
+    function _consumeCommitment(Registration calldata registration) internal {
         bytes32 commitment = makeCommitment(registration);
         uint256 committedAt = commitments[commitment];
 
@@ -333,8 +350,18 @@ contract DotnsRegistrarController is
         );
 
         delete commitments[commitment];
+    }
 
-        IDotnsRegistrar registrar = IDotnsRegistrar(protocolRegistry.get(KEY_REGISTRAR));
+    function _completeRegistration(
+        Registration calldata registration,
+        IDotnsRegistrar registrar,
+        bytes32 labelhash,
+        bytes32 node,
+        uint256 baseCost,
+        bool setReverseRecord
+    )
+        internal
+    {
         IDotnsRegistry registry = IDotnsRegistry(protocolRegistry.get(KEY_REGISTRY));
         IDotnsReverseResolver reverse =
             IDotnsReverseResolver(protocolRegistry.get(KEY_REVERSE_RESOLVER));
@@ -342,7 +369,9 @@ contract DotnsRegistrarController is
         registrar.register(uint256(node), registration.owner, registration.label);
         registry.setOwner(node, registration.owner, address(reverse));
 
-        reverse.setReverseName(registration.owner, string.concat(registration.label, ".dot"));
+        if (setReverseRecord) {
+            reverse.setReverseName(registration.owner, string.concat(registration.label, ".dot"));
+        }
 
         IStoreFactory factory = IStoreFactory(protocolRegistry.get(KEY_STORE_FACTORY));
         address[] memory controllers = new address[](3);
@@ -354,37 +383,7 @@ contract DotnsRegistrarController is
         bytes32 storeKey = _storeKey(labelhash);
         store.setValueFor(registration.owner, storeKey, string.concat(registration.label, ".dot"));
 
-        emit NameRegistered(registration.label, labelhash, registration.owner, 0, address(store));
-    }
-
-    /// @inheritdoc ERC165Upgradeable
-    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
-        return interfaceId == type(IDotnsRegistrarController).interfaceId
-            || super.supportsInterface(interfaceId);
-    }
-
-    /// @notice Computes keccak256(label).
-    /// @param label Label string.
-    /// @return hash keccak256(label).
-    function _labelhash(string calldata label) internal pure returns (bytes32 hash) {
-        assembly {
-            let pointer := mload(0x40)
-            let len := label.length
-            calldatacopy(pointer, label.offset, len)
-            hash := keccak256(pointer, len)
-        }
-    }
-
-    /// @notice Computes namehash(DOT_NODE, labelhash).
-    /// @param labelhash keccak256(label).
-    /// @return node namehash.
-    function _namehash(bytes32 labelhash) internal pure returns (bytes32 node) {
-        assembly {
-            let pointer := mload(0x40)
-            mstore(pointer, DOT_NODE)
-            mstore(add(pointer, 0x20), labelhash)
-            node := keccak256(pointer, 0x40)
-        }
+        emit NameRegistered(registration.label, labelhash, registration.owner, baseCost, address(store));
     }
 
     /// @notice Computes keccak256("dotns.registered", labelhash).
@@ -392,7 +391,7 @@ contract DotnsRegistrarController is
     /// @return key Store key used for DotNS-written registration entry.
     function _storeKey(bytes32 labelhash) internal pure returns (bytes32 key) {
         bytes32 prefix = DOTNS_REGISTERED_KEY;
-        assembly {
+        assembly ("memory-safe") {
             let pointer := mload(0x40)
             mstore(pointer, prefix)
             mstore(add(pointer, 0x20), labelhash)

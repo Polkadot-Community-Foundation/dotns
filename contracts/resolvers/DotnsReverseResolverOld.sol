@@ -44,7 +44,7 @@ contract DotnsReverseResolverOld is
         return "";
     }
 
-    function updateRegistrar(IDotnsRegistrarController newRegistrar) external override onlyOwner {
+    function updateRegistrar(IDotnsRegistrarController newRegistrar) external onlyOwner {
         registrarController = newRegistrar;
     }
 

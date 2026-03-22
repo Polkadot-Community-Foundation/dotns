@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 
 /// @title Dotns Reverse Resolver
@@ -13,17 +12,6 @@ interface IDotnsReverseResolver {
     /// @notice Thrown when a caller is not authorised to modify reverse records.
     /// @param caller The address attempting the modification.
     error NotRegistrarController(address caller);
-
-    /// @notice Thrown when an invalid registrar address is provided.
-    error InvalidRegistrarController();
-
-    /// @notice Emitted when the registrar address is updated.
-    /// @param oldRegistrar Previous registrar.
-    /// @param newRegistrar New registrar.
-    event RegistrarUpdated(
-        IDotnsRegistrarController indexed oldRegistrar,
-        IDotnsRegistrarController indexed newRegistrar
-    );
 
     /// @notice Emitted when a name is associated with an address
     /// @param addr The address for which the reverse name is being set.
@@ -42,12 +30,6 @@ interface IDotnsReverseResolver {
     /// @param addr The address to query.
     /// @return name The reverse name associated with `addr`.
     function nameOf(address addr) external view returns (string memory name);
-
-    /// @notice Updates the registrar address authorised to write reverse records.
-    /// @dev Implementations should restrict this to an admin/owner.
-    /// @param newRegistrar The new registrar controller address.
-    /// @custom:reverts InvalidRegistrarController if `newRegistrar` is the zero address.
-    function updateRegistrar(IDotnsRegistrarController newRegistrar) external;
 
     /// @notice Emitted when the protocol registry is updated.
     /// @param newRegistry The address of the new protocol registry.

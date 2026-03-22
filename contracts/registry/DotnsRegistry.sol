@@ -14,6 +14,7 @@ import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {Store} from "../store/Store.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
 import {IDotnsProtocolRegistry} from "./IDotnsProtocolRegistry.sol";
+import {StringUtils} from "../utils/StringUtils.sol";
 
 /// @title Dotns Registry
 /// @notice Upgradeable on-chain registry for hierarchical name ownership and resolution.
@@ -25,6 +26,10 @@ import {IDotnsProtocolRegistry} from "./IDotnsProtocolRegistry.sol";
 /// @custom:security-contact admin@parity.io
 contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, IDotnsRegistry {
     using StoreUtils for IStoreFactory;
+    using StringUtils for *;
+
+    bytes32 private constant DOT_NODE =
+        0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
 
     /// @notice Mapping of node identifiers to records.
     mapping(bytes32 node => Record record) private records;
@@ -124,17 +129,6 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     }
 
     /// @inheritdoc IDotnsRegistry
-    function updateRegistrarController(IDotnsRegistrarController newRegistrarController)
-        external
-        override
-        onlyOwner
-    {
-        require(address(newRegistrarController) != address(0), NotAllowed());
-        emit RegistrarControllerUpdated(registrarController, newRegistrarController);
-        registrarController = newRegistrarController;
-    }
-
-    /// @inheritdoc IDotnsRegistry
     function setSubnodeOwner(SubnodeRecord calldata record)
         external
         override
@@ -146,28 +140,20 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
 
         bytes32 parentNode = record.parentNode;
         string calldata subLabel = record.subLabel;
+        require(subLabel.isSingleLabel(), InvalidLabel());
+        require(_parentNamehash(record.parentLabel) == parentNode, ParentLabelMismatch());
 
-        bytes32 labelhash;
-        assembly {
-            let freeMemoryPointer := mload(0x40)
-            let labelLength := subLabel.length
-            calldatacopy(freeMemoryPointer, subLabel.offset, labelLength)
-            labelhash := keccak256(freeMemoryPointer, labelLength)
-        }
-
-        assembly {
-            let freeMemoryPointer := mload(0x40)
-            mstore(freeMemoryPointer, parentNode)
-            mstore(add(freeMemoryPointer, 0x20), labelhash)
-            subnode := keccak256(freeMemoryPointer, 0x40)
-        }
+        bytes32 labelhash = _labelhash(subLabel);
+        subnode = _namehash(parentNode, labelhash);
 
         require(!records[subnode].exists, NodeAlreadyExists(subnode));
 
         address _reverseResolver = protocolRegistry.get(KEY_REVERSE_RESOLVER);
         records[subnode] = Record({owner: newOwner, resolver: _reverseResolver, exists: true});
 
-        _writeSubnodeToStore(record, subnode);
+        _writeSubnodeToStore(
+            record.owner, subnode, string.concat(record.subLabel, ".", record.parentLabel, ".dot")
+        );
 
         emit NewOwner(parentNode, labelhash, newOwner);
     }
@@ -222,19 +208,24 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
 
     /// @notice Writes subnode registration to the owner's Store.
     /// @dev Acquires or deploys a Store for the owner, then writes the full subnode name.
-    /// @param record Subnode record containing owner and label information.
-    /// @param labelhash Precomputed keccak256 hash of the sublabel.
-    function _writeSubnodeToStore(SubnodeRecord calldata record, bytes32 labelhash) internal {
+    /// @param storeOwner Subnode owner whose Store receives the record.
+    /// @param node Derived subnode identifier.
+    /// @param fullName Canonical full subnode name.
+    function _writeSubnodeToStore(
+        address storeOwner,
+        bytes32 node,
+        string memory fullName
+    )
+        internal
+    {
         address[] memory controllers = new address[](1);
         controllers[0] = address(this);
 
         IStoreFactory factory = IStoreFactory(protocolRegistry.get(KEY_STORE_FACTORY));
-        Store store = factory.getOrCreateStore(controllers, record.owner);
+        Store store = factory.getOrCreateStore(controllers, storeOwner);
 
-        bytes32 storeKey = _storeKey(labelhash);
-        string memory fullName = string.concat(record.subLabel, ".", record.parentLabel, ".dot");
-
-        store.setValueFor(record.owner, storeKey, fullName);
+        bytes32 storeKey = _storeKey(node);
+        store.setValueFor(storeOwner, storeKey, fullName);
     }
 
     /// @notice Computes keccak256("dotns.registered", labelhash).
@@ -242,11 +233,62 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     /// @return key Store key used for DotNS-written registration entry.
     function _storeKey(bytes32 labelhash) internal pure returns (bytes32 key) {
         bytes32 prefix = DOTNS_REGISTERED_KEY;
-        assembly {
+        assembly ("memory-safe") {
             let pointer := mload(0x40)
             mstore(pointer, prefix)
             mstore(add(pointer, 0x20), labelhash)
             key := keccak256(pointer, 0x40)
+        }
+    }
+
+    function _labelhash(string calldata label) internal pure returns (bytes32 hash) {
+        assembly ("memory-safe") {
+            let pointer := mload(0x40)
+            let len := label.length
+            calldatacopy(pointer, label.offset, len)
+            hash := keccak256(pointer, len)
+        }
+    }
+
+    function _namehash(bytes32 parentNode, bytes32 labelhash) internal pure returns (bytes32 node) {
+        assembly ("memory-safe") {
+            let pointer := mload(0x40)
+            mstore(pointer, parentNode)
+            mstore(add(pointer, 0x20), labelhash)
+            node := keccak256(pointer, 0x40)
+        }
+    }
+
+    function _parentNamehash(string calldata parentLabel) internal pure returns (bytes32 node) {
+        bytes calldata labels = bytes(parentLabel);
+        uint256 end = labels.length;
+        require(end != 0, ParentLabelMismatch());
+
+        node = DOT_NODE;
+
+        while (true) {
+            uint256 start = end;
+            while (start > 0 && labels[start - 1] != bytes1(0x2e)) {
+                unchecked {
+                    --start;
+                }
+            }
+
+            require(start != end, ParentLabelMismatch());
+
+            bytes32 labelhash;
+            assembly ("memory-safe") {
+                let pointer := mload(0x40)
+                let len := sub(end, start)
+                calldatacopy(pointer, add(labels.offset, start), len)
+                labelhash := keccak256(pointer, len)
+                mstore(pointer, node)
+                mstore(add(pointer, 0x20), labelhash)
+                node := keccak256(pointer, 0x40)
+            }
+
+            if (start == 0) return node;
+            end = start - 1;
         }
     }
 

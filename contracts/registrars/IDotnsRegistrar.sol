@@ -34,6 +34,9 @@ interface IDotnsRegistrar is IERC721 {
     /// @param tokenId The token identifier.
     error LabelAlreadySet(uint256 tokenId);
 
+    /// @notice Thrown when a label is not a single DNS label.
+    error InvalidLabel();
+
     /// @notice Emitted when a name is registered.
     /// @param id Token identifier.
     /// @param owner Owner of the name.
@@ -95,4 +98,5 @@ interface IDotnsRegistrar is IERC721 {
     /// @param tokenId The token identifier.
     /// @param label The human-readable label string (e.g. "alice").
     function syncLabel(uint256 tokenId, string calldata label) external;
+
 }

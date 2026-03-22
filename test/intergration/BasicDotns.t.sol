@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {BaseDotns} from "../base/BaseDotns.t.sol";
 import {IPopRules} from "../../contracts/pop/IPopRules.sol";
 import {IDotnsRegistry} from "../../contracts/registry/IDotnsRegistry.sol";
+import {IDotnsRegistrarController} from "../../contracts/registrars/IDotnsRegistrarController.sol";
 import {Store} from "../../contracts/store/Store.sol";
 
 contract BasicDotnsIntegration is BaseDotns {
@@ -159,7 +160,7 @@ contract BasicDotnsIntegration is BaseDotns {
         assertEq(dotnsRegistry.owner(node), flow.transferTo);
 
         if (flow.reserved) {
-            assertEq(dotnsReverseResolver.nameOf(flow.nameOwner), fullName);
+            assertEq(dotnsReverseResolver.nameOf(flow.nameOwner), "");
         }
 
         _assertStoreContainsValue(flow.nameOwner, ownerStore, fullName);
@@ -215,6 +216,49 @@ contract BasicDotnsIntegration is BaseDotns {
             transferRecipientStore,
             _fullSubname(flow.transferRecipientSub, flow.transferRecipientNewName)
         );
+    }
+
+    function test_third_party_reserved_registration_preserves_existing_reverse() public {
+        address victim = ed;
+        address payer = leonardo;
+
+        _commitAndRegister(NAME_NOSTATUS, victim, false);
+        assertEq(dotnsReverseResolver.nameOf(victim), "");
+
+        vm.startPrank(victim);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+        vm.stopPrank();
+
+        string memory victimPrimary = "victimname01";
+        _commitAndRegister(victimPrimary, victim, true);
+        assertEq(dotnsReverseResolver.nameOf(victim), "victimname01.dot");
+
+        string memory giftedName = "giftedname01";
+
+        bytes32 secret = keccak256(abi.encodePacked(giftedName, victim, block.timestamp, payer));
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: giftedName, owner: victim, secret: secret, reserved: true
+            });
+
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
+
+        vm.prank(payer);
+        dotnsRegistrarController.commit(commitment);
+
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+
+        uint256 quotedPrice = popRules.priceWithCheck(giftedName, victim).price;
+
+        vm.prank(payer);
+        dotnsRegistrarController.register{value: quotedPrice}(registration);
+
+        bytes32 labelHash = keccak256(bytes(giftedName));
+        bytes32 node = _namehash(dotNode, labelHash);
+
+        assertEq(dotnsRegistrar.ownerOf(uint256(node)), victim);
+        assertEq(dotnsRegistry.owner(node), victim);
+        assertEq(dotnsReverseResolver.nameOf(victim), "victimname01.dot");
     }
 
     function _setSubnode(

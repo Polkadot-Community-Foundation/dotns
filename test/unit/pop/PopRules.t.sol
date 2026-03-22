@@ -65,6 +65,8 @@ contract PopRulesTests is BaseDotns {
 
     function test_base_reservation_blocks_others() public {
         vm.prank(owner);
+        /// casting to 'bytes32' is safe because this is safe
+        /// forge-lint: disable-next-line(unsafe-typecast)
         protocolRegistry.set(bytes32("controller"), address(this));
 
         popRules.reserveBaseName("lights01", leonardo);
@@ -86,6 +88,8 @@ contract PopRulesTests is BaseDotns {
 
     function test_price_without_check_returns_price_for_reserved() public {
         vm.prank(owner);
+        /// casting to 'bytes32' is safe because this is safe
+        /// forge-lint: disable-next-line(unsafe-typecast)
         protocolRegistry.set(bytes32("controller"), address(this));
 
         popRules.reserveBaseName("lights01", leonardo);
@@ -94,5 +98,38 @@ contract PopRulesTests is BaseDotns {
 
         assertEq(uint256(priceMetadata.status), uint256(IPopRules.PopStatus.Reserved));
         assertEq(priceMetadata.price, popRules.price("lights"));
+    }
+
+    function test_base_reservation_rolls_forward_after_expiry() public {
+        vm.prank(owner);
+        /// casting to 'bytes32' is safe because this is safe
+        /// forge-lint: disable-next-line(unsafe-typecast)
+        protocolRegistry.set(bytes32("controller"), address(this));
+
+        popRules.reserveBaseName("lights01", leonardo);
+
+        (bool isReserved, address reservationOwner, uint64 expiryTimestamp) =
+            popRules.isBaseNameReserved("lights");
+
+        assertTrue(isReserved);
+        assertEq(reservationOwner, leonardo);
+
+        vm.warp(uint256(expiryTimestamp) + 1);
+
+        popRules.reserveBaseName("lights02", tiago);
+
+        (bool rolledReserved, address rolledOwner, uint64 rolledExpiry) =
+            popRules.isBaseNameReserved("lights");
+
+        assertTrue(rolledReserved);
+        assertEq(rolledOwner, tiago);
+        assertGt(rolledExpiry, expiryTimestamp);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPopRules.PopError.selector, "Base name reserved for original Lite registrant"
+            )
+        );
+        popRules.priceWithCheck("lights", leonardo);
     }
 }

@@ -43,7 +43,7 @@ contract UpgradeProtocolRegistryForkTest is Test {
         0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
 
     function setUp() public {
-        vm.createSelectFork("paseo");
+        vm.createSelectFork("paseo_local");
 
         protocolRegistry = DotnsProtocolRegistry(PROTOCOL_REGISTRY);
         controller = DotnsRegistrarController(CONTROLLER_PROXY);
@@ -74,6 +74,11 @@ contract UpgradeProtocolRegistryForkTest is Test {
 
         resolver = DotnsResolver(resolverProxy);
         contentResolver = DotnsContentResolver(contentResolverProxy);
+
+        Options memory registrarOpts;
+        registrarOpts.referenceContract = "DotnsRegistrarOld.sol:DotnsRegistrarOld";
+        Upgrades.upgradeProxy(REGISTRAR_PROXY, "DotnsRegistrar.sol:DotnsRegistrar", "", registrarOpts);
+        registrar.updateProtocolRegistry(IDotnsProtocolRegistry(PROTOCOL_REGISTRY));
 
         Options memory controllerOpts;
         controllerOpts.referenceContract =
@@ -329,24 +334,194 @@ contract UpgradeProtocolRegistryForkTest is Test {
         assertEq(registry.owner(node), recipient);
     }
 
-    function _commitAndRegister(string memory label, address nameOwner) internal {
-        bytes32 secret = keccak256(abi.encodePacked(label, nameOwner, block.timestamp));
+    function test_dotted_label_is_rejected_post_upgrade() public {
+        vm.startPrank(OWNER);
+        _upgradeAll();
+        vm.stopPrank();
 
+        vm.expectRevert(IDotnsRegistrarController.InvalidLabel.selector);
+        controller.available("app.parity01");
+    }
+
+    function test_empty_label_is_rejected_post_upgrade() public {
+        vm.startPrank(OWNER);
+        _upgradeAll();
+        vm.stopPrank();
+
+        vm.expectRevert(IDotnsRegistrarController.InvalidLabel.selector);
+        controller.available("");
+    }
+
+    function test_third_party_cannot_overwrite_reverse_post_upgrade() public {
+        vm.startPrank(OWNER);
+        _upgradeAll();
+        vm.stopPrank();
+
+        address victim = makeAddr("reverseVictim");
+        address attacker = makeAddr("reverseAttacker");
+        vm.deal(victim, 10 ether);
+        vm.deal(attacker, 10 ether);
+
+        _commitAndRegister("forkvictim01", victim);
+        assertEq(reverseResolver.nameOf(victim), "forkvictim01.dot");
+
+        _commitAndRegisterFor("forkgifted01", attacker, victim, true);
+
+        bytes32 labelhash = keccak256(bytes("forkgifted01"));
+        bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
+
+        assertEq(registrar.ownerOf(uint256(node)), victim);
+        assertEq(reverseResolver.nameOf(victim), "forkvictim01.dot");
+    }
+
+    function test_transfer_clears_former_primary_reverse_post_upgrade() public {
+        vm.startPrank(OWNER);
+        _upgradeAll();
+        vm.stopPrank();
+
+        address sender = makeAddr("reverseSender");
+        address recipient = makeAddr("reverseRecipient");
+        vm.deal(sender, 10 ether);
+        vm.deal(recipient, 10 ether);
+
+        _commitAndRegister("forkclear01", sender);
+
+        bytes32 labelhash = keccak256(bytes("forkclear01"));
+        bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
+        uint256 tokenId = uint256(node);
+
+        assertEq(reverseResolver.nameOf(sender), "forkclear01.dot");
+
+        vm.prank(sender);
+        registrar.transferFrom(sender, recipient, tokenId);
+
+        assertEq(registrar.ownerOf(tokenId), recipient);
+        assertEq(reverseResolver.nameOf(sender), "");
+    }
+
+    function test_removed_rotation_selectors_are_not_callable_post_upgrade() public {
+        IDotnsRegistrarController previousReverseRegistrar = reverseResolver.registrarController();
+        IDotnsRegistrarController previousRegistryController = registry.registrarController();
+        address previousPopController = popRules.dotRegistryController();
+
+        vm.startPrank(OWNER);
+        _upgradeAll();
+
+        (bool reverseSuccess,) =
+            address(reverseResolver).call(
+                abi.encodeWithSignature("updateRegistrar(address)", makeAddr("newRegistrar"))
+            );
+        (bool registrySuccess,) =
+            address(registry).call(
+                abi.encodeWithSignature(
+                    "updateRegistrarController(address)", makeAddr("newController")
+                )
+            );
+        (bool popSuccess,) =
+            address(popRules).call(
+                abi.encodeWithSignature("updateDotRegistry(address)", makeAddr("newPopController"))
+            );
+
+        vm.stopPrank();
+
+        assertFalse(reverseSuccess);
+        assertFalse(registrySuccess);
+        assertFalse(popSuccess);
+
+        assertEq(address(reverseResolver.registrarController()), address(previousReverseRegistrar));
+        assertEq(address(registry.registrarController()), address(previousRegistryController));
+        assertEq(popRules.dotRegistryController(), previousPopController);
+    }
+
+    function test_expired_lite_reservation_rolls_forward_post_upgrade() public {
+        vm.startPrank(OWNER);
+        _upgradeAll();
+        vm.stopPrank();
+
+        address first = makeAddr("liteFirst");
+        address second = makeAddr("liteSecond");
+        address third = makeAddr("liteThird");
+        vm.deal(first, 10 ether);
+        vm.deal(second, 10 ether);
+        vm.deal(third, 10 ether);
+
+        vm.prank(first);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
+        _commitAndRegister("forklite01", first);
+
+        (bool firstReserved, address firstOwner, uint64 firstExpiry) =
+            popRules.isBaseNameReserved("forklite");
+
+        assertTrue(firstReserved);
+        assertEq(firstOwner, first);
+
+        vm.warp(uint256(firstExpiry) + 1);
+
+        vm.prank(second);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
+        _commitAndRegister("forklite02", second);
+
+        (bool secondReserved, address secondOwner, uint64 secondExpiry) =
+            popRules.isBaseNameReserved("forklite");
+
+        assertTrue(secondReserved);
+        assertEq(secondOwner, second);
+        assertGt(secondExpiry, firstExpiry);
+
+        vm.prank(third);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
+
+        bytes32 secret = keccak256(abi.encodePacked("forklite03", third, block.timestamp));
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: nameOwner, secret: secret, reserved: true
+                label: "forklite03", owner: third, secret: secret, reserved: true
             });
 
         bytes32 commitment = controller.makeCommitment(registration);
 
-        vm.prank(nameOwner);
+        vm.prank(third);
+        controller.commit(commitment);
+
+        vm.warp(block.timestamp + controller.minCommitmentAge() + 1);
+
+        vm.prank(third);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPopRules.PopError.selector, "Base name reserved for original Lite registrant"
+            )
+        );
+        controller.register{value: 0}(registration);
+    }
+
+    function _commitAndRegister(string memory label, address nameOwner) internal {
+        _commitAndRegisterFor(label, nameOwner, nameOwner, true);
+    }
+
+    function _commitAndRegisterFor(
+        string memory label,
+        address caller,
+        address nameOwner,
+        bool reserved
+    )
+        internal
+    {
+        bytes32 secret = keccak256(abi.encodePacked(label, nameOwner, block.timestamp));
+
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: label, owner: nameOwner, secret: secret, reserved: reserved
+            });
+
+        bytes32 commitment = controller.makeCommitment(registration);
+
+        vm.prank(caller);
         controller.commit(commitment);
 
         vm.warp(block.timestamp + controller.minCommitmentAge() + 1);
 
         IPopRules.PriceWithMeta memory priced = popRules.priceWithCheck(label, nameOwner);
 
-        vm.prank(nameOwner);
+        vm.prank(caller);
         controller.register{value: priced.price}(registration);
     }
 }

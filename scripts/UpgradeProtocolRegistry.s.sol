@@ -9,6 +9,7 @@ import {
     IDotnsProtocolRegistry
 } from "../contracts/registry/DotnsProtocolRegistry.sol";
 import {DotnsRegistry} from "../contracts/registry/DotnsRegistry.sol";
+import {DotnsRegistrar} from "../contracts/registrars/DotnsRegistrar.sol";
 import {DotnsRegistrarController} from "../contracts/registrars/DotnsRegistrarController.sol";
 import {DotnsReverseResolver} from "../contracts/resolvers/DotnsReverseResolver.sol";
 import {DotnsResolver} from "../contracts/resolvers/DotnsResolver.sol";
@@ -42,7 +43,21 @@ contract UpgradeProtocolRegistry is Script {
         // ProtocolRegistry is NOT upgraded -- it is a generic key-value store
         // and new keys (resolver, contentResolver) are set via existing set().
 
-        // 1. Upgrade DotnsRegistrarController
+        // 1. Upgrade DotnsRegistrar
+        // forge-lint: disable-next-line(unsafe-typecast)
+        address registrarProxy = protocolRegistry.get(bytes32("registrar"));
+
+        Options memory registrarOpts;
+        registrarOpts.referenceContract = "DotnsRegistrarOld.sol:DotnsRegistrarOld";
+        Upgrades.upgradeProxy(
+            registrarProxy, "DotnsRegistrar.sol:DotnsRegistrar", "", registrarOpts
+        );
+        DotnsRegistrar(registrarProxy).updateProtocolRegistry(
+            IDotnsProtocolRegistry(PROTOCOL_REGISTRY)
+        );
+        console.log("Registrar upgraded. Version:", DotnsRegistrar(registrarProxy).version());
+
+        // 2. Upgrade DotnsRegistrarController
         Options memory controllerOpts;
         controllerOpts.referenceContract =
             "DotnsRegistrarControllerOld.sol:DotnsRegistrarControllerOld";
@@ -60,7 +75,7 @@ contract UpgradeProtocolRegistry is Script {
             DotnsRegistrarController(CONTROLLER_PROXY).version()
         );
 
-        // 2. Upgrade DotnsRegistry
+        // 3. Upgrade DotnsRegistry
         Options memory registryOpts;
         registryOpts.referenceContract = "DotnsRegistryOld.sol:DotnsRegistryOld";
         Upgrades.upgradeProxy(
@@ -71,7 +86,7 @@ contract UpgradeProtocolRegistry is Script {
         );
         console.log("Registry upgraded. Version:", DotnsRegistry(registryProxy).version());
 
-        // 3. Upgrade DotnsReverseResolver
+        // 4. Upgrade DotnsReverseResolver
         Options memory reverseOpts;
         reverseOpts.referenceContract = "DotnsReverseResolverOld.sol:DotnsReverseResolverOld";
         Upgrades.upgradeProxy(
@@ -88,7 +103,7 @@ contract UpgradeProtocolRegistry is Script {
             DotnsReverseResolver(reverseResolverProxy).version()
         );
 
-        // 4. Upgrade PopRules
+        // 5. Upgrade PopRules
         Options memory popOpts;
         popOpts.referenceContract = "PopRulesOld.sol:PopRulesOld";
         Upgrades.upgradeProxy(popRulesProxy, "PopRules.sol:PopRules", "", popOpts);
@@ -97,7 +112,7 @@ contract UpgradeProtocolRegistry is Script {
         );
         console.log("PopRules upgraded. Version:", PopRules(popRulesProxy).version());
 
-        // 5. Upgrade DotnsResolver
+        // 6. Upgrade DotnsResolver
         Options memory resolverOpts;
         resolverOpts.referenceContract = "DotnsResolverOld.sol:DotnsResolverOld";
         Upgrades.upgradeProxy(
@@ -110,7 +125,7 @@ contract UpgradeProtocolRegistry is Script {
             "Resolver upgraded. Version:", DotnsResolver(resolverProxy).version()
         );
 
-        // 6. Upgrade DotnsContentResolver
+        // 7. Upgrade DotnsContentResolver
         Options memory contentOpts;
         contentOpts.referenceContract = "DotnsContentResolverOld.sol:DotnsContentResolverOld";
         Upgrades.upgradeProxy(

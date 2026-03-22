@@ -139,19 +139,16 @@ contract PopRules is
         string memory strippedBase = _stripDigits(name);
 
         Reservation memory existingReservation = reservations[strippedBase];
-        if (existingReservation.owner == address(0)) {
+        if (
+            existingReservation.owner == address(0)
+                || existingReservation.expires <= block.timestamp
+        ) {
             // casting to 'uint64' is safe because MAX_RESERVATION_TIME will never be large enough to cause a revert
             // forge-lint: disable-next-line(unsafe-typecast)
             uint64 expiryTime = uint64(block.timestamp + MAX_RESERVATION_TIME);
             reservations[strippedBase] = Reservation({owner: userAddress, expires: expiryTime});
             emit BaseNameReserved(strippedBase, userAddress, expiryTime);
         }
-    }
-
-    /// @inheritdoc IPopRules
-    function updateDotRegistry(address newRegistry) external override onlyOwner {
-        emit RegistryUpdated(dotRegistryController, newRegistry);
-        dotRegistryController = newRegistry;
     }
 
     /// @inheritdoc IPopRules

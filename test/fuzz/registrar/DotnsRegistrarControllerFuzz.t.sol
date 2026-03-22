@@ -152,6 +152,63 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         assertTrue(recipientStore.isLocked(recipient, storeKey));
     }
 
+    function testFuzz_third_party_registration_does_not_overwrite_owner_reverse(uint256 salt) public {
+        address payer = leonardo;
+        address nameOwner = ed;
+        uint256 primarySalt = bound(salt, 0, 63);
+        string memory primaryName = _labelPopfull(primarySalt);
+
+        vm.prank(nameOwner);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+
+        IDotnsRegistrarController.Registration memory primaryRegistration =
+            _commitFor(primaryName, nameOwner, true);
+
+        vm.prank(nameOwner);
+        dotnsRegistrarController.register{value: 0}(primaryRegistration);
+
+        assertEq(dotnsReverseResolver.nameOf(nameOwner), string.concat(primaryName, ".dot"));
+
+        string memory giftedName = _labelNoStatusPriced(primarySalt + 1);
+
+        vm.prank(payer);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+
+        IDotnsRegistrarController.Registration memory giftedRegistration =
+            _commitFor(giftedName, nameOwner, true, payer);
+
+        vm.prank(payer);
+        dotnsRegistrarController.register{value: 0}(giftedRegistration);
+
+        assertEq(dotnsReverseResolver.nameOf(nameOwner), string.concat(primaryName, ".dot"));
+    }
+
+    function testFuzz_transfer_clears_sender_primary_reverse(uint256 salt) public {
+        address sender = ed;
+        address recipient = leonardo;
+        string memory nameLabel = _labelPopfull(bound(salt, 0, 64));
+
+        vm.prank(sender);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+
+        IDotnsRegistrarController.Registration memory registration =
+            _commitFor(nameLabel, sender, true);
+
+        vm.prank(sender);
+        dotnsRegistrarController.register{value: 0}(registration);
+
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 node = _namehash(dotNode, labelhash);
+        uint256 tokenId = uint256(node);
+
+        assertEq(dotnsReverseResolver.nameOf(sender), string.concat(nameLabel, ".dot"));
+
+        vm.prank(sender);
+        dotnsRegistrar.transferFrom(sender, recipient, tokenId);
+
+        assertEq(dotnsReverseResolver.nameOf(sender), "");
+    }
+
     function _commitFor(
         string memory nameLabel,
         address nameOwner,

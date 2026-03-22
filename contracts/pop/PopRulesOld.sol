@@ -56,7 +56,7 @@ contract PopRulesOld is
 
     function reserveBaseName(string calldata, address) external override {}
 
-    function updateDotRegistry(address newRegistry) external override onlyOwner {
+    function updateDotRegistry(address newRegistry) external onlyOwner {
         dotRegistryController = newRegistry;
     }
 

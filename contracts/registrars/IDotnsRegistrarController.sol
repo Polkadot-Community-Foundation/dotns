@@ -81,6 +81,9 @@ interface IDotnsRegistrarController {
     /// @param label Label supplied by the caller.
     error NameNotAvailable(string label);
 
+    /// @notice Thrown when a label is not a single DNS label.
+    error InvalidLabel();
+
     /// @notice Thrown when supplied payment is insufficient.
     error InsufficientValue();
 

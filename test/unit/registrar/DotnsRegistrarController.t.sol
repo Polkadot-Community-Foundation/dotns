@@ -24,6 +24,16 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         assertFalse(dotnsRegistrarController.available("longnamehere01"));
     }
 
+    function test_available_reverts_for_dotted_label() public {
+        vm.expectRevert(IDotnsRegistrarController.InvalidLabel.selector);
+        dotnsRegistrarController.available("app.parity01");
+    }
+
+    function test_available_reverts_for_empty_label() public {
+        vm.expectRevert(IDotnsRegistrarController.InvalidLabel.selector);
+        dotnsRegistrarController.available("");
+    }
+
     function test_commit_sets_timestamp() public {
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
@@ -120,6 +130,35 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         (bool isReserved, address reservationOwner,) = popRules.isBaseNameReserved("lights");
         assertTrue(isReserved);
         assertEq(reservationOwner, nameOwner);
+    }
+
+    function test_register_does_not_overwrite_third_party_reverse_record() public {
+        string memory victimLabel = "victimname01";
+        string memory giftedLabel = "hijackname01";
+
+        _register(victimLabel, tiago, IPopRules.PopStatus.NoStatus);
+        assertEq(dotnsReverseResolver.nameOf(tiago), "victimname01.dot");
+
+        bytes32 secret = keccak256(abi.encodePacked(giftedLabel, tiago, ed, block.timestamp));
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: giftedLabel, owner: tiago, secret: secret, reserved: true
+            });
+
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
+
+        vm.prank(ed);
+        dotnsRegistrarController.commit(commitment);
+
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+
+        uint256 price = popRules.priceWithCheck(giftedLabel, tiago).price;
+
+        vm.prank(ed);
+        dotnsRegistrarController.register{value: price}(registration);
+
+        assertEq(dotnsRegistrar.ownerOf(_tokenIdForLabel(giftedLabel)), tiago);
+        assertEq(dotnsReverseResolver.nameOf(tiago), "victimname01.dot");
     }
 
     function test_registerreserved_writes_to_store() public {
@@ -275,6 +314,30 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         vm.stopPrank();
     }
 
+    function test_register_reverts_for_dotted_label() public {
+        string memory nameLabel = "app.parity01";
+        address nameOwner = ed;
+
+        vm.startPrank(nameOwner);
+
+        bytes32 secret = keccak256(abi.encodePacked(nameLabel, nameOwner, "dotted"));
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: nameLabel, owner: nameOwner, secret: secret, reserved: false
+            });
+
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
+        dotnsRegistrarController.commit(commitment);
+
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+
+        uint256 price = popRules.priceWithCheck(nameLabel, nameOwner).price;
+
+        vm.expectRevert(IDotnsRegistrarController.InvalidLabel.selector);
+        dotnsRegistrarController.register{value: price}(registration);
+        vm.stopPrank();
+    }
+
     function test_transfer_writes_label_and_creates_store() public {
         string memory nameLabel = "alicetransfer01";
 
@@ -322,6 +385,21 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         assertTrue(edStore.isLocked(ed, storeKey));
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
+    }
+
+    function test_transfer_clears_primary_reverse_name_when_current_name_is_moved() public {
+        string memory nameLabel = "primarymove01";
+
+        _register(nameLabel, ed, IPopRules.PopStatus.PopFull);
+
+        uint256 tokenId = _tokenIdForLabel(nameLabel);
+        assertEq(dotnsReverseResolver.nameOf(ed), "primarymove01.dot");
+
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), leonardo);
+        assertEq(dotnsReverseResolver.nameOf(ed), "");
     }
 
     function test_mint_does_not_trigger_store_write() public {
@@ -484,6 +562,20 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         vm.prank(ed);
         vm.expectRevert(abi.encodeWithSelector(IDotnsRegistrar.LabelAlreadySet.selector, tokenId));
+        dotnsRegistrar.syncLabel(tokenId, nameLabel);
+    }
+
+    function test_syncLabel_reverts_for_dotted_label() public {
+        string memory nameLabel = "nested.label";
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 node = keccak256(abi.encodePacked(dotNode, labelhash));
+        uint256 tokenId = uint256(node);
+
+        vm.prank(address(dotnsRegistrarController));
+        dotnsRegistrar.register(tokenId, ed, "");
+
+        vm.prank(ed);
+        vm.expectRevert(IDotnsRegistrar.InvalidLabel.selector);
         dotnsRegistrar.syncLabel(tokenId, nameLabel);
     }
 

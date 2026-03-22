@@ -62,7 +62,6 @@ contract DotnsRegistryOld is Initializable, UUPSUpgradeable, OwnableUpgradeable,
 
     function updateRegistrarController(IDotnsRegistrarController newRegistrarController)
         external
-        override
         onlyOwner
     {
         registrarController = newRegistrarController;

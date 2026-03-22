@@ -35,11 +35,6 @@ interface IPopRules {
     /// @param expires Timestamp when the reservation expires
     event BaseNameReserved(string indexed baseName, address indexed owner, uint64 expires);
 
-    /// @notice Emitted when the registry is updated
-    /// @param oldReg Currently set registry address
-    /// @param newReg New address to set
-    event RegistryUpdated(address indexed oldReg, address indexed newReg);
-
     /// @notice Emitted when a user's PoP status is updated
     /// @dev This is temporary until we have a Precompile for accessing PoP status
     /// @param user Address of the user
@@ -147,10 +142,6 @@ interface IPopRules {
     /// @param name The name to check
     /// @return isBase stating if the name is base or not
     function isBaseName(string calldata name) external pure returns (bool isBase);
-
-    /// @notice allows the Owner to update the dot registry
-    /// @param dotRegistry the address of the new registry
-    function updateDotRegistry(address dotRegistry) external;
 
     /// @notice Sets the Proof-of-Personhood (PoP) tier for the caller's profile
     /// @param status The PoP tier to assign to the user (NoStatus, PopLite, or PopFull)
