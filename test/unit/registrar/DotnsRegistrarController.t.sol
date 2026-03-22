@@ -331,10 +331,8 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
 
-        uint256 price = popRules.priceWithCheck(nameLabel, nameOwner).price;
-
         vm.expectRevert(IDotnsRegistrarController.InvalidLabel.selector);
-        dotnsRegistrarController.register{value: price}(registration);
+        dotnsRegistrarController.register{value: 0}(registration);
         vm.stopPrank();
     }
 
@@ -567,6 +565,20 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
     function test_syncLabel_reverts_for_dotted_label() public {
         string memory nameLabel = "nested.label";
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 node = keccak256(abi.encodePacked(dotNode, labelhash));
+        uint256 tokenId = uint256(node);
+
+        vm.prank(address(dotnsRegistrarController));
+        dotnsRegistrar.register(tokenId, ed, "");
+
+        vm.prank(ed);
+        vm.expectRevert(IDotnsRegistrar.InvalidLabel.selector);
+        dotnsRegistrar.syncLabel(tokenId, nameLabel);
+    }
+
+    function test_syncLabel_reverts_for_uppercase_label() public {
+        string memory nameLabel = "Synclabel05";
         bytes32 labelhash = keccak256(bytes(nameLabel));
         bytes32 node = keccak256(abi.encodePacked(dotNode, labelhash));
         uint256 tokenId = uint256(node);

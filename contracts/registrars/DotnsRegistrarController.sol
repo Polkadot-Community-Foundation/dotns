@@ -320,7 +320,7 @@ contract DotnsRegistrarController is
         returns (bytes32 labelhash, bytes32 node)
     {
         require(label.isSingleLabel(), InvalidLabel());
-        require(label.strlen() >= 3, NameNotAvailable(label));
+        require(bytes(label).length >= 3, NameNotAvailable(label));
         labelhash = _labelhash(label);
         node = _namehash(labelhash);
     }
@@ -383,7 +383,9 @@ contract DotnsRegistrarController is
         bytes32 storeKey = _storeKey(labelhash);
         store.setValueFor(registration.owner, storeKey, string.concat(registration.label, ".dot"));
 
-        emit NameRegistered(registration.label, labelhash, registration.owner, baseCost, address(store));
+        emit NameRegistered(
+            registration.label, labelhash, registration.owner, baseCost, address(store)
+        );
     }
 
     /// @notice Computes keccak256("dotns.registered", labelhash).

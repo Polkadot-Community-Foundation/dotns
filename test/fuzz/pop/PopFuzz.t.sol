@@ -90,7 +90,9 @@ contract PopRulesFuzzTest is BaseDotns {
         assertEq(priceMetadata.price, popRules.price(nameLabel));
     }
 
-    function testFuzz_expired_reservation_rolls_forward_to_next_lite_registrant(uint256 seed) public {
+    function testFuzz_expired_reservation_rolls_forward_to_next_lite_registrant(uint256 seed)
+        public
+    {
         string memory baseName = _makeAlpha(seed, 6);
         string memory firstName = string(abi.encodePacked(baseName, "01"));
         string memory secondName = string(abi.encodePacked(baseName, "02"));
@@ -117,6 +119,18 @@ contract PopRulesFuzzTest is BaseDotns {
         assertTrue(rolledReserved);
         assertEq(rolledOwner, tiago);
         assertGt(rolledExpiry, firstExpiry);
+    }
+
+    function testFuzz_mixed_case_names_are_rejected(uint256 seed) public {
+        bytes memory baseName = bytes(_makeAlpha(seed, 6));
+        baseName[0] = bytes1(uint8(baseName[0]) - 32);
+        string memory mixedCaseName = string(abi.encodePacked(string(baseName), "01"));
+
+        vm.prank(ed);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
+
+        vm.expectRevert();
+        popRules.priceWithCheck(mixedCaseName, ed);
     }
 
     function _makeAlpha(uint256 seed, uint256 length) internal pure returns (string memory) {

@@ -68,7 +68,7 @@ interface IDotnsRegistry {
     /// @param subnode The derived node identifier that already exists.
     error NodeAlreadyExists(bytes32 subnode);
 
-    /// @notice Thrown when a sublabel is not a single DNS label.
+    /// @notice Thrown when a sublabel is not a canonical lowercase ASCII DNS label.
     error InvalidLabel();
 
     /// @notice Thrown when the supplied parent label does not match the parent node.

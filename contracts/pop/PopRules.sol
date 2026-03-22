@@ -96,29 +96,8 @@ contract PopRules is
         override
         returns (PopStatus requirement, string memory message)
     {
-        uint256 totallength = name.strlen();
-        uint256 trailingDigits = _countTrailingDigits(name);
-
-        require(trailingDigits <= 2, PopError("Name can have maximum 2 digit suffix"));
-
-        uint256 baselength = totallength - trailingDigits;
-
-        if (baselength <= 5) {
-            return (PopStatus.Reserved, "Reserved for Governance");
-        }
-
-        if (baselength >= 6 && baselength <= 8) {
-            if (trailingDigits == 2) {
-                return (PopStatus.PopLite, "Requires Light personhood verification");
-            }
-            return (PopStatus.PopFull, "Requires Full personhood verification");
-        }
-
-        if (trailingDigits == 2) {
-            return (PopStatus.NoStatus, "Available to all");
-        }
-
-        return (PopStatus.PopFull, "Requires Full personhood verification");
+        _requireCanonicalLabel(name);
+        return _classifyValidatedName(name);
     }
 
     /// @inheritdoc IPopRules
@@ -130,7 +109,9 @@ contract PopRules is
         override
         onlyRegistry
     {
-        (PopStatus requiredStatus,) = classifyName(name);
+        _requireCanonicalLabel(name);
+
+        (PopStatus requiredStatus,) = _classifyValidatedName(name);
         require(
             requiredStatus == PopStatus.PopLite,
             PopError("Base reservation requires a lite-eligible name")
@@ -153,6 +134,7 @@ contract PopRules is
 
     /// @inheritdoc IPopRules
     function isBaseName(string calldata baseName) public pure override returns (bool isBase) {
+        _requireCanonicalLabel(baseName);
         uint256 digits = _countTrailingDigits(baseName);
         return digits == 0;
     }
@@ -164,6 +146,7 @@ contract PopRules is
         override
         returns (address reservationOwner, uint64 expiryTimestamp)
     {
+        _requireCanonicalLabel(baseName);
         Reservation memory reserved = reservations[baseName];
         return (reserved.owner, reserved.expires);
     }
@@ -175,6 +158,7 @@ contract PopRules is
         override
         returns (bool isReserved, address reservationOwner, uint64 expiryTimestamp)
     {
+        _requireCanonicalLabel(baseName);
         Reservation memory reservation = reservations[baseName];
         if (reservation.owner != address(0) && reservation.expires > block.timestamp) {
             return (true, reservation.owner, reservation.expires);
@@ -192,12 +176,14 @@ contract PopRules is
         override
         returns (PriceWithMeta memory metadata)
     {
+        _requireCanonicalLabel(name);
         _enforceReservationRules(name, userAddress);
 
-        (PopStatus requiredStatus, string memory classification) = classifyName(name);
+        (PopStatus requiredStatus, string memory classification) = _classifyValidatedName(name);
         PopStatus userStatus = userPopStatus[userAddress];
 
-        metadata.price = userStatus == PopStatus.NoStatus ? price(name) : 0;
+        metadata.price =
+            userStatus == PopStatus.NoStatus ? _priceValidatedName(bytes(name).length) : 0;
         metadata.status = requiredStatus;
         metadata.userStatus = userStatus;
         metadata.message = classification;
@@ -234,10 +220,13 @@ contract PopRules is
         override
         returns (PriceWithMeta memory metadata)
     {
-        (PopStatus requiredStatus, string memory classification) = classifyName(name);
+        _requireCanonicalLabel(name);
+
+        (PopStatus requiredStatus, string memory classification) = _classifyValidatedName(name);
         PopStatus userStatus = userPopStatus[userAddress];
 
-        metadata.price = userStatus == PopStatus.NoStatus ? price(name) : 0;
+        metadata.price =
+            userStatus == PopStatus.NoStatus ? _priceValidatedName(bytes(name).length) : 0;
         metadata.status = requiredStatus;
         metadata.userStatus = userStatus;
         metadata.message = classification;
@@ -258,7 +247,11 @@ contract PopRules is
 
     /// @inheritdoc IPopRules
     function price(string calldata name) public view override returns (uint256) {
-        uint256 namelength = name.strlen();
+        _requireCanonicalLabel(name);
+        return _priceValidatedName(bytes(name).length);
+    }
+
+    function _priceValidatedName(uint256 namelength) internal view returns (uint256 priceValue) {
         if (namelength < 9) {
             return 0;
         }
@@ -325,6 +318,40 @@ contract PopRules is
         }
 
         return string(output);
+    }
+
+    function _classifyValidatedName(string calldata name)
+        internal
+        pure
+        returns (PopStatus requirement, string memory message)
+    {
+        uint256 totallength = bytes(name).length;
+        uint256 trailingDigits = _countTrailingDigits(name);
+
+        require(trailingDigits <= 2, PopError("Name can have maximum 2 digit suffix"));
+
+        uint256 baselength = totallength - trailingDigits;
+
+        if (baselength <= 5) {
+            return (PopStatus.Reserved, "Reserved for Governance");
+        }
+
+        if (baselength >= 6 && baselength <= 8) {
+            if (trailingDigits == 2) {
+                return (PopStatus.PopLite, "Requires Light personhood verification");
+            }
+            return (PopStatus.PopFull, "Requires Full personhood verification");
+        }
+
+        if (trailingDigits == 2) {
+            return (PopStatus.NoStatus, "Available to all");
+        }
+
+        return (PopStatus.PopFull, "Requires Full personhood verification");
+    }
+
+    function _requireCanonicalLabel(string calldata name) internal pure {
+        require(name.isSingleLabel(), PopError("Name must be lowercase ASCII DNS label"));
     }
 
     /// @inheritdoc ERC165Upgradeable

@@ -221,6 +221,32 @@ contract DotnsRegistryTests is BaseDotns {
         dotnsRegistry.setSubnodeOwner(subnodeRecord);
     }
 
+    function test_revert_subnode_owner_with_uppercase_sublabel() public {
+        string memory parentLabel = "parentnode09";
+        bytes32 parentNode = _register(parentLabel, owner, IPopRules.PopStatus.NoStatus);
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "Docs", parentLabel: parentLabel, owner: ed
+        });
+
+        vm.prank(owner);
+        vm.expectRevert(IDotnsRegistry.InvalidLabel.selector);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
+    }
+
+    function test_revert_subnode_owner_with_uppercase_parent_label() public {
+        string memory parentLabel = "parentnode10";
+        bytes32 parentNode = _register(parentLabel, owner, IPopRules.PopStatus.NoStatus);
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "docs", parentLabel: "Parentnode10", owner: ed
+        });
+
+        vm.prank(owner);
+        vm.expectRevert(IDotnsRegistry.ParentLabelMismatch.selector);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
+    }
+
     function test_same_sublabel_under_different_parents_owned_by_same_address() public {
         string memory parentLabelA = "alphaomega";
         string memory parentLabelB = "bravobro";

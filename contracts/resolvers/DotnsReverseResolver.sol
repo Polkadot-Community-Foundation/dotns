@@ -102,8 +102,7 @@ contract DotnsReverseResolver is
         address controller = protocolRegistry.get(KEY_CONTROLLER);
         address registrar = protocolRegistry.get(KEY_REGISTRAR);
         require(
-            msg.sender == controller || msg.sender == registrar,
-            NotRegistrarController(msg.sender)
+            msg.sender == controller || msg.sender == registrar, NotRegistrarController(msg.sender)
         );
     }
 

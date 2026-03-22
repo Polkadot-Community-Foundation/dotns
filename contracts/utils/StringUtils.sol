@@ -38,11 +38,41 @@ library StringUtils {
 
     function isSingleLabel(string calldata s) internal pure returns (bool isValid) {
         bytes calldata label = bytes(s);
-        uint256 length = label.length;
+        return _isDnsLabel(label, 0, label.length);
+    }
+
+    function isNamePath(string calldata s) internal pure returns (bool isValid) {
+        bytes calldata path = bytes(s);
+        uint256 length = path.length;
         if (length == 0) return false;
 
+        uint256 start;
         for (uint256 i = 0; i < length; ++i) {
-            if (label[i] == bytes1(0x2e)) return false;
+            if (path[i] != bytes1(0x2e)) continue;
+            if (!_isDnsLabel(path, start, i)) return false;
+            start = i + 1;
+        }
+
+        return _isDnsLabel(path, start, length);
+    }
+
+    function _isDnsLabel(
+        bytes calldata label,
+        uint256 start,
+        uint256 end
+    )
+        private
+        pure
+        returns (bool isValid)
+    {
+        if (end <= start) return false;
+        if (label[start] == bytes1(0x2d) || label[end - 1] == bytes1(0x2d)) return false;
+
+        for (uint256 i = start; i < end; ++i) {
+            bytes1 char = label[i];
+            bool isLowercase = char >= 0x61 && char <= 0x7a;
+            bool isDigit = char >= 0x30 && char <= 0x39;
+            if (!(isLowercase || isDigit || char == bytes1(0x2d))) return false;
         }
 
         return true;

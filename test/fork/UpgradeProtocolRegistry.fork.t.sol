@@ -77,7 +77,9 @@ contract UpgradeProtocolRegistryForkTest is Test {
 
         Options memory registrarOpts;
         registrarOpts.referenceContract = "DotnsRegistrarOld.sol:DotnsRegistrarOld";
-        Upgrades.upgradeProxy(REGISTRAR_PROXY, "DotnsRegistrar.sol:DotnsRegistrar", "", registrarOpts);
+        Upgrades.upgradeProxy(
+            REGISTRAR_PROXY, "DotnsRegistrar.sol:DotnsRegistrar", "", registrarOpts
+        );
         registrar.updateProtocolRegistry(IDotnsProtocolRegistry(PROTOCOL_REGISTRY));
 
         Options memory controllerOpts;
@@ -352,6 +354,45 @@ contract UpgradeProtocolRegistryForkTest is Test {
         controller.available("");
     }
 
+    function test_case_variant_lite_base_registration_is_rejected_post_upgrade() public {
+        vm.startPrank(OWNER);
+        _upgradeAll();
+        vm.stopPrank();
+
+        address first = makeAddr("caseLiteFirst");
+        address second = makeAddr("caseLiteSecond");
+        vm.deal(first, 10 ether);
+        vm.deal(second, 10 ether);
+
+        vm.prank(first);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
+        _commitAndRegister("forkcase01", first);
+
+        (bool isReserved, address reservationOwner,) = popRules.isBaseNameReserved("forkcase");
+        assertTrue(isReserved);
+        assertEq(reservationOwner, first);
+
+        vm.prank(second);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
+
+        bytes32 secret = keccak256(abi.encodePacked("Forkcase02", second, block.timestamp));
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: "Forkcase02", owner: second, secret: secret, reserved: true
+            });
+
+        bytes32 commitment = controller.makeCommitment(registration);
+
+        vm.prank(second);
+        controller.commit(commitment);
+
+        vm.warp(block.timestamp + controller.minCommitmentAge() + 1);
+
+        vm.prank(second);
+        vm.expectRevert(IDotnsRegistrarController.InvalidLabel.selector);
+        controller.register{value: 0}(registration);
+    }
+
     function test_third_party_cannot_overwrite_reverse_post_upgrade() public {
         vm.startPrank(OWNER);
         _upgradeAll();
@@ -407,18 +448,16 @@ contract UpgradeProtocolRegistryForkTest is Test {
         vm.startPrank(OWNER);
         _upgradeAll();
 
-        (bool reverseSuccess,) =
-            address(reverseResolver).call(
-                abi.encodeWithSignature("updateRegistrar(address)", makeAddr("newRegistrar"))
-            );
-        (bool registrySuccess,) =
-            address(registry).call(
+        (bool reverseSuccess,) = address(reverseResolver)
+            .call(abi.encodeWithSignature("updateRegistrar(address)", makeAddr("newRegistrar")));
+        (bool registrySuccess,) = address(registry)
+            .call(
                 abi.encodeWithSignature(
                     "updateRegistrarController(address)", makeAddr("newController")
                 )
             );
-        (bool popSuccess,) =
-            address(popRules).call(
+        (bool popSuccess,) = address(popRules)
+            .call(
                 abi.encodeWithSignature("updateDotRegistry(address)", makeAddr("newPopController"))
             );
 

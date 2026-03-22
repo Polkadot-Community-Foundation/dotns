@@ -140,8 +140,10 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
 
         bytes32 parentNode = record.parentNode;
         string calldata subLabel = record.subLabel;
+        string calldata parentLabel = record.parentLabel;
         require(subLabel.isSingleLabel(), InvalidLabel());
-        require(_parentNamehash(record.parentLabel) == parentNode, ParentLabelMismatch());
+        require(parentLabel.isNamePath(), ParentLabelMismatch());
+        require(_parentNamehash(parentLabel) == parentNode, ParentLabelMismatch());
 
         bytes32 labelhash = _labelhash(subLabel);
         subnode = _namehash(parentNode, labelhash);
@@ -152,7 +154,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         records[subnode] = Record({owner: newOwner, resolver: _reverseResolver, exists: true});
 
         _writeSubnodeToStore(
-            record.owner, subnode, string.concat(record.subLabel, ".", record.parentLabel, ".dot")
+            record.owner, subnode, string.concat(subLabel, ".", parentLabel, ".dot")
         );
 
         emit NewOwner(parentNode, labelhash, newOwner);

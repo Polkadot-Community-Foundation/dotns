@@ -152,7 +152,9 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         assertTrue(recipientStore.isLocked(recipient, storeKey));
     }
 
-    function testFuzz_third_party_registration_does_not_overwrite_owner_reverse(uint256 salt) public {
+    function testFuzz_third_party_registration_does_not_overwrite_owner_reverse(uint256 salt)
+        public
+    {
         address payer = leonardo;
         address nameOwner = ed;
         uint256 primarySalt = bound(salt, 0, 63);
