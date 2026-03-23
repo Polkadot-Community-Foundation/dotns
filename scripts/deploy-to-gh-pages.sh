@@ -8,8 +8,8 @@ DESTINATION_DIR="$2"
 MAX_RETRIES=5
 RETRY_DELAY=3
 
-git config user.name "github-actions[bot]"
-git config user.email "github-actions[bot]@users.noreply.github.com"
+git config --global user.name "github-actions[bot]"
+git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
 for attempt in $(seq 1 $MAX_RETRIES); do
     rm -rf /tmp/gh-pages
