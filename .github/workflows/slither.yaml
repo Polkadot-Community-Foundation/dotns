@@ -66,14 +66,12 @@ jobs:
 
       - name: Deploy to GitHub Pages
         if: steps.run.outputs.has_details == 'true'
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: gh-pages
-          publish_dir: .
-          destination_dir: ${{ steps.path.outputs.target }}
-          include_files: "slither-report.html"
-          keep_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/deploy
+          cp slither-report.html /tmp/deploy/
+          bash scripts/deploy-to-gh-pages.sh /tmp/deploy ${{ steps.path.outputs.target }}
 
       - uses: actions/upload-artifact@v4
         if: always()

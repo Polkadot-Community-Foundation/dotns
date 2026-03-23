@@ -17,8 +17,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Only include actual protocol contracts in the report.
-# Test helpers, OpenZeppelin internals, and handler contracts are excluded.
 PROTOCOL_CONTRACTS = {
     "StoreFactory",
     "Store",
@@ -69,13 +67,8 @@ def parse_gas_report(raw_output):
     current_contract = None
     parsing_functions = False
 
-    # Matches lines like: | contracts/store/StoreFactory.sol:StoreFactory Contract |
     contract_header_pattern = re.compile(r"^\|?\s*contracts/[^:]+:(\w+)\s+Contract")
-
-    # Matches deployment cost lines: | 1052780 | 4654 | | | | |
     deployment_pattern = re.compile(r"^\|\s*(\d+)\s*\|\s*(\d+)\s*\|")
-
-    # Matches function gas lines: | deploy | 23434 | 703495 | 757547 | 774647 | 12 |
     function_pattern = re.compile(
         r"^\|\s*(\w+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|"
     )
@@ -83,14 +76,12 @@ def parse_gas_report(raw_output):
     for line in raw_output.splitlines():
         stripped = line.strip()
 
-        # Table boundary markers end the current contract section
         if stripped.startswith("╰") or stripped.startswith("Ran ") or stripped == "":
             if parsing_functions:
                 current_contract = None
                 parsing_functions = False
             continue
 
-        # Check for a new contract section
         contract_match = contract_header_pattern.match(line)
         if contract_match:
             contract_name = contract_match.group(1)
@@ -109,19 +100,16 @@ def parse_gas_report(raw_output):
         if current_contract is None:
             continue
 
-        # Check for deployment cost (appears before the function table)
         deployment_match = deployment_pattern.match(line)
         if deployment_match and not parsing_functions:
             contracts[current_contract]["deployment_cost"] = int(deployment_match.group(1))
             contracts[current_contract]["deployment_size"] = int(deployment_match.group(2))
             continue
 
-        # The "Function Name" header row signals the start of function data
         if "Function Name" in line:
             parsing_functions = True
             continue
 
-        # Parse individual function gas rows
         function_match = function_pattern.match(line)
         if function_match and parsing_functions:
             function_name = function_match.group(1)
@@ -145,8 +133,6 @@ def generate_html(main_contracts, current_contracts):
     empty_function = {"min": 0, "avg": 0, "median": 0, "max": 0, "calls": 0}
 
     lines = []
-
-    # HTML head with Tailwind
     lines.append('<!DOCTYPE html><html lang="en" class="dark"><head><meta charset="utf-8">')
     lines.append('<meta name="viewport" content="width=device-width,initial-scale=1">')
     lines.append("<title>DotNS Gas Report</title>")
@@ -156,13 +142,11 @@ def generate_html(main_contracts, current_contracts):
     lines.append('<body class="bg-gray-950 text-gray-300 min-h-screen">')
     lines.append('<div class="max-w-6xl mx-auto px-4 py-8">')
 
-    # Page header
     lines.append('<div class="mb-8">')
     lines.append('<h1 class="text-2xl font-bold text-white mb-1">DotNS Gas Report</h1>')
     lines.append(f'<p class="text-sm text-gray-500">Generated {timestamp} | {len(all_contract_names)} contracts</p>')
     lines.append("</div>")
 
-    # One card per contract
     for contract_name in all_contract_names:
         main_contract = main_contracts.get(contract_name, empty_contract)
         current_contract = current_contracts.get(contract_name, empty_contract)
@@ -177,17 +161,13 @@ def generate_html(main_contracts, current_contracts):
             set(list(main_contract["functions"].keys()) + list(current_contract["functions"].keys()))
         )
 
-        # Contract card wrapper
         lines.append('<div class="mb-6 bg-gray-900 border border-gray-800 rounded-lg">')
-
-        # Contract header with deployment cost
         lines.append('<div class="px-4 py-3 border-b border-gray-800 flex items-center justify-between">')
         lines.append(f'<span class="font-semibold text-white">{contract_name}</span>')
         lines.append(f'<span class="text-xs text-gray-500">Deploy: {current_deploy_cost:,} <span class="{deploy_color}">({deploy_sign}{deploy_diff:,})</span></span>')
         lines.append("</div>")
 
         if all_function_names:
-            # Function gas table
             lines.append('<div class="overflow-x-auto"><table class="w-full text-sm">')
             lines.append('<thead><tr class="border-b border-gray-800">')
             lines.append('<th class="py-2 px-3 text-left font-semibold text-gray-400">Function</th>')
@@ -356,8 +336,6 @@ def run_local_mode():
 
 if __name__ == "__main__":
     if len(sys.argv) == 3:
-        # CI mode: python3 scripts/gas-report.py main-gas-report.txt pr-gas-report.txt
         run_ci_mode(sys.argv[1], sys.argv[2])
     else:
-        # Local mode: builds both branches automatically
         run_local_mode()

@@ -90,13 +90,12 @@ jobs:
 
       - name: Deploy to GitHub Pages
         if: steps.diff.outputs.success == 'true'
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: gh-pages
-          publish_dir: ./gas-output
-          destination_dir: ${{ steps.path.outputs.target }}
-          keep_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/deploy
+          cp gas-report.html /tmp/deploy/
+          bash scripts/deploy-to-gh-pages.sh /tmp/deploy ${{ steps.path.outputs.target }}
 
       - uses: actions/upload-artifact@v4
         if: always()

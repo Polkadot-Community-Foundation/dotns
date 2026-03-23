@@ -113,13 +113,9 @@ jobs:
 
       - name: Deploy to GitHub Pages
         if: steps.docs.outputs.success == 'true'
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: gh-pages
-          publish_dir: ./docs-output/book
-          destination_dir: ${{ steps.path.outputs.target }}
-          keep_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/deploy-to-gh-pages.sh ./docs-output/book ${{ steps.path.outputs.target }}
 
       - name: Update PR comment
         if: always() && github.event_name == 'pull_request'
