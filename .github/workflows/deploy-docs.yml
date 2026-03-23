@@ -83,11 +83,11 @@ jobs:
           REPO_NAME="${{ github.event.repository.name }}"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             PR_NUM="${{ github.event.pull_request.number }}"
-            echo "target=preview/pr-${PR_NUM}" >> "$GITHUB_OUTPUT"
-            echo "url=https://${OWNER}.github.io/${REPO_NAME}/preview/pr-${PR_NUM}/" >> "$GITHUB_OUTPUT"
+            echo "target=docs/preview/pr-${PR_NUM}" >> "$GITHUB_OUTPUT"
+            echo "url=https://${OWNER}.github.io/${REPO_NAME}/docs/preview/pr-${PR_NUM}/" >> "$GITHUB_OUTPUT"
           else
-            echo "target=." >> "$GITHUB_OUTPUT"
-            echo "url=https://${OWNER}.github.io/${REPO_NAME}/" >> "$GITHUB_OUTPUT"
+            echo "target=docs" >> "$GITHUB_OUTPUT"
+            echo "url=https://${OWNER}.github.io/${REPO_NAME}/docs/" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Prepare result
@@ -194,7 +194,7 @@ jobs:
           ref: gh-pages
           fetch-depth: 0
       - run: |
-          DIR="preview/pr-${{ github.event.pull_request.number }}"
+          DIR="docs/preview/pr-${{ github.event.pull_request.number }}"
           [ -d "$DIR" ] || exit 0
           rm -rf "$DIR"
           git config user.name "github-actions[bot]"

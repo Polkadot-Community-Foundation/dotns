@@ -31,6 +31,12 @@ for attempt in $(seq 1 $MAX_RETRIES); do
     cp -r "${SOURCE_DIR}/"* "/tmp/gh-pages/${DESTINATION_DIR}/"
     touch "/tmp/gh-pages/.nojekyll"
 
+    if [ -f "/tmp/gh-pages/404.html" ] && grep -q "mdbook" "/tmp/gh-pages/404.html" 2>/dev/null; then
+        rm -f /tmp/gh-pages/404.html /tmp/gh-pages/searcher.js /tmp/gh-pages/searchindex.json /tmp/gh-pages/searchindex.js /tmp/gh-pages/print.html
+        rm -rf /tmp/gh-pages/css /tmp/gh-pages/FontAwesome /tmp/gh-pages/fonts /tmp/gh-pages/theme /tmp/gh-pages/src /tmp/gh-pages/contracts
+        echo '<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=docs/"></head></html>' > /tmp/gh-pages/index.html
+    fi
+
     REPORT_FILE=$(ls "${SOURCE_DIR}/"*.html 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
     if [ -n "$REPORT_FILE" ]; then
         cat > "/tmp/gh-pages/${DESTINATION_DIR}/index.html" << INDEXEOF
