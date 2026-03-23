@@ -12,6 +12,7 @@ import {
 
 import {IDotnsRegistry} from "../registry/IDotnsRegistry.sol";
 import {IDotnsContentResolver} from "./IDotnsContentResolver.sol";
+import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 
 /// @title Dotns Content Resolver
 /// @notice Implements `IDotnsContentResolver` interface with content hash, text records, and operator approvals
@@ -25,7 +26,9 @@ contract DotnsContentResolver is
     ERC165Upgradeable,
     IDotnsContentResolver
 {
-    /// @notice DotNS registry used for ownership checks
+    /// @notice DEPRECATED: Registry used for ownership checks.
+    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
+    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
     IDotnsRegistry public registry;
 
     /// @notice Stores all content hash mappings
@@ -37,9 +40,17 @@ contract DotnsContentResolver is
     /// @notice Store all approval mapping
     mapping(address owner => mapping(address operator => bool approved)) private operators;
 
+    /// @notice Protocol-level address registry for all DotNS contracts.
+    IDotnsProtocolRegistry public protocolRegistry;
+
+    /// @notice Well-known protocol registry key for the forward registry.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant KEY_REGISTRY = bytes32("registry");
+
     /// @dev Reserved storage space to allow for layout changes in the future.
     // forge-lint: disable-next-line(mixed-case-variable)
-    uint256[50] private __gap;
+    uint256[49] private __gap;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -105,19 +116,27 @@ contract DotnsContentResolver is
         return operators[owner][operator];
     }
 
+    /// @inheritdoc IDotnsContentResolver
+    function updateProtocolRegistry(IDotnsProtocolRegistry _registry) external override onlyOwner {
+        protocolRegistry = _registry;
+        emit ProtocolRegistryUpdated(_registry);
+    }
+
     /// @notice Ensures caller is either the node owner or an approved operator
     /// @param node Node identifier
     function _requireNodeOwnerOrOperator(bytes32 node) internal view {
-        address owner = registry.owner(node);
+        IDotnsRegistry _registry = IDotnsRegistry(protocolRegistry.get(KEY_REGISTRY));
+        address nodeOwner = _registry.owner(node);
         require(
-            msg.sender == owner || operators[owner][msg.sender], NotAuthorised(node, msg.sender)
+            msg.sender == nodeOwner || operators[nodeOwner][msg.sender],
+            NotAuthorised(node, msg.sender)
         );
     }
 
     /// @notice Returns implementation version
     /// @return versionString Current version string
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.0.0";
+        versionString = "1.1.0";
     }
 
     /// @inheritdoc ERC165Upgradeable

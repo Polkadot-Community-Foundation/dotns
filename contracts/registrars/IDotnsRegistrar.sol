@@ -34,6 +34,9 @@ interface IDotnsRegistrar is IERC721 {
     /// @param tokenId The token identifier.
     error LabelAlreadySet(uint256 tokenId);
 
+    /// @notice Thrown when a label is not a canonical lowercase ASCII DNS label.
+    error InvalidLabel();
+
     /// @notice Emitted when a name is registered.
     /// @param id Token identifier.
     /// @param owner Owner of the name.

@@ -2,6 +2,9 @@ node_modules
 artifacts
 cache
 gasreport-*
+*-report.html
+*-details.md
+gas-report-*.txt
 generated
 .env
 *.DS_Store

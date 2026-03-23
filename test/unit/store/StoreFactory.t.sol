@@ -21,6 +21,8 @@ contract StoreFactoryTests is BaseDotns {
         vm.startPrank(ed);
         IStore deployed = storeFactory.deploy();
 
+        Store(address(deployed)).transferOwnership(leonardo);
+
         vm.expectEmit(true, true, true, false);
         emit IStoreFactory.OwnershipTransfered(ed, leonardo);
 
@@ -30,7 +32,7 @@ contract StoreFactoryTests is BaseDotns {
         assertEq(storeFactory.getAllDeployedStores().length, 1);
         assertEq(address(storeFactory.getDeployedStore(ed)), address(0));
         assertEq(address(storeFactory.getDeployedStore(leonardo)), address(deployed));
-        assertEq(Store(address(deployed)).owner(), ed);
+        assertEq(Store(address(deployed)).owner(), leonardo);
     }
 
     function test_transferownership_reverts_when_caller_has_no_store() public {

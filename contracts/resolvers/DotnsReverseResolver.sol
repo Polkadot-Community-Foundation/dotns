@@ -11,6 +11,7 @@ import {
 } from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import {IDotnsReverseResolver} from "./IDotnsReverseResolver.sol";
 import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController.sol";
+import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 
 /// @title Dotns Reverse Resolver
 /// @notice Resolves an address to its associated .dot name.
@@ -28,12 +29,27 @@ contract DotnsReverseResolver is
     ///      An empty string indicates that no reverse name is set.
     mapping(address owner => string name) private reverseNames;
 
-    /// @notice Address authorised to modify reverse name records.
+    /// @notice DEPRECATED: Address authorised to modify reverse name records.
+    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
+    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
     IDotnsRegistrarController public registrarController;
+
+    /// @notice Protocol-level address registry for all DotNS contracts.
+    IDotnsProtocolRegistry public protocolRegistry;
+
+    /// @notice Well-known protocol registry key for the registrar controller.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant KEY_CONTROLLER = bytes32("controller");
+
+    /// @notice Well-known protocol registry key for the ERC721 registrar.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant KEY_REGISTRAR = bytes32("registrar");
 
     /// @dev Reserved storage space to allow for layout changes in the future.
     // forge-lint: disable-next-line(mixed-case-variable)
-    uint256[50] private __gap;
+    uint256[49] private __gap;
 
     /// @notice Restricts access to the configured registrar.
     modifier onlyRegistrar() {
@@ -64,14 +80,6 @@ contract DotnsReverseResolver is
         return reverseNames[addr];
     }
 
-    /// @inheritdoc IDotnsReverseResolver
-    function updateRegistrar(IDotnsRegistrarController newRegistrar) external override onlyOwner {
-        require(address(newRegistrar) != address(0), InvalidRegistrarController());
-        IDotnsRegistrarController oldRegistrar = registrarController;
-        registrarController = newRegistrar;
-        emit RegistrarUpdated(oldRegistrar, newRegistrar);
-    }
-
     /// @inheritdoc ERC165Upgradeable
     function supportsInterface(bytes4 interfaceId)
         public
@@ -83,15 +91,25 @@ contract DotnsReverseResolver is
             || super.supportsInterface(interfaceId);
     }
 
+    /// @inheritdoc IDotnsReverseResolver
+    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
+        protocolRegistry = registry;
+        emit ProtocolRegistryUpdated(registry);
+    }
+
     /// @notice Internal check enforcing registrar-only access.
     function _onlyRegistrar() internal view {
-        require(msg.sender == address(registrarController), NotRegistrarController(msg.sender));
+        address controller = protocolRegistry.get(KEY_CONTROLLER);
+        address registrar = protocolRegistry.get(KEY_REGISTRAR);
+        require(
+            msg.sender == controller || msg.sender == registrar, NotRegistrarController(msg.sender)
+        );
     }
 
     /// @notice Returns implementation version
     /// @return versionString Current version string
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.0.0";
+        versionString = "1.1.0";
     }
 
     /// @inheritdoc UUPSUpgradeable

@@ -3,29 +3,43 @@ name: Run Solidity Tests
 on:
   pull_request:
     branches: [main]
-    paths: ["src/**", "script/**", "test/**", "**.sol"]
+    paths: ["contracts/**", "test/**", "**.sol"]
   push:
     branches: [main]
-    paths: ["src/**", "script/**", "test/**", "**.sol"]
+    paths: ["contracts/**", "test/**", "**.sol"]
+  pull_request_target:
+    types: [closed]
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
   issues: write
+
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
       - uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.2.6"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - run: bun install
 
       - name: Run tests
@@ -46,122 +60,30 @@ jobs:
           forge test -vv --summary 2>&1 | tee test.log
           TEST=${PIPESTATUS[0]}
 
-          python3 << 'EOF'
-          import os
-          import re
-          from collections import OrderedDict
-
-          def out(k, v):
-              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-                  f.write(f"{k}={v}\n")
-
-          with open("test.log", "r", encoding="utf-8", errors="ignore") as f:
-              content = f.read()
-
-          header_re = re.compile(
-              r"(?:^|\s)(?:Running|Ran)\s+\d+\s+tests?\s+for\s+(test/[^\s:]+):([A-Za-z0-9_]+)\s*$"
-          )
-          suite_result_re = re.compile(r"^\s*Suite result:\s*(.+)\s*$")
-          test_line_re = re.compile(
-              r"^\s*\[(PASS|FAIL[^\]]*)\]\s+([A-Za-z0-9_]+)\(\)(?:\s*\(([^)]*)\))?.*$"
-          )
-
-          suites = OrderedDict()
-          current_suite = None
-
-          for raw in content.splitlines():
-              line = raw.rstrip("\n")
-
-              hm = header_re.search(line)
-              if hm:
-                  file_path = hm.group(1)
-                  contract = hm.group(2)
-                  current_suite = f"{file_path}:{contract}"
-                  if current_suite not in suites:
-                      suites[current_suite] = {
-                          "file": file_path,
-                          "contract": contract,
-                          "tests": [],
-                          "suite_result": None,
-                      }
-                  continue
-
-              tm = test_line_re.match(line)
-              if tm and current_suite:
-                  tag = tm.group(1)
-                  test_name = tm.group(2)
-                  outcome = "PASS" if tag == "PASS" else "FAIL"
-                  error = ""
-                  if outcome == "FAIL":
-                      err = tag
-                      if err.startswith("FAIL"):
-                          err = err[4:].lstrip(": .").strip()
-                      error = err
-                  suites[current_suite]["tests"].append({
-                      "name": test_name,
-                      "outcome": outcome,
-                      "error": error,
-                  })
-                  continue
-
-              sm = suite_result_re.match(line)
-              if sm and current_suite:
-                  suites[current_suite]["suite_result"] = f"Suite result: {sm.group(1).strip()}"
-                  continue
-
-          total_passed = 0
-          total_failed = 0
-          total_skipped = 0
-
-          md = []
-          md.append("## Contract test results\n")
-
-          for _, s in suites.items():
-              md.append(f"### {s['contract']} ({s['file']})\n")
-              md.append("| Test name | Outcome | Error |")
-              md.append("|:--|:--:|:--|")
-
-              passed = 0
-              failed = 0
-
-              for t in s["tests"]:
-                  name = t["name"]
-                  outcome = t["outcome"]
-                  error = (t["error"] or "").replace("|", "\\|")
-                  md.append(f"| {name} | {outcome} | {error} |")
-                  if outcome == "PASS":
-                      passed += 1
-                      total_passed += 1
-                  else:
-                      failed += 1
-                      total_failed += 1
-
-              md.append("")
-              if s["suite_result"]:
-                  md.append(s["suite_result"])
-              else:
-                  md.append(f"Suite result: {'ok' if failed == 0 else 'failed'}. {passed} passed; {failed} failed; {total_skipped} skipped;")
-              md.append("")
-
-          total = total_passed + total_failed + total_skipped
-
-          if total_failed > 0:
-              out("result", f"Failed - {total_failed} of {total} tests failed")
-              out("has_details", "true")
-          elif total > 0:
-              out("result", f"All tests passed ({total} total)")
-              out("has_details", "true")
-          else:
-              out("result", "No tests found")
-              out("has_details", "false")
-
-          with open("test-details.md", "w", encoding="utf-8") as f:
-              f.write("\n".join(md))
-          EOF
+          python3 scripts/reports/test-report.py test.log
 
           if [ $TEST -ne 0 ]; then
             exit 1
           fi
+
+      - name: Set deploy path
+        id: path
+        if: github.event_name == 'pull_request'
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          REPO_NAME="${{ github.event.repository.name }}"
+          PR_NUM="${{ github.event.pull_request.number }}"
+          echo "target=tests/pr-${PR_NUM}" >> "$GITHUB_OUTPUT"
+          echo "url=https://${OWNER}.github.io/${REPO_NAME}/tests/pr-${PR_NUM}/test-report.html" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to GitHub Pages
+        if: github.event_name == 'pull_request' && steps.run.outputs.has_details == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/deploy
+          cp test-report.html /tmp/deploy/
+          bash scripts/deploy-to-gh-pages.sh /tmp/deploy ${{ steps.path.outputs.target }}
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -170,6 +92,7 @@ jobs:
           path: |
             *.log
             test-details.md
+            test-report.html
           retention-days: 7
 
       - name: Update PR comment
@@ -181,14 +104,17 @@ jobs:
           HAS_DETAILS: ${{ steps.run.outputs.has_details }}
           RUN_ID: ${{ github.run_id }}
           REPO: ${{ github.repository }}
+          REPORT_URL: ${{ steps.path.outputs.url }}
         with:
           script: |
             const fs = require('fs');
             const marker = "<!-- ci-summary -->";
             const detailsMarker = "<!-- details-section -->";
             const section = process.env.SECTION;
-            const result = process.env.RESULT || 'Unknown';
             const hasDetails = process.env.HAS_DETAILS === 'true';
+            const rawResult = process.env.RESULT || 'Failed';
+            const reportUrl = process.env.REPORT_URL;
+            const result = hasDetails && reportUrl ? `${rawResult} - [View Report](${reportUrl})` : rawResult;
             const runId = process.env.RUN_ID;
             const repoFull = process.env.REPO;
 
@@ -197,73 +123,57 @@ jobs:
 
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
-
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner, repo, issue_number, per_page: 100,
-            });
-
-            const existing = comments.find(c =>
-              c.user?.login === "github-actions[bot]" && c.body?.includes(marker)
-            );
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
+            const existing = comments.find(c => c.user?.login === "github-actions[bot]" && c.body?.includes(marker));
 
             let rows = {};
             let existingDetails = {};
-
             if (existing?.body) {
               const parts = existing.body.split(detailsMarker);
-              const tableSection = parts[0] || '';
-
-              const lines = tableSection.split('\n');
-              for (const line of lines) {
+              for (const line of (parts[0] || '').split('\n')) {
                 const match = line.match(/^\| ([^|]+) \| ([^|]+) \|$/);
-                if (match) {
-                  const name = match[1].trim();
-                  if (name && name !== 'Check' && !name.startsWith(':')) {
-                    rows[name] = match[2].trim();
-                  }
-                }
+                if (match && match[1].trim() !== 'Check' && !match[1].trim().startsWith(':')) rows[match[1].trim()] = match[2].trim();
               }
-
-              const detailsRegex = /<details>\s*<summary><strong>([^<]+)<\/strong><\/summary>([\s\S]*?)<\/details>/g;
-              let detailMatch;
-              while ((detailMatch = detailsRegex.exec(existing.body)) !== null) {
-                existingDetails[detailMatch[1].trim()] = detailMatch[0];
-              }
+              const re = /<details>\s*<summary><strong>([^<]+)<\/strong><\/summary>([\s\S]*?)<\/details>/g;
+              let m; while ((m = re.exec(existing.body)) !== null) existingDetails[m[1].trim()] = m[0];
             }
 
             rows[section] = result;
-
             if (hasDetails && details) {
-              existingDetails[section] = `<details>\n<summary><strong>${section}</strong></summary>\n\n${details}\n\n[View full logs](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`;
-            } else {
-              delete existingDetails[section];
-            }
+              const reportLink = reportUrl ? `[View full report](${reportUrl}) | ` : '';
+              existingDetails[section] = `<details>\n<summary><strong>${section}</strong></summary>\n\n${details}\n\n${reportLink}[View logs](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`;
+            } else { delete existingDetails[section]; }
 
-            const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Coverage', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
-            const sortedKeys = Object.keys(rows).sort((a, b) => {
-              const ai = order.indexOf(a), bi = order.indexOf(b);
-              return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-            });
-
+            const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Gas Report', 'Coverage', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
+            const sortedKeys = Object.keys(rows).sort((a, b) => (order.indexOf(a) === -1 ? 999 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 999 : order.indexOf(b)));
             let table = `| Check | Result |\n|:------|:-------|\n`;
-            for (const key of sortedKeys) {
-              table += `| ${key} | ${rows[key]} |\n`;
-            }
+            for (const key of sortedKeys) table += `| ${key} | ${rows[key]} |\n`;
 
-            const detailsOrder = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Coverage'];
-            const sortedDetails = Object.keys(existingDetails).sort((a, b) => {
-              const ai = detailsOrder.indexOf(a), bi = detailsOrder.indexOf(b);
-              return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-            });
-
+            const detailsOrder = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Gas Report', 'Coverage'];
+            const sortedDetails = Object.keys(existingDetails).sort((a, b) => (detailsOrder.indexOf(a) === -1 ? 999 : detailsOrder.indexOf(a)) - (detailsOrder.indexOf(b) === -1 ? 999 : detailsOrder.indexOf(b)));
             let body = `${marker}\n## CI Summary\n\n${table}`;
+            if (sortedDetails.length > 0) body += `\n${detailsMarker}\n\n---\n\n${sortedDetails.map(k => existingDetails[k]).join('\n\n')}`;
 
-            if (sortedDetails.length > 0) {
-              body += `\n${detailsMarker}\n\n---\n\n${sortedDetails.map(k => existingDetails[k]).join('\n\n')}`;
-            }
+            if (existing) await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            else await github.rest.issues.createComment({ owner, repo, issue_number, body });
 
-            if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body });
-            }
+      - if: steps.run.outputs.result && contains(steps.run.outputs.result, 'Failed')
+        run: exit 1
+
+  cleanup:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 0
+      - run: |
+          DIR="tests/pr-${{ github.event.pull_request.number }}"
+          [ -d "$DIR" ] || exit 0
+          rm -rf "$DIR"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Clean up test report for PR #${{ github.event.pull_request.number }}" || true
+          git push

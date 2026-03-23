@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
+import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IDotnsRegistry} from "../../../contracts/registry/IDotnsRegistry.sol";
+import {IDotnsProtocolRegistry} from "../../../contracts/registry/IDotnsProtocolRegistry.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
+import {Store} from "../../../contracts/store/Store.sol";
 
 contract DotnsRegistryTests is BaseDotns {
     function test_root_record_is_initialized_and_owned_by_owner() public view {
@@ -14,37 +16,21 @@ contract DotnsRegistryTests is BaseDotns {
         assertEq(dotnsRegistry.resolver(rootNode), address(0));
     }
 
-    function test_owner_updates_registrar_controller_emits_event_and_persists() public {
-        IDotnsRegistrarController oldRegistrarController = dotnsRegistry.registrarController();
+    function test_owner_updates_protocol_registry_emits_event_and_persists() public {
+        IDotnsProtocolRegistry newRegistry = IDotnsProtocolRegistry(makeAddr("newRegistry"));
 
-        IDotnsRegistrarController newRegistrarController =
-            IDotnsRegistrarController(makeAddr("new_registrar_controller"));
-        if (address(newRegistrarController) == address(oldRegistrarController)) {
-            newRegistrarController =
-                IDotnsRegistrarController(makeAddr("new_registrar_controller_alt"));
-        }
+        vm.expectEmit(true, false, false, false, address(dotnsRegistry));
+        emit IDotnsRegistry.ProtocolRegistryUpdated(newRegistry);
 
-        vm.startPrank(owner);
+        vm.prank(owner);
+        dotnsRegistry.updateProtocolRegistry(newRegistry);
 
-        vm.expectEmit(true, true, false, false, address(dotnsRegistry));
-        emit IDotnsRegistry.RegistrarControllerUpdated(
-            oldRegistrarController, newRegistrarController
-        );
-
-        dotnsRegistry.updateRegistrarController(newRegistrarController);
-
-        vm.stopPrank();
-
-        assertEq(address(dotnsRegistry.registrarController()), address(newRegistrarController));
+        assertEq(address(dotnsRegistry.protocolRegistry()), address(newRegistry));
     }
 
     function test_registrar_controller_sets_owner_emits_event_and_sets_resolver() public {
         bytes32 node = keccak256("node_b");
         address resolverAddress = address(dotnsReverseResolver);
-
-        vm.startPrank(owner);
-        dotnsRegistry.updateRegistrarController(dotnsRegistrarController);
-        vm.stopPrank();
 
         vm.startPrank(address(dotnsRegistrarController));
         dotnsRegistrar.register(uint256(node), ed, "node_b_label");
@@ -145,6 +131,33 @@ contract DotnsRegistryTests is BaseDotns {
         assertEq(dotnsRegistry.resolver(node), address(0));
     }
 
+    function test_node_owner_creates_nested_subnode_with_canonical_parent_path() public {
+        string memory parentLabel = "parentnode06";
+        bytes32 parentNode = _register(parentLabel, owner, IPopRules.PopStatus.NoStatus);
+
+        IDotnsRegistry.SubnodeRecord memory childRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "child", parentLabel: parentLabel, owner: ed
+        });
+
+        vm.prank(owner);
+        bytes32 childNode = dotnsRegistry.setSubnodeOwner(childRecord);
+
+        string memory nestedParentLabel = string.concat("child.", parentLabel);
+        IDotnsRegistry.SubnodeRecord memory leafRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: childNode, subLabel: "leaf", parentLabel: nestedParentLabel, owner: tiago
+        });
+
+        vm.prank(ed);
+        bytes32 leafNode = dotnsRegistry.setSubnodeOwner(leafRecord);
+
+        assertEq(dotnsRegistry.owner(leafNode), tiago);
+        assertTrue(dotnsRegistry.recordExists(leafNode));
+        assertEq(dotnsRegistry.resolver(leafNode), address(dotnsReverseResolver));
+
+        Store tiagoStore = Store(address(storeFactory.getDeployedStore(tiago)));
+        assertEq(tiagoStore.getValueFor(tiago, _storeKey(leafNode)), "leaf.child.parentnode06.dot");
+    }
+
     function test_subnode_owner_creates_nested_subnode_under_owned_parent() public {
         string memory parentLabel = "parentnode05";
         bytes32 parentNode = _register(parentLabel, ed, IPopRules.PopStatus.NoStatus);
@@ -167,6 +180,71 @@ contract DotnsRegistryTests is BaseDotns {
         assertEq(dotnsRegistry.owner(expectedChildNode), tiago);
         assertTrue(dotnsRegistry.recordExists(expectedChildNode));
         assertEq(dotnsRegistry.resolver(expectedChildNode), address(dotnsReverseResolver));
+    }
+
+    function test_revert_subnode_owner_with_parent_label_mismatch() public {
+        string memory parentLabel = "actualparent01";
+        bytes32 parentNode = _register(parentLabel, ed, IPopRules.PopStatus.PopFull);
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "docs", parentLabel: "parity", owner: leonardo
+        });
+
+        vm.prank(ed);
+        vm.expectRevert(IDotnsRegistry.ParentLabelMismatch.selector);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
+    }
+
+    function test_revert_subnode_owner_with_dotted_sublabel() public {
+        string memory parentLabel = "parentnode07";
+        bytes32 parentNode = _register(parentLabel, owner, IPopRules.PopStatus.NoStatus);
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "docs.api", parentLabel: parentLabel, owner: ed
+        });
+
+        vm.prank(owner);
+        vm.expectRevert(IDotnsRegistry.InvalidLabel.selector);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
+    }
+
+    function test_revert_subnode_owner_with_empty_sublabel() public {
+        string memory parentLabel = "parentnode08";
+        bytes32 parentNode = _register(parentLabel, owner, IPopRules.PopStatus.NoStatus);
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "", parentLabel: parentLabel, owner: ed
+        });
+
+        vm.prank(owner);
+        vm.expectRevert(IDotnsRegistry.InvalidLabel.selector);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
+    }
+
+    function test_revert_subnode_owner_with_uppercase_sublabel() public {
+        string memory parentLabel = "parentnode09";
+        bytes32 parentNode = _register(parentLabel, owner, IPopRules.PopStatus.NoStatus);
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "Docs", parentLabel: parentLabel, owner: ed
+        });
+
+        vm.prank(owner);
+        vm.expectRevert(IDotnsRegistry.InvalidLabel.selector);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
+    }
+
+    function test_revert_subnode_owner_with_uppercase_parent_label() public {
+        string memory parentLabel = "parentnode10";
+        bytes32 parentNode = _register(parentLabel, owner, IPopRules.PopStatus.NoStatus);
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "docs", parentLabel: "Parentnode10", owner: ed
+        });
+
+        vm.prank(owner);
+        vm.expectRevert(IDotnsRegistry.ParentLabelMismatch.selector);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
     }
 
     function test_same_sublabel_under_different_parents_owned_by_same_address() public {

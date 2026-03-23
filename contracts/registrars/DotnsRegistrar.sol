@@ -16,6 +16,8 @@ import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {Store} from "../store/Store.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
+import {StringUtils} from "../utils/StringUtils.sol";
+import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
 
 /// @title Dotns Registrar
 /// @notice ERC721-backed registrar implementing permanent name ownership.
@@ -37,6 +39,7 @@ contract DotnsRegistrar is
     IDotnsRegistrar
 {
     using StoreUtils for IStoreFactory;
+    using StringUtils for *;
 
     /// @notice Mapping of authorised controller addresses.
     /// @dev Controllers may call `register`.
@@ -78,6 +81,11 @@ contract DotnsRegistrar is
     /// casting to 'bytes32' is safe because the string fits in 32 bytes.
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant KEY_REGISTRY = bytes32("registry");
+
+    /// @notice Well-known protocol registry key for the reverse resolver.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant KEY_REVERSE_RESOLVER = bytes32("reverseResolver");
 
     /// @dev Reserved storage space to allow for layout changes in the future.
     uint256[47] private __gap;
@@ -146,9 +154,19 @@ contract DotnsRegistrar is
         require(_exists(tokenId), NameNotAvailable(tokenId));
         require(ownerOf(tokenId) == msg.sender, NotTokenOwner(msg.sender, tokenId));
         require(bytes(_labels[tokenId]).length == 0, LabelAlreadySet(tokenId));
+        require(label.isSingleLabel(), InvalidLabel());
 
-        bytes32 labelhash = keccak256(bytes(label));
-        bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
+        bytes32 labelhash;
+        bytes32 node;
+        assembly ("memory-safe") {
+            let pointer := mload(0x40)
+            let len := label.length
+            calldatacopy(pointer, label.offset, len)
+            labelhash := keccak256(pointer, len)
+            mstore(pointer, DOT_NODE)
+            mstore(add(pointer, 0x20), labelhash)
+            node := keccak256(pointer, 0x40)
+        }
         require(uint256(node) == tokenId, LabelMismatch(tokenId));
 
         _labels[tokenId] = label;
@@ -187,11 +205,29 @@ contract DotnsRegistrar is
     {
         from = super._update(to, tokenId, auth);
 
+        if (from != address(0) && from != to && address(protocolRegistry) != address(0)) {
+            _clearFormerPrimaryName(from, tokenId);
+        }
+
         if (from != address(0) && to != address(0) && address(protocolRegistry) != address(0)) {
             _syncRecipientStore(to, tokenId);
         }
 
         return from;
+    }
+
+    function _clearFormerPrimaryName(address from, uint256 tokenId) internal {
+        string memory label = _labels[tokenId];
+        if (bytes(label).length == 0) return;
+
+        IDotnsReverseResolver reverse =
+            IDotnsReverseResolver(protocolRegistry.get(KEY_REVERSE_RESOLVER));
+        string memory currentReverse = reverse.nameOf(from);
+        string memory fullName = string.concat(label, ".dot");
+
+        if (_stringHash(currentReverse) == _stringHash(fullName)) {
+            reverse.setReverseName(from, "");
+        }
     }
 
     /// @notice Ensures the recipient has a Store and writes the label to it if available.
@@ -218,10 +254,20 @@ contract DotnsRegistrar is
 
         string memory label = _labels[tokenId];
         if (bytes(label).length > 0) {
-            bytes32 storeKey = StoreUtils.storeKey(keccak256(bytes(label)));
+            bytes32 labelhash;
+            assembly ("memory-safe") {
+                labelhash := keccak256(add(label, 0x20), mload(label))
+            }
+            bytes32 storeKey = StoreUtils.storeKey(labelhash);
             if (bytes(toStore.getValueFor(to, storeKey)).length == 0) {
                 toStore.setValueFor(to, storeKey, string.concat(label, ".dot"));
             }
+        }
+    }
+
+    function _stringHash(string memory value) internal pure returns (bytes32 hash) {
+        assembly ("memory-safe") {
+            hash := keccak256(add(value, 0x20), mload(value))
         }
     }
 

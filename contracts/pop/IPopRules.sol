@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
+
 /// @title Proof of Personhood Rules for Dotns
 /// @notice Proof of personhood interface defining Dotns price calculation, PoP-tier requirements, and base-name reservation rules
 /// @dev Provides the classification logic for Dotns labels, enforces suffix constraints, and exposes reservation metadata.
@@ -32,11 +34,6 @@ interface IPopRules {
     /// @param owner Address obtaining the reservation right
     /// @param expires Timestamp when the reservation expires
     event BaseNameReserved(string indexed baseName, address indexed owner, uint64 expires);
-
-    /// @notice Emitted when the registry is updated
-    /// @param oldReg Currently set registry address
-    /// @param newReg New address to set
-    event RegistryUpdated(address indexed oldReg, address indexed newReg);
 
     /// @notice Emitted when a user's PoP status is updated
     /// @dev This is temporary until we have a Precompile for accessing PoP status
@@ -146,10 +143,6 @@ interface IPopRules {
     /// @return isBase stating if the name is base or not
     function isBaseName(string calldata name) external pure returns (bool isBase);
 
-    /// @notice allows the Owner to update the dot registry
-    /// @param dotRegistry the address of the new registry
-    function updateDotRegistry(address dotRegistry) external;
-
     /// @notice Sets the Proof-of-Personhood (PoP) tier for the caller's profile
     /// @param status The PoP tier to assign to the user (NoStatus, PopLite, or PopFull)
     /// @dev Once set, this PoP status applies to all registrations by this user
@@ -161,4 +154,13 @@ interface IPopRules {
     /// @param name Domain label to price
     /// @return cost for registering the name
     function price(string calldata name) external view returns (uint256 cost);
+
+    /// @notice Emitted when the protocol registry is updated.
+    /// @param newRegistry The address of the new protocol registry.
+    event ProtocolRegistryUpdated(IDotnsProtocolRegistry indexed newRegistry);
+
+    /// @notice Updates the protocol registry address.
+    /// @dev Callable only by the contract owner.
+    /// @param registry The address of the new protocol registry.
+    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external;
 }

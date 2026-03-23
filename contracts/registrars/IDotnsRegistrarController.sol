@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
+
 /// @title Dotns Registrar Controller
 /// @notice Interface for registering .dot labels using a commit–reveal scheme.
 /// @dev This interface defines allocation only. Forward resolution, reverse lookup, pricing mechanics,
@@ -79,6 +81,9 @@ interface IDotnsRegistrarController {
     /// @param label Label supplied by the caller.
     error NameNotAvailable(string label);
 
+    /// @notice Thrown when a label is not a canonical lowercase ASCII DNS label.
+    error InvalidLabel();
+
     /// @notice Thrown when supplied payment is insufficient.
     error InsufficientValue();
 
@@ -134,4 +139,13 @@ interface IDotnsRegistrarController {
     /// @param whiteListStatus True to add to whitelist, false to remove.
     /// @custom:reverts NotOwner if caller is not the contract owner.
     function whiteListAddress(address who, bool whiteListStatus) external;
+
+    /// @notice Emitted when the protocol registry is updated.
+    /// @param newRegistry The address of the new protocol registry.
+    event ProtocolRegistryUpdated(IDotnsProtocolRegistry indexed newRegistry);
+
+    /// @notice Updates the protocol registry address.
+    /// @dev Callable only by the contract owner.
+    /// @param registry The address of the new protocol registry.
+    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external;
 }

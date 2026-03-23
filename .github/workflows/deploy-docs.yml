@@ -83,11 +83,11 @@ jobs:
           REPO_NAME="${{ github.event.repository.name }}"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             PR_NUM="${{ github.event.pull_request.number }}"
-            echo "target=preview/pr-${PR_NUM}" >> "$GITHUB_OUTPUT"
-            echo "url=https://${OWNER}.github.io/${REPO_NAME}/preview/pr-${PR_NUM}/" >> "$GITHUB_OUTPUT"
+            echo "target=docs/preview/pr-${PR_NUM}" >> "$GITHUB_OUTPUT"
+            echo "url=https://${OWNER}.github.io/${REPO_NAME}/docs/preview/pr-${PR_NUM}/" >> "$GITHUB_OUTPUT"
           else
-            echo "target=." >> "$GITHUB_OUTPUT"
-            echo "url=https://${OWNER}.github.io/${REPO_NAME}/" >> "$GITHUB_OUTPUT"
+            echo "target=docs" >> "$GITHUB_OUTPUT"
+            echo "url=https://${OWNER}.github.io/${REPO_NAME}/docs/" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Prepare result
@@ -113,13 +113,9 @@ jobs:
 
       - name: Deploy to GitHub Pages
         if: steps.docs.outputs.success == 'true'
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: gh-pages
-          publish_dir: ./docs-output/book
-          destination_dir: ${{ steps.path.outputs.target }}
-          keep_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/deploy-to-gh-pages.sh ./docs-output/book ${{ steps.path.outputs.target }}
 
       - name: Update PR comment
         if: always() && github.event_name == 'pull_request'
@@ -198,7 +194,7 @@ jobs:
           ref: gh-pages
           fetch-depth: 0
       - run: |
-          DIR="preview/pr-${{ github.event.pull_request.number }}"
+          DIR="docs/preview/pr-${{ github.event.pull_request.number }}"
           [ -d "$DIR" ] || exit 0
           rm -rf "$DIR"
           git config user.name "github-actions[bot]"

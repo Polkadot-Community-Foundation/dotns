@@ -35,10 +35,8 @@ contract StoreFactory is IStoreFactory {
         IStore store = _deployedStores[msg.sender];
         require(address(store) != address(0), InvalidTransfer(msg.sender));
 
-        if (newOwner != address(0)) {
-            require(address(_deployedStores[newOwner]) == address(0), InvalidTransfer(newOwner));
-        }
-
+        require(address(_deployedStores[newOwner]) == address(0), InvalidTransfer(newOwner));
+        require(Store(address(store)).owner() == newOwner, InvalidTransfer(newOwner));
         emit OwnershipTransfered(msg.sender, newOwner);
 
         _deployedStores[newOwner] = store;
