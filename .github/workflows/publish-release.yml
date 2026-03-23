@@ -61,8 +61,6 @@ jobs:
             "IDotnsResolver"
             "IPopRules"
             "IDotnsProtocolRegistry"
-            "StoreUtils"
-            "StringUtils"
           )
 
           for name in "${contracts[@]}"; do
@@ -85,39 +83,44 @@ jobs:
       - name: Generate release body
         run: |
           TAG="${GITHUB_REF_NAME}"
-          CONTRACTS=$(ls release/abis/ | sed 's/\.json$//' | sort)
-          COUNT=$(echo "$CONTRACTS" | wc -l | tr -d ' ')
-          LIST=$(echo "$CONTRACTS" | sed 's/^/- `/' | sed 's/$/`/')
 
-          cat > release-body.md << EOF
+          cat > release-body.md << 'ENDOFBODY'
           ## DotNS ABI Package
 
-          **\`dotns-abis-${TAG}.zip\`** contains the compiled ABI JSON files for all DotNS contracts.
+          **Contracts**
+          | Contract | ABI |
+          |----------|-----|
+          ENDOFBODY
 
-          ### Contents (${COUNT} contracts)
+          for f in release/abis/*.json; do
+            name=$(basename "$f" .json)
+            echo "          | \`${name}\` | [${name}.json](dotns-abis-${TAG}.zip) |" >> release-body.md
+          done
 
-          ${LIST}
+          cat >> release-body.md << 'ENDOFBODY'
+
+          ### Download
+
+          - **All ABIs (zip):** `dotns-abis-${TAG}.zip`
+          - **Individual ABIs:** Each contract ABI is also attached as a separate artifact
 
           ### Usage
 
-          1. Download and extract \`dotns-abis-${TAG}.zip\`
-          2. Import the ABI JSON files into your project
-          3. Use with any EVM-compatible SDK (viem, ethers, web3.js) to interact with DotNS contracts
-
-          \`\`\`ts
+          ```ts
           import StoreAbi from "./abis/Store.json";
           import RegistrarAbi from "./abis/DotnsRegistrar.json";
-          \`\`\`
-          EOF
+          ```
+          ENDOFBODY
 
-          # Remove leading whitespace from heredoc
           sed -i 's/^          //' release-body.md
 
       - name: Create release with artifacts
         uses: softprops/action-gh-release@v2
         with:
-          files: dotns-abis-*.zip
+          files: |
+            dotns-abis-*.zip
+            release/abis/*.json
           body_path: release-body.md
           draft: true
-          prerelease: true
+          prerelease: false
           generate_release_notes: true
