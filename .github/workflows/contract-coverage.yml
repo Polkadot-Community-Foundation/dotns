@@ -3,16 +3,23 @@ name: Coverage
 on:
   pull_request:
     branches: [main]
-    paths: ['src/**', 'contracts/**', 'test/**', '**.sol']
+    paths: ['contracts/**', 'test/**', '**.sol']
+  pull_request_target:
+    types: [closed]
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
   issues: write
+
+concurrency:
+  group: coverage-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   coverage:
     runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,9 +33,13 @@ jobs:
         with:
           bun-version: "1.2.6"
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - run: bun install
 
-      - name: Build contracts first
+      - name: Build contracts
         env:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: forge build
@@ -39,96 +50,39 @@ jobs:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: |
           set +e
-          
-          # Try to run coverage - some projects may have tests that use vm.readFile
-          # which doesn't work with forge coverage's instrumented recompile
           forge coverage --ir-minimum --report summary \
             --no-match-coverage "test/|lib/" \
             2>&1 | tee coverage.log
           CODE=$?
 
-          python3 << 'EOF'
-          import re
-          import os
+          python3 scripts/reports/coverage-report.py coverage.log
+          exit $CODE
 
-          out = lambda k,v: open(os.environ['GITHUB_OUTPUT'], 'a').write(f"{k}={v}\n")
+      - name: Set deploy path
+        id: path
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          REPO_NAME="${{ github.event.repository.name }}"
+          PR_NUM="${{ github.event.pull_request.number }}"
+          echo "target=coverage/pr-${PR_NUM}" >> "$GITHUB_OUTPUT"
+          echo "url=https://${OWNER}.github.io/${REPO_NAME}/coverage/pr-${PR_NUM}/coverage-report.html" >> "$GITHUB_OUTPUT"
 
-          with open('coverage.log', 'r') as f:
-              content = f.read()
+      - name: Prepare deploy directory
+        if: steps.run.outputs.has_details == 'true'
+        run: |
+          mkdir -p coverage-output
+          cp coverage-report.html coverage-output/
+          touch coverage-output/.nojekyll
 
-          # Check for vm.readFile failures (common issue with forge coverage)
-          if 'vm.readFile' in content and 'No such file or directory' in content:
-              out('result', 'Skipped - Tests use vm.readFile (incompatible with coverage)')
-              out('has_details', 'false')
-              exit(0)
-          
-          # Check for other test failures
-          if 'Failing tests:' in content:
-              fail_match = re.search(r'Encountered a total of (\d+) failing test', content)
-              if fail_match:
-                  out('result', f'Tests failed - Cannot compute coverage')
-                  out('has_details', 'false')
-                  exit(0)
-
-          # Parse coverage summary
-          # Format: | contracts/file.sol | 85.00% (x/y) | 80.00% (x/y) | ...
-          files = []
-          total_line = None
-          
-          for line in content.split('\n'):
-              # Match file rows with percentage and fraction format
-              match = re.match(r'\|\s*([^\|]+\.sol)\s*\|\s*([\d.]+)%\s*\(\d+/\d+\)\s*\|\s*([\d.]+)%\s*\(\d+/\d+\)\s*\|\s*([\d.]+)%\s*\(\d+/\d+\)\s*\|\s*([\d.]+)%', line)
-              if match:
-                  name = match.group(1).strip()
-                  # Skip test files and lib files
-                  if not name.startswith('test/') and not name.startswith('lib/'):
-                      files.append({
-                          'name': name,
-                          'lines': float(match.group(2)),
-                          'statements': float(match.group(3)),
-                          'branches': float(match.group(4)),
-                          'funcs': float(match.group(5))
-                      })
-              
-              # Match total row
-              total_match = re.match(r'\|\s*Total\s*\|\s*([\d.]+)%', line)
-              if total_match:
-                  total_line = float(total_match.group(1))
-
-          if not files and total_line is None:
-              # Try alternative format
-              for line in content.split('\n'):
-                  alt_match = re.search(r'(\d+\.\d+)%.*lines', line, re.IGNORECASE)
-                  if alt_match:
-                      total_line = float(alt_match.group(1))
-                      break
-
-          if files or total_line is not None:
-              if total_line is None and files:
-                  total_line = sum(f['lines'] for f in files) / len(files) if files else 0
-              
-              out('result', f'{total_line:.1f}% line coverage')
-              out('has_details', 'true' if files else 'false')
-          else:
-              out('result', 'Coverage completed')
-              out('has_details', 'false')
-
-          # Build details markdown
-          md = []
-          if files:
-              md.append("\n| File | Lines | Statements | Branches | Functions |")
-              md.append("|:-----|------:|-----------:|---------:|----------:|")
-              
-              # Sort by coverage (lowest first to highlight areas needing work)
-              for f in sorted(files, key=lambda x: x['lines']):
-                  name = f['name']
-                  if len(name) > 50:
-                      name = '...' + name[-47:]
-                  md.append(f"| {name} | {f['lines']:.1f}% | {f['statements']:.1f}% | {f['branches']:.1f}% | {f['funcs']:.1f}% |")
-
-          with open('coverage-details.md', 'w') as f:
-              f.write('\n'.join(md))
-          EOF
+      - name: Deploy to GitHub Pages
+        if: steps.run.outputs.has_details == 'true'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./coverage-output
+          destination_dir: ${{ steps.path.outputs.target }}
+          keep_files: true
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -137,6 +91,7 @@ jobs:
           path: |
             coverage.log
             coverage-details.md
+            coverage-report.html
           retention-days: 7
 
       - name: Update PR comment
@@ -148,14 +103,17 @@ jobs:
           HAS_DETAILS: ${{ steps.run.outputs.has_details }}
           RUN_ID: ${{ github.run_id }}
           REPO: ${{ github.repository }}
+          COVERAGE_URL: ${{ steps.path.outputs.url }}
         with:
           script: |
             const fs = require('fs');
             const marker = "<!-- ci-summary -->";
             const detailsMarker = "<!-- details-section -->";
             const section = process.env.SECTION;
-            const result = process.env.RESULT || 'Unknown';
+            const coverageUrl = process.env.COVERAGE_URL;
             const hasDetails = process.env.HAS_DETAILS === 'true';
+            const rawResult = process.env.RESULT || 'Failed';
+            const result = hasDetails ? `${rawResult} - [View Report](${coverageUrl})` : rawResult;
             const runId = process.env.RUN_ID;
             const repoFull = process.env.REPO;
 
@@ -175,11 +133,11 @@ jobs:
 
             let rows = {};
             let existingDetails = {};
-            
+
             if (existing?.body) {
               const parts = existing.body.split(detailsMarker);
               const tableSection = parts[0] || '';
-              
+
               const lines = tableSection.split('\n');
               for (const line of lines) {
                 const match = line.match(/^\| ([^|]+) \| ([^|]+) \|$/);
@@ -190,7 +148,7 @@ jobs:
                   }
                 }
               }
-              
+
               const detailsRegex = /<details>\s*<summary><strong>([^<]+)<\/strong><\/summary>([\s\S]*?)<\/details>/g;
               let detailMatch;
               while ((detailMatch = detailsRegex.exec(existing.body)) !== null) {
@@ -201,12 +159,12 @@ jobs:
             rows[section] = result;
 
             if (hasDetails && details) {
-              existingDetails[section] = `<details>\n<summary><strong>${section}</strong></summary>\n\n${details}\n\n[View full report](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`;
+              existingDetails[section] = `<details>\n<summary><strong>${section}</strong></summary>\n\n${details}\n\n[View full report](${coverageUrl}) | [View logs](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`;
             } else {
               delete existingDetails[section];
             }
 
-            const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Coverage', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
+            const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Gas Report', 'Coverage', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
             const sortedKeys = Object.keys(rows).sort((a, b) => {
               const ai = order.indexOf(a), bi = order.indexOf(b);
               return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
@@ -217,14 +175,14 @@ jobs:
               table += `| ${key} | ${rows[key]} |\n`;
             }
 
-            const detailsOrder = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Coverage'];
+            const detailsOrder = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Gas Report', 'Coverage'];
             const sortedDetails = Object.keys(existingDetails).sort((a, b) => {
               const ai = detailsOrder.indexOf(a), bi = detailsOrder.indexOf(b);
               return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
             });
 
             let body = `${marker}\n## CI Summary\n\n${table}`;
-            
+
             if (sortedDetails.length > 0) {
               body += `\n${detailsMarker}\n\n---\n\n${sortedDetails.map(k => existingDetails[k]).join('\n\n')}`;
             }
@@ -234,3 +192,21 @@ jobs:
             } else {
               await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
+
+  cleanup:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 0
+      - run: |
+          DIR="coverage/pr-${{ github.event.pull_request.number }}"
+          [ -d "$DIR" ] || exit 0
+          rm -rf "$DIR"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Clean up coverage report for PR #${{ github.event.pull_request.number }}" || true
+          git push

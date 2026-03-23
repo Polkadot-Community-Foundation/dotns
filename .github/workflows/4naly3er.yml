@@ -3,16 +3,23 @@ name: 4naly3er Analysis
 on:
   pull_request:
     branches: [main, develop]
-    paths: ['src/**', 'contracts/**', 'foundry.toml', 'remappings.txt']
+    paths: ['contracts/**', 'foundry.toml', 'remappings.txt']
+  pull_request_target:
+    types: [closed]
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
   issues: write
+
+concurrency:
+  group: 4naly3er-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   analyze:
     runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,6 +29,10 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - env:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
@@ -47,86 +58,43 @@ jobs:
         continue-on-error: true
         run: |
           cd .4naly3er
-          if [ -d "../src" ]; then
-            yarn analyze "../src" "" "${{ github.server_url }}/${{ github.repository }}" || true
-          elif [ -d "../contracts" ]; then
+          if [ -d "../contracts" ]; then
             yarn analyze "../contracts" "" "${{ github.server_url }}/${{ github.repository }}" || true
           fi
 
-      - name: Process results
+      - name: Generate report
         id: run
         run: |
-          python3 << 'EOF'
-          import os, re
-          from collections import defaultdict
+          REPORT_PATH=".4naly3er/report.md"
+          if [ ! -f "$REPORT_PATH" ]; then
+            REPORT_PATH="report.md"
+          fi
+          if [ -f "$REPORT_PATH" ]; then
+            python3 scripts/reports/4naly3er-report.py "$REPORT_PATH"
+          else
+            echo "result=Failed - No report generated" >> "$GITHUB_OUTPUT"
+            echo "has_details=false" >> "$GITHUB_OUTPUT"
+          fi
 
-          out = lambda k,v: open(os.environ['GITHUB_OUTPUT'], 'a').write(f"{k}={v}\n")
+      - name: Set deploy path
+        id: path
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          REPO_NAME="${{ github.event.repository.name }}"
+          PR_NUM="${{ github.event.pull_request.number }}"
+          echo "target=4naly3er/pr-${PR_NUM}" >> "$GITHUB_OUTPUT"
+          echo "url=https://${OWNER}.github.io/${REPO_NAME}/4naly3er/pr-${PR_NUM}/4naly3er-report.html" >> "$GITHUB_OUTPUT"
 
-          possible_paths = ['.4naly3er/report.md', 'report.md']
-          path = next((p for p in possible_paths if os.path.exists(p)), None)
-          
-          if not path:
-              out('result', 'Failed - No report generated')
-              out('has_issues', 'false')
-              exit(0)
-
-          content = open(path, 'r', encoding='utf-8').read()
-          if not content.strip():
-              out('result', 'Failed - Empty report')
-              out('has_issues', 'false')
-              exit(0)
-
-          findings = defaultdict(list)
-          
-          # Match table rows like: | [GAS-1](#GAS-1) | description | 6 |
-          pattern = r'\|\s*\[([A-Z]+)-(\d+)\]\([^)]*\)\s*\|\s*([^|]+)\|\s*(\d+)\s*\|'
-          
-          for m in re.finditer(pattern, content):
-              cat, num, title, instances = m.groups()
-              finding_id = f'{cat}-{num}'
-              if not any(f['id'] == finding_id for f in findings[cat]):
-                  findings[cat].append({
-                      'id': finding_id,
-                      'title': title.strip()[:70].replace('|', '-'),
-                      'inst': instances.strip()
-                  })
-
-          total = sum(len(v) for v in findings.values())
-          h = len(findings.get('H',[]))
-          m = len(findings.get('M',[]))
-          l = len(findings.get('L',[]))
-          g = len(findings.get('GAS',[]))
-          nc = len(findings.get('NC',[]))
-
-          if total == 0:
-              out('result', 'No issues found')
-              out('has_issues', 'false')
-          else:
-              parts = []
-              if h: parts.append(f'{h} high')
-              if m: parts.append(f'{m} medium')
-              if l: parts.append(f'{l} low')
-              if g: parts.append(f'{g} gas')
-              if nc: parts.append(f'{nc} info')
-              out('result', f'Found {total} issues: {", ".join(parts)}')
-              out('has_issues', 'true')
-
-          md = []
-          for cat in ['H','M','L','GAS','NC']:
-              items = findings.get(cat, [])
-              if not items: continue
-              full_name = {'H':'High','M':'Medium','L':'Low','GAS':'Gas','NC':'Informational'}[cat]
-              md.append(f"\n**{full_name} ({len(items)})**\n")
-              md.append("| ID | Finding | Instances |")
-              md.append("|:---|:--------|:---------:|")
-              for x in items[:15]:
-                  md.append(f"| {x['id']} | {x['title']} | {x['inst']} |")
-              if len(items) > 15:
-                  md.append(f"| | +{len(items)-15} more | |")
-
-          with open('4naly3er-details.md', 'w') as f:
-              f.write('\n'.join(md))
-          EOF
+      - name: Deploy to GitHub Pages
+        if: steps.run.outputs.has_details == 'true'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: .
+          destination_dir: ${{ steps.path.outputs.target }}
+          include_files: "4naly3er-report.html"
+          keep_files: true
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -135,6 +103,7 @@ jobs:
           path: |
             .4naly3er/report.md
             4naly3er-details.md
+            4naly3er-report.html
           retention-days: 30
 
       - name: Update PR comment
@@ -143,17 +112,20 @@ jobs:
         env:
           SECTION: 4naly3er Analysis
           RESULT: ${{ steps.run.outputs.result }}
-          HAS_ISSUES: ${{ steps.run.outputs.has_issues }}
+          HAS_DETAILS: ${{ steps.run.outputs.has_details }}
           RUN_ID: ${{ github.run_id }}
           REPO: ${{ github.repository }}
+          REPORT_URL: ${{ steps.path.outputs.url }}
         with:
           script: |
             const fs = require('fs');
             const marker = "<!-- ci-summary -->";
             const detailsMarker = "<!-- details-section -->";
             const section = process.env.SECTION;
-            const result = process.env.RESULT || 'Unknown';
-            const hasIssues = process.env.HAS_ISSUES === 'true';
+            const hasDetails = process.env.HAS_DETAILS === 'true';
+            const rawResult = process.env.RESULT || 'Failed';
+            const reportUrl = process.env.REPORT_URL;
+            const result = hasDetails ? `${rawResult} - [View Report](${reportUrl})` : rawResult;
             const runId = process.env.RUN_ID;
             const repoFull = process.env.REPO;
 
@@ -162,73 +134,53 @@ jobs:
 
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
-
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner, repo, issue_number, per_page: 100,
-            });
-
-            const existing = comments.find(c =>
-              c.user?.login === "github-actions[bot]" && c.body?.includes(marker)
-            );
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
+            const existing = comments.find(c => c.user?.login === "github-actions[bot]" && c.body?.includes(marker));
 
             let rows = {};
             let existingDetails = {};
-            
             if (existing?.body) {
               const parts = existing.body.split(detailsMarker);
-              const tableSection = parts[0] || '';
-              
-              const lines = tableSection.split('\n');
-              for (const line of lines) {
+              for (const line of (parts[0] || '').split('\n')) {
                 const match = line.match(/^\| ([^|]+) \| ([^|]+) \|$/);
-                if (match) {
-                  const name = match[1].trim();
-                  if (name && name !== 'Check' && !name.startsWith(':')) {
-                    rows[name] = match[2].trim();
-                  }
-                }
+                if (match && match[1].trim() !== 'Check' && !match[1].trim().startsWith(':')) rows[match[1].trim()] = match[2].trim();
               }
-              
-              const detailsRegex = /<details>\s*<summary><strong>([^<]+)<\/strong><\/summary>([\s\S]*?)<\/details>/g;
-              let detailMatch;
-              while ((detailMatch = detailsRegex.exec(existing.body)) !== null) {
-                existingDetails[detailMatch[1].trim()] = detailMatch[0];
-              }
+              const re = /<details>\s*<summary><strong>([^<]+)<\/strong><\/summary>([\s\S]*?)<\/details>/g;
+              let m; while ((m = re.exec(existing.body)) !== null) existingDetails[m[1].trim()] = m[0];
             }
 
             rows[section] = result;
+            if (hasDetails && details) {
+              existingDetails[section] = `<details>\n<summary><strong>${section}</strong></summary>\n\n${details}\n\n[View full report](${reportUrl}) | [View logs](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`;
+            } else { delete existingDetails[section]; }
 
-            if (hasIssues && details) {
-              existingDetails[section] = `<details>\n<summary><strong>${section}</strong></summary>\n\n${details}\n\n[View full report](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`;
-            } else {
-              delete existingDetails[section];
-            }
-
-            const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Coverage', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
-            const sortedKeys = Object.keys(rows).sort((a, b) => {
-              const ai = order.indexOf(a), bi = order.indexOf(b);
-              return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-            });
-
+            const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Gas Report', 'Coverage', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
+            const sortedKeys = Object.keys(rows).sort((a, b) => (order.indexOf(a) === -1 ? 999 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 999 : order.indexOf(b)));
             let table = `| Check | Result |\n|:------|:-------|\n`;
-            for (const key of sortedKeys) {
-              table += `| ${key} | ${rows[key]} |\n`;
-            }
+            for (const key of sortedKeys) table += `| ${key} | ${rows[key]} |\n`;
 
-            const detailsOrder = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Coverage'];
-            const sortedDetails = Object.keys(existingDetails).sort((a, b) => {
-              const ai = detailsOrder.indexOf(a), bi = detailsOrder.indexOf(b);
-              return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-            });
-
+            const detailsOrder = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Gas Report', 'Coverage'];
+            const sortedDetails = Object.keys(existingDetails).sort((a, b) => (detailsOrder.indexOf(a) === -1 ? 999 : detailsOrder.indexOf(a)) - (detailsOrder.indexOf(b) === -1 ? 999 : detailsOrder.indexOf(b)));
             let body = `${marker}\n## CI Summary\n\n${table}`;
-            
-            if (sortedDetails.length > 0) {
-              body += `\n${detailsMarker}\n\n---\n\n${sortedDetails.map(k => existingDetails[k]).join('\n\n')}`;
-            }
+            if (sortedDetails.length > 0) body += `\n${detailsMarker}\n\n---\n\n${sortedDetails.map(k => existingDetails[k]).join('\n\n')}`;
 
-            if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body });
-            }
+            if (existing) await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            else await github.rest.issues.createComment({ owner, repo, issue_number, body });
+
+  cleanup:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 0
+      - run: |
+          DIR="4naly3er/pr-${{ github.event.pull_request.number }}"
+          [ -d "$DIR" ] || exit 0
+          rm -rf "$DIR"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Clean up 4naly3er report for PR #${{ github.event.pull_request.number }}" || true
+          git push

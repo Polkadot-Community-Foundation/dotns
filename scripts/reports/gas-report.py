@@ -8,6 +8,7 @@ Usage:
     python3 scripts/gas-report.py
 """
 
+import os
 import re
 import subprocess
 import sys
