@@ -37,11 +37,13 @@ for attempt in $(seq 1 $MAX_RETRIES); do
         echo '<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=docs/"></head></html>' > /tmp/gh-pages/index.html
     fi
 
-    REPORT_FILE=$(ls "${SOURCE_DIR}/"*.html 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
-    if [ -n "$REPORT_FILE" ]; then
-        cat > "/tmp/gh-pages/${DESTINATION_DIR}/index.html" << INDEXEOF
+    if [ ! -f "${SOURCE_DIR}/index.html" ]; then
+        REPORT_FILE=$(ls "${SOURCE_DIR}/"*.html 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
+        if [ -n "$REPORT_FILE" ]; then
+            cat > "/tmp/gh-pages/${DESTINATION_DIR}/index.html" << INDEXEOF
 <!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=${REPORT_FILE}"></head><body></body></html>
 INDEXEOF
+        fi
     fi
 
     cd /tmp/gh-pages

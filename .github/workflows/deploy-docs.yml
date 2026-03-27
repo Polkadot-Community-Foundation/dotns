@@ -33,6 +33,11 @@ jobs:
         with:
           version: nightly
 
+      - name: Install mdbook
+        run: |
+          MDBOOK_VERSION="0.4.40"
+          curl -sSL "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" | tar -xz -C /usr/local/bin
+
       - run: forge install
       - run: forge build
 
@@ -41,9 +46,30 @@ jobs:
         env:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: |
-          if ! forge doc --build --out docs-output 2>&1 | tee docs.log; then
+          REPO_NAME="${{ github.event.repository.name }}"
+
+          # Step 1: Generate mdBook source (without building)
+          if ! forge doc --out docs-output 2>&1 | tee docs.log; then
             echo "success=false" >> "$GITHUB_OUTPUT"
             echo "error=forge doc failed" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Step 2: Determine the deploy subpath and inject site-url
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            PR_NUM="${{ github.event.pull_request.number }}"
+            SITE_URL="/${REPO_NAME}/docs/preview/pr-${PR_NUM}/"
+          else
+            SITE_URL="/${REPO_NAME}/docs/"
+          fi
+
+          # Inject site-url into book.toml so assets resolve correctly on gh-pages
+          sed -i '/^\[output\.html\]/a site-url = "'"${SITE_URL}"'"' docs-output/book.toml
+
+          # Step 3: Build with mdbook
+          if ! mdbook build docs-output 2>&1 | tee -a docs.log; then
+            echo "success=false" >> "$GITHUB_OUTPUT"
+            echo "error=mdbook build failed" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -115,7 +141,7 @@ jobs:
         if: steps.docs.outputs.success == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash scripts/deploy-to-gh-pages.sh ./docs-output/book ${{ steps.path.outputs.target }}
+        run: bash scripts/shell/deploy-to-gh-pages.sh ./docs-output/book ${{ steps.path.outputs.target }}
 
       - name: Update PR comment
         if: always() && github.event_name == 'pull_request'

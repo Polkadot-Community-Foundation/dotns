@@ -24,9 +24,12 @@ import {StringUtils} from "../utils/StringUtils.sol";
 ///      - records[node].owner == address(0) means ownership is derived from the ERC721 registrar.
 ///      Authorisation for tokenised nodes follows ERC721 owner/approvals.
 /// @custom:security-contact admin@parity.io
-contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, IDotnsRegistry {
+contract DotnsRegistryOld is Initializable, UUPSUpgradeable, OwnableUpgradeable, IDotnsRegistry {
     using StoreUtils for IStoreFactory;
     using StringUtils for *;
+
+    /// @dev Error retained from v1.2.0 interface (removed in v1.3.0).
+    error NodeAlreadyExists(bytes32 subnode);
 
     bytes32 private constant DOT_NODE =
         0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
@@ -148,14 +151,10 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         bytes32 labelhash = _labelhash(subLabel);
         subnode = _namehash(parentNode, labelhash);
 
-        if (records[subnode].exists) {
-            // Reassignment: only update owner, preserve resolver
-            records[subnode].owner = newOwner;
-        } else {
-            // New subnode: full record creation
-            address _reverseResolver = protocolRegistry.get(KEY_REVERSE_RESOLVER);
-            records[subnode] = Record({owner: newOwner, resolver: _reverseResolver, exists: true});
-        }
+        require(!records[subnode].exists, NodeAlreadyExists(subnode));
+
+        address _reverseResolver = protocolRegistry.get(KEY_REVERSE_RESOLVER);
+        records[subnode] = Record({owner: newOwner, resolver: _reverseResolver, exists: true});
 
         _writeSubnodeToStore(
             record.owner, subnode, string.concat(subLabel, ".", parentLabel, ".dot")
@@ -193,23 +192,9 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         emit NewResolver(node, newResolver);
     }
 
-    /// @inheritdoc IDotnsRegistry
-    function setSubnodeResolver(SubnodeResolverRecord calldata record)
-        external
-        override
-        authorised(record.parentNode)
-    {
-        string calldata subLabel = record.subLabel;
-        string calldata parentLabel = record.parentLabel;
-        require(subLabel.isSingleLabel(), InvalidLabel());
-        require(parentLabel.isNamePath(), ParentLabelMismatch());
-        require(_parentNamehash(parentLabel) == record.parentNode, ParentLabelMismatch());
-
-        bytes32 subnode = _namehash(record.parentNode, _labelhash(subLabel));
-        require(records[subnode].exists, NotAuthorised());
-
-        records[subnode].resolver = record.resolver;
-        emit NewResolver(subnode, record.resolver);
+    /// @dev Not implemented in v1.2.0. Added in v1.3.0.
+    function setSubnodeResolver(SubnodeResolverRecord calldata) external override {
+        revert NotAllowed();
     }
 
     /// @inheritdoc IDotnsRegistry
@@ -359,7 +344,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.3.0";
+        versionString = "1.2.0";
     }
 
     /// @inheritdoc UUPSUpgradeable

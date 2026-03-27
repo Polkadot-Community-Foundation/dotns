@@ -64,22 +64,35 @@ interface IDotnsRegistry {
     /// @param node The node identifier that already exists.
     error NodeAlreadyOwned(bytes32 node);
 
-    /// @notice Thrown when attempting to create a subnode that already exists.
-    /// @param subnode The derived node identifier that already exists.
-    error NodeAlreadyExists(bytes32 subnode);
-
     /// @notice Thrown when a sublabel is not a canonical lowercase ASCII DNS label.
     error InvalidLabel();
 
     /// @notice Thrown when the supplied parent label does not match the parent node.
     error ParentLabelMismatch();
 
-    /// @notice Creates a new subnode and assigns its owner.
+    /// @notice Record describing a subnode resolver update request.
+    /// @param parentNode Parent node identifier.
+    /// @param subLabel Human-readable subnode label e.g "alice".
+    /// @param parentLabel Canonical parent name without `.dot` suffix e.g bob or child.bob.
+    /// @param resolver Resolver contract address (zero clears).
+    struct SubnodeResolverRecord {
+        bytes32 parentNode;
+        string subLabel;
+        string parentLabel;
+        address resolver;
+    }
+
+    /// @notice Creates or reassigns a subnode and assigns its owner.
     /// @dev Callable only by the current owner of `parentNode`.
-    ///      Reverts if the derived subnode already exists.
     /// @param record SubnodeRecord.
     /// @return subnode The derived subnode identifier.
     function setSubnodeOwner(SubnodeRecord calldata record) external returns (bytes32 subnode);
+
+    /// @notice Sets the resolver for an existing subnode.
+    /// @dev Callable only by the current owner of `parentNode`.
+    ///      The subnode owner can still use `setResolver` directly.
+    /// @param record SubnodeResolverRecord.
+    function setSubnodeResolver(SubnodeResolverRecord calldata record) external;
 
     /// @notice Creates a node record for a tokenised base registration.
     /// @dev Callable only by the configured `registrarController`.
