@@ -83,7 +83,7 @@ jobs:
         run: |
           mkdir -p /tmp/deploy
           cp test-report.html /tmp/deploy/
-          bash scripts/deploy-to-gh-pages.sh /tmp/deploy ${{ steps.path.outputs.target }}
+          bash scripts/shell/deploy-to-gh-pages.sh /tmp/deploy ${{ steps.path.outputs.target }}
 
       - uses: actions/upload-artifact@v4
         if: always()

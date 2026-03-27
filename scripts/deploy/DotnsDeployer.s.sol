@@ -5,24 +5,24 @@ import {console} from "forge-std/Script.sol";
 import {BaseDeployer} from "./BaseDeployer.s.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
-import {PopRules, IPopRules} from "../contracts/pop/PopRules.sol";
-import {DotnsRegistrar, IDotnsRegistrar} from "../contracts/registrars/DotnsRegistrar.sol";
+import {PopRules, IPopRules} from "../../contracts/pop/PopRules.sol";
+import {DotnsRegistrar, IDotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
 import {
     DotnsRegistrarController,
     IDotnsRegistrarController
-} from "../contracts/registrars/DotnsRegistrarController.sol";
-import {DotnsRegistry, IDotnsRegistry} from "../contracts/registry/DotnsRegistry.sol";
+} from "../../contracts/registrars/DotnsRegistrarController.sol";
+import {DotnsRegistry, IDotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
 import {
     DotnsReverseResolver,
     IDotnsReverseResolver
-} from "../contracts/resolvers/DotnsReverseResolver.sol";
-import {DotnsContentResolver} from "../contracts/resolvers/DotnsContentResolver.sol";
-import {DotnsResolver} from "../contracts/resolvers/DotnsResolver.sol";
-import {StoreFactory, IStoreFactory} from "../contracts/store/StoreFactory.sol";
+} from "../../contracts/resolvers/DotnsReverseResolver.sol";
+import {DotnsContentResolver} from "../../contracts/resolvers/DotnsContentResolver.sol";
+import {DotnsResolver} from "../../contracts/resolvers/DotnsResolver.sol";
+import {StoreFactory, IStoreFactory} from "../../contracts/store/StoreFactory.sol";
 import {
     DotnsProtocolRegistry,
     IDotnsProtocolRegistry
-} from "../contracts/registry/DotnsProtocolRegistry.sol";
+} from "../../contracts/registry/DotnsProtocolRegistry.sol";
 
 /// @title DotnsDeployer
 contract DotnsDeployer is BaseDeployer {
@@ -264,8 +264,7 @@ contract DotnsDeployer is BaseDeployer {
 
         // Verify protocol registry is wired to all contracts
         require(
-            address(DotnsRegistrar(registrarProxy).protocolRegistry())
-                == address(protocolRegistry),
+            address(DotnsRegistrar(registrarProxy).protocolRegistry()) == address(protocolRegistry),
             "Registrar: not wired"
         );
         require(
@@ -274,8 +273,7 @@ contract DotnsDeployer is BaseDeployer {
             "Controller: not wired"
         );
         require(
-            address(DotnsRegistry(registryProxy).protocolRegistry())
-                == address(protocolRegistry),
+            address(DotnsRegistry(registryProxy).protocolRegistry()) == address(protocolRegistry),
             "Registry: not wired"
         );
         require(
@@ -284,8 +282,7 @@ contract DotnsDeployer is BaseDeployer {
             "ReverseResolver: not wired"
         );
         require(
-            address(DotnsResolver(resolverProxy).protocolRegistry())
-                == address(protocolRegistry),
+            address(DotnsResolver(resolverProxy).protocolRegistry()) == address(protocolRegistry),
             "Resolver: not wired"
         );
         require(
@@ -301,9 +298,7 @@ contract DotnsDeployer is BaseDeployer {
 
         // Verify controller is authorized
         require(
-            DotnsRegistrar(registrarProxy).controllers(
-                IDotnsRegistrarController(controllerProxy)
-            ),
+            DotnsRegistrar(registrarProxy).controllers(IDotnsRegistrarController(controllerProxy)),
             "Controller not added to registrar"
         );
 
