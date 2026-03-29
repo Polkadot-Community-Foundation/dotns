@@ -1,20 +1,27 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+// Lookup keys for IDotnsProtocolRegistry.get / .set.
+// casting to 'bytes32' is safe because all key strings fit in 32 bytes.
+// forge-lint: disable-next-line(unsafe-typecast)
+bytes32 constant KEY_CONTROLLER = bytes32("controller");
+// forge-lint: disable-next-line(unsafe-typecast)
+bytes32 constant KEY_REGISTRAR = bytes32("registrar");
+// forge-lint: disable-next-line(unsafe-typecast)
+bytes32 constant KEY_REGISTRY = bytes32("registry");
+// forge-lint: disable-next-line(unsafe-typecast)
+bytes32 constant KEY_REVERSE_RESOLVER = bytes32("reverseResolver");
+// forge-lint: disable-next-line(unsafe-typecast)
+bytes32 constant KEY_POP_RULES = bytes32("popRules");
+// forge-lint: disable-next-line(unsafe-typecast)
+bytes32 constant KEY_STORE_FACTORY = bytes32("storeFactory");
+// forge-lint: disable-next-line(unsafe-typecast)
+bytes32 constant KEY_RESOLVER = bytes32("resolver");
+// forge-lint: disable-next-line(unsafe-typecast)
+bytes32 constant KEY_CONTENT_RESOLVER = bytes32("contentResolver");
+
 /// @title IDotnsProtocolRegistry
 /// @notice Interface for the DotNS protocol-level address registry.
-/// @dev Provides a centralised lookup for all DotNS contract addresses.
-///      Contracts query this registry instead of storing individual references,
-///      reducing storage fragmentation and simplifying upgrades.
-///
-/// @dev Well-known keys are defined as `bytes32` constants:
-///      - `REGISTRAR`       — ERC721 registrar backing name ownership.
-///      - `CONTROLLER`      — Registrar controller orchestrating commit-reveal registration.
-///      - `REGISTRY`        — Forward registry storing node ownership and resolver.
-///      - `REVERSE_RESOLVER` — Reverse resolver for address-to-name mapping.
-///      - `POP_RULES`       — PoP oracle enforcing eligibility and pricing.
-///      - `STORE_FACTORY`   — Factory for per-user Store instances.
-///
 /// @custom:security-contact admin@parity.io
 interface IDotnsProtocolRegistry {
     /// @notice Emitted when a protocol address is set or updated.

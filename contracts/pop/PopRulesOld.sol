@@ -16,7 +16,7 @@ import {IDotnsProtocolRegistry, KEY_CONTROLLER} from "../registry/IDotnsProtocol
 /// @title PopRules
 /// @notice Implements DotNS pricing with PoP-tier validation and base-name reservations
 /// @custom:security-contact admin@parity.io
-contract PopRules is
+contract PopRulesOld is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,
@@ -36,6 +36,10 @@ contract PopRules is
 
     /// @notice Maximum time a base name can be reserved
     uint256 public constant MAX_RESERVATION_TIME = 12 weeks;
+
+    /// @notice Namehash of .dot TLD
+    bytes32 private constant DOT_NODE =
+        0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
 
     /// @notice DEPRECATED: Authorized registry controller address.
     /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.

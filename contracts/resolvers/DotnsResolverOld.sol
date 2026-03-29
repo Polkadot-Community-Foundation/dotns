@@ -19,7 +19,7 @@ import {IDotnsProtocolRegistry, KEY_REGISTRY} from "../registry/IDotnsProtocolRe
 /// @dev Maps node identifiers to a resolved address.
 ///      Write access is restricted to the owner of the node as recorded in the DotNS registry.
 /// @custom:security-contact admin@parity.io
-contract DotnsResolver is
+contract DotnsResolverOld is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,

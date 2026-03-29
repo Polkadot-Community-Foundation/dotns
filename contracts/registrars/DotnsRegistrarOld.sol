@@ -24,7 +24,6 @@ import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
-import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
 /// @title Dotns Registrar
 /// @notice ERC721-backed registrar implementing permanent name ownership.
@@ -38,7 +37,7 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 ///      Stores are immutable (locked by DotNS controllers), so the sender's entry is not removed.
 ///
 /// @custom:security-contact admin@parity.io
-contract DotnsRegistrar is
+contract DotnsRegistrarOld is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,
@@ -69,6 +68,10 @@ contract DotnsRegistrar is
     ///      to the recipient's Store without needing to read from the sender's Store.
     ///      The labelhash can always be derived as `keccak256(bytes(label))`.
     mapping(uint256 tokenId => string label) private _labels;
+
+    /// @notice Namehash of the .dot TLD node.
+    bytes32 private constant DOT_NODE =
+        0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
     uint256[47] private __gap;
@@ -141,13 +144,12 @@ contract DotnsRegistrar is
 
         bytes32 labelhash;
         bytes32 node;
-        bytes32 dotNode = DotnsConstants.DOT_NODE;
         assembly ("memory-safe") {
             let pointer := mload(0x40)
             let len := label.length
             calldatacopy(pointer, label.offset, len)
             labelhash := keccak256(pointer, len)
-            mstore(pointer, dotNode)
+            mstore(pointer, DOT_NODE)
             mstore(add(pointer, 0x20), labelhash)
             node := keccak256(pointer, 0x40)
         }
@@ -207,7 +209,7 @@ contract DotnsRegistrar is
         IDotnsReverseResolver reverse =
             IDotnsReverseResolver(protocolRegistry.get(KEY_REVERSE_RESOLVER));
         string memory currentReverse = reverse.nameOf(from);
-        string memory fullName = string.concat(label, DotnsConstants.TLD);
+        string memory fullName = string.concat(label, ".dot");
 
         if (_stringHash(currentReverse) == _stringHash(fullName)) {
             reverse.setReverseName(from, "");
@@ -244,7 +246,7 @@ contract DotnsRegistrar is
             }
             bytes32 storeKey = StoreUtils.storeKey(labelhash);
             if (bytes(toStore.getValueFor(to, storeKey)).length == 0) {
-                toStore.setValueFor(to, storeKey, string.concat(label, DotnsConstants.TLD));
+                toStore.setValueFor(to, storeKey, string.concat(label, ".dot"));
             }
         }
     }

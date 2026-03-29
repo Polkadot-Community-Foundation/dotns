@@ -19,7 +19,7 @@ import {IDotnsProtocolRegistry, KEY_REGISTRY} from "../registry/IDotnsProtocolRe
 /// @dev Stores opaque content hash bytes and text key-value pairs per node
 ///      Authorisation enforced via DotNS registry ownership or approved operators
 /// @custom:security-contact admin@parity.io
-contract DotnsContentResolver is
+contract DotnsContentResolverOld is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,

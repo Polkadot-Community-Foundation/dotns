@@ -22,7 +22,7 @@ import {
 /// @dev Maintains an on-chain mapping from addresses to name strings.
 ///      Writes are restricted to an authorised registrar.
 /// @custom:security-contact admin@parity.io
-contract DotnsReverseResolver is
+contract DotnsReverseResolverOld is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,

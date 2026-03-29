@@ -23,6 +23,17 @@ import {
     IDotnsProtocolRegistry
 } from "../../contracts/registry/DotnsProtocolRegistry.sol";
 import {StoreUtils} from "../../contracts/utils/StoreUtils.sol";
+import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
+import {
+    KEY_REGISTRAR,
+    KEY_CONTROLLER,
+    KEY_REGISTRY,
+    KEY_REVERSE_RESOLVER,
+    KEY_POP_RULES,
+    KEY_STORE_FACTORY,
+    KEY_RESOLVER,
+    KEY_CONTENT_RESOLVER
+} from "../../contracts/registry/IDotnsProtocolRegistry.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 /// @title BaseDotns
@@ -189,23 +200,14 @@ abstract contract BaseDotns is Test {
         protocolRegistry = DotnsProtocolRegistry(protocolRegistryAddress);
         vm.label(protocolRegistryAddress, "DotnsProtocolRegistry");
 
-        // casting to 'bytes32' is safe because all key strings fit in 32 bytes
-        // forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("registrar"), dotnsRegistrarAddress);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("controller"), dotnsRegistrarControllerAddress);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("registry"), dotnsRegistryAddress);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("reverseResolver"), dotnsReverseResolverAddress);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("popRules"), popRulesAddress);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("storeFactory"), address(storeFactory));
-        // forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("resolver"), dotnsResolverAddress);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("contentResolver"), dotnsContentResolverAddress);
+        protocolRegistry.set(KEY_REGISTRAR, dotnsRegistrarAddress);
+        protocolRegistry.set(KEY_CONTROLLER, dotnsRegistrarControllerAddress);
+        protocolRegistry.set(KEY_REGISTRY, dotnsRegistryAddress);
+        protocolRegistry.set(KEY_REVERSE_RESOLVER, dotnsReverseResolverAddress);
+        protocolRegistry.set(KEY_POP_RULES, popRulesAddress);
+        protocolRegistry.set(KEY_STORE_FACTORY, address(storeFactory));
+        protocolRegistry.set(KEY_RESOLVER, dotnsResolverAddress);
+        protocolRegistry.set(KEY_CONTENT_RESOLVER, dotnsContentResolverAddress);
 
         dotnsRegistrar.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
         dotnsRegistrarController.updateProtocolRegistry(

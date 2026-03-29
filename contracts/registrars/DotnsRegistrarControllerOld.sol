@@ -27,7 +27,6 @@ import {
     KEY_POP_RULES,
     KEY_STORE_FACTORY
 } from "../registry/IDotnsProtocolRegistry.sol";
-import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
 /// @title Dotns Registrar Controller
 /// @notice Allocates .dot labels using a commit–reveal scheme.
@@ -40,7 +39,7 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 ///        from the ERC721 registrar for authorisation.
 ///
 /// @custom:security-contact admin@parity.io
-contract DotnsRegistrarController is
+contract DotnsRegistrarControllerOld is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,
@@ -49,6 +48,10 @@ contract DotnsRegistrarController is
 {
     using StringUtils for *;
     using StoreUtils for IStoreFactory;
+
+    /// @notice Namehash of the .dot TLD.
+    bytes32 private constant DOT_NODE =
+        0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
 
     /// @notice Upper bound for commitment validity to cap storage griefing risk.
     uint256 public constant MAX_ALLOWED_COMMITMENT_AGE = 7 days;
@@ -86,6 +89,11 @@ contract DotnsRegistrarController is
 
     /// @notice Stores Mapping of commitment hashes to timestamp committed.
     mapping(bytes32 hash => uint256 timestamp) public commitments;
+
+    /// @notice Key prefix for Dotns-written Store immutable entries ("dotns.registered").
+    /// casting to 'bytes32' is safe because this is safe
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant DOTNS_REGISTERED_KEY = bytes32("dotns.registered");
 
     /// @notice Whitelist for addresses allowed to call `registerReserved`.
     mapping(address user => bool isWhiteListed) public whiteList;
@@ -280,10 +288,9 @@ contract DotnsRegistrarController is
     /// @param labelhash keccak256(label).
     /// @return node namehash.
     function _namehash(bytes32 labelhash) internal pure returns (bytes32 node) {
-        bytes32 dotNode = DotnsConstants.DOT_NODE;
         assembly ("memory-safe") {
             let pointer := mload(0x40)
-            mstore(pointer, dotNode)
+            mstore(pointer, DOT_NODE)
             mstore(add(pointer, 0x20), labelhash)
             node := keccak256(pointer, 0x40)
         }
@@ -345,9 +352,7 @@ contract DotnsRegistrarController is
         registry.setOwner(node, registration.owner, address(reverse));
 
         if (setReverseRecord) {
-            reverse.setReverseName(
-                registration.owner, string.concat(registration.label, DotnsConstants.TLD)
-            );
+            reverse.setReverseName(registration.owner, string.concat(registration.label, ".dot"));
         }
 
         IStoreFactory factory = IStoreFactory(protocolRegistry.get(KEY_STORE_FACTORY));
@@ -358,9 +363,7 @@ contract DotnsRegistrarController is
         Store store = factory.getOrCreateStore(controllers, registration.owner);
 
         bytes32 storeKey = _storeKey(labelhash);
-        store.setValueFor(
-            registration.owner, storeKey, string.concat(registration.label, DotnsConstants.TLD)
-        );
+        store.setValueFor(registration.owner, storeKey, string.concat(registration.label, ".dot"));
 
         emit NameRegistered(
             registration.label, labelhash, registration.owner, baseCost, address(store)
@@ -371,7 +374,7 @@ contract DotnsRegistrarController is
     /// @param labelhash keccak256(label).
     /// @return key Store key used for DotNS-written registration entry.
     function _storeKey(bytes32 labelhash) internal pure returns (bytes32 key) {
-        bytes32 prefix = DotnsConstants.DOTNS_REGISTERED_KEY;
+        bytes32 prefix = DOTNS_REGISTERED_KEY;
         assembly ("memory-safe") {
             let pointer := mload(0x40)
             mstore(pointer, prefix)

@@ -21,7 +21,6 @@ import {
     KEY_STORE_FACTORY
 } from "./IDotnsProtocolRegistry.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
-import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
 /// @title Dotns Registry
 /// @notice Upgradeable on-chain registry for hierarchical name ownership and resolution.
@@ -31,9 +30,12 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 ///      - records[node].owner == address(0) means ownership is derived from the ERC721 registrar.
 ///      Authorisation for tokenised nodes follows ERC721 owner/approvals.
 /// @custom:security-contact admin@parity.io
-contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, IDotnsRegistry {
+contract DotnsRegistryOld is Initializable, UUPSUpgradeable, OwnableUpgradeable, IDotnsRegistry {
     using StoreUtils for IStoreFactory;
     using StringUtils for *;
+
+    bytes32 private constant DOT_NODE =
+        0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
 
     /// @notice Mapping of node identifiers to records.
     mapping(bytes32 node => Record record) private records;
@@ -57,6 +59,11 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
     /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
     IStoreFactory public storeFactory;
+
+    /// @notice Key prefix for Dotns-written Store immutable entries ("dotns.registered").
+    /// casting to 'bytes32' is safe because this is safe
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant DOTNS_REGISTERED_KEY = bytes32("dotns.registered");
 
     /// @notice Protocol-level address registry for all DotNS contracts.
     IDotnsProtocolRegistry public protocolRegistry;
@@ -133,7 +140,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         records[subnode] = Record({owner: newOwner, resolver: _reverseResolver, exists: true});
 
         _writeSubnodeToStore(
-            record.owner, subnode, string.concat(subLabel, ".", parentLabel, DotnsConstants.TLD)
+            record.owner, subnode, string.concat(subLabel, ".", parentLabel, ".dot")
         );
 
         emit NewOwner(parentNode, labelhash, newOwner);
@@ -213,7 +220,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     /// @param labelhash keccak256(label).
     /// @return key Store key used for DotNS-written registration entry.
     function _storeKey(bytes32 labelhash) internal pure returns (bytes32 key) {
-        bytes32 prefix = DotnsConstants.DOTNS_REGISTERED_KEY;
+        bytes32 prefix = DOTNS_REGISTERED_KEY;
         assembly ("memory-safe") {
             let pointer := mload(0x40)
             mstore(pointer, prefix)
@@ -245,7 +252,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         uint256 end = labels.length;
         require(end != 0, ParentLabelMismatch());
 
-        node = DotnsConstants.DOT_NODE;
+        node = DOT_NODE;
 
         while (true) {
             uint256 start = end;
