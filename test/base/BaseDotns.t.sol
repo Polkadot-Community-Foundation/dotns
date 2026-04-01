@@ -24,16 +24,6 @@ import {
 } from "../../contracts/registry/DotnsProtocolRegistry.sol";
 import {StoreUtils} from "../../contracts/utils/StoreUtils.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
-import {
-    KEY_REGISTRAR,
-    KEY_CONTROLLER,
-    KEY_REGISTRY,
-    KEY_REVERSE_RESOLVER,
-    KEY_POP_RULES,
-    KEY_STORE_FACTORY,
-    KEY_RESOLVER,
-    KEY_CONTENT_RESOLVER
-} from "../../contracts/registry/IDotnsProtocolRegistry.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 /// @title BaseDotns
@@ -200,14 +190,14 @@ abstract contract BaseDotns is Test {
         protocolRegistry = DotnsProtocolRegistry(protocolRegistryAddress);
         vm.label(protocolRegistryAddress, "DotnsProtocolRegistry");
 
-        protocolRegistry.set(KEY_REGISTRAR, dotnsRegistrarAddress);
-        protocolRegistry.set(KEY_CONTROLLER, dotnsRegistrarControllerAddress);
-        protocolRegistry.set(KEY_REGISTRY, dotnsRegistryAddress);
-        protocolRegistry.set(KEY_REVERSE_RESOLVER, dotnsReverseResolverAddress);
-        protocolRegistry.set(KEY_POP_RULES, popRulesAddress);
-        protocolRegistry.set(KEY_STORE_FACTORY, address(storeFactory));
-        protocolRegistry.set(KEY_RESOLVER, dotnsResolverAddress);
-        protocolRegistry.set(KEY_CONTENT_RESOLVER, dotnsContentResolverAddress);
+        protocolRegistry.set(protocolRegistry.REGISTRAR(), dotnsRegistrarAddress);
+        protocolRegistry.set(protocolRegistry.CONTROLLER(), dotnsRegistrarControllerAddress);
+        protocolRegistry.set(protocolRegistry.REGISTRY(), dotnsRegistryAddress);
+        protocolRegistry.set(protocolRegistry.REVERSE_RESOLVER(), dotnsReverseResolverAddress);
+        protocolRegistry.set(protocolRegistry.POP_RULES(), popRulesAddress);
+        protocolRegistry.set(protocolRegistry.STORE_FACTORY(), address(storeFactory));
+        protocolRegistry.set(protocolRegistry.RESOLVER(), dotnsResolverAddress);
+        protocolRegistry.set(protocolRegistry.CONTENT_RESOLVER(), dotnsContentResolverAddress);
 
         dotnsRegistrar.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
         dotnsRegistrarController.updateProtocolRegistry(

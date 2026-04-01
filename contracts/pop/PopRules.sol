@@ -11,7 +11,8 @@ import {
 } from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {IPopRules} from "./IPopRules.sol";
-import {IDotnsProtocolRegistry, KEY_CONTROLLER} from "../registry/IDotnsProtocolRegistry.sol";
+import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
+import {DotnsProtocolRegistry} from "../registry/DotnsProtocolRegistry.sol";
 
 /// @title PopRules
 /// @notice Implements DotNS pricing with PoP-tier validation and base-name reservations
@@ -70,6 +71,7 @@ contract PopRules is
 
     /// @notice Initializes the oracle (public entry point)
     /// @param _startingPrice Base price in wei for No pop status users
+    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
     function initialize(uint256 _startingPrice) public initializer {
         _popRulesInit(_startingPrice);
     }
@@ -360,6 +362,7 @@ contract PopRules is
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     /// @inheritdoc IPopRules
+    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
     function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
         protocolRegistry = registry;
         emit ProtocolRegistryUpdated(registry);
@@ -373,7 +376,8 @@ contract PopRules is
 
     /// @notice Ensures the caller is the authorized registry controller
     function _onlyRegistry() internal view {
-        address controller = protocolRegistry.get(KEY_CONTROLLER);
+        address controller =
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).CONTROLLER());
         require(msg.sender == controller, NotRegistry());
     }
 }

@@ -12,7 +12,8 @@ import {
 
 import {IDotnsRegistry} from "../registry/IDotnsRegistry.sol";
 import {IDotnsContentResolver} from "./IDotnsContentResolver.sol";
-import {IDotnsProtocolRegistry, KEY_REGISTRY} from "../registry/IDotnsProtocolRegistry.sol";
+import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
+import {DotnsProtocolRegistry} from "../registry/DotnsProtocolRegistry.sol";
 
 /// @title Dotns Content Resolver
 /// @notice Implements `IDotnsContentResolver` interface with content hash, text records, and operator approvals
@@ -54,6 +55,7 @@ contract DotnsContentResolver is
 
     /// @notice Initializes the content resolver
     /// @param _registry Address of the DotNS registry contract
+    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
     function initialize(IDotnsRegistry _registry) external initializer {
         __Ownable_init(msg.sender);
         __ERC165_init();
@@ -112,6 +114,7 @@ contract DotnsContentResolver is
     }
 
     /// @inheritdoc IDotnsContentResolver
+    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
     function updateProtocolRegistry(IDotnsProtocolRegistry _registry) external override onlyOwner {
         protocolRegistry = _registry;
         emit ProtocolRegistryUpdated(_registry);
@@ -120,7 +123,9 @@ contract DotnsContentResolver is
     /// @notice Ensures caller is either the node owner or an approved operator
     /// @param node Node identifier
     function _requireNodeOwnerOrOperator(bytes32 node) internal view {
-        IDotnsRegistry _registry = IDotnsRegistry(protocolRegistry.get(KEY_REGISTRY));
+        IDotnsRegistry _registry = IDotnsRegistry(
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRY())
+        );
         address nodeOwner = _registry.owner(node);
         require(
             msg.sender == nodeOwner || operators[nodeOwner][msg.sender],

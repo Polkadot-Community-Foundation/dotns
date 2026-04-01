@@ -12,7 +12,8 @@ import {
 
 import {IDotnsResolver} from "./IDotnsResolver.sol";
 import {IDotnsRegistry} from "../registry/IDotnsRegistry.sol";
-import {IDotnsProtocolRegistry, KEY_REGISTRY} from "../registry/IDotnsProtocolRegistry.sol";
+import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
+import {DotnsProtocolRegistry} from "../registry/DotnsProtocolRegistry.sol";
 
 /// @title Dotns Resolver
 /// @notice Stores forward-resolution address records for DotNS nodes
@@ -55,6 +56,7 @@ contract DotnsResolver is
 
     /// @notice Initializes the resolver
     /// @param _registry DotNS registry used for ownership checks
+    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
     function initialize(IDotnsRegistry _registry) external initializer {
         __Ownable_init(msg.sender);
         __ERC165_init();
@@ -79,6 +81,7 @@ contract DotnsResolver is
     }
 
     /// @inheritdoc IDotnsResolver
+    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
     function updateProtocolRegistry(IDotnsProtocolRegistry _registry) external override onlyOwner {
         protocolRegistry = _registry;
         emit ProtocolRegistryUpdated(_registry);
@@ -87,7 +90,9 @@ contract DotnsResolver is
     /// @notice Internal ownership check for a registry node
     /// @param node Node identifier
     function _onlyNodeOwner(bytes32 node) internal view {
-        IDotnsRegistry _registry = IDotnsRegistry(protocolRegistry.get(KEY_REGISTRY));
+        IDotnsRegistry _registry = IDotnsRegistry(
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRY())
+        );
         require(_registry.owner(node) == msg.sender, NotAuthorised(node, msg.sender));
     }
 

@@ -147,5 +147,6 @@ interface IDotnsRegistrarController {
     /// @notice Updates the protocol registry address.
     /// @dev Callable only by the contract owner.
     /// @param registry The address of the new protocol registry.
+    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
     function updateProtocolRegistry(IDotnsProtocolRegistry registry) external;
 }

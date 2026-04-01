@@ -12,13 +12,9 @@ import {
 
 import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
 import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
-import {
-    IDotnsProtocolRegistry,
-    KEY_CONTROLLER,
-    KEY_REGISTRY,
-    KEY_REVERSE_RESOLVER,
-    KEY_STORE_FACTORY
-} from "../registry/IDotnsProtocolRegistry.sol";
+import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
+import {DotnsProtocolRegistry} from "../registry/DotnsProtocolRegistry.sol";
+
 import {Store} from "../store/Store.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
@@ -88,12 +84,14 @@ contract DotnsRegistrar is
     /// @dev Uses OpenZeppelin upgradeable initializers.
     /// @param name ERC721 token name.
     /// @param symbol ERC721 token symbol.
+    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
     function initialize(string calldata name, string calldata symbol) external initializer {
         __Ownable_init(msg.sender);
         __ERC721_init(name, symbol);
     }
 
     /// @inheritdoc IDotnsRegistrar
+    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
     function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
         protocolRegistry = registry;
         emit ProtocolRegistryUpdated(registry);
@@ -204,8 +202,11 @@ contract DotnsRegistrar is
         string memory label = _labels[tokenId];
         if (bytes(label).length == 0) return;
 
-        IDotnsReverseResolver reverse =
-            IDotnsReverseResolver(protocolRegistry.get(KEY_REVERSE_RESOLVER));
+        IDotnsReverseResolver reverse = IDotnsReverseResolver(
+            protocolRegistry.get(
+                DotnsProtocolRegistry(address(protocolRegistry)).REVERSE_RESOLVER()
+            )
+        );
         string memory currentReverse = reverse.nameOf(from);
         string memory fullName = string.concat(label, DotnsConstants.TLD);
 
@@ -222,7 +223,9 @@ contract DotnsRegistrar is
     /// @param to Address of the transfer recipient.
     /// @param tokenId The transferred token identifier.
     function _syncRecipientStore(address to, uint256 tokenId) internal {
-        IStoreFactory factory = IStoreFactory(protocolRegistry.get(KEY_STORE_FACTORY));
+        IStoreFactory factory = IStoreFactory(
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).STORE_FACTORY())
+        );
         if (address(factory) == address(0)) return;
 
         Store toStore = Store(address(factory.getDeployedStore(to)));
@@ -230,8 +233,10 @@ contract DotnsRegistrar is
         if (address(toStore) == address(0)) {
             address[] memory storeControllers = new address[](3);
             storeControllers[0] = address(this);
-            storeControllers[1] = protocolRegistry.get(KEY_CONTROLLER);
-            storeControllers[2] = protocolRegistry.get(KEY_REGISTRY);
+            storeControllers[1] =
+                protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).CONTROLLER());
+            storeControllers[2] =
+                protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRY());
 
             toStore = factory.getOrCreateStore(storeControllers, to);
         }

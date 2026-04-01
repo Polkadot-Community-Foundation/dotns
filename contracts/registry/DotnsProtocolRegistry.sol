@@ -7,17 +7,7 @@ import {
     OwnableUpgradeable
 } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
-import {
-    IDotnsProtocolRegistry,
-    KEY_REGISTRAR,
-    KEY_CONTROLLER,
-    KEY_REGISTRY,
-    KEY_REVERSE_RESOLVER,
-    KEY_POP_RULES,
-    KEY_STORE_FACTORY,
-    KEY_RESOLVER,
-    KEY_CONTENT_RESOLVER
-} from "./IDotnsProtocolRegistry.sol";
+import {IDotnsProtocolRegistry} from "./IDotnsProtocolRegistry.sol";
 
 /// @title Dotns Protocol Registry
 /// @notice Upgradeable address registry for all DotNS protocol contracts.
@@ -31,14 +21,45 @@ contract DotnsProtocolRegistry is
     OwnableUpgradeable,
     IDotnsProtocolRegistry
 {
-    bytes32 public constant REGISTRAR = KEY_REGISTRAR;
-    bytes32 public constant CONTROLLER = KEY_CONTROLLER;
-    bytes32 public constant REGISTRY = KEY_REGISTRY;
-    bytes32 public constant REVERSE_RESOLVER = KEY_REVERSE_RESOLVER;
-    bytes32 public constant POP_RULES = KEY_POP_RULES;
-    bytes32 public constant STORE_FACTORY = KEY_STORE_FACTORY;
-    bytes32 public constant RESOLVER = KEY_RESOLVER;
-    bytes32 public constant CONTENT_RESOLVER = KEY_CONTENT_RESOLVER;
+    /// @notice Well-known key for the ERC721 registrar backing name ownership.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 public constant REGISTRAR = bytes32("registrar");
+
+    /// @notice Well-known key for the registrar controller orchestrating commit-reveal registration.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 public constant CONTROLLER = bytes32("controller");
+
+    /// @notice Well-known key for the forward registry storing node ownership and resolver.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 public constant REGISTRY = bytes32("registry");
+
+    /// @notice Well-known key for the reverse resolver for address-to-name mapping.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 public constant REVERSE_RESOLVER = bytes32("reverseResolver");
+
+    /// @notice Well-known key for the PoP oracle enforcing eligibility and pricing.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 public constant POP_RULES = bytes32("popRules");
+
+    /// @notice Well-known key for the factory deploying per-user Store instances.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 public constant STORE_FACTORY = bytes32("storeFactory");
+
+    /// @notice Well-known key for the forward resolver storing address records.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 public constant RESOLVER = bytes32("resolver");
+
+    /// @notice Well-known key for the content resolver storing content hashes and text records.
+    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 public constant CONTENT_RESOLVER = bytes32("contentResolver");
 
     /// @dev Internal mapping from well-known key to contract address.
     mapping(bytes32 key => address addr) private _addresses;

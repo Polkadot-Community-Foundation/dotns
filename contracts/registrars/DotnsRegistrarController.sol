@@ -19,14 +19,8 @@ import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
 import {Store} from "../store/Store.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
-import {
-    IDotnsProtocolRegistry,
-    KEY_REGISTRAR,
-    KEY_REGISTRY,
-    KEY_REVERSE_RESOLVER,
-    KEY_POP_RULES,
-    KEY_STORE_FACTORY
-} from "../registry/IDotnsProtocolRegistry.sol";
+import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
+import {DotnsProtocolRegistry} from "../registry/DotnsProtocolRegistry.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
 /// @title Dotns Registrar Controller
@@ -125,6 +119,7 @@ contract DotnsRegistrarController is
     /// @param factory Store factory used to resolve/deploy per-user stores.
     /// @param minAge Minimum commitment age in seconds.
     /// @param maxAge Maximum commitment age in seconds.
+    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
     function initialize(
         IDotnsRegistrar registrar,
         IDotnsRegistry registry,
@@ -157,7 +152,9 @@ contract DotnsRegistrarController is
     function available(string calldata label) public view override returns (bool) {
         bytes32 node;
         (, node) = _validatedLabelNode(label);
-        IDotnsRegistrar registrar = IDotnsRegistrar(protocolRegistry.get(KEY_REGISTRAR));
+        IDotnsRegistrar registrar = IDotnsRegistrar(
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRAR())
+        );
         return registrar.available(uint256(node));
     }
 
@@ -210,7 +207,9 @@ contract DotnsRegistrarController is
             _requireAvailableLabel(registration.label);
         _consumeCommitment(registration);
 
-        IPopRules rules = IPopRules(protocolRegistry.get(KEY_POP_RULES));
+        IPopRules rules = IPopRules(
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).POP_RULES())
+        );
         IPopRules.PriceWithMeta memory priced =
             rules.priceWithCheck(registration.label, registration.owner);
 
@@ -306,7 +305,9 @@ contract DotnsRegistrarController is
         returns (IDotnsRegistrar registrar, bytes32 labelhash, bytes32 node)
     {
         (labelhash, node) = _validatedLabelNode(label);
-        registrar = IDotnsRegistrar(protocolRegistry.get(KEY_REGISTRAR));
+        registrar = IDotnsRegistrar(
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRAR())
+        );
         require(registrar.available(uint256(node)), NameNotAvailable(label));
     }
 
@@ -337,9 +338,14 @@ contract DotnsRegistrarController is
     )
         internal
     {
-        IDotnsRegistry registry = IDotnsRegistry(protocolRegistry.get(KEY_REGISTRY));
-        IDotnsReverseResolver reverse =
-            IDotnsReverseResolver(protocolRegistry.get(KEY_REVERSE_RESOLVER));
+        IDotnsRegistry registry = IDotnsRegistry(
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRY())
+        );
+        IDotnsReverseResolver reverse = IDotnsReverseResolver(
+            protocolRegistry.get(
+                DotnsProtocolRegistry(address(protocolRegistry)).REVERSE_RESOLVER()
+            )
+        );
 
         registrar.register(uint256(node), registration.owner, registration.label);
         registry.setOwner(node, registration.owner, address(reverse));
@@ -350,7 +356,9 @@ contract DotnsRegistrarController is
             );
         }
 
-        IStoreFactory factory = IStoreFactory(protocolRegistry.get(KEY_STORE_FACTORY));
+        IStoreFactory factory = IStoreFactory(
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).STORE_FACTORY())
+        );
         address[] memory controllers = new address[](3);
         controllers[0] = address(this);
         controllers[1] = address(registry);
@@ -392,6 +400,7 @@ contract DotnsRegistrarController is
     }
 
     /// @inheritdoc IDotnsRegistrarController
+    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
     function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
         protocolRegistry = registry;
         emit ProtocolRegistryUpdated(registry);
@@ -399,7 +408,8 @@ contract DotnsRegistrarController is
 
     /// @notice Internal check enforcing registry-only access.
     function _onlyRegistry() internal view {
-        address registry = protocolRegistry.get(KEY_REGISTRY);
+        address registry =
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRY());
         require(msg.sender == registry, NotRegistry());
     }
 
