@@ -14,7 +14,9 @@ import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {Store} from "../store/Store.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
 import {IDotnsProtocolRegistry} from "./IDotnsProtocolRegistry.sol";
+import {DotnsProtocolRegistry} from "./DotnsProtocolRegistry.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
+import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
 /// @title Dotns Registry
 /// @notice Upgradeable on-chain registry for hierarchical name ownership and resolution.
@@ -27,9 +29,6 @@ import {StringUtils} from "../utils/StringUtils.sol";
 contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, IDotnsRegistry {
     using StoreUtils for IStoreFactory;
     using StringUtils for *;
-
-    bytes32 private constant DOT_NODE =
-        0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
 
     /// @notice Mapping of node identifiers to records.
     mapping(bytes32 node => Record record) private records;
@@ -54,33 +53,8 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
     IStoreFactory public storeFactory;
 
-    /// @notice Key prefix for Dotns-written Store immutable entries ("dotns.registered").
-    /// casting to 'bytes32' is safe because this is safe
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 internal constant DOTNS_REGISTERED_KEY = bytes32("dotns.registered");
-
     /// @notice Protocol-level address registry for all DotNS contracts.
     IDotnsProtocolRegistry public protocolRegistry;
-
-    /// @notice Well-known protocol registry key for the registrar controller.
-    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 internal constant KEY_CONTROLLER = bytes32("controller");
-
-    /// @notice Well-known protocol registry key for the ERC721 registrar.
-    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 internal constant KEY_REGISTRAR = bytes32("registrar");
-
-    /// @notice Well-known protocol registry key for the reverse resolver.
-    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 internal constant KEY_REVERSE_RESOLVER = bytes32("reverseResolver");
-
-    /// @notice Well-known protocol registry key for the store factory.
-    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 internal constant KEY_STORE_FACTORY = bytes32("storeFactory");
 
     /// @dev Reserved storage space to allow for layout changes in the future.
     uint256[49] private __gap;
@@ -107,6 +81,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     /// @param _registrar Address of the ERC721 registrar for base nodes.
     /// @param _reverseResolver Address of the Dotns reverse resolver contract.
     /// @param _factory Store factory used for per-user deployment stores.
+    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
     function initialize(
         IDotnsRegistrar _registrar,
         IDotnsReverseResolver _reverseResolver,
@@ -150,11 +125,13 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
 
         require(!records[subnode].exists, NodeAlreadyExists(subnode));
 
-        address _reverseResolver = protocolRegistry.get(KEY_REVERSE_RESOLVER);
+        address _reverseResolver = protocolRegistry.get(
+            DotnsProtocolRegistry(address(protocolRegistry)).REVERSE_RESOLVER()
+        );
         records[subnode] = Record({owner: newOwner, resolver: _reverseResolver, exists: true});
 
         _writeSubnodeToStore(
-            record.owner, subnode, string.concat(subLabel, ".", parentLabel, ".dot")
+            record.owner, subnode, string.concat(subLabel, ".", parentLabel, DotnsConstants.TLD)
         );
 
         emit NewOwner(parentNode, labelhash, newOwner);
@@ -172,7 +149,9 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     {
         require(newOwner != address(0), NotAllowed());
         require(!records[node].exists, NodeAlreadyOwned(node));
-        IDotnsRegistrar registrar = IDotnsRegistrar(protocolRegistry.get(KEY_REGISTRAR));
+        IDotnsRegistrar registrar = IDotnsRegistrar(
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRAR())
+        );
         address tokenOwner = registrar.ownerOf(uint256(node));
         require(tokenOwner == newOwner, NotAuthorised());
 
@@ -194,7 +173,9 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         Record storage record = records[node];
         if (!record.exists) return address(0);
         if (record.owner != address(0)) return record.owner;
-        IDotnsRegistrar registrar = IDotnsRegistrar(protocolRegistry.get(KEY_REGISTRAR));
+        IDotnsRegistrar registrar = IDotnsRegistrar(
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRAR())
+        );
         return registrar.ownerOf(uint256(node));
     }
 
@@ -223,7 +204,9 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         address[] memory controllers = new address[](1);
         controllers[0] = address(this);
 
-        IStoreFactory factory = IStoreFactory(protocolRegistry.get(KEY_STORE_FACTORY));
+        IStoreFactory factory = IStoreFactory(
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).STORE_FACTORY())
+        );
         Store store = factory.getOrCreateStore(controllers, storeOwner);
 
         bytes32 storeKey = _storeKey(node);
@@ -234,7 +217,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     /// @param labelhash keccak256(label).
     /// @return key Store key used for DotNS-written registration entry.
     function _storeKey(bytes32 labelhash) internal pure returns (bytes32 key) {
-        bytes32 prefix = DOTNS_REGISTERED_KEY;
+        bytes32 prefix = DotnsConstants.DOTNS_REGISTERED_KEY;
         assembly ("memory-safe") {
             let pointer := mload(0x40)
             mstore(pointer, prefix)
@@ -266,7 +249,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         uint256 end = labels.length;
         require(end != 0, ParentLabelMismatch());
 
-        node = DOT_NODE;
+        node = DotnsConstants.DOT_NODE;
 
         while (true) {
             uint256 start = end;
@@ -308,7 +291,9 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
             return;
         }
 
-        IDotnsRegistrar registrar = IDotnsRegistrar(protocolRegistry.get(KEY_REGISTRAR));
+        IDotnsRegistrar registrar = IDotnsRegistrar(
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRAR())
+        );
         uint256 tokenId = uint256(node);
         address tokenOwner = registrar.ownerOf(tokenId);
 
@@ -322,6 +307,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     }
 
     /// @inheritdoc IDotnsRegistry
+    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
     function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
         protocolRegistry = registry;
         emit ProtocolRegistryUpdated(registry);
@@ -329,7 +315,8 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
 
     /// @notice Internal check for registrar controller privileges.
     function _onlyRegistrarController() internal view {
-        address controller = protocolRegistry.get(KEY_CONTROLLER);
+        address controller =
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).CONTROLLER());
         require(msg.sender == controller, NotAuthorised());
     }
 

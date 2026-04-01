@@ -13,11 +13,14 @@ import {
 import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
 import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
+import {DotnsProtocolRegistry} from "../registry/DotnsProtocolRegistry.sol";
+
 import {Store} from "../store/Store.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
+import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
 /// @title Dotns Registrar
 /// @notice ERC721-backed registrar implementing permanent name ownership.
@@ -63,30 +66,6 @@ contract DotnsRegistrar is
     ///      The labelhash can always be derived as `keccak256(bytes(label))`.
     mapping(uint256 tokenId => string label) private _labels;
 
-    /// @notice Namehash of the .dot TLD node.
-    bytes32 private constant DOT_NODE =
-        0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
-
-    /// @notice Well-known protocol registry key for the store factory.
-    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 internal constant KEY_STORE_FACTORY = bytes32("storeFactory");
-
-    /// @notice Well-known protocol registry key for the registrar controller.
-    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 internal constant KEY_CONTROLLER = bytes32("controller");
-
-    /// @notice Well-known protocol registry key for the forward registry.
-    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 internal constant KEY_REGISTRY = bytes32("registry");
-
-    /// @notice Well-known protocol registry key for the reverse resolver.
-    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 internal constant KEY_REVERSE_RESOLVER = bytes32("reverseResolver");
-
     /// @dev Reserved storage space to allow for layout changes in the future.
     uint256[47] private __gap;
 
@@ -105,12 +84,14 @@ contract DotnsRegistrar is
     /// @dev Uses OpenZeppelin upgradeable initializers.
     /// @param name ERC721 token name.
     /// @param symbol ERC721 token symbol.
+    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
     function initialize(string calldata name, string calldata symbol) external initializer {
         __Ownable_init(msg.sender);
         __ERC721_init(name, symbol);
     }
 
     /// @inheritdoc IDotnsRegistrar
+    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
     function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
         protocolRegistry = registry;
         emit ProtocolRegistryUpdated(registry);
@@ -158,12 +139,13 @@ contract DotnsRegistrar is
 
         bytes32 labelhash;
         bytes32 node;
+        bytes32 dotNode = DotnsConstants.DOT_NODE;
         assembly ("memory-safe") {
             let pointer := mload(0x40)
             let len := label.length
             calldatacopy(pointer, label.offset, len)
             labelhash := keccak256(pointer, len)
-            mstore(pointer, DOT_NODE)
+            mstore(pointer, dotNode)
             mstore(add(pointer, 0x20), labelhash)
             node := keccak256(pointer, 0x40)
         }
@@ -220,10 +202,13 @@ contract DotnsRegistrar is
         string memory label = _labels[tokenId];
         if (bytes(label).length == 0) return;
 
-        IDotnsReverseResolver reverse =
-            IDotnsReverseResolver(protocolRegistry.get(KEY_REVERSE_RESOLVER));
+        IDotnsReverseResolver reverse = IDotnsReverseResolver(
+            protocolRegistry.get(
+                DotnsProtocolRegistry(address(protocolRegistry)).REVERSE_RESOLVER()
+            )
+        );
         string memory currentReverse = reverse.nameOf(from);
-        string memory fullName = string.concat(label, ".dot");
+        string memory fullName = string.concat(label, DotnsConstants.TLD);
 
         if (_stringHash(currentReverse) == _stringHash(fullName)) {
             reverse.setReverseName(from, "");
@@ -238,7 +223,9 @@ contract DotnsRegistrar is
     /// @param to Address of the transfer recipient.
     /// @param tokenId The transferred token identifier.
     function _syncRecipientStore(address to, uint256 tokenId) internal {
-        IStoreFactory factory = IStoreFactory(protocolRegistry.get(KEY_STORE_FACTORY));
+        IStoreFactory factory = IStoreFactory(
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).STORE_FACTORY())
+        );
         if (address(factory) == address(0)) return;
 
         Store toStore = Store(address(factory.getDeployedStore(to)));
@@ -246,8 +233,10 @@ contract DotnsRegistrar is
         if (address(toStore) == address(0)) {
             address[] memory storeControllers = new address[](3);
             storeControllers[0] = address(this);
-            storeControllers[1] = protocolRegistry.get(KEY_CONTROLLER);
-            storeControllers[2] = protocolRegistry.get(KEY_REGISTRY);
+            storeControllers[1] =
+                protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).CONTROLLER());
+            storeControllers[2] =
+                protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRY());
 
             toStore = factory.getOrCreateStore(storeControllers, to);
         }
@@ -260,7 +249,7 @@ contract DotnsRegistrar is
             }
             bytes32 storeKey = StoreUtils.storeKey(labelhash);
             if (bytes(toStore.getValueFor(to, storeKey)).length == 0) {
-                toStore.setValueFor(to, storeKey, string.concat(label, ".dot"));
+                toStore.setValueFor(to, storeKey, string.concat(label, DotnsConstants.TLD));
             }
         }
     }

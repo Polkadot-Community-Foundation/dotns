@@ -12,6 +12,7 @@ import {
 import {StringUtils} from "../utils/StringUtils.sol";
 import {IPopRules} from "./IPopRules.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
+import {DotnsProtocolRegistry} from "../registry/DotnsProtocolRegistry.sol";
 
 /// @title PopRules
 /// @notice Implements DotNS pricing with PoP-tier validation and base-name reservations
@@ -37,10 +38,6 @@ contract PopRules is
     /// @notice Maximum time a base name can be reserved
     uint256 public constant MAX_RESERVATION_TIME = 12 weeks;
 
-    /// @notice Namehash of .dot TLD
-    bytes32 private constant DOT_NODE =
-        0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
-
     /// @notice DEPRECATED: Authorized registry controller address.
     /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
     /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
@@ -48,11 +45,6 @@ contract PopRules is
 
     /// @notice Protocol-level address registry for all DotNS contracts.
     IDotnsProtocolRegistry public protocolRegistry;
-
-    /// @notice Well-known protocol registry key for the registrar controller.
-    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 internal constant KEY_CONTROLLER = bytes32("controller");
 
     /// @dev Reserved storage space to allow for layout changes in the future.
     // forge-lint: disable-next-line(mixed-case-variable)
@@ -79,6 +71,7 @@ contract PopRules is
 
     /// @notice Initializes the oracle (public entry point)
     /// @param _startingPrice Base price in wei for No pop status users
+    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
     function initialize(uint256 _startingPrice) public initializer {
         _popRulesInit(_startingPrice);
     }
@@ -369,6 +362,7 @@ contract PopRules is
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     /// @inheritdoc IPopRules
+    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
     function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
         protocolRegistry = registry;
         emit ProtocolRegistryUpdated(registry);
@@ -382,7 +376,8 @@ contract PopRules is
 
     /// @notice Ensures the caller is the authorized registry controller
     function _onlyRegistry() internal view {
-        address controller = protocolRegistry.get(KEY_CONTROLLER);
+        address controller =
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).CONTROLLER());
         require(msg.sender == controller, NotRegistry());
     }
 }

@@ -3,18 +3,6 @@ pragma solidity ^0.8.30;
 
 /// @title IDotnsProtocolRegistry
 /// @notice Interface for the DotNS protocol-level address registry.
-/// @dev Provides a centralised lookup for all DotNS contract addresses.
-///      Contracts query this registry instead of storing individual references,
-///      reducing storage fragmentation and simplifying upgrades.
-///
-/// @dev Well-known keys are defined as `bytes32` constants:
-///      - `REGISTRAR`       — ERC721 registrar backing name ownership.
-///      - `CONTROLLER`      — Registrar controller orchestrating commit-reveal registration.
-///      - `REGISTRY`        — Forward registry storing node ownership and resolver.
-///      - `REVERSE_RESOLVER` — Reverse resolver for address-to-name mapping.
-///      - `POP_RULES`       — PoP oracle enforcing eligibility and pricing.
-///      - `STORE_FACTORY`   — Factory for per-user Store instances.
-///
 /// @custom:security-contact admin@parity.io
 interface IDotnsProtocolRegistry {
     /// @notice Emitted when a protocol address is set or updated.

@@ -12,6 +12,7 @@ import {
 import {IDotnsReverseResolver} from "./IDotnsReverseResolver.sol";
 import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
+import {DotnsProtocolRegistry} from "../registry/DotnsProtocolRegistry.sol";
 
 /// @title Dotns Reverse Resolver
 /// @notice Resolves an address to its associated .dot name.
@@ -37,16 +38,6 @@ contract DotnsReverseResolver is
     /// @notice Protocol-level address registry for all DotNS contracts.
     IDotnsProtocolRegistry public protocolRegistry;
 
-    /// @notice Well-known protocol registry key for the registrar controller.
-    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 internal constant KEY_CONTROLLER = bytes32("controller");
-
-    /// @notice Well-known protocol registry key for the ERC721 registrar.
-    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 internal constant KEY_REGISTRAR = bytes32("registrar");
-
     /// @dev Reserved storage space to allow for layout changes in the future.
     // forge-lint: disable-next-line(mixed-case-variable)
     uint256[49] private __gap;
@@ -64,6 +55,7 @@ contract DotnsReverseResolver is
 
     /// @notice Initializes the reverse resolver.
     /// @dev This function may only be called once.
+    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
     function initialize() external initializer {
         __Ownable_init(msg.sender);
         __ERC165_init();
@@ -92,6 +84,7 @@ contract DotnsReverseResolver is
     }
 
     /// @inheritdoc IDotnsReverseResolver
+    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
     function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
         protocolRegistry = registry;
         emit ProtocolRegistryUpdated(registry);
@@ -99,8 +92,10 @@ contract DotnsReverseResolver is
 
     /// @notice Internal check enforcing registrar-only access.
     function _onlyRegistrar() internal view {
-        address controller = protocolRegistry.get(KEY_CONTROLLER);
-        address registrar = protocolRegistry.get(KEY_REGISTRAR);
+        address controller =
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).CONTROLLER());
+        address registrar =
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRAR());
         require(
             msg.sender == controller || msg.sender == registrar, NotRegistrarController(msg.sender)
         );
