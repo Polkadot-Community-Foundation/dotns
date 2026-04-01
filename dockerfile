@@ -1,6 +1,6 @@
 FROM --platform=linux/amd64 debian:trixie-slim
 
-ARG TAG=polkadot-stable2512-1
+ARG TAG=polkadot-stable2603
 ARG BIN=eth-rpc
 
 RUN apt-get update && apt-get install -y ca-certificates curl libssl3 && rm -rf /var/lib/apt/lists/*
