@@ -60,13 +60,20 @@ Stores `contenthash` and text records per node. Writes require node ownership (o
 
 Stores forward-resolution address records per node. Writes require node ownership.
 
+### `DotnsProtocolRegistry`
+
+On-chain lookup table mapping well-known keys to protocol contract addresses. Every DotNS contract resolves its siblings through this registry at runtime.
+
+Without it, each contract stores direct addresses to every contract it calls. An upgrade that changes one address requires calling `updateX()` on every contract that references it. With N contracts and M cross-references, that is M separate owner transactions per address change. The protocol registry reduces this to one: update the key in the registry, and every caller picks up the new address on its next call.
+
 ### `StoreFactory` and `Store`
 
-Per-user storage used to persist Dotns-written immutable records. Deployed to Paseo
+Per-user storage used to persist Dotns-written immutable records.
 
 ### Deployments
 | Contract                 | Address                                    |
 | ------------------------ | ------------------------------------------ |
+| DotnsProtocolRegistry    | 0xF8531342444fAC0A75719130eECcf45314584EFe |
 | StoreFactory             | 0x030296782F4d3046B080BcB017f01837561D9702 |
 | DotnsRegistrar           | 0x329aAA5b6bEa94E750b2dacBa74Bf41291E6c2BD |
 | DotnsReverseResolver     | 0x95D57363B491CF743970c640fe419541386ac8BF |

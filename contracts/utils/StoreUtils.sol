@@ -87,6 +87,33 @@ library StoreUtils {
         factory.transferOwnership(owner);
     }
 
+    /// @notice Writes a name entry to the owner's Store, creating the Store if needed.
+    /// @dev Used by Controller (registration), Registrar (transfers), and Registry (subnodes).
+    ///      Skips the write if the key already has a value (prevents overwriting locked entries).
+    /// @param factory The StoreFactory instance.
+    /// @param controllers Addresses to authorize as DotNS controllers on a new Store.
+    /// @param owner The Store owner.
+    /// @param keyInput The input hashed with DOTNS_REGISTERED_KEY to derive the store key
+    ///        (labelhash for registrations, node for subnodes).
+    /// @param fullName The full domain name including TLD (e.g. "alice.dot").
+    /// @return store The resolved or newly deployed Store instance.
+    function writeToStore(
+        IStoreFactory factory,
+        address[] memory controllers,
+        address owner,
+        bytes32 keyInput,
+        string memory fullName
+    )
+        internal
+        returns (Store store)
+    {
+        store = getOrCreateStore(factory, controllers, owner);
+        bytes32 key = storeKey(keyInput);
+        if (bytes(store.getValueFor(owner, key)).length == 0) {
+            store.setValueFor(owner, key, fullName);
+        }
+    }
+
     /// @notice Checks whether a Store exists for the given owner.
     /// @dev Performs a read-only lookup against the factory without any state changes.
     /// @param factory The StoreFactory instance to query.

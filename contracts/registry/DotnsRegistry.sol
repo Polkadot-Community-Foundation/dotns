@@ -123,18 +123,22 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         bytes32 labelhash = _labelhash(subLabel);
         subnode = _namehash(parentNode, labelhash);
 
+        string memory fullName = string.concat(subLabel, ".", parentLabel, DotnsConstants.TLD);
+
         if (records[subnode].exists) {
+            address previousOwner = records[subnode].owner;
             records[subnode].owner = newOwner;
+
+            if (newOwner != previousOwner) {
+                _writeSubnodeToStore(newOwner, subnode, fullName);
+            }
         } else {
             address _reverseResolver = protocolRegistry.get(
                 DotnsProtocolRegistry(address(protocolRegistry)).REVERSE_RESOLVER()
             );
             records[subnode] = Record({owner: newOwner, resolver: _reverseResolver, exists: true});
+            _writeSubnodeToStore(newOwner, subnode, fullName);
         }
-
-        _writeSubnodeToStore(
-            record.owner, subnode, string.concat(subLabel, ".", parentLabel, DotnsConstants.TLD)
-        );
 
         emit NewOwner(parentNode, labelhash, newOwner);
     }
@@ -222,29 +226,16 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     )
         internal
     {
-        address[] memory controllers = new address[](1);
-        controllers[0] = address(this);
-
         IStoreFactory factory = IStoreFactory(
             protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).STORE_FACTORY())
         );
-        Store store = factory.getOrCreateStore(controllers, storeOwner);
-
-        bytes32 storeKey = _storeKey(node);
-        store.setValueFor(storeOwner, storeKey, fullName);
-    }
-
-    /// @notice Computes keccak256("dotns.registered", labelhash).
-    /// @param labelhash keccak256(label).
-    /// @return key Store key used for DotNS-written registration entry.
-    function _storeKey(bytes32 labelhash) internal pure returns (bytes32 key) {
-        bytes32 prefix = DotnsConstants.DOTNS_REGISTERED_KEY;
-        assembly ("memory-safe") {
-            let pointer := mload(0x40)
-            mstore(pointer, prefix)
-            mstore(add(pointer, 0x20), labelhash)
-            key := keccak256(pointer, 0x40)
-        }
+        address[] memory controllers = new address[](3);
+        controllers[0] = address(this);
+        controllers[1] =
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).CONTROLLER());
+        controllers[2] =
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRAR());
+        factory.writeToStore(controllers, storeOwner, node, fullName);
     }
 
     function _labelhash(string calldata label) internal pure returns (bytes32 hash) {
@@ -344,7 +335,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.3.0";
+        versionString = "1.4.0";
     }
 
     /// @inheritdoc UUPSUpgradeable
