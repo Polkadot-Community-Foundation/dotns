@@ -408,7 +408,6 @@ contract DotnsRegistryTests is BaseDotns {
         vm.stopPrank();
     }
 
-    // --- setSubnodeResolver tests ---
 
     function test_parent_can_set_resolver_on_subnode_via_setSubnodeResolver() public {
         string memory parentLabel = "parentnode17";

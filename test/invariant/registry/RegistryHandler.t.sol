@@ -140,7 +140,6 @@ contract RegistryHandler is Test {
         _registeredOwners[index] = recipient;
     }
 
-    // --- Getters ---
 
     function getSubnodeHashes() external view returns (bytes32[] memory) {
         return _subnodeHashes;
@@ -158,7 +157,6 @@ contract RegistryHandler is Test {
         return _registeredLabels;
     }
 
-    // --- Internal helpers ---
 
     function _registerBaseDomain(string memory label, address domainOwner) internal {
         bytes32 secret =
