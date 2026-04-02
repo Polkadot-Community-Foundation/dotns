@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import "forge-std/Script.sol";
+import {Script} from "forge-std/Script.sol";
 
 abstract contract BaseDeployer is Script {
     string private deploymentData;

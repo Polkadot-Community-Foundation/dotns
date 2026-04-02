@@ -158,7 +158,7 @@ contract DotnsRegistrar is
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.2.0";
+        versionString = "1.3.0";
     }
 
     /// @notice Checks whether a token ID exists.
@@ -228,30 +228,27 @@ contract DotnsRegistrar is
         );
         if (address(factory) == address(0)) return;
 
-        Store toStore = Store(address(factory.getDeployedStore(to)));
-
-        if (address(toStore) == address(0)) {
-            address[] memory storeControllers = new address[](3);
-            storeControllers[0] = address(this);
-            storeControllers[1] =
-                protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).CONTROLLER());
-            storeControllers[2] =
-                protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRY());
-
-            toStore = factory.getOrCreateStore(storeControllers, to);
-        }
+        address[] memory storeControllers = new address[](3);
+        storeControllers[0] = address(this);
+        storeControllers[1] =
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).CONTROLLER());
+        storeControllers[2] =
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRY());
 
         string memory label = _labels[tokenId];
-        if (bytes(label).length > 0) {
-            bytes32 labelhash;
-            assembly ("memory-safe") {
-                labelhash := keccak256(add(label, 0x20), mload(label))
-            }
-            bytes32 storeKey = StoreUtils.storeKey(labelhash);
-            if (bytes(toStore.getValueFor(to, storeKey)).length == 0) {
-                toStore.setValueFor(to, storeKey, string.concat(label, DotnsConstants.TLD));
-            }
+        if (bytes(label).length == 0) {
+            factory.getOrCreateStore(storeControllers, to);
+            return;
         }
+
+        bytes32 labelhash;
+        assembly ("memory-safe") {
+            labelhash := keccak256(add(label, 0x20), mload(label))
+        }
+
+        factory.writeToStore(
+            storeControllers, to, labelhash, string.concat(label, DotnsConstants.TLD)
+        );
     }
 
     function _stringHash(string memory value) internal pure returns (bytes32 hash) {

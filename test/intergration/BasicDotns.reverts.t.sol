@@ -89,7 +89,7 @@ contract BasicDotnsIntegrationReverts is BaseDotns {
         vm.stopPrank();
     }
 
-    function test_revert_cannot_create_same_subdomain_twice() public {
+    function test_parent_can_reassign_existing_subdomain() public {
         address parentOwner = ed;
 
         vm.prank(parentOwner);
@@ -102,11 +102,15 @@ contract BasicDotnsIntegrationReverts is BaseDotns {
         });
 
         vm.startPrank(parentOwner);
-        bytes32 subnode = dotnsRegistry.setSubnodeOwner(subnodeRecord);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
 
-        vm.expectRevert(abi.encodeWithSelector(IDotnsRegistry.NodeAlreadyExists.selector, subnode));
+        // Parent can reassign existing subnode to a new owner
+        subnodeRecord.owner = leonardo;
         dotnsRegistry.setSubnodeOwner(subnodeRecord);
         vm.stopPrank();
+
+        bytes32 subnode = _namehash(parentNode, keccak256(bytes("blog")));
+        assertEq(dotnsRegistry.owner(subnode), leonardo);
     }
 
     function test_revert_unapproved_cannot_set_contenthash() public {

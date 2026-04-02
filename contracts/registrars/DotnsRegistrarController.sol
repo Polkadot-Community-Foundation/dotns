@@ -363,35 +363,19 @@ contract DotnsRegistrarController is
         controllers[0] = address(this);
         controllers[1] = address(registry);
         controllers[2] = address(registrar);
-        Store store = factory.getOrCreateStore(controllers, registration.owner);
 
-        bytes32 storeKey = _storeKey(labelhash);
-        store.setValueFor(
-            registration.owner, storeKey, string.concat(registration.label, DotnsConstants.TLD)
-        );
+        string memory fullName = string.concat(registration.label, DotnsConstants.TLD);
+        Store store = factory.writeToStore(controllers, registration.owner, labelhash, fullName);
 
         emit NameRegistered(
             registration.label, labelhash, registration.owner, baseCost, address(store)
         );
     }
 
-    /// @notice Computes keccak256("dotns.registered", labelhash).
-    /// @param labelhash keccak256(label).
-    /// @return key Store key used for DotNS-written registration entry.
-    function _storeKey(bytes32 labelhash) internal pure returns (bytes32 key) {
-        bytes32 prefix = DotnsConstants.DOTNS_REGISTERED_KEY;
-        assembly ("memory-safe") {
-            let pointer := mload(0x40)
-            mstore(pointer, prefix)
-            mstore(add(pointer, 0x20), labelhash)
-            key := keccak256(pointer, 0x40)
-        }
-    }
-
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.3.0";
+        versionString = "1.4.0";
     }
 
     /// @notice Internal check enforcing whitelist-or-owner access.

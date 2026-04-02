@@ -4,8 +4,13 @@ pragma solidity 0.8.30;
 import {IStore} from "./IStore.sol";
 
 /// @title IStoreFactory
-/// @notice Interface defining factory functions for deploying and managing user-specific stores
+/// @notice Interface defining factory functions for deploying and managing user-specific stores.
 /// @dev Each address can deploy a single store instance. Subsequent deployment attempts revert.
+// TODO: On fresh deploy, adopt OZ Ownable2Step on Store and use the factory as escrow:
+//       1. Alice calls store.transferOwnership(factory) -- pending via Ownable2Step.
+//       2. Factory accepts ownership and records the offer (Alice -> Bob).
+//       3. Bob calls factory.acceptTransfer() -- factory transfers store to Bob and updates mapping.
+//       4. If Bob never accepts, Alice calls factory.cancelTransfer() -- factory returns store to Alice.
 /// @custom:security-contact admin@parity.io
 interface IStoreFactory {
     /// @notice Deploys a new store contract for the caller
@@ -13,14 +18,12 @@ interface IStoreFactory {
     /// @custom:reverts AlreadyDeployed if msg.sender has previously deployed a store
     function deploy() external returns (IStore);
 
-    /// @notice Transfers ownership of a store
-    /// @dev The ownership refers to the address which owned the original deployment
-    ///      The ownership reffered to here is the mapping not the actual store ownership
-    ///          The Factory is an easy way of query all stores deployed so it could happen that
-    ///          The actual ownership of the store hasnt changed hands and its advised
-    ///          That the owner transfers the store ownership to the owner passed in here
-    /// @param newOwner The new owner
-    /// @custom:reverts NotOwner if msg.sender is not the owner of the original contract
+    /// @notice Transfers the factory lookup mapping from msg.sender to newOwner.
+    /// @dev Only moves the factory's internal `_deployedStores` pointer, not the Store's
+    ///      Ownable ownership. The Store's Ownable owner must already be `newOwner` before
+    ///      this call succeeds.
+    // TODO: On fresh deploy, replace with Ownable2Step pattern.
+    /// @param newOwner The address to receive the factory mapping.
     function transferOwnership(address newOwner) external;
 
     /// @notice Retrieves the store contract address deployed by a specific user

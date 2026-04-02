@@ -247,6 +247,140 @@ contract DotnsRegistryTests is BaseDotns {
         dotnsRegistry.setSubnodeOwner(subnodeRecord);
     }
 
+    function test_parent_reassigns_existing_subnode_owner() public {
+        string memory parentLabel = "parentnode11";
+        bytes32 parentNode = _register(parentLabel, ed, IPopRules.PopStatus.NoStatus);
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "blog", parentLabel: parentLabel, owner: leonardo
+        });
+
+        vm.prank(ed);
+        bytes32 subnode = dotnsRegistry.setSubnodeOwner(subnodeRecord);
+        assertEq(dotnsRegistry.owner(subnode), leonardo);
+
+        // Parent reassigns to tiago
+        subnodeRecord.owner = tiago;
+        vm.prank(ed);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
+
+        assertEq(dotnsRegistry.owner(subnode), tiago);
+    }
+
+    function test_parent_reassigns_subnode_to_self_then_sets_resolver() public {
+        string memory parentLabel = "parentnode12";
+        bytes32 parentNode = _register(parentLabel, ed, IPopRules.PopStatus.NoStatus);
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "app", parentLabel: parentLabel, owner: leonardo
+        });
+
+        vm.prank(ed);
+        bytes32 subnode = dotnsRegistry.setSubnodeOwner(subnodeRecord);
+
+        // Parent reassigns to self
+        subnodeRecord.owner = ed;
+        vm.prank(ed);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
+        assertEq(dotnsRegistry.owner(subnode), ed);
+
+        // Now parent can setResolver
+        address newResolver = makeAddr("newResolver");
+        vm.prank(ed);
+        dotnsRegistry.setResolver(subnode, newResolver);
+        assertEq(dotnsRegistry.resolver(subnode), newResolver);
+    }
+
+    function test_reassignment_preserves_resolver() public {
+        string memory parentLabel = "parentnode13";
+        bytes32 parentNode = _register(parentLabel, ed, IPopRules.PopStatus.NoStatus);
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "docs", parentLabel: parentLabel, owner: leonardo
+        });
+
+        vm.prank(ed);
+        bytes32 subnode = dotnsRegistry.setSubnodeOwner(subnodeRecord);
+
+        // Subnode owner sets a custom resolver
+        address customResolver = makeAddr("customResolver");
+        vm.prank(leonardo);
+        dotnsRegistry.setResolver(subnode, customResolver);
+        assertEq(dotnsRegistry.resolver(subnode), customResolver);
+
+        // Parent reassigns owner -- resolver should be preserved
+        subnodeRecord.owner = tiago;
+        vm.prank(ed);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
+
+        assertEq(dotnsRegistry.owner(subnode), tiago);
+        assertEq(dotnsRegistry.resolver(subnode), customResolver);
+    }
+
+    function test_revert_non_parent_cannot_reassign_subnode() public {
+        string memory parentLabel = "parentnode14";
+        bytes32 parentNode = _register(parentLabel, ed, IPopRules.PopStatus.NoStatus);
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "api", parentLabel: parentLabel, owner: leonardo
+        });
+
+        vm.prank(ed);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
+
+        // Tiago (not the parent owner) tries to reassign
+        subnodeRecord.owner = tiago;
+        vm.prank(tiago);
+        vm.expectRevert(IDotnsRegistry.NotAuthorised.selector);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
+    }
+
+    function test_reassignment_emits_new_owner_event() public {
+        string memory parentLabel = "parentnode15";
+        bytes32 parentNode = _register(parentLabel, ed, IPopRules.PopStatus.NoStatus);
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "mail", parentLabel: parentLabel, owner: leonardo
+        });
+
+        vm.prank(ed);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
+
+        // Reassign and check event
+        bytes32 subLabelHash = keccak256(bytes("mail"));
+        subnodeRecord.owner = tiago;
+
+        vm.expectEmit(true, true, false, true, address(dotnsRegistry));
+        emit IDotnsRegistry.NewOwner(parentNode, subLabelHash, tiago);
+
+        vm.prank(ed);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
+    }
+
+    function test_new_parent_can_reassign_after_erc721_transfer() public {
+        string memory parentLabel = "parentnode16";
+        bytes32 parentNode = _register(parentLabel, ed, IPopRules.PopStatus.NoStatus);
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "web", parentLabel: parentLabel, owner: leonardo
+        });
+
+        vm.prank(ed);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
+
+        // Transfer base domain from ed to tiago
+        uint256 tokenId = _tokenIdForLabel(parentLabel);
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom(ed, tiago, tokenId);
+
+        // New parent (tiago) can reassign the subnode
+        subnodeRecord.owner = tiago;
+        vm.prank(tiago);
+        bytes32 subnode = dotnsRegistry.setSubnodeOwner(subnodeRecord);
+
+        assertEq(dotnsRegistry.owner(subnode), tiago);
+    }
+
     function test_same_sublabel_under_different_parents_owned_by_same_address() public {
         string memory parentLabelA = "alphaomega";
         string memory parentLabelB = "bravobro";
@@ -272,5 +406,92 @@ contract DotnsRegistryTests is BaseDotns {
         assertTrue(dotnsRegistry.recordExists(subnodeA));
         assertTrue(dotnsRegistry.recordExists(subnodeB));
         vm.stopPrank();
+    }
+
+    function test_parent_can_set_resolver_on_subnode_via_setSubnodeResolver() public {
+        string memory parentLabel = "parentnode17";
+        bytes32 parentNode = _register(parentLabel, ed, IPopRules.PopStatus.NoStatus);
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "api", parentLabel: parentLabel, owner: leonardo
+        });
+
+        vm.prank(ed);
+        bytes32 subnode = dotnsRegistry.setSubnodeOwner(subnodeRecord);
+
+        // Parent sets resolver on subnode they don't directly own
+        address newResolver = makeAddr("parentChosenResolver");
+        IDotnsRegistry.SubnodeResolverRecord memory resolverRecord =
+            IDotnsRegistry.SubnodeResolverRecord({
+                parentNode: parentNode,
+                subLabel: "api",
+                parentLabel: parentLabel,
+                resolver: newResolver
+            });
+
+        vm.prank(ed);
+        dotnsRegistry.setSubnodeResolver(resolverRecord);
+        assertEq(dotnsRegistry.resolver(subnode), newResolver);
+    }
+
+    function test_non_parent_cannot_call_setSubnodeResolver() public {
+        string memory parentLabel = "parentnode18";
+        bytes32 parentNode = _register(parentLabel, ed, IPopRules.PopStatus.NoStatus);
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "web", parentLabel: parentLabel, owner: leonardo
+        });
+
+        vm.prank(ed);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
+
+        IDotnsRegistry.SubnodeResolverRecord memory resolverRecord =
+            IDotnsRegistry.SubnodeResolverRecord({
+                parentNode: parentNode,
+                subLabel: "web",
+                parentLabel: parentLabel,
+                resolver: makeAddr("malicious")
+            });
+
+        // Non-parent (tiago) cannot set resolver
+        vm.prank(tiago);
+        vm.expectRevert(IDotnsRegistry.NotAuthorised.selector);
+        dotnsRegistry.setSubnodeResolver(resolverRecord);
+    }
+
+    function test_subnode_owner_can_still_set_resolver_directly() public {
+        string memory parentLabel = "parentnode19";
+        bytes32 parentNode = _register(parentLabel, ed, IPopRules.PopStatus.NoStatus);
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "mail", parentLabel: parentLabel, owner: leonardo
+        });
+
+        vm.prank(ed);
+        bytes32 subnode = dotnsRegistry.setSubnodeOwner(subnodeRecord);
+
+        // Subnode owner uses existing setResolver directly
+        address newResolver = makeAddr("subnodeOwnerResolver");
+        vm.prank(leonardo);
+        dotnsRegistry.setResolver(subnode, newResolver);
+        assertEq(dotnsRegistry.resolver(subnode), newResolver);
+    }
+
+    function test_setSubnodeResolver_reverts_on_nonexistent_subnode() public {
+        string memory parentLabel = "parentnode20";
+        bytes32 parentNode = _register(parentLabel, ed, IPopRules.PopStatus.NoStatus);
+
+        // Subnode "ghost" was never created
+        IDotnsRegistry.SubnodeResolverRecord memory resolverRecord =
+            IDotnsRegistry.SubnodeResolverRecord({
+                parentNode: parentNode,
+                subLabel: "ghost",
+                parentLabel: parentLabel,
+                resolver: makeAddr("someResolver")
+            });
+
+        vm.prank(ed);
+        vm.expectRevert(IDotnsRegistry.NotAuthorised.selector);
+        dotnsRegistry.setSubnodeResolver(resolverRecord);
     }
 }

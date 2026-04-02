@@ -5,28 +5,28 @@ import {console} from "forge-std/Script.sol";
 import {BaseDeployer} from "./BaseDeployer.s.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
-import {PopRules, IPopRules} from "../contracts/pop/PopRules.sol";
-import {DotnsRegistrar, IDotnsRegistrar} from "../contracts/registrars/DotnsRegistrar.sol";
+import {PopRules, IPopRules} from "../../contracts/pop/PopRules.sol";
+import {DotnsRegistrar, IDotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
 import {
     DotnsRegistrarController,
     IDotnsRegistrarController
-} from "../contracts/registrars/DotnsRegistrarController.sol";
-import {DotnsRegistry, IDotnsRegistry} from "../contracts/registry/DotnsRegistry.sol";
+} from "../../contracts/registrars/DotnsRegistrarController.sol";
+import {DotnsRegistry, IDotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
 import {
     DotnsReverseResolver,
     IDotnsReverseResolver
-} from "../contracts/resolvers/DotnsReverseResolver.sol";
-import {DotnsContentResolver} from "../contracts/resolvers/DotnsContentResolver.sol";
-import {DotnsResolver} from "../contracts/resolvers/DotnsResolver.sol";
-import {StoreFactory, IStoreFactory} from "../contracts/store/StoreFactory.sol";
+} from "../../contracts/resolvers/DotnsReverseResolver.sol";
+import {DotnsContentResolver} from "../../contracts/resolvers/DotnsContentResolver.sol";
+import {DotnsResolver} from "../../contracts/resolvers/DotnsResolver.sol";
+import {StoreFactory, IStoreFactory} from "../../contracts/store/StoreFactory.sol";
 import {
     DotnsProtocolRegistry,
     IDotnsProtocolRegistry
-} from "../contracts/registry/DotnsProtocolRegistry.sol";
+} from "../../contracts/registry/DotnsProtocolRegistry.sol";
 
 /// @title DotnsDeployer
 contract DotnsDeployer is BaseDeployer {
-    uint256 public constant rentPrice = 2e15 wei;
+    uint256 public constant RENT_PRICE = 2e15 wei;
 
     StoreFactory public storeFactory;
 
@@ -111,7 +111,7 @@ contract DotnsDeployer is BaseDeployer {
 
         // PopRules
         address popRulesProxy = Upgrades.deployUUPSProxy(
-            "PopRules.sol:PopRules", abi.encodeCall(PopRules.initialize, (rentPrice))
+            "PopRules.sol:PopRules", abi.encodeCall(PopRules.initialize, (RENT_PRICE))
         );
         popRules = PopRules(popRulesProxy);
         vm.label(popRulesProxy, "PopRules");
@@ -235,37 +235,30 @@ contract DotnsDeployer is BaseDeployer {
         console.log("Ownership verified for all contracts");
 
         // Verify protocol registry wiring
-        // forge-lint: disable-next-line(unsafe-typecast)
+        // forge-lint: disable-start(unsafe-typecast)
         require(protocolRegistry.get(bytes32("registrar")) == registrarProxy, "Key: registrar");
-        // forge-lint: disable-next-line(unsafe-typecast)
         require(protocolRegistry.get(bytes32("controller")) == controllerProxy, "Key: controller");
-        // forge-lint: disable-next-line(unsafe-typecast)
         require(protocolRegistry.get(bytes32("registry")) == registryProxy, "Key: registry");
-        // forge-lint: disable-next-line(unsafe-typecast)
         require(
             protocolRegistry.get(bytes32("reverseResolver")) == reverseResolverProxy,
             "Key: reverseResolver"
         );
-        // forge-lint: disable-next-line(unsafe-typecast)
         require(protocolRegistry.get(bytes32("resolver")) == resolverProxy, "Key: resolver");
-        // forge-lint: disable-next-line(unsafe-typecast)
         require(
             protocolRegistry.get(bytes32("contentResolver")) == contentResolverProxy,
             "Key: contentResolver"
         );
-        // forge-lint: disable-next-line(unsafe-typecast)
         require(protocolRegistry.get(bytes32("popRules")) == popRulesProxy, "Key: popRules");
-        // forge-lint: disable-next-line(unsafe-typecast)
         require(
             protocolRegistry.get(bytes32("storeFactory")) == address(storeFactory),
             "Key: storeFactory"
         );
+        // forge-lint: disable-end(unsafe-typecast)
         console.log("Protocol registry keys verified");
 
         // Verify protocol registry is wired to all contracts
         require(
-            address(DotnsRegistrar(registrarProxy).protocolRegistry())
-                == address(protocolRegistry),
+            address(DotnsRegistrar(registrarProxy).protocolRegistry()) == address(protocolRegistry),
             "Registrar: not wired"
         );
         require(
@@ -274,8 +267,7 @@ contract DotnsDeployer is BaseDeployer {
             "Controller: not wired"
         );
         require(
-            address(DotnsRegistry(registryProxy).protocolRegistry())
-                == address(protocolRegistry),
+            address(DotnsRegistry(registryProxy).protocolRegistry()) == address(protocolRegistry),
             "Registry: not wired"
         );
         require(
@@ -284,8 +276,7 @@ contract DotnsDeployer is BaseDeployer {
             "ReverseResolver: not wired"
         );
         require(
-            address(DotnsResolver(resolverProxy).protocolRegistry())
-                == address(protocolRegistry),
+            address(DotnsResolver(resolverProxy).protocolRegistry()) == address(protocolRegistry),
             "Resolver: not wired"
         );
         require(
@@ -301,9 +292,7 @@ contract DotnsDeployer is BaseDeployer {
 
         // Verify controller is authorized
         require(
-            DotnsRegistrar(registrarProxy).controllers(
-                IDotnsRegistrarController(controllerProxy)
-            ),
+            DotnsRegistrar(registrarProxy).controllers(IDotnsRegistrarController(controllerProxy)),
             "Controller not added to registrar"
         );
 

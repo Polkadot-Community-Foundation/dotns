@@ -10,6 +10,7 @@ pragma solidity 0.8.30;
 ///      - Locked entries cannot be overwritten by any caller.
 ///      - Locked entries cannot be deleted by any caller, including the store owner.
 ///      - The intended use is for DotNS-related data written by the DotNS registry controller.
+// TODO: On fresh deploy, inherit OZ Ownable2Step so ownership transfers require recipient acceptance.
 /// @custom:security-contact admin@parity.io
 interface IStore {
     /// @notice Emitted when a new value is stored or updated.
