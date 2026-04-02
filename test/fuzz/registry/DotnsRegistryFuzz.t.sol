@@ -8,6 +8,7 @@ import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 contract DotnsRegistryFuzzTest is BaseDotns {
     function testFuzz_parent_can_reassign_subnode_to_any_owner(address newOwner) public {
         vm.assume(newOwner != address(0));
+        vm.assume(address(storeFactory.getDeployedStore(newOwner)) == address(0));
 
         string memory parentLabel = "fuzzparent01";
         bytes32 parentNode = _register(parentLabel, ed, IPopRules.PopStatus.NoStatus);
