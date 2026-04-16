@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
+import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 
 contract PopRulesTests is BaseDotns {
     function test_classify_governance() public view {
@@ -65,9 +66,7 @@ contract PopRulesTests is BaseDotns {
 
     function test_base_reservation_blocks_others() public {
         vm.prank(owner);
-        /// casting to 'bytes32' is safe because this is safe
-        /// forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("controller"), address(this));
+        protocolRegistry.set(DotnsConstants.CONTROLLER, address(this));
 
         popRules.reserveBaseName("lights01", leonardo);
 
@@ -88,9 +87,7 @@ contract PopRulesTests is BaseDotns {
 
     function test_price_without_check_returns_price_for_reserved() public {
         vm.prank(owner);
-        /// casting to 'bytes32' is safe because this is safe
-        /// forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("controller"), address(this));
+        protocolRegistry.set(DotnsConstants.CONTROLLER, address(this));
 
         popRules.reserveBaseName("lights01", leonardo);
 
@@ -102,9 +99,7 @@ contract PopRulesTests is BaseDotns {
 
     function test_base_reservation_rolls_forward_after_expiry() public {
         vm.prank(owner);
-        /// casting to 'bytes32' is safe because this is safe
-        /// forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("controller"), address(this));
+        protocolRegistry.set(DotnsConstants.CONTROLLER, address(this));
 
         popRules.reserveBaseName("lights01", leonardo);
 

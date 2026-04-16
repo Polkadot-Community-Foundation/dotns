@@ -13,14 +13,14 @@ import {
 import {IDotnsResolver} from "./IDotnsResolver.sol";
 import {IDotnsRegistry} from "../registry/IDotnsRegistry.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
-import {DotnsConstants} from "../utils/DotnsConstants.sol";
+import {DotnsProtocolRegistryOld} from "../registry/DotnsProtocolRegistryOld.sol";
 
 /// @title Dotns Resolver
 /// @notice Stores forward-resolution address records for DotNS nodes
 /// @dev Maps node identifiers to a resolved address.
 ///      Write access is restricted to the owner of the node as recorded in the DotNS registry.
 /// @custom:security-contact admin@parity.io
-contract DotnsResolver is
+contract DotnsResolverOld is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,
@@ -91,7 +91,7 @@ contract DotnsResolver is
     /// @param node Node identifier
     function _onlyNodeOwner(bytes32 node) internal view {
         IDotnsRegistry _registry = IDotnsRegistry(
-            protocolRegistry.get(DotnsConstants.REGISTRY)
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).REGISTRY())
         );
         require(_registry.owner(node) == msg.sender, NotAuthorised(node, msg.sender));
     }
@@ -99,7 +99,7 @@ contract DotnsResolver is
     /// @notice Returns implementation version
     /// @return versionString Current version string
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.2.0";
+        versionString = "1.1.0";
     }
 
     /// @inheritdoc UUPSUpgradeable

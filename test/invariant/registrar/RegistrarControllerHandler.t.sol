@@ -11,6 +11,7 @@ import {IDotnsReverseResolver} from "../../../contracts/resolvers/IDotnsReverseR
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {IStoreFactory} from "../../../contracts/store/IStoreFactory.sol";
 import {DotnsRegistrar} from "../../../contracts/registrars/DotnsRegistrar.sol";
+import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 
 /// @title Registrar Controller Handler
 /// @notice Handler contract that executes bounded random actions against the controller.
@@ -18,8 +19,7 @@ import {DotnsRegistrar} from "../../../contracts/registrars/DotnsRegistrar.sol";
 ///      for invariant checks.
 contract RegistrarControllerHandler is Test {
     /// @notice Namehash of the .dot TLD.
-    bytes32 private constant DOT_NODE =
-        0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
+    bytes32 private constant DOT_NODE = DotnsConstants.DOT_NODE;
     /// @notice The registrar controller under test.
     IDotnsRegistrarController public controller;
 

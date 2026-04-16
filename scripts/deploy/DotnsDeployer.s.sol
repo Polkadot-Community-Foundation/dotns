@@ -23,6 +23,7 @@ import {
     DotnsProtocolRegistry,
     IDotnsProtocolRegistry
 } from "../../contracts/registry/DotnsProtocolRegistry.sol";
+import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 
 /// @title DotnsDeployer
 contract DotnsDeployer is BaseDeployer {
@@ -150,22 +151,14 @@ contract DotnsDeployer is BaseDeployer {
         dotnsRegistrar.addController(IDotnsRegistrarController(dotnsRegistrarControllerProxy));
 
         // Wire protocol registry keys (single source of truth for all contract resolution)
-        // forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("registrar"), dotnsRegistrarProxy);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("controller"), dotnsRegistrarControllerProxy);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("registry"), dotnsRegistryProxy);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("reverseResolver"), dotnsReverseResolverProxy);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("resolver"), dotnsResolverProxy);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("contentResolver"), dotnsContentResolverProxy);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("popRules"), popRulesProxy);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("storeFactory"), address(storeFactory));
+        protocolRegistry.set(DotnsConstants.REGISTRAR, dotnsRegistrarProxy);
+        protocolRegistry.set(DotnsConstants.CONTROLLER, dotnsRegistrarControllerProxy);
+        protocolRegistry.set(DotnsConstants.REGISTRY, dotnsRegistryProxy);
+        protocolRegistry.set(DotnsConstants.REVERSE_RESOLVER, dotnsReverseResolverProxy);
+        protocolRegistry.set(DotnsConstants.RESOLVER, dotnsResolverProxy);
+        protocolRegistry.set(DotnsConstants.CONTENT_RESOLVER, dotnsContentResolverProxy);
+        protocolRegistry.set(DotnsConstants.POP_RULES, popRulesProxy);
+        protocolRegistry.set(DotnsConstants.STORE_FACTORY, address(storeFactory));
         console.log("Protocol registry keys set");
 
         // Wire protocol registry to all contracts
@@ -235,25 +228,25 @@ contract DotnsDeployer is BaseDeployer {
         console.log("Ownership verified for all contracts");
 
         // Verify protocol registry wiring
-        // forge-lint: disable-start(unsafe-typecast)
-        require(protocolRegistry.get(bytes32("registrar")) == registrarProxy, "Key: registrar");
-        require(protocolRegistry.get(bytes32("controller")) == controllerProxy, "Key: controller");
-        require(protocolRegistry.get(bytes32("registry")) == registryProxy, "Key: registry");
+        require(protocolRegistry.get(DotnsConstants.REGISTRAR) == registrarProxy, "Key: registrar");
         require(
-            protocolRegistry.get(bytes32("reverseResolver")) == reverseResolverProxy,
+            protocolRegistry.get(DotnsConstants.CONTROLLER) == controllerProxy, "Key: controller"
+        );
+        require(protocolRegistry.get(DotnsConstants.REGISTRY) == registryProxy, "Key: registry");
+        require(
+            protocolRegistry.get(DotnsConstants.REVERSE_RESOLVER) == reverseResolverProxy,
             "Key: reverseResolver"
         );
-        require(protocolRegistry.get(bytes32("resolver")) == resolverProxy, "Key: resolver");
+        require(protocolRegistry.get(DotnsConstants.RESOLVER) == resolverProxy, "Key: resolver");
         require(
-            protocolRegistry.get(bytes32("contentResolver")) == contentResolverProxy,
+            protocolRegistry.get(DotnsConstants.CONTENT_RESOLVER) == contentResolverProxy,
             "Key: contentResolver"
         );
-        require(protocolRegistry.get(bytes32("popRules")) == popRulesProxy, "Key: popRules");
+        require(protocolRegistry.get(DotnsConstants.POP_RULES) == popRulesProxy, "Key: popRules");
         require(
-            protocolRegistry.get(bytes32("storeFactory")) == address(storeFactory),
+            protocolRegistry.get(DotnsConstants.STORE_FACTORY) == address(storeFactory),
             "Key: storeFactory"
         );
-        // forge-lint: disable-end(unsafe-typecast)
         console.log("Protocol registry keys verified");
 
         // Verify protocol registry is wired to all contracts
