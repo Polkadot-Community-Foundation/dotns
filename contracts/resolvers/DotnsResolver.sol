@@ -90,9 +90,7 @@ contract DotnsResolver is
     /// @notice Internal ownership check for a registry node
     /// @param node Node identifier
     function _onlyNodeOwner(bytes32 node) internal view {
-        IDotnsRegistry _registry = IDotnsRegistry(
-            protocolRegistry.get(DotnsConstants.REGISTRY)
-        );
+        IDotnsRegistry _registry = IDotnsRegistry(protocolRegistry.get(DotnsConstants.REGISTRY));
         require(_registry.owner(node) == msg.sender, NotAuthorised(node, msg.sender));
     }
 

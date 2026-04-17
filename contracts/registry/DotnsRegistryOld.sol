@@ -227,7 +227,9 @@ contract DotnsRegistryOld is Initializable, UUPSUpgradeable, OwnableUpgradeable,
         internal
     {
         IStoreFactory factory = IStoreFactory(
-            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).STORE_FACTORY())
+            protocolRegistry.get(
+                DotnsProtocolRegistryOld(address(protocolRegistry)).STORE_FACTORY()
+            )
         );
         address[] memory controllers = new address[](3);
         controllers[0] = address(this);

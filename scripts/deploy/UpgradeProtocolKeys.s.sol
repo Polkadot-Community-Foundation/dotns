@@ -120,12 +120,8 @@ contract UpgradeProtocolKeys is BaseDeployer {
             PROTOCOL_REGISTRY_VERSION,
             "ProtocolRegistry"
         );
-        _requireVersion(
-            DotnsRegistry(REGISTRY_PROXY).version(), REGISTRY_VERSION, "Registry"
-        );
-        _requireVersion(
-            DotnsRegistrar(REGISTRAR_PROXY).version(), REGISTRAR_VERSION, "Registrar"
-        );
+        _requireVersion(DotnsRegistry(REGISTRY_PROXY).version(), REGISTRY_VERSION, "Registry");
+        _requireVersion(DotnsRegistrar(REGISTRAR_PROXY).version(), REGISTRAR_VERSION, "Registrar");
         _requireVersion(
             DotnsRegistrarController(CONTROLLER_PROXY).version(), CONTROLLER_VERSION, "Controller"
         );
@@ -134,17 +130,13 @@ contract UpgradeProtocolKeys is BaseDeployer {
             REVERSE_RESOLVER_VERSION,
             "ReverseResolver"
         );
-        _requireVersion(
-            DotnsResolver(RESOLVER_PROXY).version(), RESOLVER_VERSION, "Resolver"
-        );
+        _requireVersion(DotnsResolver(RESOLVER_PROXY).version(), RESOLVER_VERSION, "Resolver");
         _requireVersion(
             DotnsContentResolver(CONTENT_RESOLVER_PROXY).version(),
             CONTENT_RESOLVER_VERSION,
             "ContentResolver"
         );
-        _requireVersion(
-            PopRules(POP_RULES_PROXY).version(), POP_RULES_VERSION, "PopRules"
-        );
+        _requireVersion(PopRules(POP_RULES_PROXY).version(), POP_RULES_VERSION, "PopRules");
 
         DotnsProtocolRegistry pr = DotnsProtocolRegistry(PROTOCOL_REGISTRY_PROXY);
         require(pr.get(DotnsConstants.REGISTRAR) != address(0), "Key: registrar");

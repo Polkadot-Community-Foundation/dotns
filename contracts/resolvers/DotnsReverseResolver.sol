@@ -92,10 +92,8 @@ contract DotnsReverseResolver is
 
     /// @notice Internal check enforcing registrar-only access.
     function _onlyRegistrar() internal view {
-        address controller =
-            protocolRegistry.get(DotnsConstants.CONTROLLER);
-        address registrar =
-            protocolRegistry.get(DotnsConstants.REGISTRAR);
+        address controller = protocolRegistry.get(DotnsConstants.CONTROLLER);
+        address registrar = protocolRegistry.get(DotnsConstants.REGISTRAR);
         require(
             msg.sender == controller || msg.sender == registrar, NotRegistrarController(msg.sender)
         );

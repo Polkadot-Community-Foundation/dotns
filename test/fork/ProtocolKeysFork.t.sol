@@ -38,7 +38,7 @@ contract ProtocolKeysForkBatch1Test is Test {
     address public alice;
 
     function setUp() public {
-        vm.createSelectFork("paseo_local");
+        vm.createSelectFork("paseo");
 
         upgradeScript = new UpgradeProtocolKeys();
 
@@ -86,10 +86,7 @@ contract ProtocolKeysForkBatch1Test is Test {
         bytes32 secret = keccak256(abi.encodePacked(label, alice, block.timestamp));
 
         IDotnsRegistrarController.Registration memory reg = IDotnsRegistrarController.Registration({
-            label: label,
-            owner: alice,
-            secret: secret,
-            reserved: false
+            label: label, owner: alice, secret: secret, reserved: false
         });
 
         bytes32 commitment = controller.makeCommitment(reg);

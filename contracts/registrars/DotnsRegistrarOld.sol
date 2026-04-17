@@ -224,7 +224,9 @@ contract DotnsRegistrarOld is
     /// @param tokenId The transferred token identifier.
     function _syncRecipientStore(address to, uint256 tokenId) internal {
         IStoreFactory factory = IStoreFactory(
-            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).STORE_FACTORY())
+            protocolRegistry.get(
+                DotnsProtocolRegistryOld(address(protocolRegistry)).STORE_FACTORY()
+            )
         );
         if (address(factory) == address(0)) return;
 

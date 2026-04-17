@@ -376,8 +376,7 @@ contract PopRules is
 
     /// @notice Ensures the caller is the authorized registry controller
     function _onlyRegistry() internal view {
-        address controller =
-            protocolRegistry.get(DotnsConstants.CONTROLLER);
+        address controller = protocolRegistry.get(DotnsConstants.CONTROLLER);
         require(msg.sender == controller, NotRegistry());
     }
 }

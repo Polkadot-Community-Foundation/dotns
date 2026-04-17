@@ -123,9 +123,7 @@ contract DotnsContentResolver is
     /// @notice Ensures caller is either the node owner or an approved operator
     /// @param node Node identifier
     function _requireNodeOwnerOrOperator(bytes32 node) internal view {
-        IDotnsRegistry _registry = IDotnsRegistry(
-            protocolRegistry.get(DotnsConstants.REGISTRY)
-        );
+        IDotnsRegistry _registry = IDotnsRegistry(protocolRegistry.get(DotnsConstants.REGISTRY));
         address nodeOwner = _registry.owner(node);
         require(
             msg.sender == nodeOwner || operators[nodeOwner][msg.sender],
