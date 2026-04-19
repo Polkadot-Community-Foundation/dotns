@@ -7,6 +7,7 @@ import {IDotnsRegistrar} from "../../../contracts/registrars/IDotnsRegistrar.sol
 import {
     IDotnsRegistrarController
 } from "../../../contracts/registrars/IDotnsRegistrarController.sol";
+import {IDotnsRegistry} from "../../../contracts/registry/IDotnsRegistry.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Vm} from "forge-std/Vm.sol";
 
@@ -301,6 +302,51 @@ contract DotnsPopControllerTests is BaseDotns {
             )
         );
         dotnsRegistrarController.register{value: price}(registration);
+    }
+
+    /// @notice The owner of a PoP-minted full-person name can create subnames under
+    ///         it via the existing `DotnsRegistry.setSubnodeOwner` path.
+    /// @dev Exercises AC #2 of paritytech/dotns#115 ("support issuance of PoP-specific
+    ///      subnames under an existing or protocol-controlled parent"). No new
+    ///      entrypoint on `DotnsPopController` is required: subname creation is
+    ///      authorised by the ERC721 owner of the parent node, and the PoP
+    ///      controller mints the ERC721 the same way the commit-reveal controller
+    ///      does. The subname's Store-write path also uses the canonical
+    ///      `RegistrationUtils.storeControllers` allowlist, so the PoP controller
+    ///      is authorised on the new subname owner's Store.
+    function test_owner_of_pop_minted_name_can_create_subname() public {
+        IDotnsPopController.Link memory link = _linkFresh(hex"cafe");
+        vm.prank(popGateway);
+        dotnsPopController.registerBaseName("alicebob", ed, link);
+
+        bytes32 parentNode = _nodeOf("alicebob");
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "app", parentLabel: "alicebob", owner: leonardo
+        });
+
+        vm.prank(ed);
+        bytes32 subnode = dotnsRegistry.setSubnodeOwner(subnodeRecord);
+
+        assertEq(dotnsRegistry.owner(subnode), leonardo);
+    }
+
+    /// @notice A non-owner cannot create subnames under a PoP-minted name.
+    /// @dev Confirms authorisation on the subname path is ERC721-owner-gated, not
+    ///      controller-specific — the guard is the same whether the parent was
+    ///      minted by the commit-reveal controller or the PoP controller.
+    function test_non_owner_cannot_create_subname_under_pop_minted_name() public {
+        IDotnsPopController.Link memory link = _linkFresh(hex"cafe");
+        vm.prank(popGateway);
+        dotnsPopController.registerBaseName("alicebob", ed, link);
+
+        bytes32 parentNode = _nodeOf("alicebob");
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "app", parentLabel: "alicebob", owner: tiago
+        });
+
+        vm.prank(tiago);
+        vm.expectRevert(IDotnsRegistry.NotAuthorised.selector);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
     }
 
     /// @notice A PoP reservation can be queued for a label already minted by the

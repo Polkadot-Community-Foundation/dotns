@@ -119,11 +119,6 @@ contract PopSystemUpgradeForkTest is Test {
         assertEq(registrar.symbol(), "Dotns");
     }
 
-    /// @notice Full PoP lifecycle after the upgrade: lite mint, reservation,
-    ///         claim-via-link with chat-key inheritance, resolver state, queue wipe.
-    /// @dev Single continuous journey by design — splitting it would require
-    ///      duplicating the fork setup, which is expensive. Mirrors the
-    ///      end-to-end pattern established by {EscrowSystemUpgradeForkTest}.
     function test_full_pop_user_flow_after_upgrade() public {
         string memory liteLabel = "forkalice.42";
         string memory fullLabel = "forkalicefull";
@@ -157,9 +152,36 @@ contract PopSystemUpgradeForkTest is Test {
         assertFalse(stillReserved);
     }
 
-    /// @notice Confirms the public commit-reveal controller keeps minting alongside
-    ///         the PoP controller — the registrar's multi-controller affordance is
-    ///         the integration point that both flows rely on.
+    function test_pop_minted_name_supports_subname_creation() public {
+        string memory parentLabel = "forkparent42";
+        IDotnsPopController.Link memory link = IDotnsPopController.Link({
+            kind: IDotnsPopController.LinkKind.None, liteLabel: "", chatKey: hex"cafecafe"
+        });
+
+        vm.prank(popGateway);
+        popController.registerBaseName(parentLabel, alice, link);
+
+        bytes32 parentNode = _nodeOf(parentLabel);
+        assertEq(IERC721(address(registrar)).ownerOf(uint256(parentNode)), alice);
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "sub", parentLabel: parentLabel, owner: bob
+        });
+
+        vm.prank(alice);
+        bytes32 subnode = forwardRegistry.setSubnodeOwner(subnodeRecord);
+
+        assertEq(forwardRegistry.owner(subnode), bob);
+
+        IDotnsRegistry.SubnodeRecord memory unauthorisedSubnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: parentNode, subLabel: "hijack", parentLabel: parentLabel, owner: bob
+        });
+
+        vm.prank(bob);
+        vm.expectRevert(IDotnsRegistry.NotAuthorised.selector);
+        forwardRegistry.setSubnodeOwner(unauthorisedSubnodeRecord);
+    }
+
     function test_commit_reveal_controller_still_functions_after_upgrade() public view {
         // The commit-reveal controller's on-chain state (min/max commitment age, protocol
         // registry pointer) is preserved by the UUPS upgrade. Verifying the pointer
