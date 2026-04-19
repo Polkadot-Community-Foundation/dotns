@@ -42,6 +42,23 @@ jobs:
 
       - run: bun install
 
+      - name: Start revive-eth-rpc (paseo_local fork target)
+        run: |
+          docker compose up -d --build
+          for i in $(seq 1 60); do
+            if curl -sf -X POST -H "Content-Type: application/json" \
+                 --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+                 http://127.0.0.1:8545 >/dev/null; then
+              echo "eth-rpc ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          curl -sf -X POST -H "Content-Type: application/json" \
+            --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+            http://127.0.0.1:8545 \
+            || { echo "eth-rpc failed to come up"; docker compose logs; exit 1; }
+
       - name: Run tests
         id: run
         env:
@@ -65,6 +82,10 @@ jobs:
           if [ $TEST -ne 0 ]; then
             exit 1
           fi
+
+      - name: Tear down revive-eth-rpc
+        if: always()
+        run: docker compose down --volumes --remove-orphans
 
       - name: Set deploy path
         id: path
