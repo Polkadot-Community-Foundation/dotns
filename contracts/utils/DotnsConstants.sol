@@ -14,6 +14,10 @@ library DotnsConstants {
     string internal constant TLD = ".dot";
 
     /// @notice Store key prefix for DotNS registration entries.
+    /// @dev The Store is intentionally restricted to label-registration records only
+    ///      (user-read, protocol-write). Other per-name data (chat keys, lite links,
+    ///      content hashes, text records, reverse names) lives in dedicated resolver
+    ///      contracts rather than on the Store.
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant DOTNS_REGISTERED_KEY = bytes32("dotns.registered");
 }

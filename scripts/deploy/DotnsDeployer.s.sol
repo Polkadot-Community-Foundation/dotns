@@ -11,6 +11,11 @@ import {
     DotnsRegistrarController,
     IDotnsRegistrarController
 } from "../../contracts/registrars/DotnsRegistrarController.sol";
+import {
+    DotnsPopController,
+    IDotnsPopController
+} from "../../contracts/registrars/DotnsPopController.sol";
+import {IDotnsController} from "../../contracts/registrars/IDotnsController.sol";
 import {DotnsRegistry, IDotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
 import {
     DotnsReverseResolver,
@@ -18,6 +23,7 @@ import {
 } from "../../contracts/resolvers/DotnsReverseResolver.sol";
 import {DotnsContentResolver} from "../../contracts/resolvers/DotnsContentResolver.sol";
 import {DotnsResolver} from "../../contracts/resolvers/DotnsResolver.sol";
+import {DotnsPopResolver} from "../../contracts/resolvers/DotnsPopResolver.sol";
 import {StoreFactory, IStoreFactory} from "../../contracts/store/StoreFactory.sol";
 import {
     DotnsProtocolRegistry,
@@ -25,8 +31,14 @@ import {
 } from "../../contracts/registry/DotnsProtocolRegistry.sol";
 
 /// @title DotnsDeployer
+/// TODO: Before mainnet we need to modify this
 contract DotnsDeployer is BaseDeployer {
     uint256 public constant RENT_PRICE = 2e15 wei;
+
+    /// @notice Default reservation duration for the freshly-deployed PoP controller.
+    /// @dev Mirrors `pallet_resources::UsernameReservationDuration`; the protocol owner
+    ///      rotates this post-deploy via `DotnsPopController.setReservationDuration`.
+    uint64 public constant DEFAULT_RESERVATION_DURATION = 7 days;
 
     StoreFactory public storeFactory;
 
@@ -36,7 +48,9 @@ contract DotnsDeployer is BaseDeployer {
     DotnsReverseResolver public dotnsReverseResolver;
     DotnsContentResolver public dotnsContentResolver;
     DotnsResolver public dotnsResolver;
+    DotnsPopResolver public dotnsPopResolver;
     DotnsRegistrarController public dotnsRegistrarController;
+    DotnsPopController public dotnsPopController;
     DotnsProtocolRegistry public protocolRegistry;
 
     function run() external {
@@ -146,8 +160,32 @@ contract DotnsDeployer is BaseDeployer {
         vm.label(protocolRegistryProxy, "DotnsProtocolRegistry");
         logDeployment("DotnsProtocolRegistry", protocolRegistryProxy);
 
-        // Registrar needs controller in its own mapping (not resolved via protocol registry)
-        dotnsRegistrar.addController(IDotnsRegistrarController(dotnsRegistrarControllerProxy));
+        // DotnsPopResolver — per-name chat-key + lite-link resolver for the PoP flow.
+        address dotnsPopResolverProxy = Upgrades.deployUUPSProxy(
+            "DotnsPopResolver.sol:DotnsPopResolver",
+            abi.encodeCall(
+                DotnsPopResolver.initialize, (IDotnsProtocolRegistry(protocolRegistryProxy))
+            )
+        );
+        dotnsPopResolver = DotnsPopResolver(dotnsPopResolverProxy);
+        vm.label(dotnsPopResolverProxy, "DotnsPopResolver");
+        logDeployment("DotnsPopResolver", dotnsPopResolverProxy);
+
+        // DotnsPopController — gateway-driven lite/full-person username controller.
+        address dotnsPopControllerProxy = Upgrades.deployUUPSProxy(
+            "DotnsPopController.sol:DotnsPopController",
+            abi.encodeCall(
+                DotnsPopController.initialize,
+                (IDotnsProtocolRegistry(protocolRegistryProxy), DEFAULT_RESERVATION_DURATION)
+            )
+        );
+        dotnsPopController = DotnsPopController(dotnsPopControllerProxy);
+        vm.label(dotnsPopControllerProxy, "DotnsPopController");
+        logDeployment("DotnsPopController", dotnsPopControllerProxy);
+
+        // Both controllers need to be authorised on the registrar's multi-controller mapping.
+        dotnsRegistrar.addController(IDotnsController(dotnsRegistrarControllerProxy));
+        dotnsRegistrar.addController(IDotnsController(dotnsPopControllerProxy));
 
         // Wire protocol registry keys (single source of truth for all contract resolution)
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -166,6 +204,14 @@ contract DotnsDeployer is BaseDeployer {
         protocolRegistry.set(bytes32("popRules"), popRulesProxy);
         // forge-lint: disable-next-line(unsafe-typecast)
         protocolRegistry.set(bytes32("storeFactory"), address(storeFactory));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        protocolRegistry.set(bytes32("popController"), dotnsPopControllerProxy);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        protocolRegistry.set(bytes32("popResolver"), dotnsPopResolverProxy);
+        // `popGateway` defaults to the deploying owner for local deploys. Governance
+        // rotates it post-deploy via `protocolRegistry.set(bytes32("popGateway"), ...)`.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        protocolRegistry.set(bytes32("popGateway"), OWNER);
         console.log("Protocol registry keys set");
 
         // Wire protocol registry to all contracts
@@ -195,6 +241,8 @@ contract DotnsDeployer is BaseDeployer {
             dotnsResolverProxy,
             dotnsContentResolverProxy,
             popRulesProxy,
+            dotnsPopControllerProxy,
+            dotnsPopResolverProxy,
             OWNER
         );
 
@@ -209,6 +257,8 @@ contract DotnsDeployer is BaseDeployer {
         address resolverProxy,
         address contentResolverProxy,
         address popRulesProxy,
+        address popControllerProxy,
+        address popResolverProxy,
         address expectedOwner
     )
         internal
@@ -231,6 +281,13 @@ contract DotnsDeployer is BaseDeployer {
             "ContentResolver: wrong owner"
         );
         require(PopRules(popRulesProxy).owner() == expectedOwner, "PopRules: wrong owner");
+        require(
+            DotnsPopController(popControllerProxy).owner() == expectedOwner,
+            "PopController: wrong owner"
+        );
+        require(
+            DotnsPopResolver(popResolverProxy).owner() == expectedOwner, "PopResolver: wrong owner"
+        );
         require(protocolRegistry.owner() == expectedOwner, "ProtocolRegistry: wrong owner");
         console.log("Ownership verified for all contracts");
 
@@ -253,6 +310,14 @@ contract DotnsDeployer is BaseDeployer {
             protocolRegistry.get(bytes32("storeFactory")) == address(storeFactory),
             "Key: storeFactory"
         );
+        require(
+            protocolRegistry.get(bytes32("popController")) == popControllerProxy,
+            "Key: popController"
+        );
+        require(
+            protocolRegistry.get(bytes32("popResolver")) == popResolverProxy, "Key: popResolver"
+        );
+        require(protocolRegistry.get(bytes32("popGateway")) == expectedOwner, "Key: popGateway");
         // forge-lint: disable-end(unsafe-typecast)
         console.log("Protocol registry keys verified");
 
@@ -290,10 +355,26 @@ contract DotnsDeployer is BaseDeployer {
         );
         console.log("Protocol registry wiring verified");
 
-        // Verify controller is authorized
+        // Verify both controllers are authorised on the registrar's multi-controller mapping.
         require(
-            DotnsRegistrar(registrarProxy).controllers(IDotnsRegistrarController(controllerProxy)),
+            DotnsRegistrar(registrarProxy).controllers(IDotnsController(controllerProxy)),
             "Controller not added to registrar"
+        );
+        require(
+            DotnsRegistrar(registrarProxy).controllers(IDotnsController(popControllerProxy)),
+            "PopController not added to registrar"
+        );
+
+        // Verify PoP contracts are wired to the protocol registry.
+        require(
+            address(DotnsPopController(popControllerProxy).protocolRegistry())
+                == address(protocolRegistry),
+            "PopController: not wired"
+        );
+        require(
+            address(DotnsPopResolver(popResolverProxy).protocolRegistry())
+                == address(protocolRegistry),
+            "PopResolver: not wired"
         );
 
         // Verify root record exists

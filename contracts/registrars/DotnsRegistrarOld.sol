@@ -10,16 +10,14 @@ import {
     ERC721Upgradeable
 } from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 
-import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
-import {IDotnsController} from "./IDotnsController.sol";
-import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
-import {DotnsProtocolRegistry} from "../registry/DotnsProtocolRegistry.sol";
+import {IDotnsRegistrarOld} from "./IDotnsRegistrarOld.sol";
+import {IDotnsRegistrarControllerOld} from "./IDotnsRegistrarControllerOld.sol";
+import {IDotnsProtocolRegistryOld} from "../registry/IDotnsProtocolRegistryOld.sol";
+import {DotnsProtocolRegistryOld} from "../registry/DotnsProtocolRegistryOld.sol";
 
 import {Store} from "../store/Store.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
-import {RegistrationUtils} from "../utils/RegistrationUtils.sol";
-import {LabelUtils} from "../utils/LabelUtils.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
@@ -36,28 +34,24 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 ///      Stores are immutable (locked by DotNS controllers), so the sender's entry is not removed.
 ///
 /// @custom:security-contact admin@parity.io
-contract DotnsRegistrar is
+contract DotnsRegistrarOld is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,
     ERC721Upgradeable,
-    IDotnsRegistrar
+    IDotnsRegistrarOld
 {
     using StoreUtils for IStoreFactory;
     using StringUtils for *;
 
-    /// @notice Mapping of authorised controllers.
-    /// @dev Controllers may call `register`. Keyed by the shared baseline
-    ///      {IDotnsController} interface so the registrar doesn't depend on any
-    ///      specific controller shape. Commit-reveal, PoP, and future controllers
-    ///      coexist here so long as they implement the baseline interface.
-    /// @custom:oz-retyped-from mapping(IDotnsRegistrarController => bool)
-    mapping(IDotnsController controller => bool exists) public controllers;
+    /// @notice Mapping of authorised controller addresses.
+    /// @dev Controllers may call `register`.
+    mapping(IDotnsRegistrarControllerOld controller => bool exists) public controllers;
 
     /// @notice Protocol-level address registry for all DotNS contracts.
     /// @dev Used to resolve sibling contract addresses (store factory, controller, registry)
     ///      without storing individual references.
-    IDotnsProtocolRegistry public protocolRegistry;
+    IDotnsProtocolRegistryOld public protocolRegistry;
 
     /// @notice DEPRECATED as of v1.2.0: Previously stored labelhashes per token ID.
     /// @dev Retained for UUPS storage layout compatibility. No longer written to.
@@ -90,37 +84,41 @@ contract DotnsRegistrar is
     /// @dev Uses OpenZeppelin upgradeable initializers.
     /// @param name ERC721 token name.
     /// @param symbol ERC721 token symbol.
-    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
+    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistryOld and set protocolRegistry here.
     function initialize(string calldata name, string calldata symbol) external initializer {
         __Ownable_init(msg.sender);
         __ERC721_init(name, symbol);
     }
 
-    /// @inheritdoc IDotnsRegistrar
+    /// @inheritdoc IDotnsRegistrarOld
     // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
-    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
+    function updateProtocolRegistry(IDotnsProtocolRegistryOld registry)
+        external
+        override
+        onlyOwner
+    {
         protocolRegistry = registry;
         emit ProtocolRegistryUpdated(registry);
     }
 
-    /// @inheritdoc IDotnsRegistrar
-    function addController(IDotnsController controller) external onlyOwner {
+    /// @inheritdoc IDotnsRegistrarOld
+    function addController(IDotnsRegistrarControllerOld controller) external onlyOwner {
         controllers[controller] = true;
         emit ControllerAdded(controller);
     }
 
-    /// @inheritdoc IDotnsRegistrar
-    function removeController(IDotnsController controller) external onlyOwner {
+    /// @inheritdoc IDotnsRegistrarOld
+    function removeController(IDotnsRegistrarControllerOld controller) external onlyOwner {
         controllers[controller] = false;
         emit ControllerRemoved(controller);
     }
 
-    /// @inheritdoc IDotnsRegistrar
+    /// @inheritdoc IDotnsRegistrarOld
     function available(uint256 id) public view override returns (bool isAvailable) {
         return !_exists(id);
     }
 
-    /// @inheritdoc IDotnsRegistrar
+    /// @inheritdoc IDotnsRegistrarOld
     function register(
         uint256 id,
         address owner,
@@ -136,14 +134,25 @@ contract DotnsRegistrar is
         emit NameRegistered(id, owner);
     }
 
-    /// @inheritdoc IDotnsRegistrar
+    /// @inheritdoc IDotnsRegistrarOld
     function syncLabel(uint256 tokenId, string calldata label) external override {
         require(_exists(tokenId), NameNotAvailable(tokenId));
         require(ownerOf(tokenId) == msg.sender, NotTokenOwner(msg.sender, tokenId));
         require(bytes(_labels[tokenId]).length == 0, LabelAlreadySet(tokenId));
         require(label.isSingleLabel(), InvalidLabel());
 
-        (, bytes32 node) = LabelUtils.deriveNode(label);
+        bytes32 labelhash;
+        bytes32 node;
+        bytes32 dotNode = DotnsConstants.DOT_NODE;
+        assembly ("memory-safe") {
+            let pointer := mload(0x40)
+            let len := label.length
+            calldatacopy(pointer, label.offset, len)
+            labelhash := keccak256(pointer, len)
+            mstore(pointer, dotNode)
+            mstore(add(pointer, 0x20), labelhash)
+            node := keccak256(pointer, 0x40)
+        }
         require(uint256(node) == tokenId, LabelMismatch(tokenId));
 
         _labels[tokenId] = label;
@@ -153,7 +162,7 @@ contract DotnsRegistrar is
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.4.0";
+        versionString = "1.3.0";
     }
 
     /// @notice Checks whether a token ID exists.
@@ -165,7 +174,7 @@ contract DotnsRegistrar is
 
     /// @notice Internal function to check for controller access.
     function _onlyController() internal view {
-        require(controllers[IDotnsController(msg.sender)], NotController(msg.sender));
+        require(controllers[IDotnsRegistrarControllerOld(msg.sender)], NotController(msg.sender));
     }
 
     /// @inheritdoc ERC721Upgradeable
@@ -199,13 +208,13 @@ contract DotnsRegistrar is
 
         IDotnsReverseResolver reverse = IDotnsReverseResolver(
             protocolRegistry.get(
-                DotnsProtocolRegistry(address(protocolRegistry)).REVERSE_RESOLVER()
+                DotnsProtocolRegistryOld(address(protocolRegistry)).REVERSE_RESOLVER()
             )
         );
         string memory currentReverse = reverse.nameOf(from);
         string memory fullName = string.concat(label, DotnsConstants.TLD);
 
-        if (LabelUtils.labelhashMemory(currentReverse) == LabelUtils.labelhashMemory(fullName)) {
+        if (_stringHash(currentReverse) == _stringHash(fullName)) {
             reverse.setReverseName(from, "");
         }
     }
@@ -219,21 +228,39 @@ contract DotnsRegistrar is
     /// @param tokenId The transferred token identifier.
     function _syncRecipientStore(address to, uint256 tokenId) internal {
         IStoreFactory factory = IStoreFactory(
-            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).STORE_FACTORY())
+            protocolRegistry.get(
+                DotnsProtocolRegistryOld(address(protocolRegistry)).STORE_FACTORY()
+            )
         );
         if (address(factory) == address(0)) return;
 
-        address[] memory controllers_ = RegistrationUtils.storeControllers(protocolRegistry);
+        address[] memory storeControllers = new address[](3);
+        storeControllers[0] = address(this);
+        storeControllers[1] =
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).CONTROLLER());
+        storeControllers[2] =
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).REGISTRY());
 
         string memory label = _labels[tokenId];
         if (bytes(label).length == 0) {
-            factory.getOrCreateStore(controllers_, to);
+            factory.getOrCreateStore(storeControllers, to);
             return;
         }
 
-        bytes32 labelhash = LabelUtils.labelhashMemory(label);
+        bytes32 labelhash;
+        assembly ("memory-safe") {
+            labelhash := keccak256(add(label, 0x20), mload(label))
+        }
 
-        factory.writeToStore(controllers_, to, labelhash, string.concat(label, DotnsConstants.TLD));
+        factory.writeToStore(
+            storeControllers, to, labelhash, string.concat(label, DotnsConstants.TLD)
+        );
+    }
+
+    function _stringHash(string memory value) internal pure returns (bytes32 hash) {
+        assembly ("memory-safe") {
+            hash := keccak256(add(value, 0x20), mload(value))
+        }
     }
 
     /// @inheritdoc UUPSUpgradeable

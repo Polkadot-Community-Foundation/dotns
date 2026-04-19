@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
+import {IDotnsController} from "../../../contracts/registrars/IDotnsController.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 contract DotnsRegistrarTests is BaseDotns {
@@ -9,21 +10,21 @@ contract DotnsRegistrarTests is BaseDotns {
         address additionalController = makeAddr("additionalController");
 
         vm.startPrank(owner);
-        dotnsRegistrar.addController(IDotnsRegistrarController(additionalController));
+        dotnsRegistrar.addController(IDotnsController(additionalController));
         vm.stopPrank();
 
-        assertTrue(dotnsRegistrar.controllers(IDotnsRegistrarController(additionalController)));
+        assertTrue(dotnsRegistrar.controllers(IDotnsController(additionalController)));
     }
 
     function test_remove_controller() public {
         address temporaryController = makeAddr("temporaryController");
 
         vm.startPrank(owner);
-        dotnsRegistrar.addController(IDotnsRegistrarController(temporaryController));
-        dotnsRegistrar.removeController(IDotnsRegistrarController(temporaryController));
+        dotnsRegistrar.addController(IDotnsController(temporaryController));
+        dotnsRegistrar.removeController(IDotnsController(temporaryController));
         vm.stopPrank();
 
-        assertFalse(dotnsRegistrar.controllers(IDotnsRegistrarController(temporaryController)));
+        assertFalse(dotnsRegistrar.controllers(IDotnsController(temporaryController)));
     }
 
     function test_register_mints_to_owner() public {

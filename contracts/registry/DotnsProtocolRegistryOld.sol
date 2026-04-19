@@ -7,7 +7,7 @@ import {
     OwnableUpgradeable
 } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
-import {IDotnsProtocolRegistry} from "./IDotnsProtocolRegistry.sol";
+import {IDotnsProtocolRegistryOld} from "./IDotnsProtocolRegistryOld.sol";
 
 /// @title Dotns Protocol Registry
 /// @notice Upgradeable address registry for all DotNS protocol contracts.
@@ -15,11 +15,11 @@ import {IDotnsProtocolRegistry} from "./IDotnsProtocolRegistry.sol";
 ///      Individual contracts query this registry instead of storing sibling references,
 ///      reducing storage fragmentation and simplifying upgrades.
 /// @custom:security-contact admin@parity.io
-contract DotnsProtocolRegistry is
+contract DotnsProtocolRegistryOld is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,
-    IDotnsProtocolRegistry
+    IDotnsProtocolRegistryOld
 {
     /// @notice Well-known key for the ERC721 registrar backing name ownership.
     /// casting to 'bytes32' is safe because the string fits in 32 bytes.
@@ -61,35 +61,6 @@ contract DotnsProtocolRegistry is
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 public constant CONTENT_RESOLVER = bytes32("contentResolver");
 
-    /// @notice Well-known key for the privileged PoP gateway address allowed to drive
-    ///         lite/full-person username flows via `DotnsPopController`.
-    /// @dev This is the external account or pallet adapter configured by governance; the
-    ///      `DotnsPopController` reads it from this registry to gate its privileged entry
-    ///      points, so rotating the gateway is a single `set` call with no upgrade needed.
-    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 public constant POP_GATEWAY = bytes32("popGateway");
-
-    /// @notice Well-known key for the dedicated PoP controller orchestrating lite/full-person
-    ///         username issuance on behalf of the PoP gateway.
-    /// @dev Kept distinct from `CONTROLLER` (the commit-reveal public controller) so the
-    ///      two controllers can coexist per `DotnsRegistrar`'s multi-controller affordance.
-    ///      `DotnsRegistrarController` also consults `POP_CONTROLLER` from this registry to
-    ///      reject public registrations of labels currently reserved for a PoP claim.
-    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 public constant POP_CONTROLLER = bytes32("popController");
-
-    /// @notice Well-known key for the PoP resolver holding per-name records produced
-    ///         by the PoP username flow (chat keys, lite -> full links).
-    /// @dev Separating PoP-flow records into a dedicated resolver preserves the
-    ///      `Store = labels only` invariant (Store holds registration records,
-    ///      nothing else) and matches the project's resolver-per-record-category
-    ///      convention used by the content and reverse resolvers.
-    /// casting to 'bytes32' is safe because the string fits in 32 bytes.
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 public constant POP_RESOLVER = bytes32("popResolver");
-
     /// @dev Internal mapping from well-known key to contract address.
     mapping(bytes32 key => address addr) private _addresses;
 
@@ -106,12 +77,12 @@ contract DotnsProtocolRegistry is
         __Ownable_init(msg.sender);
     }
 
-    /// @inheritdoc IDotnsProtocolRegistry
+    /// @inheritdoc IDotnsProtocolRegistryOld
     function get(bytes32 key) external view override returns (address addr) {
         return _addresses[key];
     }
 
-    /// @inheritdoc IDotnsProtocolRegistry
+    /// @inheritdoc IDotnsProtocolRegistryOld
     function set(bytes32 key, address addr) external override onlyOwner {
         require(addr != address(0), ZeroAddress());
 
@@ -122,7 +93,7 @@ contract DotnsProtocolRegistry is
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.1.0";
+        versionString = "1.0.0";
     }
 
     /// @inheritdoc UUPSUpgradeable

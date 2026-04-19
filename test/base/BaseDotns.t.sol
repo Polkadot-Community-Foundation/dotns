@@ -9,6 +9,11 @@ import {
     DotnsRegistrarController,
     IDotnsRegistrarController
 } from "../../contracts/registrars/DotnsRegistrarController.sol";
+import {
+    DotnsPopController,
+    IDotnsPopController
+} from "../../contracts/registrars/DotnsPopController.sol";
+import {IDotnsController} from "../../contracts/registrars/IDotnsController.sol";
 import {DotnsRegistry, IDotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
 import {DotnsResolver} from "../../contracts/resolvers/DotnsResolver.sol";
 import {DotnsContentResolver} from "../../contracts/resolvers/DotnsContentResolver.sol";
@@ -16,6 +21,7 @@ import {
     DotnsReverseResolver,
     IDotnsReverseResolver
 } from "../../contracts/resolvers/DotnsReverseResolver.sol";
+import {DotnsPopResolver, IDotnsPopResolver} from "../../contracts/resolvers/DotnsPopResolver.sol";
 import {Store} from "../../contracts/store/Store.sol";
 import {StoreFactory, IStoreFactory} from "../../contracts/store/StoreFactory.sol";
 import {
@@ -73,6 +79,18 @@ abstract contract BaseDotns is Test {
     /// @notice Deployed reverse resolver instance.
     DotnsReverseResolver public dotnsReverseResolver;
 
+    /// @notice Deployed PoP resolver instance (chat keys + lite links).
+    DotnsPopResolver public dotnsPopResolver;
+
+    /// @notice Deployed PoP controller instance (gateway-driven lite/full issuance).
+    DotnsPopController public dotnsPopController;
+
+    /// @notice Test account representing the privileged PoP gateway origin.
+    address public popGateway;
+
+    /// @notice Default reservation duration used by the PoP controller.
+    uint64 public constant DEFAULT_RESERVATION_DURATION = 7 days;
+
     /// @notice Deployed Store factory instance.
     StoreFactory public storeFactory;
 
@@ -106,6 +124,7 @@ abstract contract BaseDotns is Test {
         leonardo = _createUser("leonardo");
         tiago = _createUser("tiago");
         owner = _createUser("owner");
+        popGateway = _createUser("popGateway");
 
         dotLabel = keccak256(bytes("dot"));
         dotNode = _namehash(ZERO_HASH, dotLabel);
@@ -181,7 +200,7 @@ abstract contract BaseDotns is Test {
         dotnsRegistrarController = DotnsRegistrarController(dotnsRegistrarControllerAddress);
         vm.label(dotnsRegistrarControllerAddress, "DotnsRegistrarController");
 
-        dotnsRegistrar.addController(IDotnsRegistrarController(dotnsRegistrarControllerAddress));
+        dotnsRegistrar.addController(IDotnsController(dotnsRegistrarControllerAddress));
 
         address protocolRegistryAddress = Upgrades.deployUUPSProxy(
             "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
@@ -189,6 +208,27 @@ abstract contract BaseDotns is Test {
         );
         protocolRegistry = DotnsProtocolRegistry(protocolRegistryAddress);
         vm.label(protocolRegistryAddress, "DotnsProtocolRegistry");
+
+        address dotnsPopResolverAddress = Upgrades.deployUUPSProxy(
+            "DotnsPopResolver.sol:DotnsPopResolver",
+            abi.encodeCall(
+                DotnsPopResolver.initialize, (IDotnsProtocolRegistry(protocolRegistryAddress))
+            )
+        );
+        dotnsPopResolver = DotnsPopResolver(dotnsPopResolverAddress);
+        vm.label(dotnsPopResolverAddress, "DotnsPopResolver");
+
+        address dotnsPopControllerAddress = Upgrades.deployUUPSProxy(
+            "DotnsPopController.sol:DotnsPopController",
+            abi.encodeCall(
+                DotnsPopController.initialize,
+                (IDotnsProtocolRegistry(protocolRegistryAddress), DEFAULT_RESERVATION_DURATION)
+            )
+        );
+        dotnsPopController = DotnsPopController(dotnsPopControllerAddress);
+        vm.label(dotnsPopControllerAddress, "DotnsPopController");
+
+        dotnsRegistrar.addController(IDotnsController(dotnsPopControllerAddress));
 
         protocolRegistry.set(protocolRegistry.REGISTRAR(), dotnsRegistrarAddress);
         protocolRegistry.set(protocolRegistry.CONTROLLER(), dotnsRegistrarControllerAddress);
@@ -198,6 +238,9 @@ abstract contract BaseDotns is Test {
         protocolRegistry.set(protocolRegistry.STORE_FACTORY(), address(storeFactory));
         protocolRegistry.set(protocolRegistry.RESOLVER(), dotnsResolverAddress);
         protocolRegistry.set(protocolRegistry.CONTENT_RESOLVER(), dotnsContentResolverAddress);
+        protocolRegistry.set(protocolRegistry.POP_RESOLVER(), dotnsPopResolverAddress);
+        protocolRegistry.set(protocolRegistry.POP_CONTROLLER(), dotnsPopControllerAddress);
+        protocolRegistry.set(protocolRegistry.POP_GATEWAY(), popGateway);
 
         dotnsRegistrar.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
         dotnsRegistrarController.updateProtocolRegistry(
@@ -232,9 +275,53 @@ abstract contract BaseDotns is Test {
     /// @param label The label to compute for (without the `.dot` suffix).
     /// @return tokenId The ERC721 tokenId (uint256(node)).
     function _tokenIdForLabel(string memory label) internal pure returns (uint256 tokenId) {
+        tokenId = uint256(_nodeOf(label));
+    }
+
+    /// @notice Computes `namehash(DOT_NODE, keccak256(label))` for a flat label.
+    /// @dev Shared across test suites that need the node identifier for a .dot label.
+    /// @param label Label (without the `.dot` suffix).
+    /// @return node The node identifier under the `.dot` TLD.
+    function _nodeOf(string memory label) internal pure returns (bytes32 node) {
         bytes32 labelhash = keccak256(bytes(label));
-        bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
-        tokenId = uint256(node);
+        node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
+    }
+
+    /// @notice Drives `DotnsPopController.reserveBaseName` through the configured gateway.
+    /// @dev Single canonical helper for PoP-gateway reservations across unit and fuzz
+    ///      test suites. Keeps the `vm.prank(popGateway)` boilerplate in one place.
+    function _reservePop(
+        address user,
+        string memory liteLabel,
+        bytes memory chatKey,
+        string memory reservedBaseLabel
+    )
+        internal
+    {
+        vm.prank(popGateway);
+        dotnsPopController.reserveBaseName(liteLabel, user, chatKey, reservedBaseLabel);
+    }
+
+    /// @notice Constructs a `Link` that inherits the chat key from a prior lite label.
+    function _linkWithLite(string memory liteLabel)
+        internal
+        pure
+        returns (IDotnsPopController.Link memory)
+    {
+        return IDotnsPopController.Link({
+            kind: IDotnsPopController.LinkKind.LiteUsername, liteLabel: liteLabel, chatKey: ""
+        });
+    }
+
+    /// @notice Constructs a `Link` carrying a fresh chat key (no lite inheritance).
+    function _linkFresh(bytes memory chatKey)
+        internal
+        pure
+        returns (IDotnsPopController.Link memory)
+    {
+        return IDotnsPopController.Link({
+            kind: IDotnsPopController.LinkKind.None, liteLabel: "", chatKey: chatKey
+        });
     }
 
     /// @notice Creates a new test user and funds it with DEFAULT_BALANCE.

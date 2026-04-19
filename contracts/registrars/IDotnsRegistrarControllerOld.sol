@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
-import {IDotnsController} from "./IDotnsController.sol";
+import {IDotnsProtocolRegistryOld} from "../registry/IDotnsProtocolRegistryOld.sol";
 
 /// @title Dotns Registrar Controller
 /// @notice Interface for registering .dot labels using a commit–reveal scheme.
@@ -18,7 +17,7 @@ import {IDotnsController} from "./IDotnsController.sol";
 ///        to create an immutable onchain record of the name registration.
 ///      - This store serves as a quick lookup for all names registered.
 /// @custom:security-contact admin@parity.io
-interface IDotnsRegistrarController is IDotnsController {
+interface IDotnsRegistrarControllerOld {
     /// @notice Parameters used to generate and reveal a commitment.
     /// @dev All fields must match exactly between commitment and reveal.
     /// @param label Label being registered (e.g. "alice").
@@ -143,11 +142,11 @@ interface IDotnsRegistrarController is IDotnsController {
 
     /// @notice Emitted when the protocol registry is updated.
     /// @param newRegistry The address of the new protocol registry.
-    event ProtocolRegistryUpdated(IDotnsProtocolRegistry indexed newRegistry);
+    event ProtocolRegistryUpdated(IDotnsProtocolRegistryOld indexed newRegistry);
 
     /// @notice Updates the protocol registry address.
     /// @dev Callable only by the contract owner.
     /// @param registry The address of the new protocol registry.
     // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
-    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external;
+    function updateProtocolRegistry(IDotnsProtocolRegistryOld registry) external;
 }

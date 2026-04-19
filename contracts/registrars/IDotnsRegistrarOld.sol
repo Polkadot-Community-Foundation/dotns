@@ -2,8 +2,8 @@
 pragma solidity ^0.8.30;
 
 import {IERC721} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
-import {IDotnsController} from "./IDotnsController.sol";
-import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
+import {IDotnsRegistrarControllerOld} from "./IDotnsRegistrarControllerOld.sol";
+import {IDotnsProtocolRegistryOld} from "../registry/IDotnsProtocolRegistryOld.sol";
 
 /// @title Dotns Registrar
 /// @notice ERC721-backed ownership for DotNS names with controller-gated registration.
@@ -12,7 +12,7 @@ import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 ///      - ERC721 ownership for registered name token IDs.
 ///      - Controller-gated registration.
 /// @custom:security-contact admin@parity.io
-interface IDotnsRegistrar is IERC721 {
+interface IDotnsRegistrarOld is IERC721 {
     /// @notice Thrown when a name is already registered.
     /// @param tokenId The token identifier derived from the node.
     error NameNotAvailable(uint256 tokenId);
@@ -43,20 +43,16 @@ interface IDotnsRegistrar is IERC721 {
     event NameRegistered(uint256 indexed id, address indexed owner);
 
     /// @notice Emitted when a controller is added.
-    /// @dev Typed as the shared baseline {IDotnsController} so the commit-reveal
-    ///      controller and the PoP controller (and any future controller) all fit
-    ///      the same signature without the registrar depending on any specific
-    ///      controller interface.
-    /// @param controller Controller granted permissions.
-    event ControllerAdded(IDotnsController indexed controller);
+    /// @param controller Address granted controller permissions.
+    event ControllerAdded(IDotnsRegistrarControllerOld indexed controller);
 
     /// @notice Emitted when a controller is removed.
-    /// @param controller Controller whose permissions were revoked.
-    event ControllerRemoved(IDotnsController indexed controller);
+    /// @param controller Address whose controller permissions were revoked.
+    event ControllerRemoved(IDotnsRegistrarControllerOld indexed controller);
 
     /// @notice Emitted when the protocol registry is updated.
     /// @param newRegistry The address of the new protocol registry.
-    event ProtocolRegistryUpdated(IDotnsProtocolRegistry indexed newRegistry);
+    event ProtocolRegistryUpdated(IDotnsProtocolRegistryOld indexed newRegistry);
 
     /// @notice Emitted when a label is synced to the labels mapping.
     /// @param tokenId The token identifier.
@@ -79,17 +75,14 @@ interface IDotnsRegistrar is IERC721 {
     function register(uint256 id, address owner, string calldata label) external;
 
     /// @notice Adds an authorised controller.
-    /// @dev Callable only by the contract owner. Typed as the shared baseline
-    ///      {IDotnsController} so that the commit-reveal controller, the PoP
-    ///      controller, and any future controller all pass without the registrar
-    ///      depending on a specific controller shape.
-    /// @param controller Controller to authorise.
-    function addController(IDotnsController controller) external;
+    /// @dev Callable only by the contract owner.
+    /// @param controller Address to authorise.
+    function addController(IDotnsRegistrarControllerOld controller) external;
 
     /// @notice Removes an authorised controller.
     /// @dev Callable only by the contract owner.
-    /// @param controller Controller to deauthorise.
-    function removeController(IDotnsController controller) external;
+    /// @param controller Address to deauthorise.
+    function removeController(IDotnsRegistrarControllerOld controller) external;
 
     /// @notice Updates the protocol registry address.
     /// @dev Callable only by the contract owner.
@@ -97,7 +90,7 @@ interface IDotnsRegistrar is IERC721 {
     ///       If we deploy to a new environment
     /// @param registry The address of the new protocol registry.
     // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
-    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external;
+    function updateProtocolRegistry(IDotnsProtocolRegistryOld registry) external;
 
     /// @notice Syncs a label to the internal labels mapping for a token.
     /// @dev Callable only by the token owner. The label is verified cryptographically
