@@ -37,8 +37,13 @@ jobs:
         run: bun install
 
       - name: Start Anvil
+        # --block-gas-limit lifted from the 30M default so `forge script` has
+        # enough per-call gas to handle OZ upgrade-safety validation returns,
+        # which route multi-MB ABI JSON blobs through cheatcode return bytes
+        # into EVM memory. Memory expansion gas is quadratic; the default caps
+        # the deploy with `MemoryOOG` long before any allocation fails.
         run: |
-          anvil --chain-id 420420420 --port 8545 > anvil.log 2>&1 &
+          anvil --chain-id 420420420 --port 8545 --block-gas-limit 1000000000 > anvil.log 2>&1 &
           sleep 3
 
       - name: Wait for RPC to be ready
