@@ -222,10 +222,7 @@ contract PopSystemUpgradeForkTest is Test {
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: publicLabel,
-                owner: bob,
-                secret: keccak256("race-secret"),
-                reserved: true
+                label: publicLabel, owner: bob, secret: keccak256("race-secret"), reserved: true
             });
 
         bytes32 commitment = controller.makeCommitment(registration);

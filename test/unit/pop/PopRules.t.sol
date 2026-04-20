@@ -126,9 +126,7 @@ contract PopRulesTests is BaseDotns {
         popRules.reserveBaseNameForPop("longnamebob", leonardo);
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IPopRules.PopError.selector, "Base name held by another user"
-            )
+            abi.encodeWithSelector(IPopRules.PopError.selector, "Base name held by another user")
         );
         popRules.reserveBaseNameForPop("longnamebob", tiago);
 
