@@ -15,6 +15,7 @@ import {IDotnsPopController} from "./IDotnsPopController.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {DotnsProtocolRegistry} from "../registry/DotnsProtocolRegistry.sol";
 import {IDotnsPopResolver} from "../resolvers/IDotnsPopResolver.sol";
+import {IPopRules} from "../pop/IPopRules.sol";
 import {LabelUtils} from "../utils/LabelUtils.sol";
 import {RegistrationUtils} from "../utils/RegistrationUtils.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
@@ -28,14 +29,29 @@ import {StringUtils} from "../utils/StringUtils.sol";
 ///
 /// @dev Decoupling:
 ///      This contract does not import or call `IDotnsRegistrarController`. The
-///      public commit-reveal controller is equally unaware of this one. Label
-///      collisions between the two flows reduce to the registrar's ERC721
-///      availability check (first-to-mint wins).
+///      public commit-reveal controller is equally unaware of this one. Cross-
+///      flow collision handling relies on two distinct properties, neither of
+///      which requires the two controllers to know about each other:
+///
+///      - Lite-person labels (`NAME.XX`) are format-disjoint from the DNS
+///        labels the public controller accepts, so labelhashes cannot overlap.
+///        Lite names are safe from public registration by construction.
+///      - Base-name reservations are synchronised into @custom:contract IPopRules. The head of
+///        this controller's reservation queue is written through
+///        `IPopRules.reserveBaseNameForPop` on every head transition; the
+///        slot is cleared through `IPopRules.releaseBaseName` when the queue
+///        empties (claim, final relinquish, final expiry). Because the public
+///        commit-reveal controller already routes through
+///        `IPopRules.priceWithCheck`, which rejects any registration targeting
+///        a base-name stem reserved for another user, the public flow respects
+///        gateway reservations without ever importing this contract. PopRules
+///        is the single cross-flow authority; the queue here is the intra-PoP
+///        ordering layer on top of it.
 ///
 /// @dev Shared primitives:
 ///      - Labelhash / namehash: {LabelUtils}.
 ///      - Mint + forward-registry + store-write triad: {RegistrationUtils}.
-///      - Chat-key and lite -> full link persistence: {IDotnsPopResolver}.
+///      - Chat-key and lite => full link persistence: {IDotnsPopResolver}.
 ///        Keeping these records on the resolver preserves the "Store = labels only"
 ///        invariant (Store holds registration records, nothing else).
 ///
@@ -87,6 +103,14 @@ contract DotnsPopController is
     /// @notice Records the monotonic index at which a user's reservation lives within
     ///         the queue, so non-head relinquishment can find it in O(1).
     mapping(address user => uint64 index) internal _userReservationIndex;
+
+    /// @notice Remembers the base-label string for each reserved labelhash so the
+    ///         PopRules sync path can address the reservation by its original
+    ///         string form (PopRules keys its `reservations` mapping by string).
+    /// @dev Populated on first enqueue for a label, cleared when the queue empties.
+    ///      Exists only to bridge the queue's `bytes32` key space to PopRules'
+    ///      `string` key space; nothing else reads it.
+    mapping(bytes32 labelhash => string baseLabel) internal _reservedBaseLabel;
 
     /// @notice Duration (in seconds) after which a reservation entry is considered expired.
     /// @dev Mirrors `pallet_resources::UsernameReservationDuration`. Configurable by
@@ -148,10 +172,10 @@ contract DotnsPopController is
             bytes32 reservedHash = _validateBaseLabelHash(reservedBaseLabel);
             _advanceExpiredHead(reservedHash);
 
-            if (_userReservation[user] != bytes32(0)) {
-                _removeUserFromQueue(user);
-            }
-            _enqueueReservation(reservedHash, user);
+            // `_removeUserFromQueue` early-returns when the user has no active
+            // reservation, so no outer guard is needed.
+            _removeUserFromQueue(user);
+            _enqueueReservation(reservedHash, reservedBaseLabel, user);
         }
     }
 
@@ -177,8 +201,9 @@ contract DotnsPopController is
 
         if (isClaim) {
             _clearQueue(labelhash);
-        } else if (_userReservation[user] != bytes32(0)) {
+        } else {
             // Silent relinquish: any pending queue entry the user holds is removed.
+            // `_removeUserFromQueue` early-returns when there is nothing to remove.
             _removeUserFromQueue(user);
         }
 
@@ -351,13 +376,26 @@ contract DotnsPopController is
 
     /// @notice Appends a new reservation entry to the tail of the queue for `labelhash`.
     /// @dev Reverts if the queue is full or the user already holds a reservation.
-    function _enqueueReservation(bytes32 labelhash, address user) internal {
+    ///      When the enqueued entry is the new head of an empty queue, the
+    ///      controller also reserves the base name on PopRules so the public
+    ///      commit-reveal flow sees the reservation through its existing
+    ///      `priceWithCheck` guard. Subsequent waiters only live in the local
+    ///      queue until they are promoted.
+    function _enqueueReservation(
+        bytes32 labelhash,
+        string memory baseLabel,
+        address user
+    )
+        internal
+    {
         require(_userReservation[user] == bytes32(0), AlreadyReserved(user, labelhash));
 
         ReservationQueueMeta memory meta = _reservationMeta[labelhash];
         require(meta.tail - meta.head < MAX_RESERVATION_QUEUE, QueueFull(labelhash));
 
         uint64 index = meta.tail;
+        bool becomesHead = index == meta.head;
+
         _reservationEntries[labelhash][index] =
             ReservationEntry({owner: user, joinedAt: uint64(block.timestamp)});
         _reservationMeta[labelhash] = ReservationQueueMeta({head: meta.head, tail: index + 1});
@@ -365,12 +403,20 @@ contract DotnsPopController is
         _userReservation[user] = labelhash;
         _userReservationIndex[user] = index;
 
+        if (becomesHead) {
+            _reservedBaseLabel[labelhash] = baseLabel;
+            _popRules().reserveBaseNameForPop(baseLabel, user);
+        }
+
         emit ReservationQueued(labelhash, user, index - meta.head);
     }
 
-    /// @notice Wipes the entire reservation queue for `labelhash`.
+    /// @notice Wipes the entire reservation queue for `labelhash` and releases the
+    ///         corresponding PopRules reservation.
     /// @dev Used when a holder claims their reservation: every waiter is evicted and
-    ///      their per-user tracking state is cleared.
+    ///      their per-user tracking state is cleared, and PopRules is told the
+    ///      slot is free so future public registrations are unblocked (the claim
+    ///      itself just minted the name, so there is nothing left to reserve).
     function _clearQueue(bytes32 labelhash) internal {
         ReservationQueueMeta memory meta = _reservationMeta[labelhash];
         for (uint64 i = meta.head; i < meta.tail; i++) {
@@ -382,6 +428,7 @@ contract DotnsPopController is
             delete _reservationEntries[labelhash][i];
         }
         delete _reservationMeta[labelhash];
+        _releasePopRulesSlot(labelhash);
     }
 
     /// @notice Advances the queue head past every expired entry at the head of the queue.
@@ -409,28 +456,34 @@ contract DotnsPopController is
 
         if (head == tail) {
             delete _reservationMeta[labelhash];
+            _releasePopRulesSlot(labelhash);
         } else if (head != meta.head) {
             _reservationMeta[labelhash] = ReservationQueueMeta({head: head, tail: tail});
+            address newHead = _reservationEntries[labelhash][head].owner;
+            _syncPopRulesToHead(labelhash, newHead);
         }
     }
 
     /// @notice Removes `user` from whichever reservation queue they currently occupy.
+    /// @dev For a head removal, we delete the entry without bumping `meta.head` and
+    ///      delegate the advance to `_advanceExpiredHead`. Its existing zero-owner
+    ///      skip walks past the freshly-deleted slot, and its `head != meta.head`
+    ///      branch fires the PopRules resync in the one place head promotion is
+    ///      actually handled. Non-head removals leave the queue shape intact, so
+    ///      no advance or resync is needed.
     function _removeUserFromQueue(address user) internal {
         bytes32 labelhash = _userReservation[user];
         if (labelhash == bytes32(0)) return;
 
-        uint64 index = _userReservationIndex[user];
-        ReservationQueueMeta memory meta = _reservationMeta[labelhash];
+        uint64 entryIndex = _userReservationIndex[user];
+        ReservationQueueMeta memory queueMeta = _reservationMeta[labelhash];
 
         delete _userReservation[user];
         delete _userReservationIndex[user];
+        delete _reservationEntries[labelhash][entryIndex];
 
-        if (index == meta.head) {
-            delete _reservationEntries[labelhash][index];
-            _reservationMeta[labelhash] = ReservationQueueMeta({head: index + 1, tail: meta.tail});
+        if (entryIndex == queueMeta.head) {
             _advanceExpiredHead(labelhash);
-        } else {
-            delete _reservationEntries[labelhash][index];
         }
     }
 
@@ -481,6 +534,36 @@ contract DotnsPopController is
         return IDotnsPopResolver(
             protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).POP_RESOLVER())
         );
+    }
+
+    /// @notice Resolves the PopRules contract via the protocol registry.
+    function _popRules() internal view returns (IPopRules) {
+        return IPopRules(
+            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).POP_RULES())
+        );
+    }
+
+    /// @notice Writes the new head of the queue into PopRules so the public
+    ///         commit-reveal flow rejects registrations of this base name for
+    ///         anyone other than `newHead`.
+    function _syncPopRulesToHead(bytes32 labelhash, address newHead) internal {
+        string memory baseLabel = _reservedBaseLabel[labelhash];
+        if (bytes(baseLabel).length == 0 || newHead == address(0)) return;
+        // Release the slot held by the prior head before writing the new one,
+        // because PopRules rejects `reserveBaseNameForPop` when the live slot
+        // belongs to someone other than the caller-supplied user.
+        IPopRules rules = _popRules();
+        rules.releaseBaseName(baseLabel);
+        rules.reserveBaseNameForPop(baseLabel, newHead);
+    }
+
+    /// @notice Clears the PopRules slot and the local label bookkeeping when the
+    ///         queue empties (claim, last-relinquish, last-expire).
+    function _releasePopRulesSlot(bytes32 labelhash) internal {
+        string memory baseLabel = _reservedBaseLabel[labelhash];
+        if (bytes(baseLabel).length == 0) return;
+        _popRules().releaseBaseName(baseLabel);
+        delete _reservedBaseLabel[labelhash];
     }
 
     /// @notice Internal check enforcing PoP-gateway-only access.

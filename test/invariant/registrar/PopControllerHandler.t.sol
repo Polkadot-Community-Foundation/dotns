@@ -37,11 +37,19 @@ contract PopControllerHandler is Test {
         return reservedLabelsSeen.length;
     }
 
-    /// @notice Reserves a lite label for an actor, optionally enqueuing on a base label.
-    /// @dev Swallows known-good reverts (`QueueFull`, `AlreadyReserved`, registrar
-    ///      ERC721 collision) so the invariant runner keeps exploring. The suffix
-    ///      counter starts at 10 so `vm.toString` always yields a two-or-more-digit
-    ///      string satisfying the PoP `NAME.XX` format without a padding helper.
+    function baseLabelCount() external view returns (uint256) {
+        return baseLabels.length;
+    }
+
+    function baseLabelAt(uint256 idx) external view returns (string memory) {
+        return baseLabels[idx];
+    }
+
+    // Reserves a lite label for an actor, optionally enqueuing on a base label.
+    // Swallows known-good reverts (`QueueFull`, `AlreadyReserved`, registrar
+    // ERC721 collision) so the invariant runner keeps exploring. The suffix
+    // counter starts at 10 so `vm.toString` always yields a two-or-more-digit
+    // string satisfying the PoP `NAME.XX` format without a padding helper.
     function reserve(uint256 actorIdx, uint256 baseIdx, bool attachReservation) external {
         address actor = _actor(actorIdx);
         _liteSuffix[actor]++;
@@ -57,18 +65,18 @@ contract PopControllerHandler is Test {
         } catch {}
     }
 
-    /// @notice Caller-sovereign: drops whichever reservation the actor currently holds.
+    // Caller-sovereign: drops whichever reservation the actor currently holds.
     function relinquish(uint256 actorIdx) external {
         vm.prank(_actor(actorIdx));
         try controller.relinquishReservation() {} catch {}
     }
 
-    /// @notice Permissionless: advances the head of a tracked queue past expired entries.
+    // Permissionless: advances the head of a tracked queue past expired entries.
     function expire(uint256 baseIdx) external {
         try controller.expireReservation(_baseLabel(baseIdx)) {} catch {}
     }
 
-    /// @notice Advances block timestamp to exercise expiry paths.
+    // Advances block timestamp to exercise expiry paths.
     function warp(uint256 secondsForward) external {
         vm.warp(block.timestamp + (secondsForward % (30 days)));
     }

@@ -22,7 +22,7 @@ import {DotnsConstants} from "./DotnsConstants.sol";
 ///      This library is deliberately minimal. It only performs the steps that every
 ///      registration flow needs regardless of policy:
 ///        1. Mint the ERC721 name token on the base registrar.
-///        2. Write the forward registry entry (node -> owner + default resolver).
+///        2. Write the forward registry entry (node => owner + default resolver).
 ///        3. Ensure a Store exists for the owner and write the registration entry.
 ///      Flow-specific concerns (pricing, reverse-record setting, chat-key persistence,
 ///      reservation queue mutation) stay inside the calling controller.

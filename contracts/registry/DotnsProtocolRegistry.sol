@@ -11,7 +11,7 @@ import {IDotnsProtocolRegistry} from "./IDotnsProtocolRegistry.sol";
 
 /// @title Dotns Protocol Registry
 /// @notice Upgradeable address registry for all DotNS protocol contracts.
-/// @dev Consolidates protocol contract addresses behind a single `bytes32 -> address` mapping.
+/// @dev Consolidates protocol contract addresses behind a single `bytes32 => address` mapping.
 ///      Individual contracts query this registry instead of storing sibling references,
 ///      reducing storage fragmentation and simplifying upgrades.
 /// @custom:security-contact admin@parity.io
@@ -81,7 +81,7 @@ contract DotnsProtocolRegistry is
     bytes32 public constant POP_CONTROLLER = bytes32("popController");
 
     /// @notice Well-known key for the PoP resolver holding per-name records produced
-    ///         by the PoP username flow (chat keys, lite -> full links).
+    ///         by the PoP username flow (chat keys, lite => full links).
     /// @dev Separating PoP-flow records into a dedicated resolver preserves the
     ///      `Store = labels only` invariant (Store holds registration records,
     ///      nothing else) and matches the project's resolver-per-record-category

@@ -45,10 +45,6 @@ interface IPopRules {
     /// @param reason Human-readable explanation of the failure condition
     error PopError(string reason);
 
-    /// @notice Used to throw generic errors
-    /// @param reason Human-readable explanation of the failure condition
-    error GenericError(string reason);
-
     /// @notice Used when functions only allow the registry to make calls
     error NotRegistry();
 
@@ -86,6 +82,29 @@ interface IPopRules {
     /// @param user The address receiving reservation rights
     /// @dev Can only be called by the registry
     function reserveBaseName(string calldata baseName, address user) external;
+
+    /// @notice Emitted when a base-name reservation is cleared.
+    /// @param baseName The base label whose reservation was released.
+    event BaseNameReleased(string indexed baseName);
+
+    /// @notice Writes or refreshes a reservation for a bare base-name stem.
+    /// @dev Gateway-driven reservation path used by the PoP controller. Callable
+    ///      by any controller in the registrar's `controllers` set. Does not
+    ///      apply the lite-format classification that `reserveBaseName`
+    ///      enforces; the caller is expected to supply the bare stem directly.
+    ///      Reverts if the slot is already held by another user and still live
+    ///      so the caller's local bookkeeping and PopRules state stay in
+    ///      lockstep.
+    /// @param baseName The base label to reserve (no trailing digits).
+    /// @param user The address receiving reservation rights.
+    function reserveBaseNameForPop(string calldata baseName, address user) external;
+
+    /// @notice Clears a reservation for a base-name stem.
+    /// @dev Callable by any controller in the registrar's `controllers` set. Used
+    ///      by the PoP controller when a reservation is claimed, relinquished, or
+    ///      a queue head promotion leaves the slot empty.
+    /// @param baseName The base label whose reservation should be cleared.
+    function releaseBaseName(string calldata baseName) external;
 
     /// @notice Retrieves reservation information for a base name
     /// @param baseName The base label without trailing digits

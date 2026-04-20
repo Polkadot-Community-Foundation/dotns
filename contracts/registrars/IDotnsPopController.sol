@@ -163,7 +163,7 @@ interface IDotnsPopController is IDotnsController {
     ///      2. Chat-key axis (selected by `link.kind`): when `link.kind == None` the
     ///         fresh `link.chatKey` is stored on {IDotnsChatKeyResolver}. When
     ///         `link.kind == LiteUsername` the full-person username inherits the chat
-    ///         key currently stored for `link.liteLabel`, and a lite->full link is
+    ///         key currently stored for `link.liteLabel`, and a lite=>full link is
     ///         persisted in the full-person's Store.
     /// @param label The full-person label to register.
     /// @param user The full-person account receiving the username.

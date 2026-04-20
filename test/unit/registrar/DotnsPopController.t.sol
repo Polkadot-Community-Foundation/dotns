@@ -8,6 +8,7 @@ import {
     IDotnsRegistrarController
 } from "../../../contracts/registrars/IDotnsRegistrarController.sol";
 import {IDotnsRegistry} from "../../../contracts/registry/IDotnsRegistry.sol";
+import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Vm} from "forge-std/Vm.sol";
 
@@ -242,25 +243,54 @@ contract DotnsPopControllerTests is BaseDotns {
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebob01"))), tiago);
     }
 
-    function test_public_controller_ignores_pop_reservation_queue() public {
-        _reservePop(tiago, "alice.92", hex"11", "longnamebob01");
+    // Gateway reservation now locks the base name on PopRules, so the public
+    // commit-reveal flow rejects another user's attempt to mint the same stem
+    // for the lifetime of the reservation.
+    function test_gateway_reserved_name_rejects_public_register_by_other_user() public {
+        // Gateway reserves the bare stem; PopRules.priceWithCheck strips the two
+        // trailing digits from "longnamebob01" and matches against reservations["longnamebob"].
+        _reservePop(tiago, "alice.92", hex"11", "longnamebob");
 
-        _commitAndRegister("longnamebob01", ed, true);
+        (address holder,) = popRules.getBaseNameReservation("longnamebob");
+        assertEq(holder, tiago);
 
-        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebob01"))), ed);
+        // The revert surface is PopRules.priceWithCheck, reached only when the
+        // public controller pulls the price during register. We therefore drive
+        // the commit-reveal flow by hand so the expectRevert cheatcode lands on
+        // the register call rather than on makeCommitment (a view).
+        string memory label = "longnamebob01";
+        bytes32 secret = keccak256(abi.encodePacked(label, ed, block.timestamp));
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: label, owner: ed, secret: secret, reserved: true
+            });
 
-        IDotnsPopController.Link memory link = _linkWithLite("alice.92");
-        vm.prank(popGateway);
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
+        vm.prank(ed);
+        dotnsRegistrarController.commit(commitment);
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+
         vm.expectRevert(
             abi.encodeWithSelector(
-                IDotnsRegistrar.NameNotAvailable.selector, uint256(_nodeOf("longnamebob01"))
+                IPopRules.PopError.selector, "Base name reserved for original Lite registrant"
             )
         );
-        dotnsPopController.registerBaseName("longnamebob01", tiago, link);
+        vm.prank(ed);
+        dotnsRegistrarController.register{value: 1 ether}(registration);
     }
 
-    /// @notice A second PoP lite-mint of the same label reverts at the registrar's
-    ///         ERC721 availability check, because the token was already minted.
+    // Symmetric check: the reservation holder can still commit-reveal the base
+    // name themselves. The PopRules guard only rejects OTHER users; the holder
+    // owns the slot and passes the `reservation.owner == userAddress` branch.
+    function test_gateway_reserved_name_allows_holder_to_register_via_public() public {
+        _reservePop(tiago, "alice.93", hex"11", "longnamebob");
+
+        _commitAndRegister("longnamebob01", tiago, true);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebob01"))), tiago);
+    }
+
+    // A second PoP lite-mint of the same label reverts at the registrar's
+    // ERC721 availability check, because the token was already minted.
     function test_second_pop_lite_mint_of_same_label_reverts_at_registrar() public {
         _reservePop(ed, "alice.42", hex"aa", "");
 
@@ -273,9 +303,9 @@ contract DotnsPopControllerTests is BaseDotns {
         dotnsPopController.reserveBaseName("alice.42", tiago, hex"bb", "");
     }
 
-    /// @notice After a PoP full-person mint of a base label, a subsequent public
-    ///         commit-reveal registration of the same label reverts on the
-    ///         registrar's availability check rather than any PoP-level guard.
+    // After a PoP full-person mint of a base label, a subsequent public
+    // commit-reveal registration of the same label reverts on the
+    // registrar's availability check rather than any PoP-level guard.
     function test_public_register_after_pop_full_mint_reverts_at_registrar() public {
         IDotnsPopController.Link memory link = _linkFresh(hex"cafe");
         vm.prank(popGateway);
@@ -304,16 +334,16 @@ contract DotnsPopControllerTests is BaseDotns {
         dotnsRegistrarController.register{value: price}(registration);
     }
 
-    /// @notice The owner of a PoP-minted full-person name can create subnames under
-    ///         it via the existing `DotnsRegistry.setSubnodeOwner` path.
-    /// @dev Exercises AC #2 of paritytech/dotns#115 ("support issuance of PoP-specific
-    ///      subnames under an existing or protocol-controlled parent"). No new
-    ///      entrypoint on `DotnsPopController` is required: subname creation is
-    ///      authorised by the ERC721 owner of the parent node, and the PoP
-    ///      controller mints the ERC721 the same way the commit-reveal controller
-    ///      does. The subname's Store-write path also uses the canonical
-    ///      `RegistrationUtils.storeControllers` allowlist, so the PoP controller
-    ///      is authorised on the new subname owner's Store.
+    // The owner of a PoP-minted full-person name can create subnames under
+    // it via the existing `DotnsRegistry.setSubnodeOwner` path.
+    // Exercises AC #2 of paritytech/dotns#115 ("support issuance of PoP-specific
+    // subnames under an existing or protocol-controlled parent"). No new
+    // entrypoint on `DotnsPopController` is required: subname creation is
+    // authorised by the ERC721 owner of the parent node, and the PoP
+    // controller mints the ERC721 the same way the commit-reveal controller
+    // does. The subname's Store-write path also uses the canonical
+    // `RegistrationUtils.storeControllers` allowlist, so the PoP controller
+    // is authorised on the new subname owner's Store.
     function test_owner_of_pop_minted_name_can_create_subname() public {
         IDotnsPopController.Link memory link = _linkFresh(hex"cafe");
         vm.prank(popGateway);
@@ -330,10 +360,10 @@ contract DotnsPopControllerTests is BaseDotns {
         assertEq(dotnsRegistry.owner(subnode), leonardo);
     }
 
-    /// @notice A non-owner cannot create subnames under a PoP-minted name.
-    /// @dev Confirms authorisation on the subname path is ERC721-owner-gated, not
-    ///      controller-specific — the guard is the same whether the parent was
-    ///      minted by the commit-reveal controller or the PoP controller.
+    // A non-owner cannot create subnames under a PoP-minted name.
+    // Confirms authorisation on the subname path is ERC721-owner-gated, not
+    // controller-specific — the guard is the same whether the parent was
+    // minted by the commit-reveal controller or the PoP controller.
     function test_non_owner_cannot_create_subname_under_pop_minted_name() public {
         IDotnsPopController.Link memory link = _linkFresh(hex"cafe");
         vm.prank(popGateway);
@@ -349,10 +379,10 @@ contract DotnsPopControllerTests is BaseDotns {
         dotnsRegistry.setSubnodeOwner(subnodeRecord);
     }
 
-    /// @notice A PoP reservation can be queued for a label already minted by the
-    ///         public controller (queue is intra-PoP only). The later claim attempt
-    ///         reverts at the registrar's availability check, surfacing the
-    ///         collision without corrupting queue state.
+    // A PoP reservation can be queued for a label already minted by the
+    // public controller (queue is intra-PoP only). The later claim attempt
+    // reverts at the registrar's availability check, surfacing the
+    // collision without corrupting queue state.
     function test_pop_reservation_of_already_public_minted_name_fails_on_claim() public {
         _commitAndRegister("longnamebob01", ed, true);
 
@@ -372,10 +402,160 @@ contract DotnsPopControllerTests is BaseDotns {
         dotnsPopController.registerBaseName("longnamebob01", tiago, link);
     }
 
-    /// @notice Asserts exactly one entry in `logs` matches event signature `sig`.
-    /// @dev Operates on a cached `Vm.Log[]` because `vm.getRecordedLogs()` drains
-    ///      the buffer. Callers snapshot the logs into a local and pass to both
-    ///      the present-check and absent-check helpers.
+    // Enqueue that becomes the head writes the holder into PopRules.reservations
+    // so the public commit-reveal flow blocks other users on the same stem.
+    function test_enqueue_becomesHead_writes_popRules_reservation() public {
+        _reservePop(ed, "alice.10", hex"aa", "longnamebob");
+
+        (address holder, uint64 expires) = popRules.getBaseNameReservation("longnamebob");
+        assertEq(holder, ed);
+        assertEq(expires, uint64(block.timestamp + popRules.MAX_RESERVATION_TIME()));
+    }
+
+    // Tail enqueue (slot already live for someone else) must not overwrite the
+    // PopRules.reservations slot: the first reserver keeps priority.
+    function test_enqueue_not_head_does_not_touch_popRules() public {
+        _reservePop(ed, "alice.11", hex"aa", "longnamebob");
+        (, uint64 originalExpiry) = popRules.getBaseNameReservation("longnamebob");
+
+        // Second reserver lands at the tail — no PopRules write should happen.
+        _reservePop(tiago, "bob.12", hex"bb", "longnamebob");
+
+        (address holder, uint64 expires) = popRules.getBaseNameReservation("longnamebob");
+        assertEq(holder, ed);
+        assertEq(expires, originalExpiry);
+    }
+
+    // Successful claim wipes the queue and releases the PopRules slot so the
+    // public commit-reveal flow is unblocked for every other user.
+    function test_claim_releases_popRules_slot() public {
+        _reservePop(ed, "alice.13", hex"aa", "longnamebob");
+
+        IDotnsPopController.Link memory link = _linkWithLite("alice.13");
+        vm.prank(popGateway);
+        dotnsPopController.registerBaseName("longnamebob", ed, link);
+
+        (address holder,) = popRules.getBaseNameReservation("longnamebob");
+        assertEq(holder, address(0));
+    }
+
+    // Final relinquish (no other queued waiter) releases the PopRules slot.
+    function test_relinquish_last_releases_popRules_slot() public {
+        _reservePop(ed, "alice.14", hex"aa", "longnamebob");
+
+        vm.prank(ed);
+        dotnsPopController.relinquishReservation();
+
+        (address holder,) = popRules.getBaseNameReservation("longnamebob");
+        assertEq(holder, address(0));
+    }
+
+    // Head relinquish promotes the next waiter and re-writes PopRules so the
+    // public flow now blocks everyone except the newly promoted head.
+    function test_relinquish_head_syncs_popRules_to_new_head() public {
+        _reservePop(ed, "alice.15", hex"aa", "longnamebob");
+        _reservePop(tiago, "bob.16", hex"bb", "longnamebob");
+
+        vm.prank(ed);
+        dotnsPopController.relinquishReservation();
+
+        (address holder,) = popRules.getBaseNameReservation("longnamebob");
+        assertEq(holder, tiago);
+    }
+
+    // `expireReservation` past duration with a waiter behind promotes the
+    // next entry and syncs PopRules to the new head. Tiago enqueues after a
+    // half-duration warp so his window extends past ed's, guaranteeing ed
+    // expires first and tiago becomes the live successor.
+    function test_advanceExpiredHead_promotes_and_syncs_popRules() public {
+        _reservePop(ed, "alice.17", hex"aa", "longnamebob");
+
+        vm.warp(block.timestamp + dotnsPopController.reservationDuration() / 2);
+        _reservePop(tiago, "bob.18", hex"bb", "longnamebob");
+
+        vm.warp(block.timestamp + dotnsPopController.reservationDuration() / 2 + 1);
+        dotnsPopController.expireReservation("longnamebob");
+
+        (address holder,) = popRules.getBaseNameReservation("longnamebob");
+        assertEq(holder, tiago);
+    }
+
+    // Last-remaining head expires and the queue empties — PopRules slot clears.
+    function test_advanceExpiredHead_last_expire_releases_popRules_slot() public {
+        _reservePop(ed, "alice.19", hex"aa", "longnamebob");
+
+        vm.warp(block.timestamp + dotnsPopController.reservationDuration() + 1);
+        dotnsPopController.expireReservation("longnamebob");
+
+        (address holder,) = popRules.getBaseNameReservation("longnamebob");
+        assertEq(holder, address(0));
+    }
+
+    // The controller passes `reservedBaseLabel` to PopRules verbatim. If the
+    // gateway supplies a label with trailing digits, the public controller's
+    // `_stripDigits` check reads the stem and misses the reservation. This
+    // locks the current behaviour so gateway-side misuse surfaces loudly.
+    function test_controller_does_not_mutate_reservedBaseLabel_string() public {
+        // "longnamebob01" has two trailing digits. PopRules stores it as-is,
+        // but `priceWithCheck` queries reservations keyed by "longnamebob".
+        _reservePop(ed, "alice.21", hex"aa", "longnamebob01");
+
+        // Slot is written under the raw label.
+        (address rawHolder,) = popRules.getBaseNameReservation("longnamebob01");
+        assertEq(rawHolder, ed);
+
+        // Stripped-stem slot is empty — public flow for "longnamebob01" is
+        // NOT blocked for other users (documented misuse surface).
+        (address strippedHolder,) = popRules.getBaseNameReservation("longnamebob");
+        assertEq(strippedHolder, address(0));
+    }
+
+    // After a claim clears the slot, a different user can mint the stem via
+    // the public commit-reveal flow. Exercises release-on-claim end-to-end.
+    function test_public_stranger_can_mint_after_claim_clears_reservation() public {
+        _reservePop(ed, "alice.22", hex"aa", "longnamebob");
+
+        IDotnsPopController.Link memory link = _linkWithLite("alice.22");
+        vm.prank(popGateway);
+        dotnsPopController.registerBaseName("longnamebob", ed, link);
+
+        // Now the stem is clear on PopRules, so tiago can register the
+        // digit-suffixed variant "longnamebob01" via the public flow.
+        _commitAndRegister("longnamebob01", tiago, true);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebob01"))), tiago);
+    }
+
+    // After natural expiry of the head the slot must be cleared before the
+    // public flow admits a stranger. Exercises release-on-last-expire.
+    function test_public_stranger_can_mint_after_reservation_expires() public {
+        _reservePop(ed, "alice.23", hex"aa", "longnamebob");
+
+        vm.warp(block.timestamp + dotnsPopController.reservationDuration() + 1);
+        dotnsPopController.expireReservation("longnamebob");
+
+        _commitAndRegister("longnamebob01", tiago, true);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebob01"))), tiago);
+    }
+
+    // A registered controller on `DotnsRegistrar` that is NOT the PoP gateway
+    // must not be able to reach the sync path through the PoP controller's
+    // entrypoints — the `onlyGateway` check is independent of controller
+    // authorisation on the registrar.
+    function test_controller_authorised_but_not_gateway_cannot_enter_pop_flow() public {
+        // The public commit-reveal controller is already a registered controller.
+        address otherController = address(dotnsRegistrarController);
+
+        vm.prank(otherController);
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, otherController)
+        );
+        dotnsPopController.reserveBaseName("alice.24", ed, "", "longnamebob");
+    }
+
+    // Asserts exactly one entry in `logs` matches event signature `sig`.
+    // Operates on a cached `Vm.Log[]` because `vm.getRecordedLogs()` drains
+    // the buffer. Callers snapshot the logs into a local and pass to both
+    // the present-check and absent-check helpers.
     function _assertEventEmittedOnce(Vm.Log[] memory logs, bytes32 sig) internal pure {
         uint256 count;
         for (uint256 i = 0; i < logs.length; i++) {
@@ -384,7 +564,7 @@ contract DotnsPopControllerTests is BaseDotns {
         require(count == 1, "expected exactly one matching event");
     }
 
-    /// @notice Asserts no entry in `logs` matches event signature `sig`.
+    // Asserts no entry in `logs` matches event signature `sig`.
     function _assertEventNotEmitted(Vm.Log[] memory logs, bytes32 sig) internal pure {
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].topics.length != 0 && logs[i].topics[0] == sig) {

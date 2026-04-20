@@ -24,6 +24,7 @@ import {
 import {DotnsPopResolver} from "../../contracts/resolvers/DotnsPopResolver.sol";
 import {IDotnsController} from "../../contracts/registrars/IDotnsController.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
+import {IPopRules} from "../../contracts/pop/IPopRules.sol";
 
 import {UpgradePopSystem} from "../../scripts/deploy/UpgradePopSystem.s.sol";
 
@@ -190,6 +191,129 @@ contract PopSystemUpgradeForkTest is Test {
         assertEq(address(controller.protocolRegistry()), address(registry));
         assertGt(controller.maxCommitmentAge(), 0);
         assertGt(controller.minCommitmentAge(), 0);
+    }
+
+    // Sync assertion: a gateway-driven reservation must propagate to PopRules so
+    // the public commit-reveal path sees the same cross-flow lock. This covers the
+    // head-of-queue => reserveBaseNameForPop edge added in this PR.
+    function test_gateway_reservation_syncs_to_pop_rules() public {
+        string memory liteLabel = "forksync.42";
+        string memory baseStem = "forksyncstem";
+
+        vm.prank(popGateway);
+        popController.reserveBaseName(liteLabel, alice, hex"11", baseStem);
+
+        IPopRules popRules = IPopRules(registry.get(registry.POP_RULES()));
+        (address holder, uint64 expires) = popRules.getBaseNameReservation(baseStem);
+        assertEq(holder, alice);
+        assertGt(expires, block.timestamp);
+    }
+
+    // Cross-controller race assertion: after the gateway reserves "forksyncstem",
+    // a stranger trying to commit-reveal "forksyncstem42" (which strips to the
+    // same stem in PopRules) must be rejected at priceWithCheck.
+    function test_public_commit_reveal_rejects_gateway_reserved_stem() public {
+        string memory liteLabel = "forkrace.42";
+        string memory baseStem = "forkracestem";
+        string memory publicLabel = "forkracestem07";
+
+        vm.prank(popGateway);
+        popController.reserveBaseName(liteLabel, alice, hex"11", baseStem);
+
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: publicLabel,
+                owner: bob,
+                secret: keccak256("race-secret"),
+                reserved: true
+            });
+
+        bytes32 commitment = controller.makeCommitment(registration);
+        vm.prank(bob);
+        controller.commit(commitment);
+        vm.warp(block.timestamp + controller.minCommitmentAge() + 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPopRules.PopError.selector, "Base name reserved for original Lite registrant"
+            )
+        );
+        vm.prank(bob);
+        controller.register{value: 10 ether}(registration);
+    }
+
+    // Claim path wipes the queue and must release the PopRules slot in the same
+    // transaction, otherwise a stranger could be perpetually blocked on a stem
+    // whose claimant already minted it.
+    function test_claim_releases_pop_rules_slot() public {
+        string memory liteLabel = "forkclaim.42";
+        string memory baseStem = "forkclaimstem";
+
+        vm.prank(popGateway);
+        popController.reserveBaseName(liteLabel, alice, hex"11", baseStem);
+
+        IDotnsPopController.Link memory link = IDotnsPopController.Link({
+            kind: IDotnsPopController.LinkKind.LiteUsername, liteLabel: liteLabel, chatKey: ""
+        });
+        vm.prank(popGateway);
+        popController.registerBaseName(baseStem, alice, link);
+
+        IPopRules popRules = IPopRules(registry.get(registry.POP_RULES()));
+        (address holder, uint64 expires) = popRules.getBaseNameReservation(baseStem);
+        assertEq(holder, address(0));
+        assertEq(expires, 0);
+    }
+
+    // Covers the _removeUserFromQueue head-branch sync fix: a head user
+    // relinquishing while a live waiter exists must promote that waiter in
+    // PopRules, not leave the evicted user's address sitting in the record.
+    function test_head_relinquish_promotes_successor_in_pop_rules() public {
+        string memory baseStem = "forkrelinquish";
+
+        vm.prank(popGateway);
+        popController.reserveBaseName("forkr1.42", alice, hex"01", baseStem);
+        vm.prank(popGateway);
+        popController.reserveBaseName("forkr2.42", bob, hex"02", baseStem);
+
+        IPopRules popRules = IPopRules(registry.get(registry.POP_RULES()));
+        (address aliceHolder,) = popRules.getBaseNameReservation(baseStem);
+        assertEq(aliceHolder, alice);
+
+        vm.prank(alice);
+        popController.relinquishReservation();
+
+        (address bobHolder, uint64 expires) = popRules.getBaseNameReservation(baseStem);
+        assertEq(bobHolder, bob);
+        assertGt(expires, block.timestamp);
+    }
+
+    // Covers _advanceExpiredHead sync on expiry-driven promotion: once alice's
+    // reservation expires, the next reserve call or expire call should promote
+    // bob in PopRules so a stranger commit-reveal still sees the block.
+    function test_head_expiry_promotes_successor_in_pop_rules() public {
+        string memory baseStem = "forkexpirestem";
+
+        vm.prank(popGateway);
+        popController.reserveBaseName("forke1.42", alice, hex"01", baseStem);
+        vm.prank(popGateway);
+        popController.reserveBaseName("forke2.42", bob, hex"02", baseStem);
+
+        IPopRules popRules = IPopRules(registry.get(registry.POP_RULES()));
+        // Warp past alice's PoP-controller reservation window so she expires out
+        // of the head; queue duration is controller-local, whereas PopRules
+        // tracks its own 12-week window per reservation. Warp past the later
+        // of the two.
+        vm.warp(block.timestamp + 100 weeks);
+
+        vm.prank(popGateway);
+        popController.expireReservation(baseStem);
+
+        (address holder,) = popRules.getBaseNameReservation(baseStem);
+        // Either bob is promoted (if his queue entry was still live under the
+        // controller's own reservationDuration), or the slot is released (if
+        // every waiter also expired). The invariant is: PopRules never points
+        // at alice after her reservation expired.
+        assertTrue(holder != alice);
     }
 
     function _nodeOf(string memory label) internal pure returns (bytes32) {

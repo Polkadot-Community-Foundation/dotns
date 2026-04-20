@@ -58,7 +58,7 @@ contract DotnsRegistrarController is
     /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
     IDotnsRegistry public dotnsRegistry;
 
-    /// @notice DEPRECATED: Reverse resolver for address -> primary name mapping.
+    /// @notice DEPRECATED: Reverse resolver for address => primary name mapping.
     /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
     /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
     IDotnsReverseResolver public reverseResolver;
