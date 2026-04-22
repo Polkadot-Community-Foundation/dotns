@@ -119,9 +119,7 @@ contract WireDeployments is BaseDeployer {
     }
 
     function _verifyDeployment(Addresses memory addr, address expectedOwner) internal view {
-        require(
-            DotnsRegistrar(addr.registrar).owner() == expectedOwner, "Registrar: wrong owner"
-        );
+        require(DotnsRegistrar(addr.registrar).owner() == expectedOwner, "Registrar: wrong owner");
         require(
             DotnsRegistrarController(addr.registrarController).owner() == expectedOwner,
             "Controller: wrong owner"
@@ -131,9 +129,7 @@ contract WireDeployments is BaseDeployer {
             DotnsReverseResolver(addr.reverseResolver).owner() == expectedOwner,
             "ReverseResolver: wrong owner"
         );
-        require(
-            DotnsResolver(addr.resolver).owner() == expectedOwner, "Resolver: wrong owner"
-        );
+        require(DotnsResolver(addr.resolver).owner() == expectedOwner, "Resolver: wrong owner");
         require(
             DotnsContentResolver(addr.contentResolver).owner() == expectedOwner,
             "ContentResolver: wrong owner"
@@ -144,8 +140,7 @@ contract WireDeployments is BaseDeployer {
             "PopController: wrong owner"
         );
         require(
-            DotnsPopResolver(addr.popResolver).owner() == expectedOwner,
-            "PopResolver: wrong owner"
+            DotnsPopResolver(addr.popResolver).owner() == expectedOwner, "PopResolver: wrong owner"
         );
         require(
             DotnsProtocolRegistry(addr.protocolRegistry).owner() == expectedOwner,
@@ -155,8 +150,7 @@ contract WireDeployments is BaseDeployer {
         DotnsProtocolRegistry registry = DotnsProtocolRegistry(addr.protocolRegistry);
         require(registry.get(DotnsConstants.REGISTRAR) == addr.registrar, "Key: registrar");
         require(
-            registry.get(DotnsConstants.CONTROLLER) == addr.registrarController,
-            "Key: controller"
+            registry.get(DotnsConstants.CONTROLLER) == addr.registrarController, "Key: controller"
         );
         require(registry.get(DotnsConstants.REGISTRY) == addr.registry, "Key: registry");
         require(
@@ -170,16 +164,12 @@ contract WireDeployments is BaseDeployer {
         );
         require(registry.get(DotnsConstants.POP_RULES) == addr.popRules, "Key: popRules");
         require(
-            registry.get(DotnsConstants.STORE_FACTORY) == addr.storeFactory,
-            "Key: storeFactory"
+            registry.get(DotnsConstants.STORE_FACTORY) == addr.storeFactory, "Key: storeFactory"
         );
         require(
-            registry.get(DotnsConstants.POP_CONTROLLER) == addr.popController,
-            "Key: popController"
+            registry.get(DotnsConstants.POP_CONTROLLER) == addr.popController, "Key: popController"
         );
-        require(
-            registry.get(DotnsConstants.POP_RESOLVER) == addr.popResolver, "Key: popResolver"
-        );
+        require(registry.get(DotnsConstants.POP_RESOLVER) == addr.popResolver, "Key: popResolver");
         require(registry.get(DotnsConstants.POP_GATEWAY) == expectedOwner, "Key: popGateway");
 
         require(

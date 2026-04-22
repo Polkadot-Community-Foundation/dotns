@@ -47,9 +47,7 @@ contract DeployPopSystem is BaseDeployer {
         proxy = _broadcastDeployUUPS(
             owner,
             "DotnsPopResolver.sol:DotnsPopResolver",
-            abi.encodeCall(
-                DotnsPopResolver.initialize, (IDotnsProtocolRegistry(protocolRegistry))
-            ),
+            abi.encodeCall(DotnsPopResolver.initialize, (IDotnsProtocolRegistry(protocolRegistry))),
             "DotnsPopResolver"
         );
     }

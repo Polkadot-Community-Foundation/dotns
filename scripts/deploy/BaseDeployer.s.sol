@@ -136,8 +136,7 @@ abstract contract BaseDeployer is Script {
         pure
         returns (string memory)
     {
-        return
-            string.concat("./deployments/", subdirectory, "/", filename, ".json");
+        return string.concat("./deployments/", subdirectory, "/", filename, ".json");
     }
 
     function _parentDirectory(string memory path) private pure returns (string memory) {
