@@ -13,6 +13,7 @@ import {
 import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
 import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
+import {DotnsProtocolRegistryOld} from "../registry/DotnsProtocolRegistryOld.sol";
 
 import {Store} from "../store/Store.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
@@ -33,7 +34,7 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 ///      Stores are immutable (locked by DotNS controllers), so the sender's entry is not removed.
 ///
 /// @custom:security-contact admin@parity.io
-contract DotnsRegistrar is
+contract DotnsRegistrarOld is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,
@@ -157,7 +158,7 @@ contract DotnsRegistrar is
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.4.0";
+        versionString = "1.3.0";
     }
 
     /// @notice Checks whether a token ID exists.
@@ -201,8 +202,11 @@ contract DotnsRegistrar is
         string memory label = _labels[tokenId];
         if (bytes(label).length == 0) return;
 
-        IDotnsReverseResolver reverse =
-            IDotnsReverseResolver(protocolRegistry.get(DotnsConstants.REVERSE_RESOLVER));
+        IDotnsReverseResolver reverse = IDotnsReverseResolver(
+            protocolRegistry.get(
+                DotnsProtocolRegistryOld(address(protocolRegistry)).REVERSE_RESOLVER()
+            )
+        );
         string memory currentReverse = reverse.nameOf(from);
         string memory fullName = string.concat(label, DotnsConstants.TLD);
 
@@ -219,13 +223,19 @@ contract DotnsRegistrar is
     /// @param to Address of the transfer recipient.
     /// @param tokenId The transferred token identifier.
     function _syncRecipientStore(address to, uint256 tokenId) internal {
-        IStoreFactory factory = IStoreFactory(protocolRegistry.get(DotnsConstants.STORE_FACTORY));
+        IStoreFactory factory = IStoreFactory(
+            protocolRegistry.get(
+                DotnsProtocolRegistryOld(address(protocolRegistry)).STORE_FACTORY()
+            )
+        );
         if (address(factory) == address(0)) return;
 
         address[] memory storeControllers = new address[](3);
         storeControllers[0] = address(this);
-        storeControllers[1] = protocolRegistry.get(DotnsConstants.CONTROLLER);
-        storeControllers[2] = protocolRegistry.get(DotnsConstants.REGISTRY);
+        storeControllers[1] =
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).CONTROLLER());
+        storeControllers[2] =
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).REGISTRY());
 
         string memory label = _labels[tokenId];
         if (bytes(label).length == 0) {

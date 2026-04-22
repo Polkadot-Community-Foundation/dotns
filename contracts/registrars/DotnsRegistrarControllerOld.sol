@@ -20,6 +20,7 @@ import {Store} from "../store/Store.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
+import {DotnsProtocolRegistryOld} from "../registry/DotnsProtocolRegistryOld.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
 /// @title Dotns Registrar Controller
@@ -33,7 +34,7 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 ///        from the ERC721 registrar for authorisation.
 ///
 /// @custom:security-contact admin@parity.io
-contract DotnsRegistrarController is
+contract DotnsRegistrarControllerOld is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,
@@ -151,7 +152,9 @@ contract DotnsRegistrarController is
     function available(string calldata label) public view override returns (bool) {
         bytes32 node;
         (, node) = _validatedLabelNode(label);
-        IDotnsRegistrar registrar = IDotnsRegistrar(protocolRegistry.get(DotnsConstants.REGISTRAR));
+        IDotnsRegistrar registrar = IDotnsRegistrar(
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).REGISTRAR())
+        );
         return registrar.available(uint256(node));
     }
 
@@ -204,7 +207,9 @@ contract DotnsRegistrarController is
             _requireAvailableLabel(registration.label);
         _consumeCommitment(registration);
 
-        IPopRules rules = IPopRules(protocolRegistry.get(DotnsConstants.POP_RULES));
+        IPopRules rules = IPopRules(
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).POP_RULES())
+        );
         IPopRules.PriceWithMeta memory priced =
             rules.priceWithCheck(registration.label, registration.owner);
 
@@ -300,7 +305,9 @@ contract DotnsRegistrarController is
         returns (IDotnsRegistrar registrar, bytes32 labelhash, bytes32 node)
     {
         (labelhash, node) = _validatedLabelNode(label);
-        registrar = IDotnsRegistrar(protocolRegistry.get(DotnsConstants.REGISTRAR));
+        registrar = IDotnsRegistrar(
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).REGISTRAR())
+        );
         require(registrar.available(uint256(node)), NameNotAvailable(label));
     }
 
@@ -331,9 +338,14 @@ contract DotnsRegistrarController is
     )
         internal
     {
-        IDotnsRegistry registry = IDotnsRegistry(protocolRegistry.get(DotnsConstants.REGISTRY));
-        IDotnsReverseResolver reverse =
-            IDotnsReverseResolver(protocolRegistry.get(DotnsConstants.REVERSE_RESOLVER));
+        IDotnsRegistry registry = IDotnsRegistry(
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).REGISTRY())
+        );
+        IDotnsReverseResolver reverse = IDotnsReverseResolver(
+            protocolRegistry.get(
+                DotnsProtocolRegistryOld(address(protocolRegistry)).REVERSE_RESOLVER()
+            )
+        );
 
         registrar.register(uint256(node), registration.owner, registration.label);
         registry.setOwner(node, registration.owner, address(reverse));
@@ -344,7 +356,11 @@ contract DotnsRegistrarController is
             );
         }
 
-        IStoreFactory factory = IStoreFactory(protocolRegistry.get(DotnsConstants.STORE_FACTORY));
+        IStoreFactory factory = IStoreFactory(
+            protocolRegistry.get(
+                DotnsProtocolRegistryOld(address(protocolRegistry)).STORE_FACTORY()
+            )
+        );
         address[] memory controllers = new address[](3);
         controllers[0] = address(this);
         controllers[1] = address(registry);
@@ -361,7 +377,7 @@ contract DotnsRegistrarController is
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.5.0";
+        versionString = "1.4.0";
     }
 
     /// @notice Internal check enforcing whitelist-or-owner access.
@@ -378,7 +394,8 @@ contract DotnsRegistrarController is
 
     /// @notice Internal check enforcing registry-only access.
     function _onlyRegistry() internal view {
-        address registry = protocolRegistry.get(DotnsConstants.REGISTRY);
+        address registry =
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).REGISTRY());
         require(msg.sender == registry, NotRegistry());
     }
 

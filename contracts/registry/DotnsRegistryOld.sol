@@ -14,6 +14,7 @@ import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {Store} from "../store/Store.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
 import {IDotnsProtocolRegistry} from "./IDotnsProtocolRegistry.sol";
+import {DotnsProtocolRegistryOld} from "./DotnsProtocolRegistryOld.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
@@ -25,7 +26,7 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 ///      - records[node].owner == address(0) means ownership is derived from the ERC721 registrar.
 ///      Authorisation for tokenised nodes follows ERC721 owner/approvals.
 /// @custom:security-contact admin@parity.io
-contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, IDotnsRegistry {
+contract DotnsRegistryOld is Initializable, UUPSUpgradeable, OwnableUpgradeable, IDotnsRegistry {
     using StoreUtils for IStoreFactory;
     using StringUtils for *;
 
@@ -132,7 +133,9 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
                 _writeSubnodeToStore(newOwner, subnode, fullName);
             }
         } else {
-            address _reverseResolver = protocolRegistry.get(DotnsConstants.REVERSE_RESOLVER);
+            address _reverseResolver = protocolRegistry.get(
+                DotnsProtocolRegistryOld(address(protocolRegistry)).REVERSE_RESOLVER()
+            );
             records[subnode] = Record({owner: newOwner, resolver: _reverseResolver, exists: true});
             _writeSubnodeToStore(newOwner, subnode, fullName);
         }
@@ -152,7 +155,9 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     {
         require(newOwner != address(0), NotAllowed());
         require(!records[node].exists, NodeAlreadyOwned(node));
-        IDotnsRegistrar registrar = IDotnsRegistrar(protocolRegistry.get(DotnsConstants.REGISTRAR));
+        IDotnsRegistrar registrar = IDotnsRegistrar(
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).REGISTRAR())
+        );
         address tokenOwner = registrar.ownerOf(uint256(node));
         require(tokenOwner == newOwner, NotAuthorised());
 
@@ -193,7 +198,9 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         Record storage record = records[node];
         if (!record.exists) return address(0);
         if (record.owner != address(0)) return record.owner;
-        IDotnsRegistrar registrar = IDotnsRegistrar(protocolRegistry.get(DotnsConstants.REGISTRAR));
+        IDotnsRegistrar registrar = IDotnsRegistrar(
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).REGISTRAR())
+        );
         return registrar.ownerOf(uint256(node));
     }
 
@@ -219,11 +226,17 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     )
         internal
     {
-        IStoreFactory factory = IStoreFactory(protocolRegistry.get(DotnsConstants.STORE_FACTORY));
+        IStoreFactory factory = IStoreFactory(
+            protocolRegistry.get(
+                DotnsProtocolRegistryOld(address(protocolRegistry)).STORE_FACTORY()
+            )
+        );
         address[] memory controllers = new address[](3);
         controllers[0] = address(this);
-        controllers[1] = protocolRegistry.get(DotnsConstants.CONTROLLER);
-        controllers[2] = protocolRegistry.get(DotnsConstants.REGISTRAR);
+        controllers[1] =
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).CONTROLLER());
+        controllers[2] =
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).REGISTRAR());
         factory.writeToStore(controllers, storeOwner, node, fullName);
     }
 
@@ -292,7 +305,9 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
             return;
         }
 
-        IDotnsRegistrar registrar = IDotnsRegistrar(protocolRegistry.get(DotnsConstants.REGISTRAR));
+        IDotnsRegistrar registrar = IDotnsRegistrar(
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).REGISTRAR())
+        );
         uint256 tokenId = uint256(node);
         address tokenOwner = registrar.ownerOf(tokenId);
 
@@ -314,14 +329,15 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
 
     /// @notice Internal check for registrar controller privileges.
     function _onlyRegistrarController() internal view {
-        address controller = protocolRegistry.get(DotnsConstants.CONTROLLER);
+        address controller =
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).CONTROLLER());
         require(msg.sender == controller, NotAuthorised());
     }
 
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.5.0";
+        versionString = "1.4.0";
     }
 
     /// @inheritdoc UUPSUpgradeable

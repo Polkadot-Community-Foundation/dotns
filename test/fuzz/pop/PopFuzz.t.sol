@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
+import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 
 contract PopRulesFuzzTest is BaseDotns {
     function testFuzz_popfull_user_can_access_poplite(uint256 seed, uint256 length) public {
@@ -64,9 +65,7 @@ contract PopRulesFuzzTest is BaseDotns {
         string memory nameLabel = string(abi.encodePacked(_makeAlpha(seed, 6), "01"));
 
         vm.prank(owner);
-        /// casting to 'bytes32' is safe because this is safe
-        /// forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("controller"), address(this));
+        protocolRegistry.set(DotnsConstants.CONTROLLER, address(this));
 
         popRules.reserveBaseName(nameLabel, leonardo);
 
@@ -98,8 +97,7 @@ contract PopRulesFuzzTest is BaseDotns {
         string memory secondName = string(abi.encodePacked(baseName, "02"));
 
         vm.prank(owner);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        protocolRegistry.set(bytes32("controller"), address(this));
+        protocolRegistry.set(DotnsConstants.CONTROLLER, address(this));
 
         popRules.reserveBaseName(firstName, leonardo);
 

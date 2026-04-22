@@ -13,14 +13,14 @@ import {
 import {IDotnsRegistry} from "../registry/IDotnsRegistry.sol";
 import {IDotnsContentResolver} from "./IDotnsContentResolver.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
-import {DotnsConstants} from "../utils/DotnsConstants.sol";
+import {DotnsProtocolRegistryOld} from "../registry/DotnsProtocolRegistryOld.sol";
 
 /// @title Dotns Content Resolver
 /// @notice Implements `IDotnsContentResolver` interface with content hash, text records, and operator approvals
 /// @dev Stores opaque content hash bytes and text key-value pairs per node
 ///      Authorisation enforced via DotNS registry ownership or approved operators
 /// @custom:security-contact admin@parity.io
-contract DotnsContentResolver is
+contract DotnsContentResolverOld is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,
@@ -123,7 +123,9 @@ contract DotnsContentResolver is
     /// @notice Ensures caller is either the node owner or an approved operator
     /// @param node Node identifier
     function _requireNodeOwnerOrOperator(bytes32 node) internal view {
-        IDotnsRegistry _registry = IDotnsRegistry(protocolRegistry.get(DotnsConstants.REGISTRY));
+        IDotnsRegistry _registry = IDotnsRegistry(
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).REGISTRY())
+        );
         address nodeOwner = _registry.owner(node);
         require(
             msg.sender == nodeOwner || operators[nodeOwner][msg.sender],
@@ -134,7 +136,7 @@ contract DotnsContentResolver is
     /// @notice Returns implementation version
     /// @return versionString Current version string
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.2.0";
+        versionString = "1.1.0";
     }
 
     /// @inheritdoc ERC165Upgradeable
