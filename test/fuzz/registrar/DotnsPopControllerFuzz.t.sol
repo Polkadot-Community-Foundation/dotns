@@ -7,6 +7,7 @@ import {
     IDotnsRegistrarController
 } from "../../../contracts/registrars/IDotnsRegistrarController.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
+import {StringUtils} from "../../../contracts/utils/StringUtils.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 /// @title DotnsPopControllerFuzz
@@ -16,28 +17,11 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 contract DotnsPopControllerFuzz is BaseDotns {
     // Decimal string of `value` padded to exactly two digits when `value < 10`.
     // Callers bound `value` to `[0, 99]` so the resulting suffix matches the
-    // `.XX` contract used throughout the PoP controller tests; above 99 the
+    // `NAMEXX` contract used throughout the PoP controller tests; above 99 the
     // string is still valid (digits-only) but wider than two characters.
     function _twoDigitDecimal(uint256 value) internal pure returns (string memory s) {
-        if (value < 10) return string.concat("0", _uintToString(value));
-        return _uintToString(value);
-    }
-
-    function _uintToString(uint256 value) internal pure returns (string memory) {
-        if (value == 0) return "0";
-        uint256 temp = value;
-        uint256 digits;
-        while (temp != 0) {
-            digits++;
-            temp /= 10;
-        }
-        bytes memory buffer = new bytes(digits);
-        while (value != 0) {
-            digits -= 1;
-            buffer[digits] = bytes1(uint8(48 + value % 10));
-            value /= 10;
-        }
-        return string(buffer);
+        if (value < 10) return string.concat("0", StringUtils.uintToString(value));
+        return StringUtils.uintToString(value);
     }
 
     // Any well-formed `alice.<NN>` lite label (`NN` exactly 2 digits) mints.

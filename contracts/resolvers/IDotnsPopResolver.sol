@@ -3,10 +3,14 @@ pragma solidity ^0.8.30;
 
 /// @title IDotnsPopResolver
 /// @notice Resolver for per-name records produced by the PoP username flow.
-/// @dev Holds two record kinds, each keyed by node:
+/// @dev Holds three record kinds:
 ///      - Chat key: ECDH public-key bytes used for end-to-end encrypted messaging.
 ///      - Lite link: for a full-person node, the labelhash of the lite-person
 ///        username it was minted from (when the link was made).
+///      - Full claim: reverse index answering "which full name did this lite
+///        username claim?". Mirrors `lite link` on every write so downstream
+///        consumers (e.g. Nova) that look up by lite username resolve the full
+///        name without scanning events.
 ///
 ///      Lives separately from the per-user {Store} so that the Store can remain a
 ///      labels-only, protocol-write / user-read surface, and follows the project's
@@ -55,4 +59,13 @@ interface IDotnsPopResolver {
     /// @param fullNode The full-person node to query.
     /// @return liteLabelhash The linked lite-person labelhash, or zero if unset.
     function liteLink(bytes32 fullNode) external view returns (bytes32 liteLabelhash);
+
+    /// @notice Returns the full-person node a given lite label has claimed.
+    /// @dev Reverse of {liteLink}. Written by the same `setLiteLink` call so the
+    ///      two directions stay in lockstep. Returns zero when the lite label
+    ///      has never been linked to a full claim.
+    /// @param liteLabelhash The labelhash of the lite-person username to query.
+    /// @return fullNode The full-person node claimed from this lite label, or
+    ///         zero if unset.
+    function fullClaim(bytes32 liteLabelhash) external view returns (bytes32 fullNode);
 }

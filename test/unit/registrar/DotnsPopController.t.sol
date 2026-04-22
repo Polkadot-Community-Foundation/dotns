@@ -255,6 +255,103 @@ contract DotnsPopControllerTests is BaseDotns {
         dotnsPopController.reserveBaseName("overflow99", overflow, hex"01", baseStem);
     }
 
+    function test_reEnqueue_after_own_expiry_promotes_same_user_to_head() public {
+        string memory baseStem = "alicebob";
+
+        _reservePop(ed, "alice80", hex"01", baseStem);
+
+        // Warp past the reservation window and fire the GC so ed's pointer gets
+        // cleared by `_advanceExpiredHead`. If the expiry path forgets the
+        // per-user pointer, the second reserve call below hits `AlreadyReserved`
+        // and the account is permanently stuck.
+        vm.warp(block.timestamp + dotnsPopController.reservationDuration() + 1);
+        dotnsPopController.expireReservation(baseStem);
+
+        (bool expiredReserved,) = dotnsPopController.isReservedForClaim(baseStem);
+        assertFalse(expiredReserved);
+
+        // Same user reserves the same stem again with a fresh lite label.
+        _reservePop(ed, "alice81", hex"02", baseStem);
+
+        (bool nowReserved, address holder) = dotnsPopController.isReservedForClaim(baseStem);
+        assertTrue(nowReserved);
+        assertEq(holder, ed);
+    }
+
+    function test_claim_then_reEnqueue_on_same_stem_resets_cleanly() public {
+        string memory baseStem = "alicebob";
+
+        _reservePop(ed, "alice82", hex"01", baseStem);
+
+        // Claim wipes the queue via `_clearQueue` which must also drop
+        // `_reservedBaseLabel[labelhash]` and release the PopRules slot. Missing
+        // any one of those lets the next reservation inherit stale state.
+        IDotnsPopController.Link memory link = _linkWithLite("alice82");
+        vm.prank(popGateway);
+        dotnsPopController.registerBaseName(baseStem, ed, link);
+
+        (bool oldSlot, address oldHolder) = dotnsPopController.isReservedForClaim(baseStem);
+        assertFalse(oldSlot);
+        assertEq(oldHolder, address(0));
+
+        // Fresh stem, different user. If the previous queue leaked, this enqueue
+        // would either revert or land the wrong head address on PopRules.
+        _reservePop(tiago, "bob83", hex"02", "wonder");
+        (bool newSlot, address newHolder) = dotnsPopController.isReservedForClaim("wonder");
+        assertTrue(newSlot);
+        assertEq(newHolder, tiago);
+
+        (address popHolder,) = popRules.getBaseNameReservation("wonder");
+        assertEq(popHolder, tiago);
+    }
+
+    function test_expireReservation_is_permissionless() public {
+        _reservePop(ed, "alice84", hex"01", "alicebob");
+
+        vm.warp(block.timestamp + dotnsPopController.reservationDuration() + 1);
+
+        // Anyone can call. Pinning this prevents a future patch from silently
+        // adding `onlyGateway` and breaking permissionless garbage collection.
+        address stranger = makeAddr("stranger");
+        vm.prank(stranger);
+        dotnsPopController.expireReservation("alicebob");
+
+        (bool reserved,) = dotnsPopController.isReservedForClaim("alicebob");
+        assertFalse(reserved);
+    }
+
+    function test_head_expires_with_tombstone_in_middle_advances_to_next_live() public {
+        string memory baseStem = "alicebob";
+
+        // Three staggered enqueues so each entry's `joinedAt` is distinct. The
+        // stagger also guarantees ed expires before leonardo does.
+        _reservePop(ed, "alice85", hex"01", baseStem);
+
+        vm.warp(block.timestamp + 1 days);
+        _reservePop(tiago, "bob86", hex"02", baseStem);
+
+        vm.warp(block.timestamp + 1 days);
+        _reservePop(leonardo, "carol87", hex"03", baseStem);
+
+        // Mid-queue relinquish leaves a zero-owner tombstone at tiago's index.
+        vm.prank(tiago);
+        dotnsPopController.relinquishReservation();
+
+        // Warp just past ed's window but not leonardo's. ed's joinedAt is t0,
+        // leonardo's is t0+2 days. Window is 7 days by default, so t0+8 days
+        // expires ed (8 >= 7) but not leonardo (6 < 7). `_advanceExpiredHead`
+        // must walk: evict ed, skip the zero-owner tombstone, land on leonardo.
+        vm.warp(block.timestamp + dotnsPopController.reservationDuration() - 1 days);
+        dotnsPopController.expireReservation(baseStem);
+
+        (bool reserved, address holder) = dotnsPopController.isReservedForClaim(baseStem);
+        assertTrue(reserved);
+        assertEq(holder, leonardo);
+
+        (address popHolder,) = popRules.getBaseNameReservation(baseStem);
+        assertEq(popHolder, leonardo);
+    }
+
     // Format constraints for the two entry points are complementary rather than
     // disjoint: `reserveBaseName` demands a lite label (a DNS label with at
     // least two trailing digits) and `registerBaseName` demands any single DNS
@@ -412,7 +509,7 @@ contract DotnsPopControllerTests is BaseDotns {
 
     // A non-owner cannot create subnames under a PoP-minted name.
     // Confirms authorisation on the subname path is ERC721-owner-gated, not
-    // controller-specific — the guard is the same whether the parent was
+    // controller-specific; the guard is the same whether the parent was
     // minted by the commit-reveal controller or the PoP controller.
     function test_non_owner_cannot_create_subname_under_pop_minted_name() public {
         IDotnsPopController.Link memory link = _linkFresh(hex"cafe");
@@ -468,7 +565,7 @@ contract DotnsPopControllerTests is BaseDotns {
         _reservePop(ed, "alice11", hex"aa", "longnamebob");
         (, uint64 originalExpiry) = popRules.getBaseNameReservation("longnamebob");
 
-        // Second reserver lands at the tail — no PopRules write should happen.
+        // Second reserver lands at the tail; no PopRules write should happen.
         _reservePop(tiago, "bob12", hex"bb", "longnamebob");
 
         (address holder, uint64 expires) = popRules.getBaseNameReservation("longnamebob");
@@ -506,7 +603,7 @@ contract DotnsPopControllerTests is BaseDotns {
     // walk arbitrary enqueue / relinquish / expire / warp sequences and assert
     // the live-head equivalence between PopRules and the PoP controller's queue.
 
-    // Last-remaining head expires and the queue empties — PopRules slot clears.
+    // Last-remaining head expires and the queue empties; PopRules slot clears.
     function test_advanceExpiredHead_last_expire_releases_popRules_slot() public {
         _reservePop(ed, "alice19", hex"aa", "longnamebob");
 
@@ -530,7 +627,7 @@ contract DotnsPopControllerTests is BaseDotns {
         (address rawHolder,) = popRules.getBaseNameReservation("longnamebob01");
         assertEq(rawHolder, ed);
 
-        // Stripped-stem slot is empty — public flow for "longnamebob01" is
+        // Stripped-stem slot is empty; public flow for "longnamebob01" is
         // NOT blocked for other users (documented misuse surface).
         (address strippedHolder,) = popRules.getBaseNameReservation("longnamebob");
         assertEq(strippedHolder, address(0));
@@ -565,7 +662,7 @@ contract DotnsPopControllerTests is BaseDotns {
 
     // A registered controller on `DotnsRegistrar` that is NOT the PoP gateway
     // must not be able to reach the sync path through the PoP controller's
-    // entrypoints — the `onlyGateway` check is independent of controller
+    // entrypoints; the `onlyGateway` check is independent of controller
     // authorisation on the registrar.
     function test_controller_authorised_but_not_gateway_cannot_enter_pop_flow() public {
         // The public commit-reveal controller is already a registered controller.

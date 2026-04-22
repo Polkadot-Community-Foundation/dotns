@@ -33,10 +33,19 @@ contract DotnsPopResolver is
     mapping(bytes32 node => bytes chatKey) private _chatKeys;
 
     /// @notice Stored lite-person labelhash keyed by full-person node.
+    /// @dev Answers "which lite label does this full name link to?" (full => lite).
     mapping(bytes32 fullNode => bytes32 liteLabelhash) private _liteLinks;
 
+    /// @notice Reverse index: the full node claimed by a given lite label.
+    /// @dev Answers "which full name did this lite user claim?" (lite => full).
+    ///      Written alongside `_liteLinks` on every claim so consumers that look
+    ///      up by lite username (Nova's pallet does) can resolve the full name
+    ///      without scanning events. Zero when the lite label has never been
+    ///      linked to a full claim.
+    mapping(bytes32 liteLabelhash => bytes32 fullNode) private _fullClaims;
+
     /// @dev Reserved storage space to allow for layout changes in the future.
-    uint256[50] private __gap;
+    uint256[49] private __gap;
 
     /// @notice Restricts writes to the address registered as `POP_CONTROLLER`.
     modifier onlyPopController() {
@@ -49,7 +58,11 @@ contract DotnsPopResolver is
         _disableInitializers();
     }
 
-    /// @notice Initializes the PoP resolver.
+    /// @notice Initialises the PoP resolver.
+    /// @dev Called once through the UUPS proxy; `_disableInitializers` on the
+    ///      implementation makes direct calls revert. The registry pointer is
+    ///      the only storage this setup needs because the authorised writer
+    ///      is resolved dynamically through `POP_CONTROLLER`.
     /// @param registry Protocol-level address registry used for writer resolution.
     function initialize(IDotnsProtocolRegistry registry) external initializer {
         __Ownable_init(msg.sender);
@@ -80,6 +93,7 @@ contract DotnsPopResolver is
         onlyPopController
     {
         _liteLinks[fullNode] = liteLabelhash;
+        _fullClaims[liteLabelhash] = fullNode;
         emit LiteLinkUpdated(fullNode, liteLabelhash);
     }
 
@@ -93,7 +107,14 @@ contract DotnsPopResolver is
         return _liteLinks[fullNode];
     }
 
+    /// @inheritdoc IDotnsPopResolver
+    function fullClaim(bytes32 liteLabelhash) external view override returns (bytes32) {
+        return _fullClaims[liteLabelhash];
+    }
+
     /// @notice Returns implementation version.
+    /// @dev Bumped on every upgrade. Used by deployment scripts as a
+    ///      post-upgrade assertion target.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
         versionString = "1.0.0";

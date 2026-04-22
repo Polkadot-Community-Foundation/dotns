@@ -38,7 +38,12 @@ contract DotnsPopResolverTests is BaseDotns {
         emit IDotnsPopResolver.LiteLinkUpdated(fullNode, liteLabelhash);
         dotnsPopResolver.setLiteLink(fullNode, liteLabelhash);
 
+        // Both directions must be populated by a single write: forward
+        // (full => lite) and reverse (lite => full). The reverse index is what
+        // downstream consumers (Nova) use to answer "given this lite username,
+        // which full name did they claim?".
         assertEq(dotnsPopResolver.liteLink(fullNode), liteLabelhash);
+        assertEq(dotnsPopResolver.fullClaim(liteLabelhash), fullNode);
     }
 
     function test_setLiteLink_reverts_for_unauthorised_caller() public {

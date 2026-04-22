@@ -39,7 +39,7 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 ///        hold the same flat label simultaneously. Keeping one namespace
 ///        removes the ambiguity downstream tooling (dotli, dweb) would see with
 ///        a separate separator form.
-///      - Base-name reservations are synchronised into @custom:contract IPopRules. The head of
+///      - Base-name reservations are synchronised into `IPopRules`. The head of
 ///        this controller's reservation queue is written through
 ///        `IPopRules.reserveBaseNameForPop` on every head transition; the
 ///        slot is cleared through `IPopRules.releaseBaseName` when the queue
@@ -131,7 +131,11 @@ contract DotnsPopController is
         _disableInitializers();
     }
 
-    /// @notice Initializes the PoP controller.
+    /// @notice Initialises the PoP controller.
+    /// @dev Called once through the UUPS proxy; `_disableInitializers` on the
+    ///      implementation makes direct calls revert. Emits
+    ///      `ReservationDurationSet` so indexers observe the initial value
+    ///      through the same event the setter uses later.
     /// @param registry Protocol-level address registry.
     /// @param reservationDuration_ Initial reservation duration in seconds.
     function initialize(

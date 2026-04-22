@@ -28,19 +28,31 @@ contract PopRules is
 {
     using StringUtils for *;
 
-    /// @notice Wei price for names with 9 characters and up
+    /// @notice Wei price for names with 9 characters and up.
+    /// @dev Scales down inside `_priceValidatedName` according to label length;
+    ///      only charged to NoStatus users as a spam deterrent.
     uint256 public startingPrice;
 
-    /// @notice Tracks PoP status per user/profile
+    /// @notice Tracks PoP status per user profile.
+    /// @dev Temporary until a precompile exposes PoP status directly from the
+    ///      pallet; every registration read goes through this map.
     mapping(address => PopStatus) public userPopStatus;
 
-    /// @notice Active reservations for base names
+    /// @notice Active reservations keyed by digit-stripped base name.
+    /// @dev Single cross-flow reservation table. Both the commit-reveal
+    ///      controller (via `priceWithCheck`) and the PoP controller (via
+    ///      `reserveBaseNameForPop` / `releaseBaseName`) read and write this
+    ///      map, so the live-window predicate `_isLive` stays the one place
+    ///      freshness is computed.
     mapping(string baseName => Reservation reservation) public reservations;
 
-    /// @notice Maximum time a base name can be reserved
+    /// @notice Maximum time a base name can be reserved.
+    /// @dev Every reservation write (`reserveBaseName`, `reserveBaseNameForPop`)
+    ///      stamps `block.timestamp + MAX_RESERVATION_TIME` as the expiry; the
+    ///      reservation predicate `_isLive` tests this bound.
     uint256 public constant MAX_RESERVATION_TIME = 12 weeks;
 
-    /// @notice DEPRECATED: Authorized registry controller address.
+    /// @notice DEPRECATED: Authorised registry controller address.
     /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
     /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
     address public dotRegistryController;
@@ -68,16 +80,22 @@ contract PopRules is
         _disableInitializers();
     }
 
-    /// @notice Initializes the oracle with pricing parameters
-    /// @param _startingPrice Base price in wei for No pop status users
+    /// @notice Initialises the oracle with pricing parameters.
+    /// @dev Shared initialiser body; called from `initialize` so future upgrade
+    ///      variants can reuse the same setup without duplicating the Ownable
+    ///      and ERC165 wiring.
+    /// @param _startingPrice Base price in wei for NoStatus users.
     function _popRulesInit(uint256 _startingPrice) internal onlyInitializing {
         __Ownable_init(msg.sender);
         __ERC165_init();
         startingPrice = _startingPrice;
     }
 
-    /// @notice Initializes the oracle (public entry point)
-    /// @param _startingPrice Base price in wei for No pop status users
+    /// @notice Initialises the oracle (public entry point).
+    /// @dev One-shot initialiser invoked through the UUPS proxy. Delegates to
+    ///      `_popRulesInit` so an upgraded initialiser can add new wiring
+    ///      without rewriting the base setup.
+    /// @param _startingPrice Base price in wei for NoStatus users.
     // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
     function initialize(uint256 _startingPrice) public initializer {
         _popRulesInit(_startingPrice);
@@ -254,9 +272,12 @@ contract PopRules is
         return startingPrice * (15 - namelength);
     }
 
-    /// @notice Enforces base name reservation rules
-    /// @param name Domain label
-    /// @param userAddress Registering user
+    /// @notice Enforces base-name reservation rules.
+    /// @dev Invoked from `priceWithCheck`. A live reservation owned by a
+    ///      different user blocks the registration; a matching owner passes
+    ///      through; an expired or empty slot is a no-op.
+    /// @param name Domain label.
+    /// @param userAddress Registering user.
     function _enforceReservationRules(string calldata name, address userAddress) internal view {
         string memory baseName = _stripDigits(name);
         Reservation memory reservation = reservations[baseName];
@@ -278,9 +299,12 @@ contract PopRules is
         return reservation.owner != address(0) && reservation.expires > block.timestamp;
     }
 
-    /// @notice Counts trailing digits in a string
-    /// @param label String to analyze
-    /// @return digitCount Number of trailing digits
+    /// @notice Counts trailing digits in a string.
+    /// @dev Walks the label right-to-left until a non-digit byte; used by
+    ///      classification and `_stripDigits` to separate the base stem from
+    ///      the lite-suffix.
+    /// @param label String to analyse.
+    /// @return digitCount Number of trailing digits.
     function _countTrailingDigits(string calldata label)
         internal
         pure
@@ -298,9 +322,11 @@ contract PopRules is
         }
     }
 
-    /// @notice Strips trailing digits from a name
-    /// @param name Domain label
-    /// @return baseName Name without trailing digits
+    /// @notice Strips trailing digits from a name.
+    /// @dev Returns the stem used as the reservation-table key so `alice42`
+    ///      and `alice` share one reservation slot.
+    /// @param name Domain label.
+    /// @return baseName Name without trailing digits.
     function _stripDigits(string calldata name) internal pure returns (string memory baseName) {
         bytes calldata bytesName = bytes(name);
         uint256 endPosition = bytesName.length;
@@ -375,8 +401,10 @@ contract PopRules is
         emit ProtocolRegistryUpdated(registry);
     }
 
-    /// @notice Returns implementation version
-    /// @return versionString Current version string
+    /// @notice Returns implementation version.
+    /// @dev Bumped on every upgrade. Used by deployment scripts as a
+    ///      post-upgrade assertion target.
+    /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
         versionString = "1.2.0";
     }

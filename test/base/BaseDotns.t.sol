@@ -465,7 +465,7 @@ abstract contract BaseDotns is Test {
     }
 
     /// @notice Computes the Store key for a registered label.
-    /// @dev Delegates to `StoreUtils.storeKey` — single source of truth for the key derivation.
+    /// @dev Delegates to `StoreUtils.storeKey`; single source of truth for the key derivation.
     /// @param labelhash keccak256(label).
     /// @return key Store key used for DotNS-written registration entry.
     function _storeKey(bytes32 labelhash) internal pure returns (bytes32 key) {

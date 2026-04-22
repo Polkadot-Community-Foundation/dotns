@@ -30,7 +30,7 @@ import {IDotnsController} from "./IDotnsController.sol";
 interface IDotnsPopController is IDotnsController {
     /// @notice Discriminant for the `Link` union supplied to `registerBaseName`.
     /// @dev Selects the chat-key source for the full-person username. Orthogonal to
-    ///      whether the registration is a claim or standalone — that is derived
+    ///      whether the registration is a claim or standalone; that is derived
     ///      from on-chain reservation state. `None` means the caller supplies a
     ///      fresh chat key in `link.chatKey`. `LiteUsername` means the
     ///      full-person username is linked to a prior lite-person username

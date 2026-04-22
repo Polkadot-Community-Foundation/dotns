@@ -42,6 +42,12 @@ library StringUtils {
         }
     }
 
+    /// @notice Validates that `s` is a single canonical DNS label.
+    /// @dev Lowercase ASCII letters, digits, and hyphen only; hyphen may not be
+    ///      the first or last character. No dots allowed; use {isNamePath} for
+    ///      dotted forms. Mirrors the label rules enforced at the registrar.
+    /// @param s Candidate label.
+    /// @return isValid True if `s` is a canonical DNS label.
     function isSingleLabel(string calldata s) internal pure returns (bool isValid) {
         bytes calldata label = bytes(s);
         return _isDnsLabel(label, 0, label.length);
@@ -79,6 +85,13 @@ library StringUtils {
         return trailingDigits >= MIN_LITE_SUFFIX_DIGITS;
     }
 
+    /// @notice Validates that `s` is a dot-separated path of canonical DNS labels.
+    /// @dev Each segment between dots must satisfy {isSingleLabel}. Empty
+    ///      segments (leading, trailing, or consecutive dots) fail. Used when
+    ///      callers submit multi-label paths (e.g. `alice.dot`) rather than
+    ///      bare labels.
+    /// @param s Candidate name path.
+    /// @return isValid True if every dot-separated segment is a canonical DNS label.
     function isNamePath(string calldata s) internal pure returns (bool isValid) {
         bytes calldata path = bytes(s);
         uint256 length = path.length;

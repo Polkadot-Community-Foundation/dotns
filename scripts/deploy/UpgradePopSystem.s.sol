@@ -21,16 +21,17 @@ import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 /// @title UpgradePopSystem
 /// @notice Single orchestration script that applies the PoP-controller upgrade in order.
 /// @dev Sequence (load-bearing, mirrors the PR #124 pattern):
-///      1. Upgrade protocol registry   — exposes POP_GATEWAY, POP_CONTROLLER, POP_RESOLVER keys.
-///      2. Deploy PoP resolver (fresh) — needs protocol registry to exist (writer auth queries it).
-///      3. Deploy PoP controller (fresh) — needs protocol registry to exist.
+///      1. Upgrade protocol registry: exposes POP_GATEWAY, POP_CONTROLLER, POP_RESOLVER keys.
+///      2. Deploy PoP resolver (fresh): needs protocol registry to exist (writer auth queries it).
+///      3. Deploy PoP controller (fresh): needs protocol registry to exist.
 ///      4. Write POP_RESOLVER, POP_CONTROLLER, POP_GATEWAY slots.
-///      5. Upgrade forward registry    — auth delegates to registrar's `controllers` mapping.
-///      6. Upgrade registrar           — `controllers` mapping key retyped to {IDotnsController}.
-///      7. Upgrade controller          — refactored to use LabelUtils / RegistrationUtils.
+///      5. Upgrade forward registry: auth delegates to registrar's `controllers` mapping.
+///      6. Upgrade registrar: `controllers` mapping key retyped to {IDotnsController}.
+///      7. Upgrade controller: refactored to use LabelUtils / RegistrationUtils.
 ///      8. `addController` the PoP controller on the registrar.
 ///
 ///      The fork test invokes `upgradeAll` directly, so production and test share one code path.
+/// @custom:security-contact admin@parity.io
 contract UpgradePopSystem is BaseDeployer {
     /// @notice Deployed Paseo AssetHub proxy addresses. These mirror the canonical
     ///         set used by {UpgradeEscrowSystem} so subsequent upgrades stay aligned.
@@ -72,7 +73,7 @@ contract UpgradePopSystem is BaseDeployer {
         address popControllerProxy;
     }
 
-    /// @notice Standard run entrypoint — executed live against the configured chain.
+    /// @notice Standard run entrypoint; executed live against the configured chain.
     /// @param popGateway Privileged gateway address registered under `POP_GATEWAY`.
     function run(address popGateway) external {
         console.log("=== PoP System Upgrade ===");
@@ -155,7 +156,7 @@ contract UpgradePopSystem is BaseDeployer {
         vm.stopPrank();
     }
 
-    /// @notice Post-upgrade verification checks — called by both `run` and fork tests.
+    /// @notice Post-upgrade verification checks; called by both `run` and fork tests.
     /// @param deployment Addresses returned by `upgradeAll`.
     /// @param popGateway Address registered under `POP_GATEWAY` by this upgrade.
     function verifyUpgrade(Deployment memory deployment, address popGateway) public view {
@@ -199,7 +200,7 @@ contract UpgradePopSystem is BaseDeployer {
     }
 
     /// @notice Upgrades a proxy, pinning the reference contract for storage-layout validation.
-    /// @dev OZ's `referenceContract` check MUST NOT be skipped — it is the upgrade-safety gate.
+    /// @dev OZ's `referenceContract` check MUST NOT be skipped; it is the upgrade-safety gate.
     function _upgrade(
         address proxy,
         string memory newArtifact,
