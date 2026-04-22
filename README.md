@@ -40,7 +40,15 @@ bun run deploy:anvil
 bun run deploy:testnet
 ```
 
-The fresh-deploy pipeline lives in `scripts/deploy/DotnsDeployer.s.sol`. Upgrade scripts for individual subsystems (for example `scripts/deploy/SomeName.s.sol`) live alongside it and share the same broadcast shape: we deploy each proxy in its own `vm.startBroadcast / vm.stopBroadcast` scope so forge's per-transaction memory accounting does not accumulate across the OpenZeppelin upgrade-safety validations the pipeline runs. The pattern scales: as the protocol grows and more proxies join the set, adding another per-proxy step keeps the validation cost flat per transaction.
+The fresh-deploy pipeline is split across five scripts under `scripts/deploy/`, each a separate `forge script` invocation:
+
+- `DeployCore.s.sol`: foundational name-ownership layer (store factory, registrar, reverse resolver, forward registry).
+- `DeployRecords.s.sol`: per-name record layer (forward resolver, content resolver, `PopRules`).
+- `DeployPolicy.s.sol`: commit-reveal controller and protocol registry.
+- `DeployPopSystem.s.sol`: Proof-of-Personhood resolver and controller.
+- `WireDeployments.s.sol`: authorisation and registry wire-up plus end-to-end verification. No proxy deploys.
+
+Each stage writes the addresses it produces to a shared JSON manifest at `deployments/<network>/<chainid>.json`; the next stage reads prior addresses back through the same file. A single monolithic deploy script would accumulate quadratic EVM memory gas across every OpenZeppelin upgrade-safety validation the pipeline runs (the validator shells out to a Node CLI via `vm.ffi` and parses a multi-megabyte build-info JSON per proxy) and blow past the block gas limit around the eighth proxy. Running each stage as its own `forge script` process gives each OZ validation a fresh EVM simulation and keeps every check intact. `scripts/deploy/run.sh` chains the stages; `package.json` calls into it. Upgrade scripts for individual subsystems (for example `scripts/deploy/SomeName.s.sol`) live alongside and share the same shape.
 
 **Storage-collision checks are non-negotiable.** On every upgrade path the OpenZeppelin validator diffs the new implementation's storage layout against a pinned reference contract and fails the build if a slot moves, shrinks, or changes type; a misaligned slot after an upgrade silently corrupts live state. The validator accepts the predecessor either as a compilable artefact in the same project (for example a `FooOld.sol` sibling) or as a stored `referenceBuildInfoDir`. We have chosen the source-file route deliberately: the snapshot is versioned alongside the implementation, reviewable in a diff, and available to `forge build` without any out-of-band fetch. A stored build-info directory would drift out of lockstep with the code reviewers read.
 
