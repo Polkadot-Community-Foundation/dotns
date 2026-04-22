@@ -12,14 +12,14 @@ import {
 import {IDotnsReverseResolver} from "./IDotnsReverseResolver.sol";
 import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
-import {DotnsConstants} from "../utils/DotnsConstants.sol";
+import {DotnsProtocolRegistryOld} from "../registry/DotnsProtocolRegistryOld.sol";
 
 /// @title Dotns Reverse Resolver
 /// @notice Resolves an address to its associated .dot name.
 /// @dev Maintains an on-chain mapping from addresses to name strings.
 ///      Writes are restricted to an authorised registrar.
 /// @custom:security-contact admin@parity.io
-contract DotnsReverseResolver is
+contract DotnsReverseResolverOld is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,
@@ -92,8 +92,10 @@ contract DotnsReverseResolver is
 
     /// @notice Internal check enforcing registrar-only access.
     function _onlyRegistrar() internal view {
-        address controller = protocolRegistry.get(DotnsConstants.CONTROLLER);
-        address registrar = protocolRegistry.get(DotnsConstants.REGISTRAR);
+        address controller =
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).CONTROLLER());
+        address registrar =
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).REGISTRAR());
         require(
             msg.sender == controller || msg.sender == registrar, NotRegistrarController(msg.sender)
         );
@@ -102,7 +104,7 @@ contract DotnsReverseResolver is
     /// @notice Returns implementation version
     /// @return versionString Current version string
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.2.0";
+        versionString = "1.1.0";
     }
 
     /// @inheritdoc UUPSUpgradeable

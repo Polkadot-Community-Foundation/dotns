@@ -10,9 +10,10 @@ import {
     ERC721Upgradeable
 } from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 
-import {IDotnsRegistrarOld} from "./IDotnsRegistrarOld.sol";
-import {IDotnsRegistrarControllerOld} from "./IDotnsRegistrarControllerOld.sol";
-import {IDotnsProtocolRegistryOld} from "../registry/IDotnsProtocolRegistryOld.sol";
+import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
+import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
+import {IDotnsController} from "./IDotnsController.sol";
+import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {DotnsProtocolRegistryOld} from "../registry/DotnsProtocolRegistryOld.sol";
 
 import {Store} from "../store/Store.sol";
@@ -39,19 +40,19 @@ contract DotnsRegistrarOld is
     UUPSUpgradeable,
     OwnableUpgradeable,
     ERC721Upgradeable,
-    IDotnsRegistrarOld
+    IDotnsRegistrar
 {
     using StoreUtils for IStoreFactory;
     using StringUtils for *;
 
     /// @notice Mapping of authorised controller addresses.
     /// @dev Controllers may call `register`.
-    mapping(IDotnsRegistrarControllerOld controller => bool exists) public controllers;
+    mapping(IDotnsController controller => bool exists) public controllers;
 
     /// @notice Protocol-level address registry for all DotNS contracts.
     /// @dev Used to resolve sibling contract addresses (store factory, controller, registry)
     ///      without storing individual references.
-    IDotnsProtocolRegistryOld public protocolRegistry;
+    IDotnsProtocolRegistry public protocolRegistry;
 
     /// @notice DEPRECATED as of v1.2.0: Previously stored labelhashes per token ID.
     /// @dev Retained for UUPS storage layout compatibility. No longer written to.
@@ -84,41 +85,37 @@ contract DotnsRegistrarOld is
     /// @dev Uses OpenZeppelin upgradeable initializers.
     /// @param name ERC721 token name.
     /// @param symbol ERC721 token symbol.
-    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistryOld and set protocolRegistry here.
+    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
     function initialize(string calldata name, string calldata symbol) external initializer {
         __Ownable_init(msg.sender);
         __ERC721_init(name, symbol);
     }
 
-    /// @inheritdoc IDotnsRegistrarOld
+    /// @inheritdoc IDotnsRegistrar
     // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
-    function updateProtocolRegistry(IDotnsProtocolRegistryOld registry)
-        external
-        override
-        onlyOwner
-    {
+    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
         protocolRegistry = registry;
         emit ProtocolRegistryUpdated(registry);
     }
 
-    /// @inheritdoc IDotnsRegistrarOld
-    function addController(IDotnsRegistrarControllerOld controller) external onlyOwner {
+    /// @inheritdoc IDotnsRegistrar
+    function addController(IDotnsController controller) external onlyOwner {
         controllers[controller] = true;
         emit ControllerAdded(controller);
     }
 
-    /// @inheritdoc IDotnsRegistrarOld
-    function removeController(IDotnsRegistrarControllerOld controller) external onlyOwner {
+    /// @inheritdoc IDotnsRegistrar
+    function removeController(IDotnsController controller) external onlyOwner {
         controllers[controller] = false;
         emit ControllerRemoved(controller);
     }
 
-    /// @inheritdoc IDotnsRegistrarOld
+    /// @inheritdoc IDotnsRegistrar
     function available(uint256 id) public view override returns (bool isAvailable) {
         return !_exists(id);
     }
 
-    /// @inheritdoc IDotnsRegistrarOld
+    /// @inheritdoc IDotnsRegistrar
     function register(
         uint256 id,
         address owner,
@@ -134,7 +131,7 @@ contract DotnsRegistrarOld is
         emit NameRegistered(id, owner);
     }
 
-    /// @inheritdoc IDotnsRegistrarOld
+    /// @inheritdoc IDotnsRegistrar
     function syncLabel(uint256 tokenId, string calldata label) external override {
         require(_exists(tokenId), NameNotAvailable(tokenId));
         require(ownerOf(tokenId) == msg.sender, NotTokenOwner(msg.sender, tokenId));
@@ -174,7 +171,7 @@ contract DotnsRegistrarOld is
 
     /// @notice Internal function to check for controller access.
     function _onlyController() internal view {
-        require(controllers[IDotnsRegistrarControllerOld(msg.sender)], NotController(msg.sender));
+        require(controllers[IDotnsController(msg.sender)], NotController(msg.sender));
     }
 
     /// @inheritdoc ERC721Upgradeable

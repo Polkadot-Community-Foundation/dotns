@@ -9,17 +9,18 @@ import {
 import {
     ERC165Upgradeable
 } from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
-import {IDotnsRegistrarOld} from "./IDotnsRegistrarOld.sol";
-import {IDotnsRegistryOld} from "../registry/IDotnsRegistryOld.sol";
+import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
+import {IDotnsRegistry} from "../registry/IDotnsRegistry.sol";
 import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
 import {IPopRules} from "../pop/IPopRules.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
-import {IDotnsRegistrarControllerOld} from "./IDotnsRegistrarControllerOld.sol";
+import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
 import {Store} from "../store/Store.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
-import {IDotnsProtocolRegistryOld} from "../registry/IDotnsProtocolRegistryOld.sol";
+import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {DotnsProtocolRegistryOld} from "../registry/DotnsProtocolRegistryOld.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
@@ -39,7 +40,7 @@ contract DotnsRegistrarControllerOld is
     UUPSUpgradeable,
     OwnableUpgradeable,
     ERC165Upgradeable,
-    IDotnsRegistrarControllerOld
+    IDotnsRegistrarController
 {
     using StringUtils for *;
     using StoreUtils for IStoreFactory;
@@ -50,12 +51,12 @@ contract DotnsRegistrarControllerOld is
     /// @notice DEPRECATED: Base registrar responsible for minting name ownership.
     /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
     /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
-    IDotnsRegistrarOld public dotnsRegistrar;
+    IDotnsRegistrar public dotnsRegistrar;
 
     /// @notice DEPRECATED: Forward registry storing node ownership and resolver.
     /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
     /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
-    IDotnsRegistryOld public dotnsRegistry;
+    IDotnsRegistry public dotnsRegistry;
 
     /// @notice DEPRECATED: Reverse resolver for address -> primary name mapping.
     /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
@@ -85,7 +86,7 @@ contract DotnsRegistrarControllerOld is
     mapping(address user => bool isWhiteListed) public whiteList;
 
     /// @notice Protocol-level address registry for all DotNS contracts.
-    IDotnsProtocolRegistryOld public protocolRegistry;
+    IDotnsProtocolRegistry public protocolRegistry;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
     uint256[48] private __gap;
@@ -119,10 +120,10 @@ contract DotnsRegistrarControllerOld is
     /// @param factory Store factory used to resolve/deploy per-user stores.
     /// @param minAge Minimum commitment age in seconds.
     /// @param maxAge Maximum commitment age in seconds.
-    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistryOld and set protocolRegistry here.
+    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
     function initialize(
-        IDotnsRegistrarOld registrar,
-        IDotnsRegistryOld registry,
+        IDotnsRegistrar registrar,
+        IDotnsRegistry registry,
         IDotnsReverseResolver reverse,
         IPopRules rules,
         IStoreFactory factory,
@@ -148,17 +149,17 @@ contract DotnsRegistrarControllerOld is
         maxCommitmentAge = maxAge;
     }
 
-    /// @inheritdoc IDotnsRegistrarControllerOld
+    /// @inheritdoc IDotnsRegistrarController
     function available(string calldata label) public view override returns (bool) {
         bytes32 node;
         (, node) = _validatedLabelNode(label);
-        IDotnsRegistrarOld registrar = IDotnsRegistrarOld(
+        IDotnsRegistrar registrar = IDotnsRegistrar(
             protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).REGISTRAR())
         );
         return registrar.available(uint256(node));
     }
 
-    /// @inheritdoc IDotnsRegistrarControllerOld
+    /// @inheritdoc IDotnsRegistrarController
     function makeCommitment(Registration calldata registration)
         public
         pure
@@ -189,7 +190,7 @@ contract DotnsRegistrarControllerOld is
         }
     }
 
-    /// @inheritdoc IDotnsRegistrarControllerOld
+    /// @inheritdoc IDotnsRegistrarController
     function commit(bytes32 commitment) external override {
         require(
             commitments[commitment] == 0
@@ -201,9 +202,9 @@ contract DotnsRegistrarControllerOld is
         emit NameCommitted(commitment);
     }
 
-    /// @inheritdoc IDotnsRegistrarControllerOld
+    /// @inheritdoc IDotnsRegistrarController
     function register(Registration calldata registration) external payable override {
-        (IDotnsRegistrarOld registrar, bytes32 labelhash, bytes32 node) =
+        (IDotnsRegistrar registrar, bytes32 labelhash, bytes32 node) =
             _requireAvailableLabel(registration.label);
         _consumeCommitment(registration);
 
@@ -233,24 +234,24 @@ contract DotnsRegistrarControllerOld is
         }
     }
 
-    /// @inheritdoc IDotnsRegistrarControllerOld
+    /// @inheritdoc IDotnsRegistrarController
     function isWhiteListed(address who) external view override returns (bool) {
         return whiteList[who];
     }
 
-    /// @inheritdoc IDotnsRegistrarControllerOld
+    /// @inheritdoc IDotnsRegistrarController
     function whiteListAddress(address who, bool whiteListStatus) external override onlyOwner {
         whiteList[who] = whiteListStatus;
         emit WhiteListed(who, whiteListStatus);
     }
 
-    /// @inheritdoc IDotnsRegistrarControllerOld
+    /// @inheritdoc IDotnsRegistrarController
     function registerReserved(Registration calldata registration)
         external
         override
         onlyWhiteListedOrOwner
     {
-        (IDotnsRegistrarOld registrar, bytes32 labelhash, bytes32 node) =
+        (IDotnsRegistrar registrar, bytes32 labelhash, bytes32 node) =
             _requireAvailableLabel(registration.label);
         _consumeCommitment(registration);
 
@@ -258,8 +259,13 @@ contract DotnsRegistrarControllerOld is
     }
 
     /// @inheritdoc ERC165Upgradeable
-    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
-        return interfaceId == type(IDotnsRegistrarControllerOld).interfaceId
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC165Upgradeable, IERC165)
+        returns (bool)
+    {
+        return interfaceId == type(IDotnsRegistrarController).interfaceId
             || super.supportsInterface(interfaceId);
     }
 
@@ -302,10 +308,10 @@ contract DotnsRegistrarControllerOld is
     function _requireAvailableLabel(string calldata label)
         internal
         view
-        returns (IDotnsRegistrarOld registrar, bytes32 labelhash, bytes32 node)
+        returns (IDotnsRegistrar registrar, bytes32 labelhash, bytes32 node)
     {
         (labelhash, node) = _validatedLabelNode(label);
-        registrar = IDotnsRegistrarOld(
+        registrar = IDotnsRegistrar(
             protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).REGISTRAR())
         );
         require(registrar.available(uint256(node)), NameNotAvailable(label));
@@ -330,7 +336,7 @@ contract DotnsRegistrarControllerOld is
 
     function _completeRegistration(
         Registration calldata registration,
-        IDotnsRegistrarOld registrar,
+        IDotnsRegistrar registrar,
         bytes32 labelhash,
         bytes32 node,
         uint256 baseCost,
@@ -338,7 +344,7 @@ contract DotnsRegistrarControllerOld is
     )
         internal
     {
-        IDotnsRegistryOld registry = IDotnsRegistryOld(
+        IDotnsRegistry registry = IDotnsRegistry(
             protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).REGISTRY())
         );
         IDotnsReverseResolver reverse = IDotnsReverseResolver(
@@ -385,13 +391,9 @@ contract DotnsRegistrarControllerOld is
         require(whiteList[msg.sender] || msg.sender == owner(), NotWhiteListedOrOwner(msg.sender));
     }
 
-    /// @inheritdoc IDotnsRegistrarControllerOld
+    /// @inheritdoc IDotnsRegistrarController
     // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
-    function updateProtocolRegistry(IDotnsProtocolRegistryOld registry)
-        external
-        override
-        onlyOwner
-    {
+    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
         protocolRegistry = registry;
         emit ProtocolRegistryUpdated(registry);
     }

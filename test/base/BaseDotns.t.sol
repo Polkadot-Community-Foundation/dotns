@@ -114,8 +114,7 @@ abstract contract BaseDotns is Test {
 
     /// @notice Default node hash for the ".dot" TLD.
     /// @dev Included to cross-check against computed `dotNode` where relevant.
-    bytes32 private constant DOT_NODE =
-        0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
+    bytes32 private constant DOT_NODE = DotnsConstants.DOT_NODE;
 
     function setUp() public virtual noGasMetering {
         vm.warp(365 days);
@@ -230,17 +229,17 @@ abstract contract BaseDotns is Test {
 
         dotnsRegistrar.addController(IDotnsController(dotnsPopControllerAddress));
 
-        protocolRegistry.set(protocolRegistry.REGISTRAR(), dotnsRegistrarAddress);
-        protocolRegistry.set(protocolRegistry.CONTROLLER(), dotnsRegistrarControllerAddress);
-        protocolRegistry.set(protocolRegistry.REGISTRY(), dotnsRegistryAddress);
-        protocolRegistry.set(protocolRegistry.REVERSE_RESOLVER(), dotnsReverseResolverAddress);
-        protocolRegistry.set(protocolRegistry.POP_RULES(), popRulesAddress);
-        protocolRegistry.set(protocolRegistry.STORE_FACTORY(), address(storeFactory));
-        protocolRegistry.set(protocolRegistry.RESOLVER(), dotnsResolverAddress);
-        protocolRegistry.set(protocolRegistry.CONTENT_RESOLVER(), dotnsContentResolverAddress);
-        protocolRegistry.set(protocolRegistry.POP_RESOLVER(), dotnsPopResolverAddress);
-        protocolRegistry.set(protocolRegistry.POP_CONTROLLER(), dotnsPopControllerAddress);
-        protocolRegistry.set(protocolRegistry.POP_GATEWAY(), popGateway);
+        protocolRegistry.set(DotnsConstants.REGISTRAR, dotnsRegistrarAddress);
+        protocolRegistry.set(DotnsConstants.CONTROLLER, dotnsRegistrarControllerAddress);
+        protocolRegistry.set(DotnsConstants.REGISTRY, dotnsRegistryAddress);
+        protocolRegistry.set(DotnsConstants.REVERSE_RESOLVER, dotnsReverseResolverAddress);
+        protocolRegistry.set(DotnsConstants.POP_RULES, popRulesAddress);
+        protocolRegistry.set(DotnsConstants.STORE_FACTORY, address(storeFactory));
+        protocolRegistry.set(DotnsConstants.RESOLVER, dotnsResolverAddress);
+        protocolRegistry.set(DotnsConstants.CONTENT_RESOLVER, dotnsContentResolverAddress);
+        protocolRegistry.set(DotnsConstants.POP_RESOLVER, dotnsPopResolverAddress);
+        protocolRegistry.set(DotnsConstants.POP_CONTROLLER, dotnsPopControllerAddress);
+        protocolRegistry.set(DotnsConstants.POP_GATEWAY, popGateway);
 
         dotnsRegistrar.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
         dotnsRegistrarController.updateProtocolRegistry(

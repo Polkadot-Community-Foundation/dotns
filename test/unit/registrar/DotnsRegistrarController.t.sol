@@ -11,10 +11,10 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {
     OwnableUpgradeable
 } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 
 contract DotnsRegistrarControllerTest is BaseDotns {
-    bytes32 private constant DOTNS_REGISTERED_PREFIX =
-        hex"646f746e732e72656769737465726564000000000000000000000000000000";
+    bytes32 private constant DOTNS_REGISTERED_PREFIX = DotnsConstants.DOTNS_REGISTERED_KEY;
 
     function test_available_state_transitions() public {
         assertTrue(dotnsRegistrarController.available("longnamehere01"));

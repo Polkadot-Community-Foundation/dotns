@@ -7,7 +7,7 @@ import {
     OwnableUpgradeable
 } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
-import {IDotnsProtocolRegistryOld} from "./IDotnsProtocolRegistryOld.sol";
+import {IDotnsProtocolRegistry} from "./IDotnsProtocolRegistry.sol";
 
 /// @title Dotns Protocol Registry
 /// @notice Upgradeable address registry for all DotNS protocol contracts.
@@ -19,7 +19,7 @@ contract DotnsProtocolRegistryOld is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,
-    IDotnsProtocolRegistryOld
+    IDotnsProtocolRegistry
 {
     /// @notice Well-known key for the ERC721 registrar backing name ownership.
     /// casting to 'bytes32' is safe because the string fits in 32 bytes.
@@ -77,12 +77,12 @@ contract DotnsProtocolRegistryOld is
         __Ownable_init(msg.sender);
     }
 
-    /// @inheritdoc IDotnsProtocolRegistryOld
+    /// @inheritdoc IDotnsProtocolRegistry
     function get(bytes32 key) external view override returns (address addr) {
         return _addresses[key];
     }
 
-    /// @inheritdoc IDotnsProtocolRegistryOld
+    /// @inheritdoc IDotnsProtocolRegistry
     function set(bytes32 key, address addr) external override onlyOwner {
         require(addr != address(0), ZeroAddress());
 

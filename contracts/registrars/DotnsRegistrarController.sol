@@ -20,7 +20,6 @@ import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
 import {Store} from "../store/Store.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
-import {DotnsProtocolRegistry} from "../registry/DotnsProtocolRegistry.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
 import {LabelUtils} from "../utils/LabelUtils.sol";
 import {RegistrationUtils} from "../utils/RegistrationUtils.sol";
@@ -153,9 +152,7 @@ contract DotnsRegistrarController is
     function available(string calldata label) public view override returns (bool) {
         bytes32 node;
         (, node) = _validatedLabelNode(label);
-        IDotnsRegistrar registrar = IDotnsRegistrar(
-            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRAR())
-        );
+        IDotnsRegistrar registrar = IDotnsRegistrar(protocolRegistry.get(DotnsConstants.REGISTRAR));
         return registrar.available(uint256(node));
     }
 
@@ -207,9 +204,7 @@ contract DotnsRegistrarController is
         (bytes32 labelhash, bytes32 node) = _requireAvailableLabel(registration.label);
         _consumeCommitment(registration);
 
-        IPopRules rules = IPopRules(
-            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).POP_RULES())
-        );
+        IPopRules rules = IPopRules(protocolRegistry.get(DotnsConstants.POP_RULES));
         IPopRules.PriceWithMeta memory priced =
             rules.priceWithCheck(registration.label, registration.owner);
 
@@ -286,9 +281,7 @@ contract DotnsRegistrarController is
         returns (bytes32 labelhash, bytes32 node)
     {
         (labelhash, node) = _validatedLabelNode(label);
-        IDotnsRegistrar registrar = IDotnsRegistrar(
-            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRAR())
-        );
+        IDotnsRegistrar registrar = IDotnsRegistrar(protocolRegistry.get(DotnsConstants.REGISTRAR));
         require(registrar.available(uint256(node)), NameNotAvailable(label));
     }
 
@@ -336,11 +329,8 @@ contract DotnsRegistrarController is
         );
 
         if (setReverseRecord) {
-            IDotnsReverseResolver reverse = IDotnsReverseResolver(
-                protocolRegistry.get(
-                    DotnsProtocolRegistry(address(protocolRegistry)).REVERSE_RESOLVER()
-                )
-            );
+            IDotnsReverseResolver reverse =
+                IDotnsReverseResolver(protocolRegistry.get(DotnsConstants.REVERSE_RESOLVER));
             reverse.setReverseName(
                 registration.owner, string.concat(registration.label, DotnsConstants.TLD)
             );
@@ -371,8 +361,7 @@ contract DotnsRegistrarController is
 
     /// @notice Internal check enforcing registry-only access.
     function _onlyRegistry() internal view {
-        address registry =
-            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).REGISTRY());
+        address registry = protocolRegistry.get(DotnsConstants.REGISTRY);
         require(msg.sender == registry, NotRegistry());
     }
 

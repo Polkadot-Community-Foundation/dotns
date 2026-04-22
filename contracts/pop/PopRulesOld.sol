@@ -12,14 +12,12 @@ import {
 import {StringUtils} from "../utils/StringUtils.sol";
 import {IPopRules} from "./IPopRules.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
-import {IDotnsController} from "../registrars/IDotnsController.sol";
-import {DotnsRegistrar} from "../registrars/DotnsRegistrar.sol";
-import {DotnsConstants} from "../utils/DotnsConstants.sol";
+import {DotnsProtocolRegistryOld} from "../registry/DotnsProtocolRegistryOld.sol";
 
 /// @title PopRules
 /// @notice Implements DotNS pricing with PoP-tier validation and base-name reservations
 /// @custom:security-contact admin@parity.io
-contract PopRules is
+contract PopRulesOld is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,
@@ -52,12 +50,7 @@ contract PopRules is
     // forge-lint: disable-next-line(mixed-case-variable)
     uint256[49] private __gap;
 
-    /// @notice Restricts function to any registry-authorised controller
-    /// @dev The registrar's `controllers` mapping is the canonical ACL for "who may
-    ///      drive DotNS name state". Every controller lives behind owner-gated
-    ///      `addController` / `removeController`, so trusting that set directly
-    ///      keeps PopRules open to current and future controllers without
-    ///      requiring a new modifier per controller type.
+    /// @notice Restricts function to registry controller
     modifier onlyRegistry() {
         _onlyRegistry();
         _;
@@ -378,54 +371,13 @@ contract PopRules is
     /// @notice Returns implementation version
     /// @return versionString Current version string
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.2.0";
+        versionString = "1.1.0";
     }
 
-    /// @notice Ensures the caller is any controller authorised on the registrar.
-    /// @dev Trusts `DotnsRegistrar.controllers[msg.sender]` as the single source of
-    ///      truth for "is this address an authorised DotNS controller". Lets the
-    ///      commit-reveal controller and the PoP controller both write reservations
-    ///      without PopRules knowing their specific interfaces.
+    /// @notice Ensures the caller is the authorized registry controller
     function _onlyRegistry() internal view {
-        DotnsRegistrar registrar = DotnsRegistrar(
-            protocolRegistry.get(DotnsConstants.REGISTRAR)
-        );
-        require(registrar.controllers(IDotnsController(msg.sender)), NotRegistry());
-    }
-
-    /// @inheritdoc IPopRules
-    function reserveBaseNameForPop(
-        string calldata baseName,
-        address userAddress
-    )
-        external
-        override
-        onlyRegistry
-    {
-        _requireCanonicalLabel(baseName);
-
-        Reservation memory existing = reservations[baseName];
-        if (existing.owner != address(0) && existing.expires > block.timestamp) {
-            // An earlier reserver still holds the live slot. A silent no-op here
-            // would let the PoP controller's local queue state diverge from
-            // PopRules (controller writes head-bookkeeping assuming the write
-            // landed). Reverting propagates the collision back to the caller so
-            // both sides stay consistent. Refresh-own-expiry still goes through.
-            require(existing.owner == userAddress, PopError("Base name held by another user"));
-        }
-
-        // casting to 'uint64' is safe because MAX_RESERVATION_TIME will never be
-        // large enough to cause a revert.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint64 expiryTime = uint64(block.timestamp + MAX_RESERVATION_TIME);
-        reservations[baseName] = Reservation({owner: userAddress, expires: expiryTime});
-        emit BaseNameReserved(baseName, userAddress, expiryTime);
-    }
-
-    /// @inheritdoc IPopRules
-    function releaseBaseName(string calldata baseName) external override onlyRegistry {
-        _requireCanonicalLabel(baseName);
-        delete reservations[baseName];
-        emit BaseNameReleased(baseName);
+        address controller =
+            protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).CONTROLLER());
+        require(msg.sender == controller, NotRegistry());
     }
 }

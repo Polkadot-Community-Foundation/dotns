@@ -13,7 +13,6 @@ import {
 import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
 import {IDotnsController} from "./IDotnsController.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
-import {DotnsProtocolRegistry} from "../registry/DotnsProtocolRegistry.sol";
 
 import {Store} from "../store/Store.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
@@ -197,11 +196,8 @@ contract DotnsRegistrar is
         string memory label = _labels[tokenId];
         if (bytes(label).length == 0) return;
 
-        IDotnsReverseResolver reverse = IDotnsReverseResolver(
-            protocolRegistry.get(
-                DotnsProtocolRegistry(address(protocolRegistry)).REVERSE_RESOLVER()
-            )
-        );
+        IDotnsReverseResolver reverse =
+            IDotnsReverseResolver(protocolRegistry.get(DotnsConstants.REVERSE_RESOLVER));
         string memory currentReverse = reverse.nameOf(from);
         string memory fullName = string.concat(label, DotnsConstants.TLD);
 
@@ -218,9 +214,7 @@ contract DotnsRegistrar is
     /// @param to Address of the transfer recipient.
     /// @param tokenId The transferred token identifier.
     function _syncRecipientStore(address to, uint256 tokenId) internal {
-        IStoreFactory factory = IStoreFactory(
-            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).STORE_FACTORY())
-        );
+        IStoreFactory factory = IStoreFactory(protocolRegistry.get(DotnsConstants.STORE_FACTORY));
         if (address(factory) == address(0)) return;
 
         address[] memory controllers_ = RegistrationUtils.storeControllers(protocolRegistry);
