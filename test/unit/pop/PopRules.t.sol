@@ -3,7 +3,6 @@ pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
-import {IDotnsController} from "../../../contracts/registrars/IDotnsController.sol";
 
 contract PopRulesTests is BaseDotns {
     function test_classify_governance() public view {
@@ -67,8 +66,7 @@ contract PopRulesTests is BaseDotns {
     function test_base_reservation_blocks_others() public {
         // Authorise this test contract as a registrar controller so it may call
         // reserveBaseName (gated by DotnsRegistrar.controllers).
-        vm.prank(owner);
-        dotnsRegistrar.addController(IDotnsController(address(this)));
+        _authoriseTestAsController();
 
         popRules.reserveBaseName("lights01", leonardo);
 
@@ -88,8 +86,7 @@ contract PopRulesTests is BaseDotns {
     }
 
     function test_price_without_check_returns_price_for_reserved() public {
-        vm.prank(owner);
-        dotnsRegistrar.addController(IDotnsController(address(this)));
+        _authoriseTestAsController();
 
         popRules.reserveBaseName("lights01", leonardo);
 
@@ -120,8 +117,7 @@ contract PopRulesTests is BaseDotns {
     // collision back to the caller so both sides stay in lockstep. The existing
     // holder keeps priority either way.
     function test_reserveBaseNameForPop_reverts_when_slot_held_by_other_user() public {
-        vm.prank(owner);
-        dotnsRegistrar.addController(IDotnsController(address(this)));
+        _authoriseTestAsController();
 
         popRules.reserveBaseNameForPop("longnamebob", leonardo);
 
@@ -136,8 +132,7 @@ contract PopRulesTests is BaseDotns {
 
     // Same-owner re-reservation refreshes the expiry timestamp forward.
     function test_reserveBaseNameForPop_refreshes_expiry_for_same_owner() public {
-        vm.prank(owner);
-        dotnsRegistrar.addController(IDotnsController(address(this)));
+        _authoriseTestAsController();
 
         popRules.reserveBaseNameForPop("longnamebob", leonardo);
         (, uint64 firstExpiry) = popRules.getBaseNameReservation("longnamebob");
@@ -152,8 +147,7 @@ contract PopRulesTests is BaseDotns {
     }
 
     function test_base_reservation_rolls_forward_after_expiry() public {
-        vm.prank(owner);
-        dotnsRegistrar.addController(IDotnsController(address(this)));
+        _authoriseTestAsController();
 
         popRules.reserveBaseName("lights01", leonardo);
 

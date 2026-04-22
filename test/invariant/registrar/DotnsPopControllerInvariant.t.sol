@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {PopControllerHandler} from "./PopControllerHandler.t.sol";
+import {IDotnsPopController} from "../../../contracts/registrars/IDotnsPopController.sol";
 
 /// @title DotnsPopControllerInvariant
 /// @notice Invariants asserted over arbitrary sequences of PoP-controller actions.
@@ -71,20 +72,24 @@ contract DotnsPopControllerInvariant is BaseDotns {
     }
 
     // Per-user reservation pointer is consistent with the queue entry it
-    // points to: when `userReservation[u]` is non-zero, the entry at
-    // `userReservationIndex[u]` is owned by `u` and sits in the live range.
+    // points to: when `userReservation(u).labelhash` is non-zero, the entry at
+    // `userReservation(u).index` is owned by `u` and sits in the live range.
     function invariant_one_reservation_per_account_consistent() public view {
         uint256 count = handler.actorsCount();
         for (uint256 i = 0; i < count; i++) {
             address actor = handler.actors(i);
-            bytes32 labelhash = dotnsPopController.userReservation(actor);
-            if (labelhash == bytes32(0)) continue;
+            IDotnsPopController.UserReservation memory reservation =
+                dotnsPopController.userReservation(actor);
+            if (reservation.labelhash == bytes32(0)) continue;
 
-            uint64 index = dotnsPopController.userReservationIndex(actor);
-            (uint64 head, uint64 tail) = dotnsPopController.reservationMeta(labelhash);
-            assertTrue(index >= head && index < tail, "reservation index out of live range");
+            (uint64 head, uint64 tail) = dotnsPopController.reservationMeta(reservation.labelhash);
+            assertTrue(
+                reservation.index >= head && reservation.index < tail,
+                "reservation index out of live range"
+            );
 
-            (address entryOwner,) = dotnsPopController.reservationEntry(labelhash, index);
+            (address entryOwner,) =
+                dotnsPopController.reservationEntry(reservation.labelhash, reservation.index);
             assertEq(entryOwner, actor, "reservation entry owner mismatch");
         }
     }

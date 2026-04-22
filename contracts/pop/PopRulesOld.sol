@@ -380,4 +380,16 @@ contract PopRulesOld is
             protocolRegistry.get(DotnsProtocolRegistryOld(address(protocolRegistry)).CONTROLLER());
         require(msg.sender == controller, NotRegistry());
     }
+
+    /// @dev Reverting stubs for the post-upgrade surface. This reference snapshot
+    ///      captures the pre-upgrade bytecode and storage layout only; the
+    ///      post-upgrade behaviours (`reserveBaseNameForPop`, `releaseBaseName`)
+    ///      ship in `PopRules`.
+    function reserveBaseNameForPop(string calldata, address) external override {
+        revert NotRegistry();
+    }
+
+    function releaseBaseName(string calldata) external override {
+        revert NotRegistry();
+    }
 }

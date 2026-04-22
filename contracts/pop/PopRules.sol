@@ -120,10 +120,7 @@ contract PopRules is
         string memory strippedBase = _stripDigits(name);
 
         Reservation memory existingReservation = reservations[strippedBase];
-        if (
-            existingReservation.owner == address(0)
-                || existingReservation.expires <= block.timestamp
-        ) {
+        if (!_isLive(existingReservation)) {
             // casting to 'uint64' is safe because MAX_RESERVATION_TIME will never be large enough to cause a revert
             // forge-lint: disable-next-line(unsafe-typecast)
             uint64 expiryTime = uint64(block.timestamp + MAX_RESERVATION_TIME);
@@ -160,10 +157,7 @@ contract PopRules is
     {
         _requireCanonicalLabel(baseName);
         Reservation memory reservation = reservations[baseName];
-        if (reservation.owner != address(0) && reservation.expires > block.timestamp) {
-            return (true, reservation.owner, reservation.expires);
-        }
-        return (false, reservation.owner, reservation.expires);
+        return (_isLive(reservation), reservation.owner, reservation.expires);
     }
 
     /// @inheritdoc IPopRules
@@ -234,10 +228,7 @@ contract PopRules is
         string memory baseName = _stripDigits(name);
         Reservation memory reservation = reservations[baseName];
 
-        if (
-            reservation.owner != address(0) && reservation.expires > block.timestamp
-                && reservation.owner != userAddress
-        ) {
+        if (_isLive(reservation) && reservation.owner != userAddress) {
             metadata.message = "Base name reserved for original Lite registrant";
             metadata.status = IPopRules.PopStatus.Reserved;
         }
@@ -270,12 +261,21 @@ contract PopRules is
         string memory baseName = _stripDigits(name);
         Reservation memory reservation = reservations[baseName];
 
-        if (reservation.owner != address(0) && reservation.expires > block.timestamp) {
+        if (_isLive(reservation)) {
             require(
                 reservation.owner == userAddress,
                 PopError("Base name reserved for original Lite registrant")
             );
         }
+    }
+
+    /// @notice Returns whether `reservation` is live at `block.timestamp`.
+    /// @dev Single canonical live-reservation predicate so every reservation
+    ///      read path (`priceWithCheck`, `priceWithoutCheck`, `isBaseNameReserved`,
+    ///      `reserveBaseName`, `reserveBaseNameForPop`) agrees on the edge
+    ///      condition and cannot drift.
+    function _isLive(Reservation memory reservation) internal view returns (bool) {
+        return reservation.owner != address(0) && reservation.expires > block.timestamp;
     }
 
     /// @notice Counts trailing digits in a string
@@ -387,9 +387,7 @@ contract PopRules is
     ///      commit-reveal controller and the PoP controller both write reservations
     ///      without PopRules knowing their specific interfaces.
     function _onlyRegistry() internal view {
-        DotnsRegistrar registrar = DotnsRegistrar(
-            protocolRegistry.get(DotnsConstants.REGISTRAR)
-        );
+        DotnsRegistrar registrar = DotnsRegistrar(protocolRegistry.get(DotnsConstants.REGISTRAR));
         require(registrar.controllers(IDotnsController(msg.sender)), NotRegistry());
     }
 
@@ -405,7 +403,7 @@ contract PopRules is
         _requireCanonicalLabel(baseName);
 
         Reservation memory existing = reservations[baseName];
-        if (existing.owner != address(0) && existing.expires > block.timestamp) {
+        if (_isLive(existing)) {
             // An earlier reserver still holds the live slot. A silent no-op here
             // would let the PoP controller's local queue state diverge from
             // PopRules (controller writes head-bookkeeping assuming the write

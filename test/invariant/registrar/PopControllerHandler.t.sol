@@ -41,39 +41,39 @@ contract PopControllerHandler is Test {
         return baseLabels.length;
     }
 
-    function baseLabelAt(uint256 idx) external view returns (string memory) {
-        return baseLabels[idx];
+    function baseLabelAt(uint256 index) external view returns (string memory) {
+        return baseLabels[index];
     }
 
     // Reserves a lite label for an actor, optionally enqueuing on a base label.
     // Swallows known-good reverts (`QueueFull`, `AlreadyReserved`, registrar
     // ERC721 collision) so the invariant runner keeps exploring. The suffix
     // counter starts at 10 so `vm.toString` always yields a two-or-more-digit
-    // string satisfying the PoP `NAME.XX` format without a padding helper.
-    function reserve(uint256 actorIdx, uint256 baseIdx, bool attachReservation) external {
-        address actor = _actor(actorIdx);
+    // string satisfying the PoP `NAMEXX` format without a padding helper.
+    function reserve(uint256 actorIndex, uint256 baseIndex, bool attachReservation) external {
+        address actor = _actor(actorIndex);
         _liteSuffix[actor]++;
         uint256 suffixValue = 10 + uint256(_liteSuffix[actor]);
         string memory liteLabel = string.concat(
-            "a", vm.toString(uint256(uint160(actor)) % 1000), ".", vm.toString(suffixValue)
+            "a", vm.toString(uint256(uint160(actor)) % 1000), vm.toString(suffixValue)
         );
-        string memory reservedBase = attachReservation ? _baseLabel(baseIdx) : "";
+        string memory reservedBase = attachReservation ? _baseLabel(baseIndex) : "";
 
         vm.prank(gateway);
         try controller.reserveBaseName(liteLabel, actor, "", reservedBase) {
-            if (attachReservation) _track(keccak256(bytes(_baseLabel(baseIdx))));
+            if (attachReservation) _track(keccak256(bytes(reservedBase)));
         } catch {}
     }
 
     // Caller-sovereign: drops whichever reservation the actor currently holds.
-    function relinquish(uint256 actorIdx) external {
-        vm.prank(_actor(actorIdx));
+    function relinquish(uint256 actorIndex) external {
+        vm.prank(_actor(actorIndex));
         try controller.relinquishReservation() {} catch {}
     }
 
     // Permissionless: advances the head of a tracked queue past expired entries.
-    function expire(uint256 baseIdx) external {
-        try controller.expireReservation(_baseLabel(baseIdx)) {} catch {}
+    function expire(uint256 baseIndex) external {
+        try controller.expireReservation(_baseLabel(baseIndex)) {} catch {}
     }
 
     // Advances block timestamp to exercise expiry paths.
@@ -81,12 +81,12 @@ contract PopControllerHandler is Test {
         vm.warp(block.timestamp + (secondsForward % (30 days)));
     }
 
-    function _actor(uint256 idx) internal view returns (address) {
-        return actors[idx % actors.length];
+    function _actor(uint256 index) internal view returns (address) {
+        return actors[index % actors.length];
     }
 
-    function _baseLabel(uint256 idx) internal view returns (string memory) {
-        return baseLabels[idx % baseLabels.length];
+    function _baseLabel(uint256 index) internal view returns (string memory) {
+        return baseLabels[index % baseLabels.length];
     }
 
     function _track(bytes32 labelhash) internal {

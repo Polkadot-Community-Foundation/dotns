@@ -44,20 +44,26 @@ contract DotnsPopControllerFuzz is BaseDotns {
     // Replaces a family of hand-picked `alice.01`…`alice.99` unit tests.
     function testFuzz_reserveBaseName_accepts_any_two_digit_suffix(uint8 suffix) public {
         suffix = uint8(bound(uint256(suffix), 0, 99));
-        string memory label = string.concat("alice.", _twoDigitDecimal(uint256(suffix)));
+        string memory label = string.concat("alice", _twoDigitDecimal(uint256(suffix)));
 
         _reservePop(ed, label, "", "");
 
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf(label))), ed);
     }
 
-    // Any lite label that omits the `.` separator is rejected with the
-    // controller's specific `InvalidLiteLabel` error (not any revert).
-    function testFuzz_reserveBaseName_rejects_lite_label_without_separator(string calldata stem)
+    // Any label without at least two trailing digits fails the lite format
+    // rule and is rejected with the controller's specific `InvalidLiteLabel`
+    // error. Stems with fewer than two trailing digits cover both the "no
+    // digits" and "one trailing digit" cases.
+    function testFuzz_reserveBaseName_rejects_lite_label_without_trailing_digits(string calldata stem)
         public
     {
         vm.assume(bytes(stem).length > 0 && bytes(stem).length < 64);
         bytes calldata raw = bytes(stem);
+        // Require at least one non-digit in the last two positions so the
+        // trailing-digit count is below the minimum.
+        bytes1 lastChar = raw[raw.length - 1];
+        vm.assume(lastChar < 0x30 || lastChar > 0x39);
         for (uint256 i = 0; i < raw.length; ++i) {
             vm.assume(raw[i] != 0x2e);
         }
@@ -78,7 +84,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         public
     {
         suffix = uint8(bound(uint256(suffix), 0, 99));
-        string memory label = string.concat("bob.", _twoDigitDecimal(uint256(suffix)));
+        string memory label = string.concat("bob", _twoDigitDecimal(uint256(suffix)));
 
         _reservePop(ed, label, chatKey, "");
 
@@ -111,9 +117,11 @@ contract DotnsPopControllerFuzz is BaseDotns {
             suffixCounter++;
 
             if (op == 0) {
-                string memory liteLabel =
-                    string.concat("u", vm.toString(uint256(suffixCounter) + 10));
-                liteLabel = string.concat(liteLabel, ".", vm.toString(uint256(suffixCounter) + 10));
+                string memory liteLabel = string.concat(
+                    "u",
+                    vm.toString(uint256(suffixCounter) + 10),
+                    vm.toString(uint256(suffixCounter) + 10)
+                );
                 vm.prank(popGateway);
                 try dotnsPopController.reserveBaseName(liteLabel, actor, "", baseLabel) {} catch {}
             } else if (op == 1) {
@@ -163,7 +171,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         string memory fullLabel = "longnamebob01";
 
         if (reserveFirst) {
-            _reservePop(tiago, "alice.31", "", stem);
+            _reservePop(tiago, "alice31", "", stem);
         }
 
         bytes32 secret = keccak256(abi.encodePacked(fullLabel, ed, block.timestamp));
@@ -207,7 +215,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         vm.prank(owner);
         dotnsPopController.setReservationDuration(duration);
 
-        _reservePop(ed, "carol.77", "", "alicebob");
+        _reservePop(ed, "carol77", "", "alicebob");
 
         vm.warp(block.timestamp + uint256(elapsed));
 

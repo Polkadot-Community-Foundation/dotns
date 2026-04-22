@@ -19,7 +19,7 @@ import {Vm} from "forge-std/Vm.sol";
 ///         specific behaviours that do not benefit from input variation.
 contract DotnsPopControllerTests is BaseDotns {
     function test_reserveBaseName_mints_and_wires_registry_and_resolver() public {
-        string memory liteLabel = "alice.01";
+        string memory liteLabel = "alice01";
         bytes memory chatKey = hex"01020304";
 
         _reservePop(ed, liteLabel, chatKey, "");
@@ -33,11 +33,11 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_reserveBaseName_reverts_for_non_gateway_caller() public {
         vm.prank(ed);
         vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, ed));
-        dotnsPopController.reserveBaseName("alice.03", ed, "", "");
+        dotnsPopController.reserveBaseName("alice03", ed, "", "");
     }
 
     function test_reserveBaseName_enqueues_when_reserved_label_provided() public {
-        _reservePop(ed, "alice.04", hex"aa", "alice");
+        _reservePop(ed, "alice04", hex"aa", "alice");
 
         (bool reserved, address holder) = dotnsPopController.isReservedForClaim("alice");
         assertTrue(reserved);
@@ -45,8 +45,8 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function test_reserveBaseName_replaces_prior_reservation_when_user_reserves_again() public {
-        _reservePop(ed, "alice.05", hex"aa", "alice");
-        _reservePop(ed, "alice.06", hex"bb", "wonder");
+        _reservePop(ed, "alice05", hex"aa", "alice");
+        _reservePop(ed, "alice06", hex"bb", "wonder");
 
         (bool aliceReserved,) = dotnsPopController.isReservedForClaim("alice");
         assertFalse(aliceReserved);
@@ -58,10 +58,10 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function test_registerBaseName_claim_emits_claim_event_and_not_standalone() public {
-        _reservePop(ed, "alice.20", hex"01", "alicebob");
-        _reservePop(tiago, "bob.21", hex"02", "alicebob");
+        _reservePop(ed, "alice20", hex"01", "alicebob");
+        _reservePop(tiago, "bob21", hex"02", "alicebob");
 
-        IDotnsPopController.Link memory link = _linkWithLite("alice.20");
+        IDotnsPopController.Link memory link = _linkWithLite("alice20");
 
         vm.recordLogs();
         vm.prank(popGateway);
@@ -76,7 +76,7 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function test_registerBaseName_standalone_emits_standalone_event_and_not_claim() public {
-        _reservePop(tiago, "bob.30", hex"01", "alicebob");
+        _reservePop(tiago, "bob30", hex"01", "alicebob");
 
         IDotnsPopController.Link memory link = _linkFresh(hex"cafe");
 
@@ -91,33 +91,33 @@ contract DotnsPopControllerTests is BaseDotns {
 
     function test_registerBaseName_claim_inherits_chat_key_from_lite_node() public {
         bytes memory liteChatKey = hex"aa11bb22cc33";
-        _reservePop(ed, "alice.40", liteChatKey, "alicebob");
+        _reservePop(ed, "alice40", liteChatKey, "alicebob");
 
-        IDotnsPopController.Link memory link = _linkWithLite("alice.40");
+        IDotnsPopController.Link memory link = _linkWithLite("alice40");
         vm.prank(popGateway);
         dotnsPopController.registerBaseName("alicebob", ed, link);
 
         bytes32 fullNode = _nodeOf("alicebob");
         assertEq(dotnsPopResolver.chatKey(fullNode), liteChatKey);
-        assertEq(dotnsPopResolver.liteLink(fullNode), keccak256(bytes("alice.40")));
+        assertEq(dotnsPopResolver.liteLink(fullNode), keccak256(bytes("alice40")));
     }
 
     function test_registerBaseName_claim_wipes_entire_queue() public {
-        _reservePop(ed, "alice.50", hex"01", "alicebob");
-        _reservePop(tiago, "bob.51", hex"02", "alicebob");
-        _reservePop(leonardo, "carol.52", hex"03", "alicebob");
+        _reservePop(ed, "alice50", hex"01", "alicebob");
+        _reservePop(tiago, "bob51", hex"02", "alicebob");
+        _reservePop(leonardo, "carol52", hex"03", "alicebob");
 
-        IDotnsPopController.Link memory link = _linkWithLite("alice.50");
+        IDotnsPopController.Link memory link = _linkWithLite("alice50");
         vm.prank(popGateway);
         dotnsPopController.registerBaseName("alicebob", ed, link);
 
-        _reservePop(tiago, "bob.53", hex"04", "wonder");
+        _reservePop(tiago, "bob53", hex"04", "wonder");
         (, address wonderHolder) = dotnsPopController.isReservedForClaim("wonder");
         assertEq(wonderHolder, tiago);
     }
 
     function test_registerBaseName_standalone_auto_relinquishes_users_other_reservation() public {
-        _reservePop(ed, "alice.60", hex"01", "alicebob");
+        _reservePop(ed, "alice60", hex"01", "alicebob");
 
         IDotnsPopController.Link memory link = _linkFresh(hex"02");
 
@@ -129,9 +129,9 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function test_registerBaseName_standalone_with_lite_link_silently_relinquishes() public {
-        _reservePop(ed, "alice.70", hex"01", "alicebob");
+        _reservePop(ed, "alice70", hex"01", "alicebob");
 
-        IDotnsPopController.Link memory link = _linkWithLite("alice.70");
+        IDotnsPopController.Link memory link = _linkWithLite("alice70");
 
         vm.recordLogs();
         vm.prank(popGateway);
@@ -144,7 +144,7 @@ contract DotnsPopControllerTests is BaseDotns {
         _assertEventNotEmitted(logs, keccak256("ReservationRelinquished(bytes32,address)"));
 
         bytes32 fullNode = _nodeOf("wonderland01");
-        assertEq(dotnsPopResolver.liteLink(fullNode), keccak256(bytes("alice.70")));
+        assertEq(dotnsPopResolver.liteLink(fullNode), keccak256(bytes("alice70")));
 
         (bool reserved,) = dotnsPopController.isReservedForClaim("alicebob");
         assertFalse(reserved);
@@ -167,8 +167,8 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function test_relinquishReservation_promotes_next_waiter_when_head_leaves() public {
-        _reservePop(ed, "alice.80", hex"01", "alicebob");
-        _reservePop(tiago, "bob.81", hex"02", "alicebob");
+        _reservePop(ed, "alice80", hex"01", "alicebob");
+        _reservePop(tiago, "bob81", hex"02", "alicebob");
 
         vm.prank(ed);
         dotnsPopController.relinquishReservation();
@@ -179,8 +179,8 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function test_relinquishReservation_removes_non_head_without_promotion() public {
-        _reservePop(ed, "alice.85", hex"01", "alicebob");
-        _reservePop(tiago, "bob.86", hex"02", "alicebob");
+        _reservePop(ed, "alice85", hex"01", "alicebob");
+        _reservePop(tiago, "bob86", hex"02", "alicebob");
 
         vm.prank(tiago);
         dotnsPopController.relinquishReservation();
@@ -197,14 +197,29 @@ contract DotnsPopControllerTests is BaseDotns {
         dotnsPopController.relinquishReservation();
     }
 
-    function test_setReservationDuration_updates_value_and_emits() public {
-        vm.expectEmit(false, false, false, true, address(dotnsPopController));
-        emit IDotnsPopController.ReservationDurationSet(14 days);
+    // The previous test was a write-then-read tautology. This version pins the
+    // real governance risk: `_isExpired` reads the CURRENT `reservationDuration`
+    // on every check, so shrinking the duration retroactively expires entries
+    // that were live under the old window. Documenting this explicitly prevents
+    // a silent regression if the field is ever changed to absolute expiry.
+    function test_setReservationDuration_shortening_retroactively_expires_live_entries() public {
+        // Enqueue alice under the default duration (7 days).
+        _reservePop(ed, "alice87", hex"01", "alicebob");
 
+        (bool liveBefore, address holderBefore) = dotnsPopController.isReservedForClaim("alicebob");
+        assertTrue(liveBefore);
+        assertEq(holderBefore, ed);
+
+        // Warp 2 days forward (still well within the original 7-day window).
+        vm.warp(block.timestamp + 2 days);
+
+        // Governance shrinks the window to 1 day. The entry's `joinedAt` plus
+        // the new duration is now in the past, so the slot is expired.
         vm.prank(owner);
-        dotnsPopController.setReservationDuration(14 days);
+        dotnsPopController.setReservationDuration(1 days);
 
-        assertEq(dotnsPopController.reservationDuration(), 14 days);
+        (bool liveAfter,) = dotnsPopController.isReservedForClaim("alicebob");
+        assertFalse(liveAfter);
     }
 
     function test_setReservationDuration_reverts_for_non_owner() public {
@@ -213,7 +228,42 @@ contract DotnsPopControllerTests is BaseDotns {
         dotnsPopController.setReservationDuration(14 days);
     }
 
-    function test_lite_and_base_label_formats_are_disjoint() public {
+    // Queue capacity hard-cap must hold: the 65th reservation on a label must
+    // revert with `QueueFull`. Unit-level cap never asserted before; relying on
+    // the invariant runner alone gives flaky coverage for an O(1) revert.
+    function test_enqueueReservation_reverts_when_queue_full() public {
+        string memory baseStem = "alicebob";
+        uint16 cap = dotnsPopController.MAX_RESERVATION_QUEUE();
+
+        // Fill to capacity. Each reserve call needs a distinct actor (one active
+        // reservation per account) and a distinct lite label (ERC721 uniqueness).
+        for (uint256 i = 0; i < cap; i++) {
+            address actor = makeAddr(string.concat("filler", vm.toString(i)));
+            // Lite suffix starts at 10 so `vm.toString` always yields >= 2 digits.
+            string memory lite = string.concat("filler", vm.toString(i + 10));
+            _reservePop(actor, lite, hex"01", baseStem);
+        }
+
+        // One more must revert at the queue-full guard.
+        address overflow = makeAddr("overflow");
+        vm.prank(popGateway);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IDotnsPopController.QueueFull.selector, keccak256(bytes(baseStem))
+            )
+        );
+        dotnsPopController.reserveBaseName("overflow99", overflow, hex"01", baseStem);
+    }
+
+    // Format constraints for the two entry points are complementary rather than
+    // disjoint: `reserveBaseName` demands a lite label (a DNS label with at
+    // least two trailing digits) and `registerBaseName` demands any single DNS
+    // label. Labels satisfying both, such as "alice42", are legal to mint via
+    // either surface, so collisions are resolved by the ERC721 uniqueness
+    // guarantee on the shared registrar. This test pins the rejection ends of
+    // each surface: a digitless stem fails `reserveBaseName`, and a dotted
+    // label fails `registerBaseName`.
+    function test_entry_point_format_rejections() public {
         vm.prank(popGateway);
         vm.expectRevert(IDotnsPopController.InvalidLiteLabel.selector);
         dotnsPopController.reserveBaseName("alice", ed, "", "");
@@ -221,25 +271,25 @@ contract DotnsPopControllerTests is BaseDotns {
         IDotnsPopController.Link memory link = _linkFresh(hex"aa");
         vm.prank(popGateway);
         vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
-        dotnsPopController.registerBaseName("alice.42", ed, link);
+        dotnsPopController.registerBaseName("not.valid", ed, link);
     }
 
     function test_same_stem_lite_and_base_occupy_distinct_registrar_tokens() public {
-        _reservePop(ed, "alice.42", hex"aa", "");
+        _reservePop(ed, "alice42", hex"aa", "");
 
         IDotnsPopController.Link memory link = _linkFresh(hex"bb");
         vm.prank(popGateway);
         dotnsPopController.registerBaseName("alice", tiago, link);
 
-        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("alice.42"))), ed);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("alice42"))), ed);
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("alice"))), tiago);
     }
 
     function test_both_controllers_can_mint_on_shared_registrar() public {
-        _reservePop(ed, "alice.91", hex"01", "");
+        _reservePop(ed, "alice91", hex"01", "");
         _commitAndRegister("longnamebob01", tiago, true);
 
-        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("alice.91"))), ed);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("alice91"))), ed);
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebob01"))), tiago);
     }
 
@@ -249,7 +299,7 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_gateway_reserved_name_rejects_public_register_by_other_user() public {
         // Gateway reserves the bare stem; PopRules.priceWithCheck strips the two
         // trailing digits from "longnamebob01" and matches against reservations["longnamebob"].
-        _reservePop(tiago, "alice.92", hex"11", "longnamebob");
+        _reservePop(tiago, "alice92", hex"11", "longnamebob");
 
         (address holder,) = popRules.getBaseNameReservation("longnamebob");
         assertEq(holder, tiago);
@@ -283,7 +333,7 @@ contract DotnsPopControllerTests is BaseDotns {
     // name themselves. The PopRules guard only rejects OTHER users; the holder
     // owns the slot and passes the `reservation.owner == userAddress` branch.
     function test_gateway_reserved_name_allows_holder_to_register_via_public() public {
-        _reservePop(tiago, "alice.93", hex"11", "longnamebob");
+        _reservePop(tiago, "alice93", hex"11", "longnamebob");
 
         _commitAndRegister("longnamebob01", tiago, true);
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebob01"))), tiago);
@@ -292,15 +342,15 @@ contract DotnsPopControllerTests is BaseDotns {
     // A second PoP lite-mint of the same label reverts at the registrar's
     // ERC721 availability check, because the token was already minted.
     function test_second_pop_lite_mint_of_same_label_reverts_at_registrar() public {
-        _reservePop(ed, "alice.42", hex"aa", "");
+        _reservePop(ed, "alice42", hex"aa", "");
 
         vm.prank(popGateway);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IDotnsRegistrar.NameNotAvailable.selector, uint256(_nodeOf("alice.42"))
+                IDotnsRegistrar.NameNotAvailable.selector, uint256(_nodeOf("alice42"))
             )
         );
-        dotnsPopController.reserveBaseName("alice.42", tiago, hex"bb", "");
+        dotnsPopController.reserveBaseName("alice42", tiago, hex"bb", "");
     }
 
     // After a PoP full-person mint of a base label, a subsequent public
@@ -386,13 +436,13 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_pop_reservation_of_already_public_minted_name_fails_on_claim() public {
         _commitAndRegister("longnamebob01", ed, true);
 
-        _reservePop(tiago, "alice.42", hex"aa", "longnamebob01");
+        _reservePop(tiago, "alice42", hex"aa", "longnamebob01");
 
         (bool reserved, address holder) = dotnsPopController.isReservedForClaim("longnamebob01");
         assertTrue(reserved);
         assertEq(holder, tiago);
 
-        IDotnsPopController.Link memory link = _linkWithLite("alice.42");
+        IDotnsPopController.Link memory link = _linkWithLite("alice42");
         vm.prank(popGateway);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -405,7 +455,7 @@ contract DotnsPopControllerTests is BaseDotns {
     // Enqueue that becomes the head writes the holder into PopRules.reservations
     // so the public commit-reveal flow blocks other users on the same stem.
     function test_enqueue_becomesHead_writes_popRules_reservation() public {
-        _reservePop(ed, "alice.10", hex"aa", "longnamebob");
+        _reservePop(ed, "alice10", hex"aa", "longnamebob");
 
         (address holder, uint64 expires) = popRules.getBaseNameReservation("longnamebob");
         assertEq(holder, ed);
@@ -415,11 +465,11 @@ contract DotnsPopControllerTests is BaseDotns {
     // Tail enqueue (slot already live for someone else) must not overwrite the
     // PopRules.reservations slot: the first reserver keeps priority.
     function test_enqueue_not_head_does_not_touch_popRules() public {
-        _reservePop(ed, "alice.11", hex"aa", "longnamebob");
+        _reservePop(ed, "alice11", hex"aa", "longnamebob");
         (, uint64 originalExpiry) = popRules.getBaseNameReservation("longnamebob");
 
         // Second reserver lands at the tail — no PopRules write should happen.
-        _reservePop(tiago, "bob.12", hex"bb", "longnamebob");
+        _reservePop(tiago, "bob12", hex"bb", "longnamebob");
 
         (address holder, uint64 expires) = popRules.getBaseNameReservation("longnamebob");
         assertEq(holder, ed);
@@ -429,9 +479,9 @@ contract DotnsPopControllerTests is BaseDotns {
     // Successful claim wipes the queue and releases the PopRules slot so the
     // public commit-reveal flow is unblocked for every other user.
     function test_claim_releases_popRules_slot() public {
-        _reservePop(ed, "alice.13", hex"aa", "longnamebob");
+        _reservePop(ed, "alice13", hex"aa", "longnamebob");
 
-        IDotnsPopController.Link memory link = _linkWithLite("alice.13");
+        IDotnsPopController.Link memory link = _linkWithLite("alice13");
         vm.prank(popGateway);
         dotnsPopController.registerBaseName("longnamebob", ed, link);
 
@@ -441,7 +491,7 @@ contract DotnsPopControllerTests is BaseDotns {
 
     // Final relinquish (no other queued waiter) releases the PopRules slot.
     function test_relinquish_last_releases_popRules_slot() public {
-        _reservePop(ed, "alice.14", hex"aa", "longnamebob");
+        _reservePop(ed, "alice14", hex"aa", "longnamebob");
 
         vm.prank(ed);
         dotnsPopController.relinquishReservation();
@@ -450,39 +500,15 @@ contract DotnsPopControllerTests is BaseDotns {
         assertEq(holder, address(0));
     }
 
-    // Head relinquish promotes the next waiter and re-writes PopRules so the
-    // public flow now blocks everyone except the newly promoted head.
-    function test_relinquish_head_syncs_popRules_to_new_head() public {
-        _reservePop(ed, "alice.15", hex"aa", "longnamebob");
-        _reservePop(tiago, "bob.16", hex"bb", "longnamebob");
-
-        vm.prank(ed);
-        dotnsPopController.relinquishReservation();
-
-        (address holder,) = popRules.getBaseNameReservation("longnamebob");
-        assertEq(holder, tiago);
-    }
-
-    // `expireReservation` past duration with a waiter behind promotes the
-    // next entry and syncs PopRules to the new head. Tiago enqueues after a
-    // half-duration warp so his window extends past ed's, guaranteeing ed
-    // expires first and tiago becomes the live successor.
-    function test_advanceExpiredHead_promotes_and_syncs_popRules() public {
-        _reservePop(ed, "alice.17", hex"aa", "longnamebob");
-
-        vm.warp(block.timestamp + dotnsPopController.reservationDuration() / 2);
-        _reservePop(tiago, "bob.18", hex"bb", "longnamebob");
-
-        vm.warp(block.timestamp + dotnsPopController.reservationDuration() / 2 + 1);
-        dotnsPopController.expireReservation("longnamebob");
-
-        (address holder,) = popRules.getBaseNameReservation("longnamebob");
-        assertEq(holder, tiago);
-    }
+    // Head promotion under relinquish and expiry is covered by the cross-contract
+    // sync invariant `invariant_popRules_head_matches_queue_head_or_zero` (and the
+    // equivalent fuzz `testFuzz_popRules_head_owner_matches_queue_head`), which
+    // walk arbitrary enqueue / relinquish / expire / warp sequences and assert
+    // the live-head equivalence between PopRules and the PoP controller's queue.
 
     // Last-remaining head expires and the queue empties — PopRules slot clears.
     function test_advanceExpiredHead_last_expire_releases_popRules_slot() public {
-        _reservePop(ed, "alice.19", hex"aa", "longnamebob");
+        _reservePop(ed, "alice19", hex"aa", "longnamebob");
 
         vm.warp(block.timestamp + dotnsPopController.reservationDuration() + 1);
         dotnsPopController.expireReservation("longnamebob");
@@ -498,7 +524,7 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_controller_does_not_mutate_reservedBaseLabel_string() public {
         // "longnamebob01" has two trailing digits. PopRules stores it as-is,
         // but `priceWithCheck` queries reservations keyed by "longnamebob".
-        _reservePop(ed, "alice.21", hex"aa", "longnamebob01");
+        _reservePop(ed, "alice21", hex"aa", "longnamebob01");
 
         // Slot is written under the raw label.
         (address rawHolder,) = popRules.getBaseNameReservation("longnamebob01");
@@ -513,9 +539,9 @@ contract DotnsPopControllerTests is BaseDotns {
     // After a claim clears the slot, a different user can mint the stem via
     // the public commit-reveal flow. Exercises release-on-claim end-to-end.
     function test_public_stranger_can_mint_after_claim_clears_reservation() public {
-        _reservePop(ed, "alice.22", hex"aa", "longnamebob");
+        _reservePop(ed, "alice22", hex"aa", "longnamebob");
 
-        IDotnsPopController.Link memory link = _linkWithLite("alice.22");
+        IDotnsPopController.Link memory link = _linkWithLite("alice22");
         vm.prank(popGateway);
         dotnsPopController.registerBaseName("longnamebob", ed, link);
 
@@ -528,7 +554,7 @@ contract DotnsPopControllerTests is BaseDotns {
     // After natural expiry of the head the slot must be cleared before the
     // public flow admits a stranger. Exercises release-on-last-expire.
     function test_public_stranger_can_mint_after_reservation_expires() public {
-        _reservePop(ed, "alice.23", hex"aa", "longnamebob");
+        _reservePop(ed, "alice23", hex"aa", "longnamebob");
 
         vm.warp(block.timestamp + dotnsPopController.reservationDuration() + 1);
         dotnsPopController.expireReservation("longnamebob");
@@ -549,7 +575,7 @@ contract DotnsPopControllerTests is BaseDotns {
         vm.expectRevert(
             abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, otherController)
         );
-        dotnsPopController.reserveBaseName("alice.24", ed, "", "longnamebob");
+        dotnsPopController.reserveBaseName("alice24", ed, "", "longnamebob");
     }
 
     // Asserts exactly one entry in `logs` matches event signature `sig`.

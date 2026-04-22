@@ -47,39 +47,36 @@ library StringUtils {
         return _isDnsLabel(label, 0, label.length);
     }
 
-    /// @notice Validates the lite-person PoP label format: `<stem>.<digits>`.
-    /// @dev Accepts exactly one `.` separator with a DNS-valid stem before it and at
-    ///      least {MIN_LITE_SUFFIX_DIGITS} digits after it. Mirrors
-    ///      `pallet_resources::MIN_LITE_USERNAME_DIGITS` so that lite-person usernames
-    ///      produced on the People Chain (e.g. `alice.42`) round-trip into DotNS
-    ///      without format drift. The format is syntactically disjoint from
-    ///      {isSingleLabel} (which forbids `.`) so lite-person names and public
-    ///      registrations cannot collide at the label level.
+    /// @notice Validates the lite-person PoP label format: `<stem><digits>`.
+    /// @dev A lite-person label is a single DNS label whose trailing characters are
+    ///      digits, with at least {MIN_LITE_SUFFIX_DIGITS} digits at the tail. Mirrors
+    ///      `pallet_resources::MIN_LITE_USERNAME_DIGITS`. Lite and public registrations
+    ///      share the same namespace; the gateway strips any separator before calling
+    ///      so the on-chain label is a flat DNS label (e.g. `alice42`). First-to-mint
+    ///      wins at the ERC721 layer; cross-flow priority on the stripped stem is
+    ///      arbitrated by {IPopRules.reserveBaseNameForPop}. Keeping a single
+    ///      namespace avoids the ambiguity dotli/dweb would otherwise see between
+    ///      `andrew.47` (lite) and `andrew` owning `47` as a subname.
     /// @param s Candidate label.
-    /// @return isValid True if the label matches `<dns-label>.<digits{2,}>`.
+    /// @return isValid True if the label is a DNS label with at least
+    ///         {MIN_LITE_SUFFIX_DIGITS} trailing digits.
     function isLitePersonLabel(string calldata s) internal pure returns (bool isValid) {
         bytes calldata raw = bytes(s);
         uint256 length = raw.length;
-        if (length < MIN_LITE_SUFFIX_DIGITS + 2) return false;
+        if (length < MIN_LITE_SUFFIX_DIGITS + 1) return false;
 
-        uint256 dotIndex = length;
-        for (uint256 i = 0; i < length; ++i) {
-            if (raw[i] != bytes1(0x2e)) continue;
-            if (dotIndex != length) return false;
-            dotIndex = i;
+        if (!_isDnsLabel(raw, 0, length)) return false;
+
+        // Count trailing digits from the right; reject if fewer than the minimum.
+        uint256 trailingDigits;
+        for (uint256 i = length; i > 0; --i) {
+            bytes1 char = raw[i - 1];
+            if (char < bytes1(0x30) || char > bytes1(0x39)) break;
+            unchecked {
+                ++trailingDigits;
+            }
         }
-        if (dotIndex == length) return false;
-
-        if (!_isDnsLabel(raw, 0, dotIndex)) return false;
-
-        uint256 suffixStart = dotIndex + 1;
-        if (length - suffixStart < MIN_LITE_SUFFIX_DIGITS) return false;
-
-        for (uint256 i = suffixStart; i < length; ++i) {
-            bytes1 char = raw[i];
-            if (char < bytes1(0x30) || char > bytes1(0x39)) return false;
-        }
-        return true;
+        return trailingDigits >= MIN_LITE_SUFFIX_DIGITS;
     }
 
     function isNamePath(string calldata s) internal pure returns (bool isValid) {

@@ -12,7 +12,7 @@ import {
 
 import {IDotnsPopResolver} from "./IDotnsPopResolver.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
-import {DotnsProtocolRegistry} from "../registry/DotnsProtocolRegistry.sol";
+import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
 /// @title DotnsPopResolver
 /// @notice Per-node resolver holding records produced by the PoP username flow.
@@ -108,8 +108,7 @@ contract DotnsPopResolver is
 
     /// @notice Internal check enforcing PoP-controller-only access.
     function _onlyPopController() internal view {
-        address popController =
-            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).POP_CONTROLLER());
+        address popController = protocolRegistry.get(DotnsConstants.POP_CONTROLLER);
         require(msg.sender == popController, NotPopController(msg.sender));
     }
 

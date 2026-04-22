@@ -16,6 +16,7 @@ import {DotnsRegistrarController} from "../../contracts/registrars/DotnsRegistra
 import {DotnsPopController} from "../../contracts/registrars/DotnsPopController.sol";
 import {DotnsPopResolver} from "../../contracts/resolvers/DotnsPopResolver.sol";
 import {IDotnsController} from "../../contracts/registrars/IDotnsController.sol";
+import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 
 /// @title UpgradePopSystem
 /// @notice Single orchestration script that applies the PoP-controller upgrade in order.
@@ -139,9 +140,9 @@ contract UpgradePopSystem is BaseDeployer {
 
         DotnsProtocolRegistry protocolRegistry = DotnsProtocolRegistry(PROTOCOL_REGISTRY_PROXY);
         vm.startPrank(protocolRegistryOwner);
-        protocolRegistry.set(protocolRegistry.POP_RESOLVER(), deployment.popResolverProxy);
-        protocolRegistry.set(protocolRegistry.POP_CONTROLLER(), deployment.popControllerProxy);
-        protocolRegistry.set(protocolRegistry.POP_GATEWAY(), popGateway);
+        protocolRegistry.set(DotnsConstants.POP_RESOLVER, deployment.popResolverProxy);
+        protocolRegistry.set(DotnsConstants.POP_CONTROLLER, deployment.popControllerProxy);
+        protocolRegistry.set(DotnsConstants.POP_GATEWAY, popGateway);
         vm.stopPrank();
 
         _upgrade(REGISTRY_PROXY, _REGISTRY_NEW, _REGISTRY_OLD, registryOwner);
@@ -173,17 +174,15 @@ contract UpgradePopSystem is BaseDeployer {
         _requireVersion(popResolver.version(), POP_RESOLVER_VERSION, "PopResolver");
 
         require(
-            protocolRegistry.get(protocolRegistry.POP_CONTROLLER())
-                == deployment.popControllerProxy,
+            protocolRegistry.get(DotnsConstants.POP_CONTROLLER) == deployment.popControllerProxy,
             "POP_CONTROLLER not wired"
         );
         require(
-            protocolRegistry.get(protocolRegistry.POP_RESOLVER()) == deployment.popResolverProxy,
+            protocolRegistry.get(DotnsConstants.POP_RESOLVER) == deployment.popResolverProxy,
             "POP_RESOLVER not wired"
         );
         require(
-            protocolRegistry.get(protocolRegistry.POP_GATEWAY()) == popGateway,
-            "POP_GATEWAY not wired"
+            protocolRegistry.get(DotnsConstants.POP_GATEWAY) == popGateway, "POP_GATEWAY not wired"
         );
         require(
             registrar.controllers(IDotnsController(deployment.popControllerProxy)),

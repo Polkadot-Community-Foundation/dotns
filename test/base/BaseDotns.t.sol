@@ -323,6 +323,16 @@ abstract contract BaseDotns is Test {
         });
     }
 
+    /// @notice Authorises the calling test contract on the registrar's controller set.
+    /// @dev PopRules' `_onlyRegistry` trusts `DotnsRegistrar.controllers`, so unit
+    ///      tests that exercise `reserveBaseName` / `reserveBaseNameForPop` /
+    ///      `releaseBaseName` directly have to be registered. Single helper keeps
+    ///      the `vm.prank(owner)` + `addController` boilerplate in one place.
+    function _authoriseTestAsController() internal {
+        vm.prank(owner);
+        dotnsRegistrar.addController(IDotnsController(address(this)));
+    }
+
     /// @notice Creates a new test user and funds it with DEFAULT_BALANCE.
     /// @dev Uses Foundry's `makeAddr` to derive a deterministic address and labels it in traces.
     /// @param name Human-readable label used to derive and label the address.

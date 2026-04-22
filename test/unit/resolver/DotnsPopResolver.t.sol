@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IDotnsPopResolver} from "../../../contracts/resolvers/IDotnsPopResolver.sol";
+import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 
 /// @title DotnsPopResolverTests
 /// @notice Behavioural unit tests for {DotnsPopResolver}. Coverage of byte-exact
@@ -11,7 +12,7 @@ import {IDotnsPopResolver} from "../../../contracts/resolvers/IDotnsPopResolver.
 ///         or a tautological storage-read.
 contract DotnsPopResolverTests is BaseDotns {
     function test_setChatKey_writes_and_emits() public {
-        bytes32 node = _nodeOf("alice.42");
+        bytes32 node = _nodeOf("alice42");
         bytes memory chatKey = hex"01020304";
 
         vm.prank(address(dotnsPopController));
@@ -25,12 +26,12 @@ contract DotnsPopResolverTests is BaseDotns {
     function test_setChatKey_reverts_for_unauthorised_caller() public {
         vm.prank(ed);
         vm.expectRevert(abi.encodeWithSelector(IDotnsPopResolver.NotPopController.selector, ed));
-        dotnsPopResolver.setChatKey(_nodeOf("alice.42"), hex"01");
+        dotnsPopResolver.setChatKey(_nodeOf("alice42"), hex"01");
     }
 
     function test_setLiteLink_writes_and_emits() public {
         bytes32 fullNode = _nodeOf("alice");
-        bytes32 liteLabelhash = keccak256(bytes("alice.42"));
+        bytes32 liteLabelhash = keccak256(bytes("alice42"));
 
         vm.prank(address(dotnsPopController));
         vm.expectEmit(true, true, false, false);
@@ -43,12 +44,12 @@ contract DotnsPopResolverTests is BaseDotns {
     function test_setLiteLink_reverts_for_unauthorised_caller() public {
         vm.prank(ed);
         vm.expectRevert(abi.encodeWithSelector(IDotnsPopResolver.NotPopController.selector, ed));
-        dotnsPopResolver.setLiteLink(_nodeOf("alice"), keccak256(bytes("alice.42")));
+        dotnsPopResolver.setLiteLink(_nodeOf("alice"), keccak256(bytes("alice42")));
     }
 
     function test_rotating_pop_controller_changes_authorised_writer() public {
         address replacement = makeAddr("replacement");
-        bytes32 key = protocolRegistry.POP_CONTROLLER();
+        bytes32 key = DotnsConstants.POP_CONTROLLER;
 
         vm.prank(owner);
         protocolRegistry.set(key, replacement);
@@ -59,10 +60,10 @@ contract DotnsPopResolverTests is BaseDotns {
                 IDotnsPopResolver.NotPopController.selector, address(dotnsPopController)
             )
         );
-        dotnsPopResolver.setChatKey(_nodeOf("alice.42"), hex"01");
+        dotnsPopResolver.setChatKey(_nodeOf("alice42"), hex"01");
 
         vm.prank(replacement);
-        dotnsPopResolver.setChatKey(_nodeOf("alice.42"), hex"02");
-        assertEq(dotnsPopResolver.chatKey(_nodeOf("alice.42")), hex"02");
+        dotnsPopResolver.setChatKey(_nodeOf("alice42"), hex"02");
+        assertEq(dotnsPopResolver.chatKey(_nodeOf("alice42")), hex"02");
     }
 }

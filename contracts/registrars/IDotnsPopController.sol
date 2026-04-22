@@ -16,14 +16,16 @@ import {IDotnsController} from "./IDotnsController.sol";
 ///
 /// @dev Label formats:
 ///      - Lite-person usernames (first argument to {reserveBaseName} and the
-///        `liteLabel` of a `LinkKind.LiteUsername` link) follow the `NAME.XX`
-///        format enforced by {StringUtils-isLitePersonLabel}: a DNS-valid stem,
-///        a literal `.`, and at least two trailing digits (e.g. `alice.42`).
+///        `liteLabel` of a `LinkKind.LiteUsername` link) are DNS labels with at
+///        least two trailing digits (e.g. `alice42`) per
+///        {StringUtils-isLitePersonLabel}. The gateway strips any separator
+///        before calling so the on-chain label is flat.
 ///      - Full-person usernames (the `label` of {registerBaseName} and the optional
 ///        `reservedBaseLabel` of {reserveBaseName}) follow the DNS-label rules
 ///        enforced by {StringUtils-isSingleLabel} (e.g. `alice`).
-///      The two sets are syntactically disjoint, so lite-person and public
-///      registrations cannot collide at the label level.
+///      Lite and public registrations share one namespace; first-to-mint wins at
+///      the ERC721 layer. Cross-flow priority on the stripped base stem is
+///      arbitrated by {IPopRules.reserveBaseNameForPop}.
 /// @custom:security-contact admin@parity.io
 interface IDotnsPopController is IDotnsController {
     /// @notice Discriminant for the `Link` union supplied to `registerBaseName`.
@@ -40,12 +42,20 @@ interface IDotnsPopController is IDotnsController {
 
     /// @notice Tagged union selecting the chat-key source for a full-person registration.
     /// @param kind Which branch of the union is populated.
-    /// @param liteLabel Lite-person `NAME.XX` label (only read when `kind == LiteUsername`).
+    /// @param liteLabel Lite-person `NAMEXX` label (only read when `kind == LiteUsername`).
     /// @param chatKey Chat key bytes (only read when `kind == None`).
     struct Link {
         LinkKind kind;
         string liteLabel;
         bytes chatKey;
+    }
+
+    /// @notice Per-user reservation pointer: which queue the user sits in and where.
+    /// @param labelhash Non-zero when the user holds a live reservation; zero otherwise.
+    /// @param index Monotonic queue index, meaningful only when `labelhash` is non-zero.
+    struct UserReservation {
+        bytes32 labelhash;
+        uint64 index;
     }
 
     /// @notice Emitted when a lite-person username is registered via the PoP gateway.
@@ -106,7 +116,7 @@ interface IDotnsPopController is IDotnsController {
     /// @param caller The address that attempted the call.
     error NotGateway(address caller);
 
-    /// @notice Thrown when a supplied lite-person label does not match `NAME.XX`.
+    /// @notice Thrown when a supplied lite-person label does not match `NAMEXX`.
     error InvalidLiteLabel();
 
     /// @notice Thrown when a supplied base label is not a canonical DNS label.
@@ -140,7 +150,7 @@ interface IDotnsPopController is IDotnsController {
     ///      non-empty the user is enqueued on the reservation queue for that label; at
     ///      most one active reservation per account is enforced and any prior
     ///      reservation is relinquished.
-    /// @param liteLabel The lite-person `NAME.XX` label to register.
+    /// @param liteLabel The lite-person `NAMEXX` label to register.
     /// @param user The lite-person account receiving the username.
     /// @param chatKey ECDH chat-key bytes to persist on {IDotnsChatKeyResolver}.
     /// @param reservedBaseLabel Optional base name to reserve. Empty string skips.

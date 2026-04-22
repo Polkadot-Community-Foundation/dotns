@@ -13,12 +13,12 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {IDotnsPopController} from "./IDotnsPopController.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
-import {DotnsProtocolRegistry} from "../registry/DotnsProtocolRegistry.sol";
 import {IDotnsPopResolver} from "../resolvers/IDotnsPopResolver.sol";
 import {IPopRules} from "../pop/IPopRules.sol";
 import {LabelUtils} from "../utils/LabelUtils.sol";
 import {RegistrationUtils} from "../utils/RegistrationUtils.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
+import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
 /// @title DotnsPopController
 /// @notice Dedicated PoP controller orchestrating lite-person and full-person
@@ -33,9 +33,12 @@ import {StringUtils} from "../utils/StringUtils.sol";
 ///      flow collision handling relies on two distinct properties, neither of
 ///      which requires the two controllers to know about each other:
 ///
-///      - Lite-person labels (`NAME.XX`) are format-disjoint from the DNS
-///        labels the public controller accepts, so labelhashes cannot overlap.
-///        Lite names are safe from public registration by construction.
+///      - Lite-person labels (`NAMEXX`) share the public namespace: they are
+///        just DNS labels with at least two trailing digits. First-to-mint wins
+///        at the ERC721 layer, so a lite-user and a public registrant cannot
+///        hold the same flat label simultaneously. Keeping one namespace
+///        removes the ambiguity downstream tooling (dotli, dweb) would see with
+///        a separate separator form.
 ///      - Base-name reservations are synchronised into @custom:contract IPopRules. The head of
 ///        this controller's reservation queue is written through
 ///        `IPopRules.reserveBaseNameForPop` on every head transition; the
@@ -95,14 +98,10 @@ contract DotnsPopController is
     mapping(bytes32 labelhash => mapping(uint64 index => ReservationEntry entry)) internal
         _reservationEntries;
 
-    /// @notice Tracks which label each user currently holds a reservation for.
-    /// @dev A non-zero labelhash means the user is somewhere in the queue for that label.
-    ///      Enforces "one active reservation per account".
-    mapping(address user => bytes32 labelhash) internal _userReservation;
-
-    /// @notice Records the monotonic index at which a user's reservation lives within
-    ///         the queue, so non-head relinquishment can find it in O(1).
-    mapping(address user => uint64 index) internal _userReservationIndex;
+    /// @notice Single per-user pointer into the reservation queues.
+    /// @dev Keeps per-user reservation data behind one key and one struct value
+    ///      so callers read both fields in one call instead of two.
+    mapping(address user => UserReservation reservation) internal _userReservations;
 
     /// @notice Remembers the base-label string for each reserved labelhash so the
     ///         PopRules sync path can address the reservation by its original
@@ -196,7 +195,7 @@ contract DotnsPopController is
         // Reservation axis: `user` is claiming iff they hold the live head-of-queue
         // reservation on `label`. Orthogonal to `link.kind`.
         ReservationQueueMeta memory meta = _reservationMeta[labelhash];
-        bool isClaim = _userReservation[user] == labelhash && meta.head < meta.tail
+        bool isClaim = _userReservations[user].labelhash == labelhash && meta.head < meta.tail
             && _reservationEntries[labelhash][meta.head].owner == user;
 
         if (isClaim) {
@@ -240,7 +239,7 @@ contract DotnsPopController is
 
     /// @inheritdoc IDotnsPopController
     function relinquishReservation() external override {
-        bytes32 labelhash = _userReservation[msg.sender];
+        bytes32 labelhash = _userReservations[msg.sender].labelhash;
         require(labelhash != bytes32(0), NoActiveReservation(msg.sender));
         _removeUserFromQueue(msg.sender);
         emit ReservationRelinquished(labelhash, msg.sender);
@@ -299,17 +298,18 @@ contract DotnsPopController is
         return (entry.owner, entry.joinedAt);
     }
 
-    /// @notice Returns the labelhash `user` currently has a reservation on.
+    /// @notice Returns `user`'s current reservation pointer.
+    /// @dev A zero `labelhash` means the user holds no reservation; `index` is
+    ///      meaningful only when `labelhash` is non-zero. Returning the struct
+    ///      lets callers read both fields in one call instead of two.
     /// @param user Account to query.
-    /// @return labelhash Reserved labelhash, or zero if `user` holds no reservation.
-    function userReservation(address user) external view returns (bytes32 labelhash) {
-        return _userReservation[user];
-    }
-
-    /// @notice Returns the queue index `user` currently occupies.
-    /// @dev Meaningful only when `userReservation(user)` is non-zero.
-    function userReservationIndex(address user) external view returns (uint64 index) {
-        return _userReservationIndex[user];
+    /// @return reservation The per-user pointer into the reservation queues.
+    function userReservation(address user)
+        external
+        view
+        returns (UserReservation memory reservation)
+    {
+        return _userReservations[user];
     }
 
     /// @inheritdoc ERC165Upgradeable
@@ -388,7 +388,7 @@ contract DotnsPopController is
     )
         internal
     {
-        require(_userReservation[user] == bytes32(0), AlreadyReserved(user, labelhash));
+        require(_userReservations[user].labelhash == bytes32(0), AlreadyReserved(user, labelhash));
 
         ReservationQueueMeta memory meta = _reservationMeta[labelhash];
         require(meta.tail - meta.head < MAX_RESERVATION_QUEUE, QueueFull(labelhash));
@@ -400,8 +400,7 @@ contract DotnsPopController is
             ReservationEntry({owner: user, joinedAt: uint64(block.timestamp)});
         _reservationMeta[labelhash] = ReservationQueueMeta({head: meta.head, tail: index + 1});
 
-        _userReservation[user] = labelhash;
-        _userReservationIndex[user] = index;
+        _userReservations[user] = UserReservation({labelhash: labelhash, index: index});
 
         if (becomesHead) {
             _reservedBaseLabel[labelhash] = baseLabel;
@@ -422,8 +421,7 @@ contract DotnsPopController is
         for (uint64 i = meta.head; i < meta.tail; i++) {
             ReservationEntry memory entry = _reservationEntries[labelhash][i];
             if (entry.owner != address(0)) {
-                delete _userReservation[entry.owner];
-                delete _userReservationIndex[entry.owner];
+                delete _userReservations[entry.owner];
             }
             delete _reservationEntries[labelhash][i];
         }
@@ -447,8 +445,7 @@ contract DotnsPopController is
             }
             if (!_isExpired(entry.joinedAt)) break;
 
-            delete _userReservation[entry.owner];
-            delete _userReservationIndex[entry.owner];
+            delete _userReservations[entry.owner];
             delete _reservationEntries[labelhash][head];
             emit ReservationExpired(labelhash, entry.owner);
             head++;
@@ -472,14 +469,13 @@ contract DotnsPopController is
     ///      actually handled. Non-head removals leave the queue shape intact, so
     ///      no advance or resync is needed.
     function _removeUserFromQueue(address user) internal {
-        bytes32 labelhash = _userReservation[user];
+        bytes32 labelhash = _userReservations[user].labelhash;
         if (labelhash == bytes32(0)) return;
 
-        uint64 entryIndex = _userReservationIndex[user];
+        uint64 entryIndex = _userReservations[user].index;
         ReservationQueueMeta memory queueMeta = _reservationMeta[labelhash];
 
-        delete _userReservation[user];
-        delete _userReservationIndex[user];
+        delete _userReservations[user];
         delete _reservationEntries[labelhash][entryIndex];
 
         if (entryIndex == queueMeta.head) {
@@ -487,7 +483,7 @@ contract DotnsPopController is
         }
     }
 
-    /// @notice Validates a lite-person `NAME.XX` label and derives `(labelhash, node)`.
+    /// @notice Validates a lite-person `NAMEXX` label and derives `(labelhash, node)`.
     function _validateLiteLabel(string calldata liteLabel)
         internal
         pure
@@ -497,7 +493,7 @@ contract DotnsPopController is
         (labelhash, node) = LabelUtils.deriveNode(liteLabel);
     }
 
-    /// @notice Validates a lite-person `NAME.XX` label and returns its labelhash.
+    /// @notice Validates a lite-person `NAMEXX` label and returns its labelhash.
     /// @dev Node is not needed for every call site; this overload avoids the extra
     ///      keccak when only the labelhash is used.
     function _validateLiteLabelHash(string calldata liteLabel)
@@ -531,16 +527,12 @@ contract DotnsPopController is
 
     /// @notice Resolves the PoP resolver via the protocol registry.
     function _popResolver() internal view returns (IDotnsPopResolver) {
-        return IDotnsPopResolver(
-            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).POP_RESOLVER())
-        );
+        return IDotnsPopResolver(protocolRegistry.get(DotnsConstants.POP_RESOLVER));
     }
 
     /// @notice Resolves the PopRules contract via the protocol registry.
     function _popRules() internal view returns (IPopRules) {
-        return IPopRules(
-            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).POP_RULES())
-        );
+        return IPopRules(protocolRegistry.get(DotnsConstants.POP_RULES));
     }
 
     /// @notice Writes the new head of the queue into PopRules so the public
@@ -568,8 +560,7 @@ contract DotnsPopController is
 
     /// @notice Internal check enforcing PoP-gateway-only access.
     function _onlyGateway() internal view {
-        address gateway =
-            protocolRegistry.get(DotnsProtocolRegistry(address(protocolRegistry)).POP_GATEWAY());
+        address gateway = protocolRegistry.get(DotnsConstants.POP_GATEWAY);
         require(msg.sender == gateway, NotGateway(msg.sender));
     }
 

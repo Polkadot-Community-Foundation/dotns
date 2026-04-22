@@ -303,8 +303,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     ///      the registry carry a parallel list, and lets the commit-reveal and PoP
     ///      controllers coexist without a per-registry configuration change.
     function _onlyRegistrarController() internal view {
-        DotnsRegistrar registrar =
-            DotnsRegistrar(protocolRegistry.get(DotnsConstants.REGISTRAR));
+        DotnsRegistrar registrar = DotnsRegistrar(protocolRegistry.get(DotnsConstants.REGISTRAR));
         require(registrar.controllers(IDotnsController(msg.sender)), NotAuthorised());
     }
 

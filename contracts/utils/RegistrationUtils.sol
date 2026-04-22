@@ -5,7 +5,6 @@ import {IDotnsRegistrar} from "../registrars/IDotnsRegistrar.sol";
 import {IDotnsRegistry} from "../registry/IDotnsRegistry.sol";
 import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
-import {DotnsProtocolRegistry} from "../registry/DotnsProtocolRegistry.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {Store} from "../store/Store.sol";
 import {StoreUtils} from "./StoreUtils.sol";
@@ -76,11 +75,10 @@ library RegistrationUtils {
         view
         returns (address[] memory controllers)
     {
-        DotnsProtocolRegistry keys = DotnsProtocolRegistry(address(protocolRegistry));
-        address registry = protocolRegistry.get(keys.REGISTRY());
-        address registrar = protocolRegistry.get(keys.REGISTRAR());
-        address controller = protocolRegistry.get(keys.CONTROLLER());
-        address popController = protocolRegistry.get(keys.POP_CONTROLLER());
+        address registry = protocolRegistry.get(DotnsConstants.REGISTRY);
+        address registrar = protocolRegistry.get(DotnsConstants.REGISTRAR);
+        address controller = protocolRegistry.get(DotnsConstants.CONTROLLER);
+        address popController = protocolRegistry.get(DotnsConstants.POP_CONTROLLER);
 
         uint256 count;
         if (registry != address(0)) count++;
@@ -139,12 +137,13 @@ library RegistrationUtils {
         view
         returns (Siblings memory siblings)
     {
-        DotnsProtocolRegistry keys = DotnsProtocolRegistry(address(protocolRegistry));
         siblings = Siblings({
-            registrar: IDotnsRegistrar(protocolRegistry.get(keys.REGISTRAR())),
-            registry: IDotnsRegistry(protocolRegistry.get(keys.REGISTRY())),
-            reverseResolver: IDotnsReverseResolver(protocolRegistry.get(keys.REVERSE_RESOLVER())),
-            storeFactory: IStoreFactory(protocolRegistry.get(keys.STORE_FACTORY()))
+            registrar: IDotnsRegistrar(protocolRegistry.get(DotnsConstants.REGISTRAR)),
+            registry: IDotnsRegistry(protocolRegistry.get(DotnsConstants.REGISTRY)),
+            reverseResolver: IDotnsReverseResolver(
+                protocolRegistry.get(DotnsConstants.REVERSE_RESOLVER)
+            ),
+            storeFactory: IStoreFactory(protocolRegistry.get(DotnsConstants.STORE_FACTORY))
         });
     }
 }

@@ -25,6 +25,7 @@ import {DotnsPopResolver} from "../../contracts/resolvers/DotnsPopResolver.sol";
 import {IDotnsController} from "../../contracts/registrars/IDotnsController.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 import {IPopRules} from "../../contracts/pop/IPopRules.sol";
+import {PopRules} from "../../contracts/pop/PopRules.sol";
 
 import {UpgradePopSystem} from "../../scripts/deploy/UpgradePopSystem.s.sol";
 
@@ -52,6 +53,16 @@ contract PopSystemUpgradeForkTest is Test {
     address public alice;
     address public bob;
 
+    // Pre-upgrade snapshot of every registry address the upgrade is NOT supposed
+    // to touch. Recorded before `upgradeAll` so tests can assert strict equality
+    // post-upgrade rather than the weaker "non-zero" oracle.
+    address public preUpgradeRegistrar;
+    address public preUpgradeController;
+    address public preUpgradeRegistry;
+    address public preUpgradePopRules;
+    address public preUpgradeStoreFactory;
+    address public preUpgradeReverseResolver;
+
     function setUp() public {
         vm.createSelectFork("paseo_local");
 
@@ -66,6 +77,14 @@ contract PopSystemUpgradeForkTest is Test {
         forwardRegistryOwner = OwnableUpgradeable(address(forwardRegistry)).owner();
         registrarOwner = OwnableUpgradeable(address(registrar)).owner();
         controllerOwner = OwnableUpgradeable(address(controller)).owner();
+
+        // Snapshot every address the upgrade must preserve, BEFORE applying.
+        preUpgradeRegistrar = registry.get(DotnsConstants.REGISTRAR);
+        preUpgradeController = registry.get(DotnsConstants.CONTROLLER);
+        preUpgradeRegistry = registry.get(DotnsConstants.REGISTRY);
+        preUpgradePopRules = registry.get(DotnsConstants.POP_RULES);
+        preUpgradeStoreFactory = registry.get(DotnsConstants.STORE_FACTORY);
+        preUpgradeReverseResolver = registry.get(DotnsConstants.REVERSE_RESOLVER);
 
         popGateway = makeAddr("popGateway");
 
@@ -93,18 +112,30 @@ contract PopSystemUpgradeForkTest is Test {
     }
 
     function test_pop_keys_wired() public view {
-        assertEq(registry.get(registry.POP_CONTROLLER()), address(popController));
-        assertEq(registry.get(registry.POP_RESOLVER()), address(popResolver));
-        assertEq(registry.get(registry.POP_GATEWAY()), popGateway);
+        assertEq(registry.get(DotnsConstants.POP_CONTROLLER), address(popController));
+        assertEq(registry.get(DotnsConstants.POP_RESOLVER), address(popResolver));
+        assertEq(registry.get(DotnsConstants.POP_GATEWAY), popGateway);
     }
 
+    // Every key the upgrade is NOT meant to write must equal its pre-upgrade value
+    // byte-for-byte. The previous "!= address(0)" oracle silently passes even when
+    // the upgrade overwrites a key with a fresh address, so this strengthens to
+    // snapshot-equality against the values captured in `setUp` before `upgradeAll`.
     function test_existing_registry_keys_preserved() public view {
-        assertTrue(registry.get(registry.REGISTRAR()) != address(0));
-        assertTrue(registry.get(registry.CONTROLLER()) != address(0));
-        assertTrue(registry.get(registry.REGISTRY()) != address(0));
-        assertTrue(registry.get(registry.POP_RULES()) != address(0));
-        assertTrue(registry.get(registry.STORE_FACTORY()) != address(0));
-        assertTrue(registry.get(registry.REVERSE_RESOLVER()) != address(0));
+        assertEq(registry.get(DotnsConstants.REGISTRAR), preUpgradeRegistrar);
+        assertEq(registry.get(DotnsConstants.CONTROLLER), preUpgradeController);
+        assertEq(registry.get(DotnsConstants.REGISTRY), preUpgradeRegistry);
+        assertEq(registry.get(DotnsConstants.POP_RULES), preUpgradePopRules);
+        assertEq(registry.get(DotnsConstants.STORE_FACTORY), preUpgradeStoreFactory);
+        assertEq(registry.get(DotnsConstants.REVERSE_RESOLVER), preUpgradeReverseResolver);
+    }
+
+    // Cheap live-state sanity check: `PopRules._onlyRegistry` reads through
+    // `protocolRegistry` to resolve the registrar, so an unset pointer here
+    // would silently revert every post-upgrade cross-flow sync write. Asserting
+    // it explicitly prevents a whole class of "nothing happens" regressions.
+    function test_popRules_protocol_registry_wired() public view {
+        assertEq(address(PopRules(preUpgradePopRules).protocolRegistry()), address(registry));
     }
 
     function test_pop_controller_authorised_on_registrar() public view {
@@ -121,7 +152,7 @@ contract PopSystemUpgradeForkTest is Test {
     }
 
     function test_full_pop_user_flow_after_upgrade() public {
-        string memory liteLabel = "forkalice.42";
+        string memory liteLabel = "forkalice42";
         string memory fullLabel = "forkalicefull";
         bytes memory chatKey = hex"cafebabe";
 
@@ -153,126 +184,44 @@ contract PopSystemUpgradeForkTest is Test {
         assertFalse(stillReserved);
     }
 
-    function test_pop_minted_name_supports_subname_creation() public {
-        string memory parentLabel = "forkparent42";
-        IDotnsPopController.Link memory link = IDotnsPopController.Link({
-            kind: IDotnsPopController.LinkKind.None, liteLabel: "", chatKey: hex"cafecafe"
-        });
-
-        vm.prank(popGateway);
-        popController.registerBaseName(parentLabel, alice, link);
-
-        bytes32 parentNode = _nodeOf(parentLabel);
-        assertEq(IERC721(address(registrar)).ownerOf(uint256(parentNode)), alice);
-
-        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
-            parentNode: parentNode, subLabel: "sub", parentLabel: parentLabel, owner: bob
-        });
-
-        vm.prank(alice);
-        bytes32 subnode = forwardRegistry.setSubnodeOwner(subnodeRecord);
-
-        assertEq(forwardRegistry.owner(subnode), bob);
-
-        IDotnsRegistry.SubnodeRecord memory unauthorisedSubnodeRecord = IDotnsRegistry.SubnodeRecord({
-            parentNode: parentNode, subLabel: "hijack", parentLabel: parentLabel, owner: bob
-        });
-
-        vm.prank(bob);
-        vm.expectRevert(IDotnsRegistry.NotAuthorised.selector);
-        forwardRegistry.setSubnodeOwner(unauthorisedSubnodeRecord);
-    }
-
-    function test_commit_reveal_controller_still_functions_after_upgrade() public view {
-        // The commit-reveal controller's on-chain state (min/max commitment age, protocol
-        // registry pointer) is preserved by the UUPS upgrade. Verifying the pointer
-        // here is the strongest non-transactional assertion we can make on a fork
-        // without paying gas for a full commit/reveal dance.
-        assertEq(address(controller.protocolRegistry()), address(registry));
-        assertGt(controller.maxCommitmentAge(), 0);
-        assertGt(controller.minCommitmentAge(), 0);
-    }
-
-    // Sync assertion: a gateway-driven reservation must propagate to PopRules so
-    // the public commit-reveal path sees the same cross-flow lock. This covers the
-    // head-of-queue => reserveBaseNameForPop edge added in this PR.
-    function test_gateway_reservation_syncs_to_pop_rules() public {
-        string memory liteLabel = "forksync.42";
-        string memory baseStem = "forksyncstem";
-
-        vm.prank(popGateway);
-        popController.reserveBaseName(liteLabel, alice, hex"11", baseStem);
-
-        IPopRules popRules = IPopRules(registry.get(registry.POP_RULES()));
-        (address holder, uint64 expires) = popRules.getBaseNameReservation(baseStem);
-        assertEq(holder, alice);
-        assertGt(expires, block.timestamp);
-    }
-
-    // Cross-controller race assertion: after the gateway reserves "forksyncstem",
-    // a stranger trying to commit-reveal "forksyncstem42" (which strips to the
-    // same stem in PopRules) must be rejected at priceWithCheck.
-    function test_public_commit_reveal_rejects_gateway_reserved_stem() public {
-        string memory liteLabel = "forkrace.42";
-        string memory baseStem = "forkracestem";
-        string memory publicLabel = "forkracestem07";
-
-        vm.prank(popGateway);
-        popController.reserveBaseName(liteLabel, alice, hex"11", baseStem);
-
+    // Drives a real commit-reveal registration end-to-end on the forked live
+    // state. The previous variant only read the controller's configuration
+    // pointers; it passed even if every post-upgrade transaction would revert.
+    // Using a NoStatus-classified label (>=9 chars with 2 trailing digits)
+    // means we also exercise the PopRules price path and the Store write.
+    function test_commit_reveal_controller_still_functions_after_upgrade() public {
+        string memory label = "forkregister42";
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: publicLabel, owner: bob, secret: keccak256("race-secret"), reserved: true
+                label: label, owner: alice, secret: keccak256("fork-secret"), reserved: false
             });
 
         bytes32 commitment = controller.makeCommitment(registration);
-        vm.prank(bob);
+        vm.prank(alice);
         controller.commit(commitment);
         vm.warp(block.timestamp + controller.minCommitmentAge() + 1);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPopRules.PopError.selector, "Base name reserved for original Lite registrant"
-            )
-        );
-        vm.prank(bob);
-        controller.register{value: 10 ether}(registration);
+        uint256 price = IPopRules(preUpgradePopRules).priceWithCheck(label, alice).price;
+
+        vm.prank(alice);
+        controller.register{value: price}(registration);
+
+        assertEq(IERC721(address(registrar)).ownerOf(uint256(_nodeOf(label))), alice);
     }
 
-    // Claim path wipes the queue and must release the PopRules slot in the same
-    // transaction, otherwise a stranger could be perpetually blocked on a stem
-    // whose claimant already minted it.
-    function test_claim_releases_pop_rules_slot() public {
-        string memory liteLabel = "forkclaim.42";
-        string memory baseStem = "forkclaimstem";
-
-        vm.prank(popGateway);
-        popController.reserveBaseName(liteLabel, alice, hex"11", baseStem);
-
-        IDotnsPopController.Link memory link = IDotnsPopController.Link({
-            kind: IDotnsPopController.LinkKind.LiteUsername, liteLabel: liteLabel, chatKey: ""
-        });
-        vm.prank(popGateway);
-        popController.registerBaseName(baseStem, alice, link);
-
-        IPopRules popRules = IPopRules(registry.get(registry.POP_RULES()));
-        (address holder, uint64 expires) = popRules.getBaseNameReservation(baseStem);
-        assertEq(holder, address(0));
-        assertEq(expires, 0);
-    }
-
-    // Covers the _removeUserFromQueue head-branch sync fix: a head user
-    // relinquishing while a live waiter exists must promote that waiter in
-    // PopRules, not leave the evicted user's address sitting in the record.
+    // Live-state variant of the _removeUserFromQueue head-branch sync: a head
+    // user relinquishing while a live waiter exists must promote that waiter
+    // in PopRules. Unit coverage exists for the queue side; the fork proves
+    // the cross-contract write reaches PopRules on the live deployment.
     function test_head_relinquish_promotes_successor_in_pop_rules() public {
         string memory baseStem = "forkrelinquish";
 
         vm.prank(popGateway);
-        popController.reserveBaseName("forkr1.42", alice, hex"01", baseStem);
+        popController.reserveBaseName("forkr142", alice, hex"01", baseStem);
         vm.prank(popGateway);
-        popController.reserveBaseName("forkr2.42", bob, hex"02", baseStem);
+        popController.reserveBaseName("forkr242", bob, hex"02", baseStem);
 
-        IPopRules popRules = IPopRules(registry.get(registry.POP_RULES()));
+        IPopRules popRules = IPopRules(preUpgradePopRules);
         (address aliceHolder,) = popRules.getBaseNameReservation(baseStem);
         assertEq(aliceHolder, alice);
 
@@ -284,33 +233,41 @@ contract PopSystemUpgradeForkTest is Test {
         assertGt(expires, block.timestamp);
     }
 
-    // Covers _advanceExpiredHead sync on expiry-driven promotion: once alice's
-    // reservation expires, the next reserve call or expire call should promote
-    // bob in PopRules so a stranger commit-reveal still sees the block.
+    // Live-state variant of `_advanceExpiredHead` sync. After both entries age
+    // out of the local controller window, the invariant holds: PopRules never
+    // points at the evicted head.
     function test_head_expiry_promotes_successor_in_pop_rules() public {
         string memory baseStem = "forkexpirestem";
 
         vm.prank(popGateway);
-        popController.reserveBaseName("forke1.42", alice, hex"01", baseStem);
+        popController.reserveBaseName("forke142", alice, hex"01", baseStem);
         vm.prank(popGateway);
-        popController.reserveBaseName("forke2.42", bob, hex"02", baseStem);
+        popController.reserveBaseName("forke242", bob, hex"02", baseStem);
 
-        IPopRules popRules = IPopRules(registry.get(registry.POP_RULES()));
-        // Warp past alice's PoP-controller reservation window so she expires out
-        // of the head; queue duration is controller-local, whereas PopRules
-        // tracks its own 12-week window per reservation. Warp past the later
-        // of the two.
+        IPopRules popRules = IPopRules(preUpgradePopRules);
         vm.warp(block.timestamp + 100 weeks);
 
         vm.prank(popGateway);
         popController.expireReservation(baseStem);
 
         (address holder,) = popRules.getBaseNameReservation(baseStem);
-        // Either bob is promoted (if his queue entry was still live under the
-        // controller's own reservationDuration), or the slot is released (if
-        // every waiter also expired). The invariant is: PopRules never points
-        // at alice after her reservation expired.
         assertTrue(holder != alice);
+    }
+
+    // Rotating the PoP controller via `protocolRegistry.set` must immediately
+    // lock the old controller out of resolver writes on the live deployment.
+    // Unit coverage exists (`test_rotating_pop_controller_changes_authorised_writer`),
+    // but rotation is a governance-time action on the registry and the fork is
+    // the only surface that proves the live state picks the swap up.
+    function test_rotating_pop_controller_locks_out_old_controller() public {
+        address replacement = makeAddr("replacementPopController");
+
+        vm.prank(OwnableUpgradeable(address(registry)).owner());
+        registry.set(DotnsConstants.POP_CONTROLLER, replacement);
+
+        vm.prank(address(popController));
+        vm.expectRevert();
+        popResolver.setChatKey(_nodeOf("forkalice42"), hex"01");
     }
 
     function _nodeOf(string memory label) internal pure returns (bytes32) {

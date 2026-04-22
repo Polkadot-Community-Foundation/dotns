@@ -54,4 +54,24 @@ library DotnsConstants {
     /// @notice Well-known key for the content resolver storing content hashes and text records.
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant CONTENT_RESOLVER = bytes32("contentResolver");
+
+    /// @notice Well-known key for the privileged PoP gateway address allowed to drive
+    ///         lite/full-person username flows via `DotnsPopController`.
+    /// @dev External account or pallet adapter configured by governance; the
+    ///      `DotnsPopController` reads it to gate its privileged entry points, so
+    ///      rotating the gateway is a single `set` call with no upgrade needed.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant POP_GATEWAY = bytes32("popGateway");
+
+    /// @notice Well-known key for the dedicated PoP controller orchestrating lite/full-person
+    ///         username issuance on behalf of the PoP gateway.
+    /// @dev Kept distinct from `CONTROLLER` (commit-reveal public controller) so the
+    ///      two can coexist per `DotnsRegistrar`'s multi-controller affordance.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant POP_CONTROLLER = bytes32("popController");
+
+    /// @notice Well-known key for the PoP resolver holding per-name records produced
+    ///         by the PoP username flow (chat keys, lite => full links).
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant POP_RESOLVER = bytes32("popResolver");
 }

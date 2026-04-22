@@ -3,7 +3,6 @@ pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
-import {IDotnsController} from "../../../contracts/registrars/IDotnsController.sol";
 
 contract PopRulesFuzzTest is BaseDotns {
     function testFuzz_popfull_user_can_access_poplite(uint256 seed, uint256 length) public {
@@ -64,8 +63,7 @@ contract PopRulesFuzzTest is BaseDotns {
     function testFuzz_reservation_blocks_other_users(uint256 seed) public {
         string memory nameLabel = string(abi.encodePacked(_makeAlpha(seed, 6), "01"));
 
-        vm.prank(owner);
-        dotnsRegistrar.addController(IDotnsController(address(this)));
+        _authoriseTestAsController();
 
         popRules.reserveBaseName(nameLabel, leonardo);
 
@@ -96,8 +94,7 @@ contract PopRulesFuzzTest is BaseDotns {
         string memory firstName = string(abi.encodePacked(baseName, "01"));
         string memory secondName = string(abi.encodePacked(baseName, "02"));
 
-        vm.prank(owner);
-        dotnsRegistrar.addController(IDotnsController(address(this)));
+        _authoriseTestAsController();
 
         popRules.reserveBaseName(firstName, leonardo);
 
