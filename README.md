@@ -182,19 +182,20 @@ Every resolver must spell out its writer policy on its interface and its read su
 
 Most features fit an existing contract and extending it is the right move. A new text record goes on the content resolver. A new view function on an existing registry adds to that registry. A new validation rule on registration modifies the commit-reveal controller. Adding a new controller or resolver solves a different problem: a responsibility that does not yet have a home. If you cannot cite the new responsibility in a sentence, you are extending, not adding.
 
-Example questions and the paths that answer them. Each row starts from a small set of known contracts; every hop is a public view call, so anyone with a node can resolve the answer without special access.
+Example query paths. Each row starts from a small set of known contracts; every hop is a public view call, so any node can resolve the path without special access.
 
-| Question | Path |
+| Lookup | Path |
 | --- | --- |
-| Which full name did this lite user claim? | Protocol registry => PoP resolver => `fullClaim(liteLabelhash)` |
-| Which lite username backs this full name? | Protocol registry => PoP resolver => `liteLink(fullNode)` |
-| What chat key is published for this name? | Protocol registry => PoP resolver => `chatKey(node)` |
-| Is this base stem reserved via the gateway? | Protocol registry => PoP controller => `isReservedForClaim(baseLabel)` |
-| Is this base stem reserved cross-flow? | Protocol registry => PopRules => `isBaseNameReserved(baseLabel)` |
-| Who owns this `.dot` name? | Protocol registry => registrar => `ownerOf(tokenId)` |
-| Who owns this subname? | Protocol registry => registry => `owner(subnode)` |
-| What address does this name resolve to? | Protocol registry => forward resolver => address record |
-| What is the primary name for this address? | Protocol registry => reverse resolver => primary name |
+| Lite labelhash => full-person node | Protocol registry => PoP resolver => `fullClaim(liteLabelhash)` |
+| Full-person node => lite labelhash | Protocol registry => PoP resolver => `liteLink(fullNode)` |
+| Node => chat key | Protocol registry => PoP resolver => `chatKey(node)` |
+| Node or tokenId => registered label | Protocol registry => registrar => `labelOf(uint256(node))` |
+| Base stem => gateway-reservation state | Protocol registry => PoP controller => `isReservedForClaim(baseLabel)` |
+| Base stem => cross-flow reservation state | Protocol registry => PopRules => `isBaseNameReserved(baseLabel)` |
+| Node => ERC721 owner | Protocol registry => registrar => `ownerOf(uint256(node))` |
+| Subnode => forward-registry owner | Protocol registry => registry => `owner(subnode)` |
+| Node => forward address record | Protocol registry => forward resolver => address record |
+| Address => primary name | Protocol registry => reverse resolver => primary name |
 
 ### Build
 

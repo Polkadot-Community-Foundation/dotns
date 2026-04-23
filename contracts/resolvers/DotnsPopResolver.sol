@@ -33,15 +33,16 @@ contract DotnsPopResolver is
     mapping(bytes32 node => bytes chatKey) private _chatKeys;
 
     /// @notice Stored lite-person labelhash keyed by full-person node.
-    /// @dev Answers "which lite label does this full name link to?" (full => lite).
+    /// @dev Forward direction (full => lite): maps a full-person node to the
+    ///      labelhash of the lite username it was claimed from.
     mapping(bytes32 fullNode => bytes32 liteLabelhash) private _liteLinks;
 
-    /// @notice Reverse index: the full node claimed by a given lite label.
-    /// @dev Answers "which full name did this lite user claim?" (lite => full).
-    ///      Written alongside `_liteLinks` on every claim so consumers that look
-    ///      up by lite username (Nova's pallet does) can resolve the full name
-    ///      without scanning events. Zero when the lite label has never been
-    ///      linked to a full claim.
+    /// @notice Reverse index mapping a lite labelhash to the full-person node
+    ///         it was promoted to.
+    /// @dev Written alongside `_liteLinks` on every claim so consumers that
+    ///      look up by lite username resolve the full name without scanning
+    ///      events. Zero when the lite label has never been linked to a full
+    ///      claim.
     mapping(bytes32 liteLabelhash => bytes32 fullNode) private _fullClaims;
 
     /// @dev Reserved storage space to allow for layout changes in the future.

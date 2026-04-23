@@ -504,7 +504,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
     function test_syncLabel_sets_label_for_owner() public {
         string memory nameLabel = "synclabel01";
         bytes32 labelhash = keccak256(bytes(nameLabel));
-        bytes32 node = keccak256(abi.encodePacked(dotNode, labelhash));
+        bytes32 node = _namehash(dotNode, labelhash);
         uint256 tokenId = uint256(node);
 
         vm.prank(address(dotnsRegistrarController));
@@ -526,7 +526,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
     function test_syncLabel_reverts_for_non_owner() public {
         string memory nameLabel = "synclabel02";
         bytes32 labelhash = keccak256(bytes(nameLabel));
-        bytes32 node = keccak256(abi.encodePacked(dotNode, labelhash));
+        bytes32 node = _namehash(dotNode, labelhash);
         uint256 tokenId = uint256(node);
 
         vm.prank(address(dotnsRegistrarController));
@@ -542,7 +542,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
     function test_syncLabel_reverts_wrong_label() public {
         string memory nameLabel = "synclabel03";
         bytes32 labelhash = keccak256(bytes(nameLabel));
-        bytes32 node = keccak256(abi.encodePacked(dotNode, labelhash));
+        bytes32 node = _namehash(dotNode, labelhash);
         uint256 tokenId = uint256(node);
 
         vm.prank(address(dotnsRegistrarController));
@@ -566,7 +566,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
     function test_syncLabel_reverts_for_dotted_label() public {
         string memory nameLabel = "nested.label";
         bytes32 labelhash = keccak256(bytes(nameLabel));
-        bytes32 node = keccak256(abi.encodePacked(dotNode, labelhash));
+        bytes32 node = _namehash(dotNode, labelhash);
         uint256 tokenId = uint256(node);
 
         vm.prank(address(dotnsRegistrarController));
@@ -580,7 +580,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
     function test_syncLabel_reverts_for_uppercase_label() public {
         string memory nameLabel = "Synclabel05";
         bytes32 labelhash = keccak256(bytes(nameLabel));
-        bytes32 node = keccak256(abi.encodePacked(dotNode, labelhash));
+        bytes32 node = _namehash(dotNode, labelhash);
         uint256 tokenId = uint256(node);
 
         vm.prank(address(dotnsRegistrarController));
@@ -594,7 +594,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
     function test_transfer_deploys_store_without_label() public {
         string memory nameLabel = "nolabel01";
         bytes32 labelhash = keccak256(bytes(nameLabel));
-        bytes32 node = keccak256(abi.encodePacked(dotNode, labelhash));
+        bytes32 node = _namehash(dotNode, labelhash);
         uint256 tokenId = uint256(node);
 
         vm.prank(address(dotnsRegistrarController));

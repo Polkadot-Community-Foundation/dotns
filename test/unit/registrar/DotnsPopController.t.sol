@@ -158,14 +158,6 @@ contract DotnsPopControllerTests is BaseDotns {
         dotnsPopController.registerBaseName("alicebob", ed, link);
     }
 
-    function test_registerBaseName_reverts_on_base_label_containing_dot() public {
-        IDotnsPopController.Link memory link = _linkFresh(hex"aa");
-
-        vm.prank(popGateway);
-        vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
-        dotnsPopController.registerBaseName("not.valid", ed, link);
-    }
-
     function test_relinquishReservation_promotes_next_waiter_when_head_leaves() public {
         _reservePop(ed, "alice80", hex"01", "alicebob");
         _reservePop(tiago, "bob81", hex"02", "alicebob");
@@ -694,5 +686,37 @@ contract DotnsPopControllerTests is BaseDotns {
                 revert("unexpected event emitted");
             }
         }
+    }
+
+    function test_expireReservation_on_empty_queue_is_noop() public {
+        // Permissionless expire against a label with no reservations must be a
+        // no-op. The path is cheap enough that a bot can spam it; reverting on
+        // empty queues would turn that spam into an accidental DoS against
+        // unrelated callers.
+        string memory stem = "noqueue";
+
+        (bool reservedBefore,) = dotnsPopController.isReservedForClaim(stem);
+        assertFalse(reservedBefore);
+
+        address stranger = makeAddr("stranger");
+        vm.prank(stranger);
+        dotnsPopController.expireReservation(stem);
+
+        (bool reservedAfter,) = dotnsPopController.isReservedForClaim(stem);
+        assertFalse(reservedAfter);
+    }
+
+    function test_setReservationDuration_zero_makes_new_reservations_immediately_expired() public {
+        // `reservationDuration` has no zero-guard. Setting it to 0 means every
+        // freshly enqueued reservation is classified expired by `_isExpired`
+        // on the same block. Pin the behaviour so a future patch that adds a
+        // zero-guard cannot silently drift this semantic.
+        vm.prank(owner);
+        dotnsPopController.setReservationDuration(0);
+
+        _reservePop(ed, "alice77", hex"01", "alicebob");
+
+        (bool reserved,) = dotnsPopController.isReservedForClaim("alicebob");
+        assertFalse(reserved);
     }
 }

@@ -44,7 +44,7 @@ contract DeployPopSystem is BaseDeployer {
         internal
         returns (address proxy)
     {
-        proxy = _broadcastDeployUUPS(
+        proxy = _broadcastDeployUups(
             owner,
             "DotnsPopResolver.sol:DotnsPopResolver",
             abi.encodeCall(DotnsPopResolver.initialize, (IDotnsProtocolRegistry(protocolRegistry))),
@@ -59,7 +59,7 @@ contract DeployPopSystem is BaseDeployer {
         internal
         returns (address proxy)
     {
-        proxy = _broadcastDeployUUPS(
+        proxy = _broadcastDeployUups(
             owner,
             "DotnsPopController.sol:DotnsPopController",
             abi.encodeCall(

@@ -37,7 +37,7 @@ contract PopRulesFuzzTest is BaseDotns {
         vm.prank(ed);
         popRules.setUserPopStatus(IPopRules.PopStatus.NoStatus);
 
-        vm.expectRevert();
+        vm.expectPartialRevert(IPopRules.PopError.selector);
         popRules.priceWithCheck(nameLabel, ed);
     }
 
@@ -56,7 +56,7 @@ contract PopRulesFuzzTest is BaseDotns {
         vm.prank(ed);
         popRules.setUserPopStatus(userStatus);
 
-        vm.expectRevert();
+        vm.expectPartialRevert(IPopRules.PopError.selector);
         popRules.priceWithCheck(nameLabel, ed);
     }
 
@@ -74,7 +74,7 @@ contract PopRulesFuzzTest is BaseDotns {
         assertTrue(isReserved);
         assertEq(reservedFor, leonardo);
 
-        vm.expectRevert();
+        vm.expectPartialRevert(IPopRules.PopError.selector);
         popRules.priceWithCheck(baseName, tiago);
     }
 
@@ -124,7 +124,7 @@ contract PopRulesFuzzTest is BaseDotns {
         vm.prank(ed);
         popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
 
-        vm.expectRevert();
+        vm.expectPartialRevert(IPopRules.PopError.selector);
         popRules.priceWithCheck(mixedCaseName, ed);
     }
 

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {IDotnsController} from "./IDotnsController.sol";
 
 /// @title IDotnsPopController
@@ -134,12 +133,6 @@ interface IDotnsPopController is IDotnsController {
     /// @param user The address that attempted to reserve.
     /// @param labelhash Labelhash of the reserved name.
     error AlreadyReserved(address user, bytes32 labelhash);
-
-    /// @notice Thrown when the user attempting a claim does not hold the head-of-queue
-    ///         reservation for the label.
-    /// @param user The address that attempted the claim.
-    /// @param labelhash Labelhash of the reserved name.
-    error NotHolder(address user, bytes32 labelhash);
 
     /// @notice Registers a lite-person username on behalf of `user` and optionally
     ///         enqueues a reservation for a base name the user intends to claim as a

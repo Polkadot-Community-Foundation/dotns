@@ -11,7 +11,6 @@ import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController
 import {IDotnsRegistrar} from "../registrars/IDotnsRegistrar.sol";
 import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
-import {Store} from "../store/Store.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
 import {IDotnsProtocolRegistry} from "./IDotnsProtocolRegistry.sol";
 import {DotnsProtocolRegistryOld} from "./DotnsProtocolRegistryOld.sol";

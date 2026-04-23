@@ -39,6 +39,7 @@ contract UpgradePopSystem is BaseDeployer {
     address public constant REGISTRY_PROXY = 0x4Da0d37aBe96C06ab19963F31ca2DC0412057a6f;
     address public constant REGISTRAR_PROXY = 0x329aAA5b6bEa94E750b2dacBa74Bf41291E6c2BD;
     address public constant CONTROLLER_PROXY = 0xd09e0F1c1E6CE8Cf40df929ef4FC778629573651;
+    address public constant POP_RULES_PROXY = 0x4e8920B1E69d0cEA9b23CBFC87A17Ee6fE02d2d3;
 
     /// @notice Default reservation duration for fresh PoP-controller deployments.
     uint64 public constant DEFAULT_RESERVATION_DURATION = 7 days;
@@ -50,6 +51,7 @@ contract UpgradePopSystem is BaseDeployer {
     string public constant CONTROLLER_VERSION = "1.5.0";
     string public constant POP_CONTROLLER_VERSION = "1.0.0";
     string public constant POP_RESOLVER_VERSION = "1.0.0";
+    string public constant POP_RULES_VERSION = "1.2.0";
 
     /// @notice Fully-qualified artifact names used for OZ reference-contract validation.
     string internal constant _PROTOCOL_REGISTRY_NEW =
@@ -64,6 +66,8 @@ contract UpgradePopSystem is BaseDeployer {
         "DotnsRegistrarController.sol:DotnsRegistrarController";
     string internal constant _CONTROLLER_OLD =
         "DotnsRegistrarControllerOld.sol:DotnsRegistrarControllerOld";
+    string internal constant _POP_RULES_NEW = "PopRules.sol:PopRules";
+    string internal constant _POP_RULES_OLD = "PopRulesOld.sol:PopRulesOld";
     string internal constant _POP_RESOLVER_NEW = "DotnsPopResolver.sol:DotnsPopResolver";
     string internal constant _POP_CONTROLLER_NEW = "DotnsPopController.sol:DotnsPopController";
 
@@ -149,6 +153,11 @@ contract UpgradePopSystem is BaseDeployer {
         _upgrade(REGISTRY_PROXY, _REGISTRY_NEW, _REGISTRY_OLD, registryOwner);
         _upgrade(REGISTRAR_PROXY, _REGISTRAR_NEW, _REGISTRAR_OLD, registrarOwner);
         _upgrade(CONTROLLER_PROXY, _CONTROLLER_NEW, _CONTROLLER_OLD, controllerOwner);
+        // PopRules upgrade is intentionally NOT part of this script. It is
+        // shipped separately so forge-test fork simulations do not exceed
+        // their per-run memory budget when running every OZ upgrade-safety
+        // validation back-to-back. A dedicated `UpgradePopRules.s.sol`
+        // script runs against live Paseo in its own forge-script process.
 
         vm.startPrank(registrarOwner);
         DotnsRegistrar(REGISTRAR_PROXY)

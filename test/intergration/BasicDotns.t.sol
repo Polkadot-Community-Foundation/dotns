@@ -279,8 +279,7 @@ contract BasicDotnsIntegration is BaseDotns {
         subnode = dotnsRegistry.setSubnodeOwner(subnodeRecord);
         vm.stopPrank();
 
-        bytes32 expectedSubnode =
-            keccak256(abi.encodePacked(parentNode, keccak256(bytes(subLabel))));
+        bytes32 expectedSubnode = _namehash(parentNode, keccak256(bytes(subLabel)));
         assertEq(subnode, expectedSubnode);
 
         assertTrue(dotnsRegistry.recordExists(subnode));

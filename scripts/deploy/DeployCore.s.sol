@@ -48,7 +48,7 @@ contract DeployCore is BaseDeployer {
     }
 
     function _deployRegistrar(address owner) internal returns (address proxy) {
-        proxy = _broadcastDeployUUPS(
+        proxy = _broadcastDeployUups(
             owner,
             "DotnsRegistrar.sol:DotnsRegistrar",
             abi.encodeCall(DotnsRegistrar.initialize, ("Dotns", "Dotns")),
@@ -57,7 +57,7 @@ contract DeployCore is BaseDeployer {
     }
 
     function _deployReverseResolver(address owner) internal returns (address proxy) {
-        proxy = _broadcastDeployUUPS(
+        proxy = _broadcastDeployUups(
             owner,
             "DotnsReverseResolver.sol:DotnsReverseResolver",
             abi.encodeCall(DotnsReverseResolver.initialize, ()),
@@ -74,7 +74,7 @@ contract DeployCore is BaseDeployer {
         internal
         returns (address proxy)
     {
-        proxy = _broadcastDeployUUPS(
+        proxy = _broadcastDeployUups(
             owner,
             "DotnsRegistry.sol:DotnsRegistry",
             abi.encodeCall(

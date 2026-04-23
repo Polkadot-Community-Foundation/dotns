@@ -112,7 +112,7 @@ abstract contract BaseDeployer is Script {
     /// @param initialiserCalldata ABI-encoded initialiser call.
     /// @param label Trace / manifest identifier.
     /// @return proxy Address of the deployed UUPS proxy.
-    function _broadcastDeployUUPS(
+    function _broadcastDeployUups(
         address owner,
         string memory artefact,
         bytes memory initialiserCalldata,

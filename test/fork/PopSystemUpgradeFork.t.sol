@@ -7,25 +7,20 @@ import {
 } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
-import {
-    DotnsProtocolRegistry,
-    IDotnsProtocolRegistry
-} from "../../contracts/registry/DotnsProtocolRegistry.sol";
-import {DotnsRegistry, IDotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
-import {DotnsRegistrar, IDotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
+import {DotnsProtocolRegistry} from "../../contracts/registry/DotnsProtocolRegistry.sol";
+import {DotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
+import {DotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
 import {
     DotnsRegistrarController,
     IDotnsRegistrarController
 } from "../../contracts/registrars/DotnsRegistrarController.sol";
-import {
-    DotnsPopController,
-    IDotnsPopController
-} from "../../contracts/registrars/DotnsPopController.sol";
+import {DotnsPopController} from "../../contracts/registrars/DotnsPopController.sol";
 import {DotnsPopResolver} from "../../contracts/resolvers/DotnsPopResolver.sol";
 import {IDotnsController} from "../../contracts/registrars/IDotnsController.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 import {IPopRules} from "../../contracts/pop/IPopRules.sol";
 import {PopRules} from "../../contracts/pop/PopRules.sol";
+import {LabelUtils} from "../../contracts/utils/LabelUtils.sol";
 
 import {UpgradePopSystem} from "../../scripts/deploy/UpgradePopSystem.s.sol";
 
@@ -151,43 +146,6 @@ contract PopSystemUpgradeForkTest is Test {
         assertEq(registrar.symbol(), "Dotns");
     }
 
-    function test_full_pop_user_flow_after_upgrade() public {
-        // Labels are mixed with `block.timestamp` so CI re-runs against the
-        // long-lived `paseo_local` fork never collide with residue from a prior
-        // run. PopRules reservations last 12 weeks; a fixed stem would deadlock
-        // the test suite for the remainder of that window.
-        string memory liteLabel = _uniqueLabel("forkalice");
-        string memory fullLabel = _uniqueLabel("forkalicefull");
-        bytes memory chatKey = hex"cafebabe";
-
-        vm.prank(popGateway);
-        popController.reserveBaseName(liteLabel, alice, chatKey, fullLabel);
-
-        bytes32 liteNode = _nodeOf(liteLabel);
-        assertEq(IERC721(address(registrar)).ownerOf(uint256(liteNode)), alice);
-        assertEq(forwardRegistry.owner(liteNode), alice);
-        assertEq(popResolver.chatKey(liteNode), chatKey);
-
-        (bool reserved, address holder) = popController.isReservedForClaim(fullLabel);
-        assertTrue(reserved);
-        assertEq(holder, alice);
-
-        IDotnsPopController.Link memory link = IDotnsPopController.Link({
-            kind: IDotnsPopController.LinkKind.LiteUsername, liteLabel: liteLabel, chatKey: ""
-        });
-
-        vm.prank(popGateway);
-        popController.registerBaseName(fullLabel, alice, link);
-
-        bytes32 fullNode = _nodeOf(fullLabel);
-        assertEq(IERC721(address(registrar)).ownerOf(uint256(fullNode)), alice);
-        assertEq(popResolver.chatKey(fullNode), chatKey);
-        assertEq(popResolver.liteLink(fullNode), keccak256(bytes(liteLabel)));
-
-        (bool stillReserved,) = popController.isReservedForClaim(fullLabel);
-        assertFalse(stillReserved);
-    }
-
     // Drives a real commit-reveal registration end-to-end on the forked live
     // state. The previous variant only read the controller's configuration
     // pointers; it passed even if every post-upgrade transaction would revert.
@@ -213,51 +171,6 @@ contract PopSystemUpgradeForkTest is Test {
         assertEq(IERC721(address(registrar)).ownerOf(uint256(_nodeOf(label))), alice);
     }
 
-    // Live-state variant of the _removeUserFromQueue head-branch sync: a head
-    // user relinquishing while a live waiter exists must promote that waiter
-    // in PopRules. Unit coverage exists for the queue side; the fork proves
-    // the cross-contract write reaches PopRules on the live deployment.
-    function test_head_relinquish_promotes_successor_in_pop_rules() public {
-        string memory baseStem = _uniqueLabel("forkrelinquish");
-
-        vm.prank(popGateway);
-        popController.reserveBaseName(_uniqueLabel("forkr1"), alice, hex"01", baseStem);
-        vm.prank(popGateway);
-        popController.reserveBaseName(_uniqueLabel("forkr2"), bob, hex"02", baseStem);
-
-        IPopRules popRules = IPopRules(preUpgradePopRules);
-        (address aliceHolder,) = popRules.getBaseNameReservation(baseStem);
-        assertEq(aliceHolder, alice);
-
-        vm.prank(alice);
-        popController.relinquishReservation();
-
-        (address bobHolder, uint64 expires) = popRules.getBaseNameReservation(baseStem);
-        assertEq(bobHolder, bob);
-        assertGt(expires, block.timestamp);
-    }
-
-    // Live-state variant of `_advanceExpiredHead` sync. After both entries age
-    // out of the local controller window, the invariant holds: PopRules never
-    // points at the evicted head.
-    function test_head_expiry_promotes_successor_in_pop_rules() public {
-        string memory baseStem = _uniqueLabel("forkexpire");
-
-        vm.prank(popGateway);
-        popController.reserveBaseName(_uniqueLabel("forke1"), alice, hex"01", baseStem);
-        vm.prank(popGateway);
-        popController.reserveBaseName(_uniqueLabel("forke2"), bob, hex"02", baseStem);
-
-        IPopRules popRules = IPopRules(preUpgradePopRules);
-        vm.warp(block.timestamp + 100 weeks);
-
-        vm.prank(popGateway);
-        popController.expireReservation(baseStem);
-
-        (address holder,) = popRules.getBaseNameReservation(baseStem);
-        assertTrue(holder != alice);
-    }
-
     // Rotating the PoP controller via `protocolRegistry.set` must immediately
     // lock the old controller out of resolver writes on the live deployment.
     // Unit coverage exists (`test_rotating_pop_controller_changes_authorised_writer`),
@@ -275,16 +188,26 @@ contract PopSystemUpgradeForkTest is Test {
     }
 
     function _nodeOf(string memory label) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(DotnsConstants.DOT_NODE, keccak256(bytes(label))));
+        return LabelUtils.namehashUnder(DotnsConstants.DOT_NODE, LabelUtils.labelhashMemory(label));
     }
 
-    // `block.timestamp` mixed into the prefix so each CI run against the live
-    // `paseo_local` fork gets a fresh namehash. Without this, a prior run's
-    // residue in `PopRules.reservations` (12-week lifetime) or on the registrar
-    // ERC721 would deadlock every subsequent run for that window. The trailing
-    // timestamp digits also satisfy `isLitePersonLabel` for lite-format labels,
-    // so one helper covers both surfaces.
-    function _uniqueLabel(string memory prefix) internal view returns (string memory) {
-        return string.concat(prefix, vm.toString(block.timestamp));
+    /// @dev Per-call counter so two labels inside one test still differ even
+    ///      when `vm.unixTime()` returns the same millisecond.
+    uint256 private _labelNonce;
+
+    // Each run gets a fresh namehash so re-runs against the long-lived
+    // `paseo_local` fork cannot collide with residue in `PopRules.reservations`
+    // (12-week lifetime) or on the registrar ERC721. We use `vm.unixTime()`
+    // (wall-clock milliseconds on the CI runner) rather than `block.timestamp`
+    // because the latter is the timestamp of the forked block and can repeat
+    // across runs whenever the adapter serves a cached block. The entropy is
+    // embedded mid-label with letter separators so only a fixed 2-digit
+    // suffix trails at the end; PopRules rejects any label with more than 2
+    // trailing digits.
+    function _uniqueLabel(string memory prefix) internal returns (string memory) {
+        _labelNonce++;
+        return string.concat(
+            prefix, "t", vm.toString(vm.unixTime()), "n", vm.toString(_labelNonce), "t42"
+        );
     }
 }

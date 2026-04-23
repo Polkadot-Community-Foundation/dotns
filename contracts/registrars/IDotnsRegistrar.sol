@@ -106,4 +106,13 @@ interface IDotnsRegistrar is IERC721 {
     /// @param tokenId The token identifier.
     /// @param label The human-readable label string (e.g. "alice").
     function syncLabel(uint256 tokenId, string calldata label) external;
+
+    /// @notice Returns the human-readable label a token was registered with.
+    /// @dev Canonical state source for the label string; any client that holds
+    ///      a node or tokenId can resolve the original label in one view call
+    ///      without scanning registration events. Returns the empty string
+    ///      when the token does not exist or the label has never been synced.
+    /// @param tokenId The token identifier (equal to `uint256(node)` for base names).
+    /// @return label The label the token was registered with.
+    function labelOf(uint256 tokenId) external view returns (string memory label);
 }

@@ -21,7 +21,7 @@ import {
     DotnsReverseResolver,
     IDotnsReverseResolver
 } from "../../contracts/resolvers/DotnsReverseResolver.sol";
-import {DotnsPopResolver, IDotnsPopResolver} from "../../contracts/resolvers/DotnsPopResolver.sol";
+import {DotnsPopResolver} from "../../contracts/resolvers/DotnsPopResolver.sol";
 import {Store} from "../../contracts/store/Store.sol";
 import {StoreFactory, IStoreFactory} from "../../contracts/store/StoreFactory.sol";
 import {
@@ -30,6 +30,7 @@ import {
 } from "../../contracts/registry/DotnsProtocolRegistry.sol";
 import {StoreUtils} from "../../contracts/utils/StoreUtils.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
+import {LabelUtils} from "../../contracts/utils/LabelUtils.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 /// @title BaseDotns
@@ -259,13 +260,14 @@ abstract contract BaseDotns is Test {
         vm.warp(block.timestamp + 365 days);
     }
 
-    /// @notice Computes an namehash for `parent` and `label`.
-    /// @dev Equivalent to `keccak256(abi.encodePacked(parent, label))`.
+    /// @notice Computes the namehash of `parent` and `labelhash`.
+    /// @dev Thin wrapper around {LabelUtils-namehashUnder} so tests do not
+    ///      reimplement the assembly composition.
     /// @param parent The parent node hash.
-    /// @param label The label hash.
+    /// @param labelhash The labelhash.
     /// @return node The resulting node hash.
-    function _namehash(bytes32 parent, bytes32 label) internal pure returns (bytes32 node) {
-        node = keccak256(abi.encodePacked(parent, label));
+    function _namehash(bytes32 parent, bytes32 labelhash) internal pure returns (bytes32 node) {
+        node = LabelUtils.namehashUnder(parent, labelhash);
     }
 
     /// @notice Computes the ERC721 tokenId used by DotnsRegistrar for a given label.
@@ -282,8 +284,7 @@ abstract contract BaseDotns is Test {
     /// @param label Label (without the `.dot` suffix).
     /// @return node The node identifier under the `.dot` TLD.
     function _nodeOf(string memory label) internal pure returns (bytes32 node) {
-        bytes32 labelhash = keccak256(bytes(label));
-        node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
+        node = LabelUtils.namehashUnder(DOT_NODE, LabelUtils.labelhashMemory(label));
     }
 
     /// @notice Drives `DotnsPopController.reserveBaseName` through the configured gateway.
@@ -441,9 +442,7 @@ abstract contract BaseDotns is Test {
 
         _commitAndRegister(label, labelOwner, true);
 
-        // IMPORTANT: tokenId is uint256(node) where node = namehash(DOT_NODE, labelhash)
-        // Do not use uint256(node) as the tokenId in tests.
-        node = keccak256(abi.encodePacked(DOT_NODE, keccak256(bytes(label))));
+        node = _nodeOf(label);
     }
 
     /// @notice Ensures a Store exists for `storeOwner`, deploying one if necessary.

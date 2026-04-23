@@ -11,12 +11,10 @@ import {
 } from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 
 import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
-import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
 import {IDotnsController} from "./IDotnsController.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {DotnsProtocolRegistryOld} from "../registry/DotnsProtocolRegistryOld.sol";
 
-import {Store} from "../store/Store.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
@@ -262,4 +260,11 @@ contract DotnsRegistrarOld is
 
     /// @inheritdoc UUPSUpgradeable
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
+    /// @dev Stub for the post-upgrade surface. This reference snapshot captures
+    ///      the pre-upgrade bytecode and storage layout only; the public label
+    ///      getter ships on `DotnsRegistrar`.
+    function labelOf(uint256) external pure override returns (string memory) {
+        return "";
+    }
 }

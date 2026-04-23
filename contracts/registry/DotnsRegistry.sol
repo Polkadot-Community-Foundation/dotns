@@ -13,7 +13,6 @@ import {IDotnsRegistrar} from "../registrars/IDotnsRegistrar.sol";
 import {DotnsRegistrar} from "../registrars/DotnsRegistrar.sol";
 import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
-import {Store} from "../store/Store.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
 import {RegistrationUtils} from "../utils/RegistrationUtils.sol";
 import {LabelUtils} from "../utils/LabelUtils.sol";

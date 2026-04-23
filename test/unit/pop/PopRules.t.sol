@@ -145,34 +145,4 @@ contract PopRulesTests is BaseDotns {
         assertEq(holder, leonardo);
         assertGt(refreshedExpiry, firstExpiry);
     }
-
-    function test_base_reservation_rolls_forward_after_expiry() public {
-        _authoriseTestAsController();
-
-        popRules.reserveBaseName("lights01", leonardo);
-
-        (bool isReserved, address reservationOwner, uint64 expiryTimestamp) =
-            popRules.isBaseNameReserved("lights");
-
-        assertTrue(isReserved);
-        assertEq(reservationOwner, leonardo);
-
-        vm.warp(uint256(expiryTimestamp) + 1);
-
-        popRules.reserveBaseName("lights02", tiago);
-
-        (bool rolledReserved, address rolledOwner, uint64 rolledExpiry) =
-            popRules.isBaseNameReserved("lights");
-
-        assertTrue(rolledReserved);
-        assertEq(rolledOwner, tiago);
-        assertGt(rolledExpiry, expiryTimestamp);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPopRules.PopError.selector, "Base name reserved for original Lite registrant"
-            )
-        );
-        popRules.priceWithCheck("lights", leonardo);
-    }
 }

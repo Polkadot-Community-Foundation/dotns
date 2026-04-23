@@ -16,7 +16,7 @@ import {
 import {DotnsReverseResolver} from "../../contracts/resolvers/DotnsReverseResolver.sol";
 import {DotnsResolver} from "../../contracts/resolvers/DotnsResolver.sol";
 import {DotnsContentResolver} from "../../contracts/resolvers/DotnsContentResolver.sol";
-import {PopRules, IPopRules} from "../../contracts/pop/PopRules.sol";
+import {PopRules} from "../../contracts/pop/PopRules.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 
 import {UpgradeProtocolKeys} from "../../scripts/deploy/UpgradeProtocolKeys.s.sol";

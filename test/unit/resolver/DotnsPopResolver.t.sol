@@ -52,6 +52,26 @@ contract DotnsPopResolverTests is BaseDotns {
         dotnsPopResolver.setLiteLink(_nodeOf("alice"), keccak256(bytes("alice42")));
     }
 
+    function test_setChatKey_accepts_zero_node_as_passthrough() public {
+        // `node` is never guarded against `bytes32(0)`: the PoP controller
+        // validates labels before calling through, so the only way to reach a
+        // zero-node write is for the controller itself to regress. Pin the
+        // passthrough semantics so any future validator lands as a diff here.
+        vm.prank(address(dotnsPopController));
+        dotnsPopResolver.setChatKey(bytes32(0), hex"deadbeef");
+        assertEq(dotnsPopResolver.chatKey(bytes32(0)), hex"deadbeef");
+    }
+
+    function test_setLiteLink_accepts_zero_inputs_as_passthrough() public {
+        // Same passthrough expectation on the two-arg writer. Writing
+        // (0, 0) must not revert and must populate both forward and reverse
+        // indexes at the zero key.
+        vm.prank(address(dotnsPopController));
+        dotnsPopResolver.setLiteLink(bytes32(0), bytes32(0));
+        assertEq(dotnsPopResolver.liteLink(bytes32(0)), bytes32(0));
+        assertEq(dotnsPopResolver.fullClaim(bytes32(0)), bytes32(0));
+    }
+
     function test_rotating_pop_controller_changes_authorised_writer() public {
         address replacement = makeAddr("replacement");
         bytes32 key = DotnsConstants.POP_CONTROLLER;

@@ -14,7 +14,6 @@ import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
 import {IDotnsController} from "./IDotnsController.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 
-import {Store} from "../store/Store.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
 import {RegistrationUtils} from "../utils/RegistrationUtils.sol";
@@ -147,6 +146,11 @@ contract DotnsRegistrar is
 
         _labels[tokenId] = label;
         emit LabelSynced(tokenId, label);
+    }
+
+    /// @inheritdoc IDotnsRegistrar
+    function labelOf(uint256 tokenId) external view override returns (string memory) {
+        return _labels[tokenId];
     }
 
     /// @notice Returns implementation version.

@@ -39,7 +39,7 @@ contract DeployPolicy is BaseDeployer {
     }
 
     function _deployRegistrarController(address owner) internal returns (address proxy) {
-        proxy = _broadcastDeployUUPS(
+        proxy = _broadcastDeployUups(
             owner,
             "DotnsRegistrarController.sol:DotnsRegistrarController",
             abi.encodeCall(
@@ -59,7 +59,7 @@ contract DeployPolicy is BaseDeployer {
     }
 
     function _deployProtocolRegistry(address owner) internal returns (address proxy) {
-        proxy = _broadcastDeployUUPS(
+        proxy = _broadcastDeployUups(
             owner,
             "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
             abi.encodeCall(DotnsProtocolRegistry.initialize, ()),
