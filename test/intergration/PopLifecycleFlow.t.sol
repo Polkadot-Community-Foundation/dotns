@@ -16,10 +16,14 @@ import {LabelUtils} from "../../contracts/utils/LabelUtils.sol";
 ///         subname issuance, transfer, and cross-contract lookup paths a
 ///         downstream consumer walks starting from the lite username string.
 contract PopLifecycleFlow is BaseDotns {
-    string internal constant LITE_LABEL = "alice42";
+    // Lite baselength 7 + 2 trailing digits classifies as PopLite.
+    string internal constant LITE_LABEL = "aliceli01";
+    // Full baselength 9 with no trailing digits classifies as PopFull.
     string internal constant FULL_LABEL = "alicefull";
     string internal constant SUB_LABEL = "app";
-    bytes internal constant CHAT_KEY = hex"cafebabedeadbeef";
+    // 65-byte canonical chat-key payload (secp256k1 uncompressed shape).
+    bytes internal constant CHAT_KEY =
+        hex"04cafebabedeadbeefcafebabedeadbeefcafebabedeadbeefcafebabedeadbeefcafebabedeadbeefcafebabedeadbeefcafebabedeadbeefcafebabedeadbeef";
     bytes internal constant CONTENT_HASH_A =
         hex"e30101701220aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     bytes internal constant CONTENT_HASH_B =
@@ -104,6 +108,12 @@ contract PopLifecycleFlow is BaseDotns {
     }
 
     function _mintLiteThenClaimFull(address user) internal {
+        // The reservedBaseLabel leg of reserveBaseName now runs
+        // priceWithCheck on FULL_LABEL too, and FULL_LABEL classifies as
+        // PopFull. Granting PopFull up front satisfies classification/tier
+        // on both the lite leg (PopLite classification, admitted by the
+        // PopFull superset) and the full-person claim.
+        _grantPopFull(user);
         _reservePop(user, LITE_LABEL, CHAT_KEY, FULL_LABEL);
         vm.prank(popGateway);
         dotnsPopController.registerBaseName(FULL_LABEL, user, _linkWithLite(LITE_LABEL));

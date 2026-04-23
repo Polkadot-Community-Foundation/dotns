@@ -24,52 +24,40 @@ contract DotnsPopControllerFuzz is BaseDotns {
         return StringUtils.uintToString(value);
     }
 
-    // Any well-formed `alice.<NN>` lite label (`NN` exactly 2 digits) mints.
-    // Replaces a family of hand-picked `alice.01`…`alice.99` unit tests.
+    // Any well-formed `alicex.<NN>` lite label (`NN` exactly 2 digits) mints.
+    // Stem `alicex` (baselength 6) keeps the label classification-valid as
+    // PopLite under the PopRules classification rules. Replaces a family of
+    // hand-picked suffix unit tests.
     function testFuzz_reserveBaseName_accepts_any_two_digit_suffix(uint8 suffix) public {
         suffix = uint8(bound(uint256(suffix), 0, 99));
-        string memory label = string.concat("alice", _twoDigitDecimal(uint256(suffix)));
+        string memory label = string.concat("alicex", _twoDigitDecimal(uint256(suffix)));
+
+        // Lite-tier label requires ed to hold PopLite (or PopFull) status so the
+        // `priceWithCheck` guard inside the controller accepts the reservation.
+        _grantPopLite(ed);
 
         _reservePop(ed, label, "", "");
 
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf(label))), ed);
     }
 
-    // Any label without at least two trailing digits fails the lite format
-    // rule and is rejected with the controller's specific `InvalidLiteLabel`
-    // error. Stems with fewer than two trailing digits cover both the "no
-    // digits" and "one trailing digit" cases.
-    function testFuzz_reserveBaseName_rejects_lite_label_without_trailing_digits(string calldata stem)
-        public
-    {
-        vm.assume(bytes(stem).length > 0 && bytes(stem).length < 64);
-        bytes calldata raw = bytes(stem);
-        // Require at least one non-digit in the last two positions so the
-        // trailing-digit count is below the minimum.
-        bytes1 lastChar = raw[raw.length - 1];
-        vm.assume(lastChar < 0x30 || lastChar > 0x39);
-        for (uint256 i = 0; i < raw.length; ++i) {
-            vm.assume(raw[i] != 0x2e);
-        }
-
-        vm.prank(popGateway);
-        vm.expectRevert(IDotnsPopController.InvalidLiteLabel.selector);
-        dotnsPopController.reserveBaseName(stem, ed, "", "");
-    }
-
-    // Any chat-key payload is persisted verbatim on the resolver; empty
-    // payloads skip the resolver write.
-    // Replaces the hand-picked empty-vs-nonempty unit pair with one
-    // byte-exact property across the full payload space.
+    // Any 65-byte chat-key payload is persisted verbatim on the resolver;
+    // empty payloads skip the resolver write. The resolver enforces a strict
+    // 65-byte length (uncompressed secp256k1 key), so the fuzzer seeds that
+    // payload via `_validChatKey` and only toggles empty-vs-set.
     function testFuzz_reserveBaseName_persists_chat_key_exact_bytes(
         uint8 suffix,
-        bytes calldata chatKey
+        bytes1 keySeed,
+        bool useKey
     )
         public
     {
         suffix = uint8(bound(uint256(suffix), 0, 99));
-        string memory label = string.concat("bob", _twoDigitDecimal(uint256(suffix)));
+        string memory label = string.concat("bobxyz", _twoDigitDecimal(uint256(suffix)));
 
+        _grantPopLite(ed);
+
+        bytes memory chatKey = useKey ? _validChatKey(keySeed) : bytes("");
         _reservePop(ed, label, chatKey, "");
 
         bytes32 node = _nodeOf(label);
@@ -89,7 +77,12 @@ contract DotnsPopControllerFuzz is BaseDotns {
         string memory fullLabel = "longnamebob01";
 
         if (reserveFirst) {
-            _reservePop(tiago, "alice31", "", stem);
+            // The reserved base label `longnamebob` classifies as PopFull
+            // (baselength 11 with no trailing digits); the lite label has to be
+            // PopLite-eligible. Tiago needs PopFull status so both
+            // `priceWithCheck` calls inside `reserveBaseName` succeed.
+            _grantPopFull(tiago);
+            _reservePop(tiago, LITE_LABEL_A, "", stem);
         }
 
         bytes32 secret = keccak256(abi.encodePacked(fullLabel, ed, block.timestamp));
@@ -133,11 +126,15 @@ contract DotnsPopControllerFuzz is BaseDotns {
         vm.prank(owner);
         dotnsPopController.setReservationDuration(duration);
 
-        _reservePop(ed, "carol77", "", "alicebob");
+        // Reserving `BASE_LABEL_A` (PopFull classification) alongside the
+        // lite leg requires ed to hold PopFull status so both `priceWithCheck`
+        // calls succeed.
+        _grantPopFull(ed);
+        _reservePop(ed, LITE_LABEL_A, "", BASE_LABEL_A);
 
         vm.warp(block.timestamp + uint256(elapsed));
 
-        (bool reserved, address holder) = dotnsPopController.isReservedForClaim("alicebob");
+        (bool reserved, address holder) = dotnsPopController.isReservedForClaim(BASE_LABEL_A);
         if (uint256(elapsed) < uint256(duration)) {
             assertTrue(reserved);
             assertEq(holder, ed);

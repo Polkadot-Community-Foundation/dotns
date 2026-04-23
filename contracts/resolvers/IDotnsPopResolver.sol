@@ -37,15 +37,27 @@ interface IDotnsPopResolver {
     /// @param caller The address that attempted the write.
     error NotPopController(address caller);
 
+    /// @notice Thrown when the provided chat key does not match the expected 65-byte length.
+    /// @param length The length of the payload that was rejected.
+    error InvalidChatKeyLength(uint256 length);
+
     /// @notice Sets the chat key for `node`.
     /// @dev Callable only by the address registered under
     ///      `DotnsProtocolRegistry.POP_CONTROLLER`. Overwrites any previous value.
+    ///      The payload must be exactly 65 bytes: the uncompressed secp256k1 public
+    ///      key encoding (1 prefix byte followed by the 32-byte X and 32-byte Y
+    ///      affine coordinates). Any other length reverts with {InvalidChatKeyLength}.
     /// @param node The node whose chat key is being written.
     /// @param chatKey ECDH public key bytes (pallet-side type is `[u8; 65]`).
     function setChatKey(bytes32 node, bytes calldata chatKey) external;
 
     /// @notice Sets the lite-person link for a full-person `node`.
-    /// @dev Callable only by the authorised PoP controller. Overwrites any previous link.
+    /// @dev Callable only by the authorised PoP controller. Overwrites any previous
+    ///      link. When overwriting, the stale inverse entry is nulled so both the
+    ///      forward (`liteLink`) and reverse (`fullClaim`) indices remain
+    ///      consistent: re-linking the same `fullNode` to a new `liteLabelhash`
+    ///      clears `fullClaim(oldLite)`, and re-linking the same `liteLabelhash`
+    ///      to a new `fullNode` clears `liteLink(oldFull)`.
     /// @param fullNode The full-person node carrying the link.
     /// @param liteLabelhash The labelhash of the linked lite-person username.
     function setLiteLink(bytes32 fullNode, bytes32 liteLabelhash) external;

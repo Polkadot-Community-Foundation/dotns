@@ -80,6 +80,10 @@ contract DotnsPopResolver is
         override
         onlyPopController
     {
+        // Chat keys are uncompressed secp256k1 public keys: 1 prefix byte plus
+        // the 32-byte X and 32-byte Y affine coordinates. Reject any other
+        // length so downstream consumers can rely on the stored shape.
+        require(chatKeyBytes.length == 65, InvalidChatKeyLength(chatKeyBytes.length));
         _chatKeys[node] = chatKeyBytes;
         emit ChatKeyUpdated(node, chatKeyBytes);
     }
@@ -93,6 +97,20 @@ contract DotnsPopResolver is
         override
         onlyPopController
     {
+        // Null any stale inverse entries before re-writing so the forward and
+        // reverse indices stay in lockstep after every call. Without this,
+        // re-linking the same `fullNode` to a new `liteLabelhash` (or vice
+        // versa) would leave the previous inverse pointing at a node it no
+        // longer claims, breaking the `fullClaim(liteLink(node)) == node`
+        // invariant.
+        bytes32 oldLite = _liteLinks[fullNode];
+        bytes32 oldFull = _fullClaims[liteLabelhash];
+        if (oldLite != bytes32(0) && oldLite != liteLabelhash) {
+            delete _fullClaims[oldLite];
+        }
+        if (oldFull != bytes32(0) && oldFull != fullNode) {
+            delete _liteLinks[oldFull];
+        }
         _liteLinks[fullNode] = liteLabelhash;
         _fullClaims[liteLabelhash] = fullNode;
         emit LiteLinkUpdated(fullNode, liteLabelhash);

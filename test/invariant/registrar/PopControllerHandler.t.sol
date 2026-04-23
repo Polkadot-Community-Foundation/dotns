@@ -6,6 +6,7 @@ import {
     DotnsPopController,
     IDotnsPopController
 } from "../../../contracts/registrars/DotnsPopController.sol";
+import {PopRules, IPopRules} from "../../../contracts/pop/PopRules.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 import {LabelUtils} from "../../../contracts/utils/LabelUtils.sol";
 
@@ -37,13 +38,37 @@ contract PopControllerHandler is Test {
     bytes32[] public claimedFullNodes;
     bytes32[] public claimedLiteLabelhashes;
 
-    constructor(DotnsPopController controller_, address gateway_, address[] memory actors_) {
+    // Prior lite labels reserved by the handler. Used by reLink actions so
+    // the fuzzer can re-use an existing lite label against a fresh base
+    // claim, driving the resolver overwrite paths (M-03). Kept as the raw
+    // string because the controller re-hashes internally on every call.
+    string[] public priorLiteLabels;
+
+    constructor(
+        DotnsPopController controller_,
+        address gateway_,
+        address[] memory actors_,
+        PopRules popRules_
+    ) {
         CONTROLLER = controller_;
         GATEWAY = gateway_;
         actors = actors_;
+        // baselength 8, no trailing digits: PopFull classification.
         baseLabels.push("alicebob");
+        // baselength 10, 2 trailing digits: NoStatus classification.
         baseLabels.push("wonderland01");
+        // baselength 10, no trailing digits: PopFull classification.
         baseLabels.push("carolcarol");
+
+        // Every actor needs PopFull status on the PoP rules oracle so the
+        // classification/tier guard in PopRules.priceWithCheck admits every
+        // label the handler can generate: PopLite lite labels (PopFull is a
+        // superset of PopLite), PopFull base labels, and NoStatus base labels
+        // (which merely require userStatus != PopLite).
+        for (uint256 i = 0; i < actors_.length; i++) {
+            vm.prank(actors_[i]);
+            popRules_.setUserPopStatus(IPopRules.PopStatus.PopFull);
+        }
     }
 
     function actorsCount() external view returns (uint256) {
@@ -70,6 +95,10 @@ contract PopControllerHandler is Test {
         return claimedFullNodes.length;
     }
 
+    function priorLiteLabelCount() external view returns (uint256) {
+        return priorLiteLabels.length;
+    }
+
     function reserve(uint256 actorIndex, uint256 baseIndex, bool attachReservation) external {
         // Reserves a lite label for an actor, optionally enqueuing on a base
         // label. Swallows known-good reverts (QueueFull, AlreadyReserved,
@@ -77,10 +106,7 @@ contract PopControllerHandler is Test {
         // so vm.toString always yields >=2 digits matching the NAMEXX format.
         address actor = _actor(actorIndex);
         _liteSuffix[actor]++;
-        uint256 suffixValue = 10 + uint256(_liteSuffix[actor]);
-        string memory liteLabel = string.concat(
-            "a", vm.toString(uint256(uint160(actor)) % 1000), vm.toString(suffixValue)
-        );
+        string memory liteLabel = _buildLiteLabel("rsv", actor, _liteSuffix[actor]);
         string memory reservedBase = attachReservation ? _baseLabel(baseIndex) : "";
 
         vm.prank(GATEWAY);
@@ -90,6 +116,7 @@ contract PopControllerHandler is Test {
                 DotnsConstants.DOT_NODE, LabelUtils.labelhashMemory(liteLabel)
             );
             mintedLiteTokenIds.push(uint256(node));
+            priorLiteLabels.push(liteLabel);
         } catch {}
     }
 
@@ -108,10 +135,7 @@ contract PopControllerHandler is Test {
         if (reservation.labelhash != keccak256(bytes(baseLabel))) return;
 
         _liteSuffix[actor]++;
-        uint256 suffixValue = 10 + uint256(_liteSuffix[actor]);
-        string memory liteLabel = string.concat(
-            "c", vm.toString(uint256(uint160(actor)) % 1000), vm.toString(suffixValue)
-        );
+        string memory liteLabel = _buildLiteLabel("clm", actor, _liteSuffix[actor]);
 
         vm.prank(GATEWAY);
         try CONTROLLER.reserveBaseName(liteLabel, actor, "", "") {
@@ -131,7 +155,44 @@ contract PopControllerHandler is Test {
                     uint256(LabelUtils.namehashUnder(DotnsConstants.DOT_NODE, liteLabelhash))
                 );
                 mintedLiteTokenIds.push(uint256(fullNode));
+                priorLiteLabels.push(liteLabel);
             } catch {}
+        } catch {}
+    }
+
+    function reLink(uint256 actorIndex, uint256 baseIndex, uint256 liteIndex) external {
+        // Drives the resolver overwrite paths (M-03). Picks an already-used
+        // lite label and re-registers it against a fresh base-label claim,
+        // so the same liteHash ends up mapped to a new fullNode. When the
+        // handler re-uses the same (baseLabel, actor) pair later, we also
+        // exercise the symmetric case: same fullNode mapped to a new
+        // liteHash. The full pre-conditions (actor must hold queue head for
+        // the picked baseLabel) are the same as for `claim`, so missing
+        // pre-conditions simply no-op like the rest of the handler.
+        uint256 liteCount = priorLiteLabels.length;
+        if (liteCount == 0) return;
+
+        address actor = _actor(actorIndex);
+        string memory baseLabel = _baseLabel(baseIndex);
+        string memory liteLabel = priorLiteLabels[liteIndex % liteCount];
+
+        IDotnsPopController.UserReservation memory reservation = CONTROLLER.userReservation(actor);
+        if (reservation.labelhash == bytes32(0)) return;
+        if (reservation.labelhash != keccak256(bytes(baseLabel))) return;
+
+        IDotnsPopController.Link memory link = IDotnsPopController.Link({
+            kind: IDotnsPopController.LinkKind.LiteUsername, liteLabel: liteLabel, chatKey: ""
+        });
+
+        vm.prank(GATEWAY);
+        try CONTROLLER.registerBaseName(baseLabel, actor, link) {
+            bytes32 liteLabelhash = LabelUtils.labelhashMemory(liteLabel);
+            bytes32 fullNode = LabelUtils.namehashUnder(
+                DotnsConstants.DOT_NODE, LabelUtils.labelhashMemory(baseLabel)
+            );
+            claimedLiteLabelhashes.push(liteLabelhash);
+            claimedFullNodes.push(fullNode);
+            mintedLiteTokenIds.push(uint256(fullNode));
         } catch {}
     }
 
@@ -149,6 +210,36 @@ contract PopControllerHandler is Test {
     function warp(uint256 secondsForward) external {
         // Exercises expiry paths. Bounded so state doesn't drift off a cliff.
         vm.warp(block.timestamp + (secondsForward % (30 days)));
+    }
+
+    /// @notice Builds a classification-valid PoP lite label.
+    /// @dev Shape: `<tag><4 letters from actor><2 digits>`. Total baselength
+    ///      is 7 with exactly 2 trailing digits, which classifies as PopLite
+    ///      under PopRules. Tag disambiguates the reserve vs claim call sites
+    ///      so neither collides with the other in the ERC721 namespace. The
+    ///      letter block is derived from the actor address via keccak so each
+    ///      actor lives in its own lite namespace. Suffix wraps modulo 100 so
+    ///      the label stays within the 2-trailing-digit rule; collisions past
+    ///      100 reuses are swallowed by the caller's try/catch.
+    function _buildLiteLabel(
+        string memory tag,
+        address actor,
+        uint64 suffix
+    )
+        internal
+        pure
+        returns (string memory label)
+    {
+        bytes32 seed = keccak256(abi.encode(actor));
+        bytes memory letters = new bytes(4);
+        for (uint256 i = 0; i < 4; i++) {
+            // Map each byte to lowercase a-z.
+            letters[i] = bytes1(uint8(seed[i]) % 26 + 0x61);
+        }
+        uint256 twoDigit = uint256(suffix) % 100;
+        string memory digits =
+            twoDigit < 10 ? string.concat("0", vm.toString(twoDigit)) : vm.toString(twoDigit);
+        label = string.concat(tag, string(letters), digits);
     }
 
     function _actor(uint256 index) internal view returns (address) {

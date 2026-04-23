@@ -23,15 +23,16 @@ contract DotnsPopControllerInvariant is BaseDotns {
             handlerActors[i] = makeAddr(string.concat("popActor", vm.toString(i)));
         }
 
-        handler = new PopControllerHandler(dotnsPopController, popGateway, handlerActors);
+        handler = new PopControllerHandler(dotnsPopController, popGateway, handlerActors, popRules);
         targetContract(address(handler));
 
-        bytes4[] memory selectors = new bytes4[](5);
+        bytes4[] memory selectors = new bytes4[](6);
         selectors[0] = handler.reserve.selector;
         selectors[1] = handler.relinquish.selector;
         selectors[2] = handler.expire.selector;
         selectors[3] = handler.warp.selector;
         selectors[4] = handler.claim.selector;
+        selectors[5] = handler.reLink.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
     }
 
@@ -113,16 +114,58 @@ contract DotnsPopControllerInvariant is BaseDotns {
     }
 
     function invariant_fullClaim_liteLink_are_inverse() public view {
-        // After any claim, the (liteLabelhash => fullNode) reverse index and
-        // the (fullNode => liteLabelhash) forward index must round-trip. This
-        // is the property downstream consumers rely on to walk from a lite
-        // username string all the way to the full name's on-chain state.
+        // For every (liteLabelhash, fullNode) pair the handler has ever
+        // claimed, the resolver's forward and reverse indexes must either
+        // still round-trip to each other OR have been cleared to zero by a
+        // later overwrite. Any intermediate state, where one side still
+        // points at the stale partner, is the M-03 corruption signature.
+        // Walking all pairs (not just the latest) is what lets the fuzzer
+        // catch overwrite-induced drift between historic pairs.
         uint256 n = handler.claimedCount();
         for (uint256 i = 0; i < n; i++) {
             bytes32 liteLabelhash = handler.claimedLiteLabelhashes(i);
             bytes32 fullNode = handler.claimedFullNodes(i);
-            assertEq(dotnsPopResolver.fullClaim(liteLabelhash), fullNode, "fullClaim != node");
-            assertEq(dotnsPopResolver.liteLink(fullNode), liteLabelhash, "liteLink != hash");
+
+            bytes32 currentFullForLite = dotnsPopResolver.fullClaim(liteLabelhash);
+            bytes32 currentLiteForFull = dotnsPopResolver.liteLink(fullNode);
+
+            // Either the pair is still live on both sides, or both sides
+            // have been cleared. Anything else is a partial overwrite.
+            if (currentFullForLite == fullNode) {
+                assertEq(currentLiteForFull, liteLabelhash, "live fullClaim but liteLink drifted");
+            } else if (currentLiteForFull == liteLabelhash) {
+                assertEq(currentFullForLite, fullNode, "live liteLink but fullClaim drifted");
+            }
+            // Else: both sides were overwritten. Covered by the stale
+            // invariants below.
+        }
+    }
+
+    function invariant_no_stale_liteLink() public view {
+        // For every fullNode the handler has touched, a non-zero liteLink
+        // must round-trip through fullClaim back to the same fullNode. A
+        // liteLink value that points at a liteLabelhash whose fullClaim now
+        // points elsewhere is a stale index, which is the exact footprint of
+        // the M-03 overwrite corruption.
+        uint256 n = handler.claimedCount();
+        for (uint256 i = 0; i < n; i++) {
+            bytes32 fullNode = handler.claimedFullNodes(i);
+            bytes32 currentLite = dotnsPopResolver.liteLink(fullNode);
+            if (currentLite == bytes32(0)) continue;
+            assertEq(dotnsPopResolver.fullClaim(currentLite), fullNode, "stale liteLink");
+        }
+    }
+
+    function invariant_no_stale_fullClaim() public view {
+        // Symmetric to `invariant_no_stale_liteLink`: for every
+        // liteLabelhash the handler has ever claimed, a non-zero fullClaim
+        // must round-trip back through liteLink to the same liteLabelhash.
+        uint256 n = handler.claimedCount();
+        for (uint256 i = 0; i < n; i++) {
+            bytes32 liteLabelhash = handler.claimedLiteLabelhashes(i);
+            bytes32 currentFull = dotnsPopResolver.fullClaim(liteLabelhash);
+            if (currentFull == bytes32(0)) continue;
+            assertEq(dotnsPopResolver.liteLink(currentFull), liteLabelhash, "stale fullClaim");
         }
     }
 }

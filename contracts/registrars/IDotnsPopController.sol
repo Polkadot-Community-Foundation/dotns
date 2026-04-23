@@ -134,15 +134,28 @@ interface IDotnsPopController is IDotnsController {
     /// @param labelhash Labelhash of the reserved name.
     error AlreadyReserved(address user, bytes32 labelhash);
 
+    /// @notice Thrown when someone tries to mint a base label in standalone mode
+    ///         while another user holds the live head-of-queue reservation.
+    /// @param user The address that attempted the mint.
+    /// @param labelhash Labelhash of the reserved base label.
+    error NotHolder(address user, bytes32 labelhash);
+
     /// @notice Registers a lite-person username on behalf of `user` and optionally
     ///         enqueues a reservation for a base name the user intends to claim as a
     ///         full person later.
     /// @dev Callable only by the PoP gateway registered in
-    ///      `DotnsProtocolRegistry.POP_GATEWAY`. Bypasses pricing and commit-reveal.
+    ///      `DotnsProtocolRegistry.POP_GATEWAY`. Bypasses pricing (PoP tiers pay
+    ///      zero) and commit-reveal, but still honours classification and tier
+    ///      enforcement via `IPopRules.priceWithCheck`, so the gateway cannot mint
+    ///      a name whose classification does not match the user's tier.
     ///      The lite-person username is minted immediately. If `reservedBaseLabel` is
     ///      non-empty the user is enqueued on the reservation queue for that label; at
     ///      most one active reservation per account is enforced and any prior
     ///      reservation is relinquished.
+    ///
+    ///      For the lite-only path (no base reservation), prefer {reserveLiteName}.
+    ///      It is an independent gateway primitive that never fails on base-queue
+    ///      state, so a full base queue never denies a user their lite name.
     /// @param liteLabel The lite-person `NAMEXX` label to register.
     /// @param user The lite-person account receiving the username.
     /// @param chatKey ECDH chat-key bytes to persist on {IDotnsChatKeyResolver}.
@@ -155,8 +168,27 @@ interface IDotnsPopController is IDotnsController {
     )
         external;
 
+    /// @notice Registers a lite-person username on behalf of `user` without
+    ///         touching the base-name reservation queue.
+    /// @dev Callable only by the PoP gateway. Bypasses pricing and commit-reveal
+    ///      but honours classification and tier enforcement via
+    ///      `IPopRules.priceWithCheck`. Compositional counterpart to
+    ///      {reserveBaseName}: for flows that only need to mint the lite name,
+    ///      this entrypoint has no failure modes tied to base queue capacity.
+    /// @param liteLabel The lite-person `NAMEXX` label to register.
+    /// @param user The lite-person account receiving the username.
+    /// @param chatKey ECDH chat-key bytes to persist on {IDotnsChatKeyResolver}.
+    function reserveLiteName(
+        string calldata liteLabel,
+        address user,
+        bytes calldata chatKey
+    )
+        external;
+
     /// @notice Registers a full-person username on behalf of `user`.
-    /// @dev Callable only by the PoP gateway. Bypasses pricing and commit-reveal.
+    /// @dev Callable only by the PoP gateway. Bypasses pricing (PoP tiers pay
+    ///      zero) and commit-reveal, but still honours classification and tier
+    ///      enforcement via `IPopRules.priceWithCheck`.
     ///
     ///      Two orthogonal axes decide behaviour:
     ///      1. Reservation axis (derived from state): if `user` holds the live

@@ -105,6 +105,20 @@ abstract contract BaseDotns is Test {
     /// @notice Zero hash constant
     bytes32 public constant ZERO_HASH = bytes32(0);
 
+    // Classification-valid labels for the PoP path (post PopRules enforcement).
+    // baselength 7 with 2 trailing digits classifies as PopLite.
+    string internal constant LITE_LABEL_A = "aliceli01";
+    string internal constant LITE_LABEL_B = "alicoli02";
+    string internal constant LITE_LABEL_C = "boblilu03";
+    string internal constant LITE_LABEL_D = "carolli04";
+    // baselength 8 with no trailing digits classifies as PopFull.
+    string internal constant BASE_LABEL_A = "alicebob";
+    string internal constant BASE_LABEL_B = "wonderla";
+    string internal constant BASE_LABEL_C = "carolboy";
+    // baselength >= 9 with 2 trailing digits classifies as NoStatus.
+    string internal constant NOSTATUS_LABEL_A = "nostatususer01";
+    string internal constant NOSTATUS_LABEL_B = "anothernostatus02";
+
     /// @notice Label hash for "dot".
     /// @dev Computed during setup as `keccak256(bytes("dot"))`.
     bytes32 public dotLabel;
@@ -285,6 +299,35 @@ abstract contract BaseDotns is Test {
     /// @return node The node identifier under the `.dot` TLD.
     function _nodeOf(string memory label) internal pure returns (bytes32 node) {
         node = LabelUtils.namehashUnder(DOT_NODE, LabelUtils.labelhashMemory(label));
+    }
+
+    /// @dev Returns a valid 65-byte chat key seeded with `seed`. Format mimics the
+    ///      uncompressed secp256k1 encoding (1 prefix byte + 32 X + 32 Y) so the
+    ///      resolver's length guard is satisfied.
+    function _validChatKey(bytes1 seed) internal pure returns (bytes memory key) {
+        key = new bytes(65);
+        key[0] = 0x04;
+        for (uint256 i = 1; i < 65; i++) {
+            key[i] = seed;
+        }
+    }
+
+    /// @notice Grants PopFull status to `who` on the PoP rules oracle.
+    function _grantPopFull(address who) internal {
+        vm.prank(who);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+    }
+
+    /// @notice Grants PopLite status to `who` on the PoP rules oracle.
+    function _grantPopLite(address who) internal {
+        vm.prank(who);
+        popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
+    }
+
+    /// @notice Grants NoStatus (default) to `who` on the PoP rules oracle.
+    function _grantNoStatus(address who) internal {
+        vm.prank(who);
+        popRules.setUserPopStatus(IPopRules.PopStatus.NoStatus);
     }
 
     /// @notice Drives `DotnsPopController.reserveBaseName` through the configured gateway.

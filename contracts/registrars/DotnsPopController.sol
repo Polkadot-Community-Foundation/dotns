@@ -27,6 +27,16 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 ///      `DotnsRegistrar` via `addController`, which is how multiple controllers
 ///      coexist on the same registrar without interfering with each other.
 ///
+/// @dev Enforcement:
+///      PoP entrypoints bypass native-token pricing (PoP tiers pay zero) and
+///      the commit-reveal window, but every mint path routes through
+///      `IPopRules.priceWithCheck` before any state mutation. This keeps
+///      classification (length-based "Reserved for Governance" guard) and tier
+///      policy (which PopStatus may register which labels) in lockstep with
+///      the public commit-reveal controller. The returned price is discarded
+///      because PoP tiers always resolve to zero; `priceWithCheck` reverts on
+///      classification or tier failure, which is the effect we are after.
+///
 /// @dev Decoupling:
 ///      This contract does not import or call `IDotnsRegistrarController`. The
 ///      public commit-reveal controller is equally unaware of this one. Cross-
@@ -153,6 +163,19 @@ contract DotnsPopController is
     }
 
     /// @inheritdoc IDotnsPopController
+    function reserveLiteName(
+        string calldata liteLabel,
+        address user,
+        bytes calldata chatKey
+    )
+        external
+        override
+        onlyGateway
+    {
+        _reserveLite(liteLabel, user, chatKey);
+    }
+
+    /// @inheritdoc IDotnsPopController
     function reserveBaseName(
         string calldata liteLabel,
         address user,
@@ -163,15 +186,14 @@ contract DotnsPopController is
         override
         onlyGateway
     {
-        (bytes32 labelhash, bytes32 node) = _validateLiteLabel(liteLabel);
-
-        _advanceExpiredHead(labelhash);
-
-        _completeGatewayRegistration(user, liteLabel, labelhash, node, chatKey, bytes32(0));
-
-        emit LiteNameReserved(labelhash, user, liteLabel);
+        _reserveLite(liteLabel, user, chatKey);
 
         if (bytes(reservedBaseLabel).length != 0) {
+            // Classification and tier enforcement for the base-name reservation.
+            // Runs before any queue mutation so a mis-tiered reservation never
+            // even touches the queue.
+            _popRules().priceWithCheck(reservedBaseLabel, user);
+
             bytes32 reservedHash = _validateBaseLabelHash(reservedBaseLabel);
             _advanceExpiredHead(reservedHash);
 
@@ -180,6 +202,31 @@ contract DotnsPopController is
             _removeUserFromQueue(user);
             _enqueueReservation(reservedHash, reservedBaseLabel, user);
         }
+    }
+
+    /// @notice Lite-only mint shared by {reserveLiteName} and the lite leg of
+    ///         {reserveBaseName}.
+    /// @dev Gated by `priceWithCheck` so the lite label's classification and
+    ///      the user's tier are honoured here too. The gateway-only modifier is
+    ///      enforced at the entrypoints that call this internal.
+    function _reserveLite(
+        string calldata liteLabel,
+        address user,
+        bytes calldata chatKey
+    )
+        internal
+    {
+        // Classification and tier enforcement for the lite label. Runs before
+        // any state mutation so a mis-tiered request never touches the registry.
+        _popRules().priceWithCheck(liteLabel, user);
+
+        (bytes32 labelhash, bytes32 node) = _validateLiteLabel(liteLabel);
+
+        _advanceExpiredHead(labelhash);
+
+        _completeGatewayRegistration(user, liteLabel, labelhash, node, chatKey, bytes32(0));
+
+        emit LiteNameReserved(labelhash, user, liteLabel);
     }
 
     /// @inheritdoc IDotnsPopController
@@ -192,6 +239,11 @@ contract DotnsPopController is
         override
         onlyGateway
     {
+        // Classification and tier enforcement for the full-person label. Runs
+        // ahead of the reservation-axis detection so a mis-tiered request never
+        // even touches the queue.
+        _popRules().priceWithCheck(label, user);
+
         (bytes32 labelhash, bytes32 node) = _validateBaseLabel(label);
 
         _advanceExpiredHead(labelhash);
@@ -201,6 +253,20 @@ contract DotnsPopController is
         ReservationQueueMeta memory meta = _reservationMeta[labelhash];
         bool isClaim = _userReservations[user].labelhash == labelhash && meta.head < meta.tail
             && _reservationEntries[labelhash][meta.head].owner == user;
+
+        // Standalone-mint holder guard: when the caller is not claiming their
+        // own live head, a live reservation held by another user blocks the
+        // mint. Expired or tombstoned heads do not block; those are handled by
+        // the queue garbage-collection paths.
+        if (!isClaim && meta.head < meta.tail) {
+            address head = _reservationEntries[labelhash][meta.head].owner;
+            if (
+                head != address(0) && head != user
+                    && !_isExpired(_reservationEntries[labelhash][meta.head].joinedAt)
+            ) {
+                revert NotHolder(user, labelhash);
+            }
+        }
 
         if (isClaim) {
             _clearQueue(labelhash);
