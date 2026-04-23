@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Test} from "forge-std/Test.sol";
+import {stdStorage, StdStorage} from "forge-std/StdStorage.sol";
 import {
     IDotnsRegistrarController,
     DotnsRegistrarController
@@ -19,6 +20,10 @@ import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 /// @dev Maintains ghost state to track registrations, commitments, transfers, and actors
 ///      for invariant checks.
 contract RegistrarControllerHandler is Test {
+    using stdStorage for StdStorage;
+
+    StdStorage internal stdstorage;
+
     /// @notice Namehash of the .dot TLD.
     bytes32 private constant DOT_NODE = DotnsConstants.DOT_NODE;
     /// @notice The registrar controller under test.
@@ -121,8 +126,11 @@ contract RegistrarControllerHandler is Test {
         actorStatus[actor] = status;
 
         if (status != IPopRules.PopStatus.NoStatus) {
-            vm.prank(actor);
-            popRules.setUserPopStatus(status);
+            stdstorage
+                .target(address(popRules))
+                .sig("userPopStatus(address)")
+                .with_key(actor)
+                .checked_write(uint256(status));
         }
     }
 

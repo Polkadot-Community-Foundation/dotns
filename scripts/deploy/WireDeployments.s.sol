@@ -11,7 +11,6 @@ import {DotnsPopController} from "../../contracts/registrars/DotnsPopController.
 import {IDotnsController} from "../../contracts/registrars/IDotnsController.sol";
 import {DotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
 import {DotnsProtocolRegistry} from "../../contracts/registry/DotnsProtocolRegistry.sol";
-import {IDotnsProtocolRegistry} from "../../contracts/registry/IDotnsProtocolRegistry.sol";
 import {DotnsResolver} from "../../contracts/resolvers/DotnsResolver.sol";
 import {DotnsContentResolver} from "../../contracts/resolvers/DotnsContentResolver.sol";
 import {DotnsReverseResolver} from "../../contracts/resolvers/DotnsReverseResolver.sol";
@@ -21,11 +20,12 @@ import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 
 /// @title WireDeployments
 /// @notice Final stage. Runs no proxy deployments; reads every address the
-///         earlier stages wrote to the manifest and performs the two
-///         wire-up operations the system needs before it can function:
-///         authorising both controllers on the registrar, and populating
-///         every protocol-registry key plus `updateProtocolRegistry` on every
-///         consumer.
+///         earlier stages wrote to the manifest and performs the two wire-up
+///         operations the system needs before it can function: authorising
+///         both controllers on the registrar, and populating every
+///         protocol-registry key. Each consumer proxy already received the
+///         protocol registry at init time, so no post-deploy pointer wiring is
+///         required here.
 /// @dev Also runs a best-effort post-wire verification: owner, protocol
 ///      registry key, and controller authorisation for each proxy.
 /// @custom:security-contact admin@parity.io
@@ -54,7 +54,6 @@ contract WireDeployments is BaseDeployer {
 
         _authoriseControllers(owner, addr);
         _wireProtocolRegistryKeys(owner, addr);
-        _wireProtocolRegistryPointers(owner, addr);
         _verifyDeployment(addr, owner);
 
         saveDeployments();
@@ -154,20 +153,6 @@ contract WireDeployments is BaseDeployer {
         if (chainId == 420420422) return false; // passethub-testnet
         if (chainId == 420420417) return false; // paseo-assethub
         return true;
-    }
-
-    function _wireProtocolRegistryPointers(address owner, Addresses memory addr) internal {
-        IDotnsProtocolRegistry registry = IDotnsProtocolRegistry(addr.protocolRegistry);
-        vm.startBroadcast(owner);
-        DotnsRegistrar(addr.registrar).updateProtocolRegistry(registry);
-        DotnsRegistrarController(addr.registrarController).updateProtocolRegistry(registry);
-        DotnsRegistry(addr.registry).updateProtocolRegistry(registry);
-        DotnsReverseResolver(addr.reverseResolver).updateProtocolRegistry(registry);
-        DotnsResolver(addr.resolver).updateProtocolRegistry(registry);
-        DotnsContentResolver(addr.contentResolver).updateProtocolRegistry(registry);
-        PopRules(addr.popRules).updateProtocolRegistry(registry);
-        vm.stopBroadcast();
-        console.log("Protocol registry wired to all contracts");
     }
 
     function _verifyDeployment(Addresses memory addr, address expectedOwner) internal view {

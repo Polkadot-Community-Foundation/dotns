@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IDotnsProtocolRegistry} from "./IDotnsProtocolRegistry.sol";
-
 /// @title Dot Registry
 /// @notice Minimal on-chain registry for hierarchical name ownership and resolution.
 /// @dev Defines the canonical storage and mutation surface for DotNS nodes.
@@ -122,14 +120,4 @@ interface IDotnsRegistry {
     /// @notice Returns whether a node exists.
     /// @param node Node identifier.
     function recordExists(bytes32 node) external view returns (bool);
-
-    /// @notice Emitted when the protocol registry is updated.
-    /// @param newRegistry The address of the new protocol registry.
-    event ProtocolRegistryUpdated(IDotnsProtocolRegistry indexed newRegistry);
-
-    /// @notice Updates the protocol registry address.
-    /// @dev Callable only by the contract owner.
-    /// @param registry The address of the new protocol registry.
-    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
-    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external;
 }

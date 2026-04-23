@@ -27,11 +27,6 @@ contract DotnsContentResolver is
     ERC165Upgradeable,
     IDotnsContentResolver
 {
-    /// @notice DEPRECATED: Registry used for ownership checks.
-    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
-    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
-    IDotnsRegistry public registry;
-
     /// @notice Stores all content hash mappings
     mapping(bytes32 node => bytes contentHash) private contenthashes;
 
@@ -46,7 +41,7 @@ contract DotnsContentResolver is
 
     /// @dev Reserved storage space to allow for layout changes in the future.
     // forge-lint: disable-next-line(mixed-case-variable)
-    uint256[49] private __gap;
+    uint256[50] private __gap;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -54,12 +49,11 @@ contract DotnsContentResolver is
     }
 
     /// @notice Initializes the content resolver
-    /// @param _registry Address of the DotNS registry contract
-    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
-    function initialize(IDotnsRegistry _registry) external initializer {
+    /// @param registry Protocol-level address registry used to resolve sibling contracts.
+    function initialize(IDotnsProtocolRegistry registry) external initializer {
         __Ownable_init(msg.sender);
         __ERC165_init();
-        registry = _registry;
+        protocolRegistry = registry;
     }
 
     /// @inheritdoc IDotnsContentResolver
@@ -111,13 +105,6 @@ contract DotnsContentResolver is
         returns (bool)
     {
         return operators[owner][operator];
-    }
-
-    /// @inheritdoc IDotnsContentResolver
-    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
-    function updateProtocolRegistry(IDotnsProtocolRegistry _registry) external override onlyOwner {
-        protocolRegistry = _registry;
-        emit ProtocolRegistryUpdated(_registry);
     }
 
     /// @notice Ensures caller is either the node owner or an approved operator

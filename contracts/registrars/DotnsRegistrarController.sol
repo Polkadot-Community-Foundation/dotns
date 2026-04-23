@@ -12,13 +12,11 @@ import {
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
-import {IDotnsRegistry} from "../registry/IDotnsRegistry.sol";
 import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
 import {IPopRules} from "../pop/IPopRules.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
 import {Store} from "../store/Store.sol";
-import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
 import {LabelUtils} from "../utils/LabelUtils.sol";
@@ -47,31 +45,6 @@ contract DotnsRegistrarController is
     /// @notice Upper bound for commitment validity to cap storage griefing risk.
     uint256 public constant MAX_ALLOWED_COMMITMENT_AGE = 7 days;
 
-    /// @notice DEPRECATED: Base registrar responsible for minting name ownership.
-    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
-    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
-    IDotnsRegistrar public dotnsRegistrar;
-
-    /// @notice DEPRECATED: Forward registry storing node ownership and resolver.
-    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
-    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
-    IDotnsRegistry public dotnsRegistry;
-
-    /// @notice DEPRECATED: Reverse resolver for address => primary name mapping.
-    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
-    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
-    IDotnsReverseResolver public reverseResolver;
-
-    /// @notice DEPRECATED: Rules enforcing PoP rules and pricing.
-    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
-    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
-    IPopRules public popRules;
-
-    /// @notice DEPRECATED: Factory for per-user Store instances.
-    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
-    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
-    IStoreFactory public storeFactory;
-
     /// @notice Minimum age a commitment must reach before reveal.
     uint256 public minCommitmentAge;
 
@@ -88,7 +61,7 @@ contract DotnsRegistrarController is
     IDotnsProtocolRegistry public protocolRegistry;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
-    uint256[48] private __gap;
+    uint256[50] private __gap;
 
     /// @notice Restricts calls to the forward registry contract.
     modifier onlyRegistry() {
@@ -111,21 +84,12 @@ contract DotnsRegistrarController is
     }
 
     /// @notice Initializes the registrar controller.
-    /// @dev Validates commitment window bounds and wires dependencies.
-    /// @param registrar Base registrar used for ERC721 minting.
-    /// @param registry Forward registry storing node ownership and resolver.
-    /// @param reverse Reverse resolver for primary name mapping.
-    /// @param rules PoP rules used for eligibility and pricing.
-    /// @param factory Store factory used to resolve/deploy per-user stores.
+    /// @dev Validates commitment window bounds and wires the protocol registry.
+    /// @param registry Protocol-level address registry used to resolve sibling contracts.
     /// @param minAge Minimum commitment age in seconds.
     /// @param maxAge Maximum commitment age in seconds.
-    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
     function initialize(
-        IDotnsRegistrar registrar,
-        IDotnsRegistry registry,
-        IDotnsReverseResolver reverse,
-        IPopRules rules,
-        IStoreFactory factory,
+        IDotnsProtocolRegistry registry,
         uint256 minAge,
         uint256 maxAge
     )
@@ -138,11 +102,7 @@ contract DotnsRegistrarController is
         require(maxAge > minAge, MaxCommitmentAgeTooLow());
         require(maxAge <= MAX_ALLOWED_COMMITMENT_AGE, MaxCommitmentAgeTooHigh());
 
-        dotnsRegistrar = registrar;
-        dotnsRegistry = registry;
-        reverseResolver = reverse;
-        popRules = rules;
-        storeFactory = factory;
+        protocolRegistry = registry;
 
         minCommitmentAge = minAge;
         maxCommitmentAge = maxAge;
@@ -350,13 +310,6 @@ contract DotnsRegistrarController is
     /// @notice Internal check enforcing whitelist-or-owner access.
     function _onlyWhiteListedOrOwner() internal view {
         require(whiteList[msg.sender] || msg.sender == owner(), NotWhiteListedOrOwner(msg.sender));
-    }
-
-    /// @inheritdoc IDotnsRegistrarController
-    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
-    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
-        protocolRegistry = registry;
-        emit ProtocolRegistryUpdated(registry);
     }
 
     /// @notice Internal check enforcing registry-only access.

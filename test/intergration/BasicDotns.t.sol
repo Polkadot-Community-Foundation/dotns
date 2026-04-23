@@ -33,9 +33,7 @@ contract BasicDotnsIntegration is BaseDotns {
     }
 
     function test_popfull_end_to_end() public {
-        vm.startPrank(ed);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
-        vm.stopPrank();
+        _grantPopFull(ed);
 
         _flowEndToEnd(
             FlowParams({
@@ -53,9 +51,7 @@ contract BasicDotnsIntegration is BaseDotns {
     }
 
     function test_poplite_end_to_end() public {
-        vm.startPrank(leonardo);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
-        vm.stopPrank();
+        _grantPopLite(leonardo);
 
         _flowEndToEnd(
             FlowParams({
@@ -225,9 +221,7 @@ contract BasicDotnsIntegration is BaseDotns {
         _commitAndRegister(NAME_NOSTATUS, victim, false);
         assertEq(dotnsReverseResolver.nameOf(victim), "");
 
-        vm.startPrank(victim);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
-        vm.stopPrank();
+        _grantPopFull(victim);
 
         string memory victimPrimary = "victimname01";
         _commitAndRegister(victimPrimary, victim, true);

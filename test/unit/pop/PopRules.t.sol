@@ -55,8 +55,7 @@ contract PopRulesTests is BaseDotns {
     }
 
     function test_popfull_user_can_access_poplite_name() public {
-        vm.prank(ed);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+        _grantPopFull(ed);
 
         IPopRules.PriceWithMeta memory priceMetadata = popRules.priceWithCheck("lights01", ed);
 

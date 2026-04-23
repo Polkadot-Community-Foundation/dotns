@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Test} from "forge-std/Test.sol";
+import {stdStorage, StdStorage} from "forge-std/StdStorage.sol";
 import {
     DotnsPopController,
     IDotnsPopController
@@ -17,6 +18,10 @@ import {LabelUtils} from "../../../contracts/utils/LabelUtils.sol";
 ///      hosted a reservation, every minted lite token, and every successful
 ///      claim so invariants can iterate over just what exists.
 contract PopControllerHandler is Test {
+    using stdStorage for StdStorage;
+
+    StdStorage internal stdstorage;
+
     DotnsPopController public immutable CONTROLLER;
     address public immutable GATEWAY;
     uint16 public constant MAX_QUEUE = 64;
@@ -66,8 +71,11 @@ contract PopControllerHandler is Test {
         // superset of PopLite), PopFull base labels, and NoStatus base labels
         // (which merely require userStatus != PopLite).
         for (uint256 i = 0; i < actors_.length; i++) {
-            vm.prank(actors_[i]);
-            popRules_.setUserPopStatus(IPopRules.PopStatus.PopFull);
+            stdstorage
+                .target(address(popRules_))
+                .sig("userPopStatus(address)")
+                .with_key(actors_[i])
+                .checked_write(uint256(IPopRules.PopStatus.PopFull));
         }
     }
 

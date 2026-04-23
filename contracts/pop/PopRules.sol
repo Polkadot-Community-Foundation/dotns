@@ -52,17 +52,12 @@ contract PopRules is
     ///      reservation predicate `_isLive` tests this bound.
     uint256 public constant MAX_RESERVATION_TIME = 12 weeks;
 
-    /// @notice DEPRECATED: Authorised registry controller address.
-    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
-    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
-    address public dotRegistryController;
-
     /// @notice Protocol-level address registry for all DotNS contracts.
     IDotnsProtocolRegistry public protocolRegistry;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
     // forge-lint: disable-next-line(mixed-case-variable)
-    uint256[49] private __gap;
+    uint256[50] private __gap;
 
     /// @notice Restricts function to any registry-authorised controller
     /// @dev The registrar's `controllers` mapping is the canonical ACL for "who may
@@ -85,10 +80,18 @@ contract PopRules is
     ///      variants can reuse the same setup without duplicating the Ownable
     ///      and ERC165 wiring.
     /// @param _startingPrice Base price in wei for NoStatus users.
-    function _popRulesInit(uint256 _startingPrice) internal onlyInitializing {
+    /// @param registry Protocol-level address registry used to resolve sibling contracts.
+    function _popRulesInit(
+        uint256 _startingPrice,
+        IDotnsProtocolRegistry registry
+    )
+        internal
+        onlyInitializing
+    {
         __Ownable_init(msg.sender);
         __ERC165_init();
         startingPrice = _startingPrice;
+        protocolRegistry = registry;
     }
 
     /// @notice Initialises the oracle (public entry point).
@@ -96,15 +99,15 @@ contract PopRules is
     ///      `_popRulesInit` so an upgraded initialiser can add new wiring
     ///      without rewriting the base setup.
     /// @param _startingPrice Base price in wei for NoStatus users.
-    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
-    function initialize(uint256 _startingPrice) public initializer {
-        _popRulesInit(_startingPrice);
-    }
-
-    /// @inheritdoc IPopRules
-    function setUserPopStatus(PopStatus status) external override {
-        userPopStatus[msg.sender] = status;
-        emit UserPopStatusSet(msg.sender, status);
+    /// @param registry Protocol-level address registry used to resolve sibling contracts.
+    function initialize(
+        uint256 _startingPrice,
+        IDotnsProtocolRegistry registry
+    )
+        public
+        initializer
+    {
+        _popRulesInit(_startingPrice, registry);
     }
 
     /// @inheritdoc IPopRules
@@ -395,13 +398,6 @@ contract PopRules is
     /// @inheritdoc UUPSUpgradeable
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
-    /// @inheritdoc IPopRules
-    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
-    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
-        protocolRegistry = registry;
-        emit ProtocolRegistryUpdated(registry);
-    }
-
     /// @notice Returns implementation version.
     /// @dev Bumped on every upgrade. Used by deployment scripts as a
     ///      post-upgrade assertion target.
@@ -457,10 +453,8 @@ contract PopRules is
         // Live reservations can only be cleared by the controller that wrote
         // them, so one registrar-authorised controller cannot wipe another's
         // active slot. Expired reservations are dead weight and may be cleared
-        // by any authorised controller as garbage collection. Reservations
-        // with a zero controller predate this field and also fall through to
-        // the GC path for backwards compatibility.
-        if (_isLive(reservation) && reservation.controller != address(0)) {
+        // by any authorised controller as garbage collection.
+        if (_isLive(reservation)) {
             require(
                 msg.sender == reservation.controller,
                 PopError("Only reserving controller can release")

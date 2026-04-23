@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
-
 /// @title Proof of Personhood Rules for Dotns
 /// @notice Proof of personhood interface defining Dotns price calculation, PoP-tier requirements, and base-name reservation rules
 /// @dev Provides the classification logic for Dotns labels, enforces suffix constraints, and exposes reservation metadata.
@@ -38,12 +36,6 @@ interface IPopRules {
     /// @param owner Address obtaining the reservation right.
     /// @param expires UNIX timestamp when the reservation expires.
     event BaseNameReserved(string indexed baseName, address indexed owner, uint64 expires);
-
-    /// @notice Emitted when a user's PoP status is updated.
-    /// @dev Temporary until a precompile exposes PoP status directly from the pallet.
-    /// @param user Address of the user.
-    /// @param status New PoP tier assigned.
-    event UserPopStatusSet(address indexed user, PopStatus status);
 
     /// @notice Thrown when a name violates PoP-tier or reservation requirements.
     /// @param reason Human-readable explanation of the failure condition.
@@ -182,26 +174,9 @@ interface IPopRules {
     /// @return isBase True when the label has no trailing digits.
     function isBaseName(string calldata name) external pure returns (bool isBase);
 
-    /// @notice Sets the Proof-of-Personhood (PoP) tier for the caller's profile.
-    /// @dev Once set, this PoP status applies to every registration by the
-    ///      caller and replaces per-name PoP assignments. Temporary until a
-    ///      precompile exposes PoP status directly from the pallet.
-    /// @param status The PoP tier to assign to the user (NoStatus, PopLite, or PopFull).
-    function setUserPopStatus(PopStatus status) external;
-
     /// @notice Calculates registration cost for a label.
     /// @dev Pure length-based pricing; ignores PoP status and reservation state.
     /// @param name Domain label to price.
     /// @return cost Registration cost in wei.
     function price(string calldata name) external view returns (uint256 cost);
-
-    /// @notice Emitted when the protocol registry is updated.
-    /// @param newRegistry The address of the new protocol registry.
-    event ProtocolRegistryUpdated(IDotnsProtocolRegistry indexed newRegistry);
-
-    /// @notice Updates the protocol registry address.
-    /// @dev Callable only by the contract owner.
-    /// @param registry The address of the new protocol registry.
-    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
-    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external;
 }

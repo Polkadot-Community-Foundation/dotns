@@ -46,7 +46,7 @@ contract DotnsPopResolver is
     mapping(bytes32 liteLabelhash => bytes32 fullNode) private _fullClaims;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
-    uint256[49] private __gap;
+    uint256[50] private __gap;
 
     /// @notice Restricts writes to the address registered as `POP_CONTROLLER`.
     modifier onlyPopController() {

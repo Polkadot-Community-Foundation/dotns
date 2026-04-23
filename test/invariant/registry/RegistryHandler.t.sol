@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Test} from "forge-std/Test.sol";
+import {stdStorage, StdStorage} from "forge-std/StdStorage.sol";
 import {IDotnsRegistry} from "../../../contracts/registry/IDotnsRegistry.sol";
 import {DotnsRegistry} from "../../../contracts/registry/DotnsRegistry.sol";
 import {LabelUtils} from "../../../contracts/utils/LabelUtils.sol";
@@ -17,6 +18,10 @@ import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 /// @notice Executes bounded random actions on the registry: register base domains,
 ///         create subnodes, reassign subnodes, set resolvers, and transfer base domains.
 contract RegistryHandler is Test {
+    using stdStorage for StdStorage;
+
+    StdStorage internal stdstorage;
+
     bytes32 private constant DOT_NODE = DotnsConstants.DOT_NODE;
 
     DotnsRegistrarController public controller;
@@ -59,8 +64,11 @@ contract RegistryHandler is Test {
         actors.push(actor);
         actorStatus[actor] = status;
         if (status != IPopRules.PopStatus.NoStatus) {
-            vm.prank(actor);
-            popRules.setUserPopStatus(status);
+            stdstorage
+                .target(address(popRules))
+                .sig("userPopStatus(address)")
+                .with_key(actor)
+                .checked_write(uint256(status));
         }
     }
 

@@ -2,8 +2,6 @@
 pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
-import {IDotnsProtocolRegistry} from "../../../contracts/registry/IDotnsProtocolRegistry.sol";
-import {IDotnsReverseResolver} from "../../../contracts/resolvers/IDotnsReverseResolver.sol";
 
 contract DotnsReverseResolverTests is BaseDotns {
     function test_nameof_returns_empty_when_unset() public view {
@@ -21,15 +19,7 @@ contract DotnsReverseResolverTests is BaseDotns {
         assertEq(dotnsReverseResolver.nameOf(ed), "reversetwo01.dot");
     }
 
-    function test_updateprotocolregistry_emits_event_and_persists() public {
-        IDotnsProtocolRegistry newRegistry = IDotnsProtocolRegistry(makeAddr("newRegistry"));
-
-        vm.expectEmit(true, false, false, false);
-        emit IDotnsReverseResolver.ProtocolRegistryUpdated(newRegistry);
-
-        vm.prank(owner);
-        dotnsReverseResolver.updateProtocolRegistry(newRegistry);
-
-        assertEq(address(dotnsReverseResolver.protocolRegistry()), address(newRegistry));
+    function test_protocol_registry_bound_at_init() public view {
+        assertEq(address(dotnsReverseResolver.protocolRegistry()), address(protocolRegistry));
     }
 }

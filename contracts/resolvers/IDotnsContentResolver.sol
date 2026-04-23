@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
-
 /// @title Dotns Content Resolver
 /// @notice Defines storage and retrieval for content hash, text records, and operator approvals for DotNS nodes
 /// @dev Content hash and text records point to off-chain content such as IPFS CIDs or future schemes.
@@ -66,14 +64,4 @@ interface IDotnsContentResolver {
     /// @param operator The address acting on behalf of the owner
     /// @return True if operator is approved, false otherwise
     function isApprovedForAll(address owner, address operator) external view returns (bool);
-
-    /// @notice Emitted when the protocol registry is updated.
-    /// @param newRegistry The address of the new protocol registry.
-    event ProtocolRegistryUpdated(IDotnsProtocolRegistry indexed newRegistry);
-
-    /// @notice Updates the protocol registry address.
-    /// @dev Callable only by the contract owner.
-    /// @param registry The address of the new protocol registry.
-    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
-    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external;
 }

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
-
 /// @title Dotns Reverse Resolver
 /// @notice Interface for writing and reading reverse name records for addresses.
 /// @dev Defines the minimal surface required to associate an address with a human-readable name.
@@ -30,14 +28,4 @@ interface IDotnsReverseResolver {
     /// @param addr The address to query.
     /// @return name The reverse name associated with `addr`.
     function nameOf(address addr) external view returns (string memory name);
-
-    /// @notice Emitted when the protocol registry is updated.
-    /// @param newRegistry The address of the new protocol registry.
-    event ProtocolRegistryUpdated(IDotnsProtocolRegistry indexed newRegistry);
-
-    /// @notice Updates the protocol registry address.
-    /// @dev Callable only by the contract owner.
-    /// @param registry The address of the new protocol registry.
-    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
-    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external;
 }

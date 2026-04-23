@@ -9,8 +9,7 @@ contract PopRulesFuzzTest is BaseDotns {
         length = bound(length, 6, 8);
         string memory nameLabel = string(abi.encodePacked(_makeAlpha(seed, length), "01"));
 
-        vm.prank(ed);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+        _grantPopFull(ed);
 
         IPopRules.PriceWithMeta memory priceMetadata = popRules.priceWithCheck(nameLabel, ed);
 
@@ -22,8 +21,7 @@ contract PopRulesFuzzTest is BaseDotns {
         length = bound(length, 9, 14);
         string memory nameLabel = string(abi.encodePacked(_makeAlpha(seed, length), "01"));
 
-        vm.prank(ed);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+        _grantPopFull(ed);
 
         IPopRules.PriceWithMeta memory priceMetadata = popRules.priceWithCheck(nameLabel, ed);
 
@@ -34,8 +32,7 @@ contract PopRulesFuzzTest is BaseDotns {
     function testFuzz_nostatus_user_cannot_access_popfull(uint256 seed) public {
         string memory nameLabel = _makeAlpha(seed, 8);
 
-        vm.prank(ed);
-        popRules.setUserPopStatus(IPopRules.PopStatus.NoStatus);
+        _grantNoStatus(ed);
 
         vm.expectPartialRevert(IPopRules.PopError.selector);
         popRules.priceWithCheck(nameLabel, ed);
@@ -53,8 +50,7 @@ contract PopRulesFuzzTest is BaseDotns {
 
         IPopRules.PopStatus userStatus = IPopRules.PopStatus(bound(statusSeed, 0, 3));
 
-        vm.prank(ed);
-        popRules.setUserPopStatus(userStatus);
+        _setUserPopStatus(ed, userStatus);
 
         vm.expectPartialRevert(IPopRules.PopError.selector);
         popRules.priceWithCheck(nameLabel, ed);
@@ -121,8 +117,7 @@ contract PopRulesFuzzTest is BaseDotns {
         baseName[0] = bytes1(uint8(baseName[0]) - 32);
         string memory mixedCaseName = string(abi.encodePacked(string(baseName), "01"));
 
-        vm.prank(ed);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
+        _grantPopLite(ed);
 
         vm.expectPartialRevert(IPopRules.PopError.selector);
         popRules.priceWithCheck(mixedCaseName, ed);

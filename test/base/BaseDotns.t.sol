@@ -2,9 +2,10 @@
 pragma solidity ^0.8.30;
 
 import {Test} from "forge-std/Test.sol";
+import {stdStorage, StdStorage} from "forge-std/StdStorage.sol";
 
 import {PopRules, IPopRules} from "../../contracts/pop/PopRules.sol";
-import {DotnsRegistrar, IDotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
+import {DotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
 import {
     DotnsRegistrarController,
     IDotnsRegistrarController
@@ -14,16 +15,13 @@ import {
     IDotnsPopController
 } from "../../contracts/registrars/DotnsPopController.sol";
 import {IDotnsController} from "../../contracts/registrars/IDotnsController.sol";
-import {DotnsRegistry, IDotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
+import {DotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
 import {DotnsResolver} from "../../contracts/resolvers/DotnsResolver.sol";
 import {DotnsContentResolver} from "../../contracts/resolvers/DotnsContentResolver.sol";
-import {
-    DotnsReverseResolver,
-    IDotnsReverseResolver
-} from "../../contracts/resolvers/DotnsReverseResolver.sol";
+import {DotnsReverseResolver} from "../../contracts/resolvers/DotnsReverseResolver.sol";
 import {DotnsPopResolver} from "../../contracts/resolvers/DotnsPopResolver.sol";
 import {Store} from "../../contracts/store/Store.sol";
-import {StoreFactory, IStoreFactory} from "../../contracts/store/StoreFactory.sol";
+import {StoreFactory} from "../../contracts/store/StoreFactory.sol";
 import {
     DotnsProtocolRegistry,
     IDotnsProtocolRegistry
@@ -44,6 +42,11 @@ import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 ///      - PopRules: PoP rules and spam-pricing oracle
 ///      - DotnsRegistrarController: commit–reveal controller orchestrating registration flow
 abstract contract BaseDotns is Test {
+    using stdStorage for StdStorage;
+
+    /// @notice Forge storage helper used to poke `userPopStatus` directly.
+    StdStorage internal stdstorage;
+
     /// @notice Test user account: ed.
     address public ed;
 
@@ -145,99 +148,78 @@ abstract contract BaseDotns is Test {
 
         vm.startPrank(owner);
 
-        storeFactory = new StoreFactory();
-        vm.label(address(storeFactory), "StoreFactory");
-
-        address dotnsRegistrarAddress = Upgrades.deployUUPSProxy(
-            "DotnsRegistrar.sol:DotnsRegistrar",
-            abi.encodeCall(DotnsRegistrar.initialize, ("Dotns", "Dotns"))
-        );
-        dotnsRegistrar = DotnsRegistrar(dotnsRegistrarAddress);
-        vm.label(dotnsRegistrarAddress, "DotnsRegistrar");
-
-        address dotnsReverseResolverAddress = Upgrades.deployUUPSProxy(
-            "DotnsReverseResolver.sol:DotnsReverseResolver",
-            abi.encodeCall(DotnsReverseResolver.initialize, ())
-        );
-        dotnsReverseResolver = DotnsReverseResolver(dotnsReverseResolverAddress);
-        vm.label(dotnsReverseResolverAddress, "DotnsReverseResolver");
-
-        address dotnsRegistryAddress = Upgrades.deployUUPSProxy(
-            "DotnsRegistry.sol:DotnsRegistry",
-            abi.encodeCall(
-                DotnsRegistry.initialize,
-                (
-                    IDotnsRegistrar(dotnsRegistrarAddress),
-                    IDotnsReverseResolver(dotnsReverseResolverAddress),
-                    storeFactory
-                )
-            )
-        );
-        dotnsRegistry = DotnsRegistry(dotnsRegistryAddress);
-        vm.label(dotnsRegistryAddress, "DotnsRegistry");
-
-        address dotnsContentResolverAddress = Upgrades.deployUUPSProxy(
-            "DotnsContentResolver.sol:DotnsContentResolver",
-            abi.encodeCall(DotnsContentResolver.initialize, (IDotnsRegistry(dotnsRegistryAddress)))
-        );
-        dotnsContentResolver = DotnsContentResolver(dotnsContentResolverAddress);
-        vm.label(dotnsContentResolverAddress, "DotnsContentResolver");
-
-        address popRulesAddress = Upgrades.deployUUPSProxy(
-            "PopRules.sol:PopRules", abi.encodeCall(PopRules.initialize, (RENT_PRICE))
-        );
-        popRules = PopRules(popRulesAddress);
-        vm.label(popRulesAddress, "PopRules");
-
-        address dotnsResolverAddress = Upgrades.deployUUPSProxy(
-            "DotnsResolver.sol:DotnsResolver",
-            abi.encodeCall(DotnsResolver.initialize, (IDotnsRegistry(dotnsRegistryAddress)))
-        );
-        dotnsResolver = DotnsResolver(dotnsResolverAddress);
-        vm.label(dotnsResolverAddress, "DotnsResolver");
-
-        address dotnsRegistrarControllerAddress = Upgrades.deployUUPSProxy(
-            "DotnsRegistrarController.sol:DotnsRegistrarController",
-            abi.encodeCall(
-                DotnsRegistrarController.initialize,
-                (
-                    IDotnsRegistrar(dotnsRegistrarAddress),
-                    IDotnsRegistry(dotnsRegistryAddress),
-                    IDotnsReverseResolver(dotnsReverseResolverAddress),
-                    IPopRules(popRulesAddress),
-                    IStoreFactory(address(storeFactory)),
-                    6 seconds,
-                    1 days
-                )
-            )
-        );
-        dotnsRegistrarController = DotnsRegistrarController(dotnsRegistrarControllerAddress);
-        vm.label(dotnsRegistrarControllerAddress, "DotnsRegistrarController");
-
-        dotnsRegistrar.addController(IDotnsController(dotnsRegistrarControllerAddress));
-
+        // Deploy protocol registry first so every downstream proxy can bind to
+        // it at init time. Populate the keys before deploying consumers whose
+        // initialisers might otherwise race with the key lookups.
         address protocolRegistryAddress = Upgrades.deployUUPSProxy(
             "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
             abi.encodeCall(DotnsProtocolRegistry.initialize, ())
         );
         protocolRegistry = DotnsProtocolRegistry(protocolRegistryAddress);
         vm.label(protocolRegistryAddress, "DotnsProtocolRegistry");
+        IDotnsProtocolRegistry registry = IDotnsProtocolRegistry(protocolRegistryAddress);
+
+        storeFactory = new StoreFactory();
+        vm.label(address(storeFactory), "StoreFactory");
+
+        address dotnsRegistrarAddress = Upgrades.deployUUPSProxy(
+            "DotnsRegistrar.sol:DotnsRegistrar",
+            abi.encodeCall(DotnsRegistrar.initialize, ("Dotns", "Dotns", registry))
+        );
+        dotnsRegistrar = DotnsRegistrar(dotnsRegistrarAddress);
+        vm.label(dotnsRegistrarAddress, "DotnsRegistrar");
+
+        address dotnsReverseResolverAddress = Upgrades.deployUUPSProxy(
+            "DotnsReverseResolver.sol:DotnsReverseResolver",
+            abi.encodeCall(DotnsReverseResolver.initialize, (registry))
+        );
+        dotnsReverseResolver = DotnsReverseResolver(dotnsReverseResolverAddress);
+        vm.label(dotnsReverseResolverAddress, "DotnsReverseResolver");
+
+        address dotnsRegistryAddress = Upgrades.deployUUPSProxy(
+            "DotnsRegistry.sol:DotnsRegistry", abi.encodeCall(DotnsRegistry.initialize, (registry))
+        );
+        dotnsRegistry = DotnsRegistry(dotnsRegistryAddress);
+        vm.label(dotnsRegistryAddress, "DotnsRegistry");
+
+        address dotnsContentResolverAddress = Upgrades.deployUUPSProxy(
+            "DotnsContentResolver.sol:DotnsContentResolver",
+            abi.encodeCall(DotnsContentResolver.initialize, (registry))
+        );
+        dotnsContentResolver = DotnsContentResolver(dotnsContentResolverAddress);
+        vm.label(dotnsContentResolverAddress, "DotnsContentResolver");
+
+        address popRulesAddress = Upgrades.deployUUPSProxy(
+            "PopRules.sol:PopRules", abi.encodeCall(PopRules.initialize, (RENT_PRICE, registry))
+        );
+        popRules = PopRules(popRulesAddress);
+        vm.label(popRulesAddress, "PopRules");
+
+        address dotnsResolverAddress = Upgrades.deployUUPSProxy(
+            "DotnsResolver.sol:DotnsResolver", abi.encodeCall(DotnsResolver.initialize, (registry))
+        );
+        dotnsResolver = DotnsResolver(dotnsResolverAddress);
+        vm.label(dotnsResolverAddress, "DotnsResolver");
+
+        address dotnsRegistrarControllerAddress = Upgrades.deployUUPSProxy(
+            "DotnsRegistrarController.sol:DotnsRegistrarController",
+            abi.encodeCall(DotnsRegistrarController.initialize, (registry, 6 seconds, 1 days))
+        );
+        dotnsRegistrarController = DotnsRegistrarController(dotnsRegistrarControllerAddress);
+        vm.label(dotnsRegistrarControllerAddress, "DotnsRegistrarController");
+
+        dotnsRegistrar.addController(IDotnsController(dotnsRegistrarControllerAddress));
 
         address dotnsPopResolverAddress = Upgrades.deployUUPSProxy(
             "DotnsPopResolver.sol:DotnsPopResolver",
-            abi.encodeCall(
-                DotnsPopResolver.initialize, (IDotnsProtocolRegistry(protocolRegistryAddress))
-            )
+            abi.encodeCall(DotnsPopResolver.initialize, (registry))
         );
         dotnsPopResolver = DotnsPopResolver(dotnsPopResolverAddress);
         vm.label(dotnsPopResolverAddress, "DotnsPopResolver");
 
         address dotnsPopControllerAddress = Upgrades.deployUUPSProxy(
             "DotnsPopController.sol:DotnsPopController",
-            abi.encodeCall(
-                DotnsPopController.initialize,
-                (IDotnsProtocolRegistry(protocolRegistryAddress), DEFAULT_RESERVATION_DURATION)
-            )
+            abi.encodeCall(DotnsPopController.initialize, (registry, DEFAULT_RESERVATION_DURATION))
         );
         dotnsPopController = DotnsPopController(dotnsPopControllerAddress);
         vm.label(dotnsPopControllerAddress, "DotnsPopController");
@@ -255,20 +237,6 @@ abstract contract BaseDotns is Test {
         protocolRegistry.set(DotnsConstants.POP_RESOLVER, dotnsPopResolverAddress);
         protocolRegistry.set(DotnsConstants.POP_CONTROLLER, dotnsPopControllerAddress);
         protocolRegistry.set(DotnsConstants.POP_GATEWAY, popGateway);
-
-        dotnsRegistrar.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
-        dotnsRegistrarController.updateProtocolRegistry(
-            IDotnsProtocolRegistry(address(protocolRegistry))
-        );
-        dotnsRegistry.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
-        dotnsReverseResolver.updateProtocolRegistry(
-            IDotnsProtocolRegistry(address(protocolRegistry))
-        );
-        dotnsResolver.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
-        dotnsContentResolver.updateProtocolRegistry(
-            IDotnsProtocolRegistry(address(protocolRegistry))
-        );
-        popRules.updateProtocolRegistry(IDotnsProtocolRegistry(address(protocolRegistry)));
 
         vm.stopPrank();
         vm.warp(block.timestamp + 365 days);
@@ -312,22 +280,30 @@ abstract contract BaseDotns is Test {
         }
     }
 
+    /// @notice Writes a PoP tier for `who` directly into the `userPopStatus` mapping.
+    /// @dev Pokes storage because production tier assignment will come from a
+    ///      pallet precompile, not a user-callable write.
+    function _setUserPopStatus(address who, IPopRules.PopStatus status) internal {
+        stdstorage
+            .target(address(popRules))
+            .sig("userPopStatus(address)")
+            .with_key(who)
+            .checked_write(uint256(status));
+    }
+
     /// @notice Grants PopFull status to `who` on the PoP rules oracle.
     function _grantPopFull(address who) internal {
-        vm.prank(who);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+        _setUserPopStatus(who, IPopRules.PopStatus.PopFull);
     }
 
     /// @notice Grants PopLite status to `who` on the PoP rules oracle.
     function _grantPopLite(address who) internal {
-        vm.prank(who);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
+        _setUserPopStatus(who, IPopRules.PopStatus.PopLite);
     }
 
     /// @notice Grants NoStatus (default) to `who` on the PoP rules oracle.
     function _grantNoStatus(address who) internal {
-        vm.prank(who);
-        popRules.setUserPopStatus(IPopRules.PopStatus.NoStatus);
+        _setUserPopStatus(who, IPopRules.PopStatus.NoStatus);
     }
 
     /// @notice Drives `DotnsPopController.reserveBaseName` through the configured gateway.
@@ -479,8 +455,7 @@ abstract contract BaseDotns is Test {
         returns (bytes32 node)
     {
         if (status != IPopRules.PopStatus.NoStatus) {
-            vm.prank(labelOwner);
-            popRules.setUserPopStatus(status);
+            _setUserPopStatus(labelOwner, status);
         }
 
         _commitAndRegister(label, labelOwner, true);

@@ -8,13 +8,13 @@ import {DeploymentNetwork} from "./DeploymentNetwork.sol";
 import {DotnsResolver} from "../../contracts/resolvers/DotnsResolver.sol";
 import {DotnsContentResolver} from "../../contracts/resolvers/DotnsContentResolver.sol";
 import {PopRules} from "../../contracts/pop/PopRules.sol";
-import {IDotnsRegistry} from "../../contracts/registry/IDotnsRegistry.sol";
+import {IDotnsProtocolRegistry} from "../../contracts/registry/IDotnsProtocolRegistry.sol";
 
 /// @title DeployRecords
 /// @notice Second stage. Deploys the resolver layer that holds per-name
 ///         records and the PoP-rules oracle that prices registrations. Reads
-///         the forward registry address populated by `DeployCore` so the
-///         record resolvers can bind to the same registry on initialise.
+///         the protocol registry address populated by `DeployCore` so every
+///         proxy binds to it on initialise.
 /// @custom:security-contact admin@parity.io
 contract DeployRecords is BaseDeployer {
     uint256 public constant RENT_PRICE = 10e15 wei;
@@ -25,29 +25,35 @@ contract DeployRecords is BaseDeployer {
 
         initDeployment(DeploymentNetwork.folder(block.chainid), vm.toString(block.chainid));
 
-        address registry = _readAddress("DotnsRegistry");
+        address protocolRegistry = _readAddress("DotnsProtocolRegistry");
 
-        _deployResolver(owner, registry);
-        _deployContentResolver(owner, registry);
-        _deployPopRules(owner);
+        _deployResolver(owner, protocolRegistry);
+        _deployContentResolver(owner, protocolRegistry);
+        _deployPopRules(owner, protocolRegistry);
 
         saveDeployments();
 
         console.log("=== DeployRecords complete ===");
     }
 
-    function _deployResolver(address owner, address registry) internal returns (address proxy) {
+    function _deployResolver(
+        address owner,
+        address protocolRegistry
+    )
+        internal
+        returns (address proxy)
+    {
         proxy = _broadcastDeployUups(
             owner,
             "DotnsResolver.sol:DotnsResolver",
-            abi.encodeCall(DotnsResolver.initialize, (IDotnsRegistry(registry))),
+            abi.encodeCall(DotnsResolver.initialize, (IDotnsProtocolRegistry(protocolRegistry))),
             "DotnsResolver"
         );
     }
 
     function _deployContentResolver(
         address owner,
-        address registry
+        address protocolRegistry
     )
         internal
         returns (address proxy)
@@ -55,16 +61,26 @@ contract DeployRecords is BaseDeployer {
         proxy = _broadcastDeployUups(
             owner,
             "DotnsContentResolver.sol:DotnsContentResolver",
-            abi.encodeCall(DotnsContentResolver.initialize, (IDotnsRegistry(registry))),
+            abi.encodeCall(
+                DotnsContentResolver.initialize, (IDotnsProtocolRegistry(protocolRegistry))
+            ),
             "DotnsContentResolver"
         );
     }
 
-    function _deployPopRules(address owner) internal returns (address proxy) {
+    function _deployPopRules(
+        address owner,
+        address protocolRegistry
+    )
+        internal
+        returns (address proxy)
+    {
         proxy = _broadcastDeployUups(
             owner,
             "PopRules.sol:PopRules",
-            abi.encodeCall(PopRules.initialize, (RENT_PRICE)),
+            abi.encodeCall(
+                PopRules.initialize, (RENT_PRICE, IDotnsProtocolRegistry(protocolRegistry))
+            ),
             "PopRules"
         );
     }

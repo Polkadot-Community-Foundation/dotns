@@ -13,7 +13,7 @@ services:
       - "8545:8545"
     command:
       - "--node-rpc-url"
-      - "wss://asset-hub-paseo-rpc.n.dwellir.com"
+      - "wss://sys.ibp.network/asset-hub-paseo"
       - "--rpc-port"
       - "8545"
       - "--rpc-external"

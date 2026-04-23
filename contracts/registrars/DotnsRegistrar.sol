@@ -18,7 +18,6 @@ import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
 import {RegistrationUtils} from "../utils/RegistrationUtils.sol";
 import {LabelUtils} from "../utils/LabelUtils.sol";
-import {StringUtils} from "../utils/StringUtils.sol";
 import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
@@ -42,7 +41,6 @@ contract DotnsRegistrar is
     IDotnsRegistrar
 {
     using StoreUtils for IStoreFactory;
-    using StringUtils for *;
 
     /// @notice Mapping of authorised controllers.
     /// @dev Controllers may call `register`. Keyed by the shared baseline
@@ -57,13 +55,6 @@ contract DotnsRegistrar is
     ///      without storing individual references.
     IDotnsProtocolRegistry public protocolRegistry;
 
-    /// @notice DEPRECATED as of v1.2.0: Previously stored labelhashes per token ID.
-    /// @dev Retained for UUPS storage layout compatibility. No longer written to.
-    ///      The labelhash is now derived on-the-fly from `_labels[tokenId]` via `keccak256(bytes(label))`.
-    ///      REMOVE this mapping when deploying to a new environment (fresh deploy, not upgrade).
-    /// @custom:oz-retyped-from mapping(uint256 => bytes32)
-    mapping(uint256 tokenId => bytes32 labelhash) private _labelhashes;
-
     /// @notice Human-readable label per token ID. Single source of truth for name data.
     /// @dev Stored at registration time. Used during transfers to write the label directly
     ///      to the recipient's Store without needing to read from the sender's Store.
@@ -71,7 +62,7 @@ contract DotnsRegistrar is
     mapping(uint256 tokenId => string label) private _labels;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
-    uint256[47] private __gap;
+    uint256[50] private __gap;
 
     /// @notice Restricts function access to authorised controllers.
     modifier onlyController() {
@@ -88,17 +79,18 @@ contract DotnsRegistrar is
     /// @dev Uses OpenZeppelin upgradeable initializers.
     /// @param name ERC721 token name.
     /// @param symbol ERC721 token symbol.
-    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
-    function initialize(string calldata name, string calldata symbol) external initializer {
+    /// @param registry Protocol-level address registry used to resolve sibling contracts.
+    function initialize(
+        string calldata name,
+        string calldata symbol,
+        IDotnsProtocolRegistry registry
+    )
+        external
+        initializer
+    {
         __Ownable_init(msg.sender);
         __ERC721_init(name, symbol);
-    }
-
-    /// @inheritdoc IDotnsRegistrar
-    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
-    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
         protocolRegistry = registry;
-        emit ProtocolRegistryUpdated(registry);
     }
 
     /// @inheritdoc IDotnsRegistrar
@@ -132,20 +124,6 @@ contract DotnsRegistrar is
         _labels[id] = label;
         _mint(owner, id);
         emit NameRegistered(id, owner);
-    }
-
-    /// @inheritdoc IDotnsRegistrar
-    function syncLabel(uint256 tokenId, string calldata label) external override {
-        require(_exists(tokenId), NameNotAvailable(tokenId));
-        require(ownerOf(tokenId) == msg.sender, NotTokenOwner(msg.sender, tokenId));
-        require(bytes(_labels[tokenId]).length == 0, LabelAlreadySet(tokenId));
-        require(label.isSingleLabel(), InvalidLabel());
-
-        (, bytes32 node) = LabelUtils.deriveNode(label);
-        require(uint256(node) == tokenId, LabelMismatch(tokenId));
-
-        _labels[tokenId] = label;
-        emit LabelSynced(tokenId, label);
     }
 
     /// @inheritdoc IDotnsRegistrar

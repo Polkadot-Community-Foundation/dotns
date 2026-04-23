@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {IDotnsController} from "./IDotnsController.sol";
 
 /// @title Dotns Registrar Controller
@@ -140,14 +139,4 @@ interface IDotnsRegistrarController is IDotnsController {
     /// @param whiteListStatus True to add to whitelist, false to remove.
     /// @custom:reverts NotOwner if caller is not the contract owner.
     function whiteListAddress(address who, bool whiteListStatus) external;
-
-    /// @notice Emitted when the protocol registry is updated.
-    /// @param newRegistry The address of the new protocol registry.
-    event ProtocolRegistryUpdated(IDotnsProtocolRegistry indexed newRegistry);
-
-    /// @notice Updates the protocol registry address.
-    /// @dev Callable only by the contract owner.
-    /// @param registry The address of the new protocol registry.
-    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
-    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external;
 }

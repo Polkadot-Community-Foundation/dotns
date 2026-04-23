@@ -6,19 +6,18 @@ import {BaseDeployer} from "./BaseDeployer.s.sol";
 import {DeploymentNetwork} from "./DeploymentNetwork.sol";
 
 import {StoreFactory} from "../../contracts/store/StoreFactory.sol";
-import {DotnsRegistrar, IDotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
-import {
-    DotnsReverseResolver,
-    IDotnsReverseResolver
-} from "../../contracts/resolvers/DotnsReverseResolver.sol";
+import {DotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
+import {DotnsReverseResolver} from "../../contracts/resolvers/DotnsReverseResolver.sol";
 import {DotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
+import {DotnsProtocolRegistry} from "../../contracts/registry/DotnsProtocolRegistry.sol";
+import {IDotnsProtocolRegistry} from "../../contracts/registry/IDotnsProtocolRegistry.sol";
 
 /// @title DeployCore
 /// @notice First stage of the DotNS fresh-deploy pipeline. Deploys the
-///         foundational name-ownership layer: the Store factory (plain
-///         contract) and three UUPS proxies (registrar, reverse resolver,
-///         forward registry). Records every address on the deployment manifest
-///         so downstream stages can resolve them without redeploying.
+///         protocol registry first, then the foundational name-ownership
+///         layer: the Store factory and three UUPS proxies (registrar,
+///         reverse resolver, forward registry) that all bind to the protocol
+///         registry at init.
 /// @dev Runs in its own `forge script` process; the OpenZeppelin validator's
 ///      per-call memory never crosses the process boundary into later stages.
 /// @custom:security-contact admin@parity.io
@@ -29,14 +28,24 @@ contract DeployCore is BaseDeployer {
 
         initDeployment(DeploymentNetwork.folder(block.chainid), vm.toString(block.chainid));
 
+        address protocolRegistry = _deployProtocolRegistry(owner);
         _deployStoreFactory(owner);
-        address registrar = _deployRegistrar(owner);
-        address reverseResolver = _deployReverseResolver(owner);
-        _deployRegistry(owner, registrar, reverseResolver, _readAddress("StoreFactory"));
+        _deployRegistrar(owner, protocolRegistry);
+        _deployReverseResolver(owner, protocolRegistry);
+        _deployRegistry(owner, protocolRegistry);
 
         saveDeployments();
 
         console.log("=== DeployCore complete ===");
+    }
+
+    function _deployProtocolRegistry(address owner) internal returns (address proxy) {
+        proxy = _broadcastDeployUups(
+            owner,
+            "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
+            abi.encodeCall(DotnsProtocolRegistry.initialize, ()),
+            "DotnsProtocolRegistry"
+        );
     }
 
     function _deployStoreFactory(address owner) internal {
@@ -47,29 +56,44 @@ contract DeployCore is BaseDeployer {
         logDeployment("StoreFactory", address(factory));
     }
 
-    function _deployRegistrar(address owner) internal returns (address proxy) {
+    function _deployRegistrar(
+        address owner,
+        address protocolRegistry
+    )
+        internal
+        returns (address proxy)
+    {
         proxy = _broadcastDeployUups(
             owner,
             "DotnsRegistrar.sol:DotnsRegistrar",
-            abi.encodeCall(DotnsRegistrar.initialize, ("Dotns", "Dotns")),
+            abi.encodeCall(
+                DotnsRegistrar.initialize,
+                ("Dotns", "Dotns", IDotnsProtocolRegistry(protocolRegistry))
+            ),
             "DotnsRegistrar"
         );
     }
 
-    function _deployReverseResolver(address owner) internal returns (address proxy) {
+    function _deployReverseResolver(
+        address owner,
+        address protocolRegistry
+    )
+        internal
+        returns (address proxy)
+    {
         proxy = _broadcastDeployUups(
             owner,
             "DotnsReverseResolver.sol:DotnsReverseResolver",
-            abi.encodeCall(DotnsReverseResolver.initialize, ()),
+            abi.encodeCall(
+                DotnsReverseResolver.initialize, (IDotnsProtocolRegistry(protocolRegistry))
+            ),
             "DotnsReverseResolver"
         );
     }
 
     function _deployRegistry(
         address owner,
-        address registrar,
-        address reverseResolver,
-        address storeFactory
+        address protocolRegistry
     )
         internal
         returns (address proxy)
@@ -77,14 +101,7 @@ contract DeployCore is BaseDeployer {
         proxy = _broadcastDeployUups(
             owner,
             "DotnsRegistry.sol:DotnsRegistry",
-            abi.encodeCall(
-                DotnsRegistry.initialize,
-                (
-                    IDotnsRegistrar(registrar),
-                    IDotnsReverseResolver(reverseResolver),
-                    StoreFactory(storeFactory)
-                )
-            ),
+            abi.encodeCall(DotnsRegistry.initialize, (IDotnsProtocolRegistry(protocolRegistry))),
             "DotnsRegistry"
         );
     }

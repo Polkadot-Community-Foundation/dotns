@@ -3,7 +3,6 @@ pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IDotnsRegistry} from "../../../contracts/registry/IDotnsRegistry.sol";
-import {IDotnsProtocolRegistry} from "../../../contracts/registry/IDotnsProtocolRegistry.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {Store} from "../../../contracts/store/Store.sol";
 
@@ -16,16 +15,8 @@ contract DotnsRegistryTests is BaseDotns {
         assertEq(dotnsRegistry.resolver(rootNode), address(0));
     }
 
-    function test_owner_updates_protocol_registry_emits_event_and_persists() public {
-        IDotnsProtocolRegistry newRegistry = IDotnsProtocolRegistry(makeAddr("newRegistry"));
-
-        vm.expectEmit(true, false, false, false, address(dotnsRegistry));
-        emit IDotnsRegistry.ProtocolRegistryUpdated(newRegistry);
-
-        vm.prank(owner);
-        dotnsRegistry.updateProtocolRegistry(newRegistry);
-
-        assertEq(address(dotnsRegistry.protocolRegistry()), address(newRegistry));
+    function test_protocol_registry_bound_at_init() public view {
+        assertEq(address(dotnsRegistry.protocolRegistry()), address(protocolRegistry));
     }
 
     function test_registrar_controller_sets_owner_emits_event_and_sets_resolver() public {

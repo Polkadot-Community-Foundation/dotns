@@ -7,11 +7,9 @@ import {
     OwnableUpgradeable
 } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {IDotnsRegistry} from "./IDotnsRegistry.sol";
-import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController.sol";
 import {IDotnsController} from "../registrars/IDotnsController.sol";
 import {IDotnsRegistrar} from "../registrars/IDotnsRegistrar.sol";
 import {DotnsRegistrar} from "../registrars/DotnsRegistrar.sol";
-import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
 import {RegistrationUtils} from "../utils/RegistrationUtils.sol";
@@ -35,31 +33,11 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     /// @notice Mapping of node identifiers to records.
     mapping(bytes32 node => Record record) private records;
 
-    /// @notice DEPRECATED: Address authorised to perform privileged node writes.
-    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
-    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
-    IDotnsRegistrarController public registrarController;
-
-    /// @notice DEPRECATED: ERC721 registrar backing base node ownership.
-    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
-    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
-    IDotnsRegistrar public dotnsRegistrar;
-
-    /// @notice DEPRECATED: DotNS reverse resolver.
-    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
-    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
-    IDotnsReverseResolver public reverseResolver;
-
-    /// @notice DEPRECATED: Factory for per-user Store instances.
-    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
-    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
-    IStoreFactory public storeFactory;
-
     /// @notice Protocol-level address registry for all DotNS contracts.
     IDotnsProtocolRegistry public protocolRegistry;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
-    uint256[49] private __gap;
+    uint256[50] private __gap;
 
     /// @notice Restricts access to the current owner of `node`.
     /// @param node Node identifier.
@@ -80,27 +58,12 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     }
 
     /// @notice Initializes the registry.
-    /// @param _registrar Address of the ERC721 registrar for base nodes.
-    /// @param _reverseResolver Address of the Dotns reverse resolver contract.
-    /// @param _factory Store factory used for per-user deployment stores.
-    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
-    function initialize(
-        IDotnsRegistrar _registrar,
-        IDotnsReverseResolver _reverseResolver,
-        IStoreFactory _factory
-    )
-        external
-        initializer
-    {
+    /// @param registry Protocol-level address registry used to resolve sibling contracts.
+    function initialize(IDotnsProtocolRegistry registry) external initializer {
         __Ownable_init(msg.sender);
 
-        require(address(_registrar) != address(0), NotAllowed());
-        require(address(_reverseResolver) != address(0), NotAllowed());
-        require(address(_factory) != address(0), NotAllowed());
-
-        dotnsRegistrar = _registrar;
-        reverseResolver = _reverseResolver;
-        storeFactory = _factory;
+        require(address(registry) != address(0), NotAllowed());
+        protocolRegistry = registry;
 
         records[bytes32(0)] = Record({owner: msg.sender, resolver: address(0), exists: true});
     }
@@ -286,13 +249,6 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
 
         bool approvedForAll = registrar.isApprovedForAll(tokenOwner, msg.sender);
         require(approvedForAll, NotAuthorised());
-    }
-
-    /// @inheritdoc IDotnsRegistry
-    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
-    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
-        protocolRegistry = registry;
-        emit ProtocolRegistryUpdated(registry);
     }
 
     /// @notice Internal check for registrar-authorised controller privileges.

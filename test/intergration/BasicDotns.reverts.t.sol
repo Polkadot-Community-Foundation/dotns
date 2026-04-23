@@ -19,8 +19,8 @@ contract BasicDotnsIntegrationReverts is BaseDotns {
         string memory nameLabel = NAME_NOSTATUS;
         address registrant = ed;
 
+        _grantPopLite(registrant);
         vm.startPrank(registrant);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
 
         bytes32 secret = keccak256(abi.encodePacked(nameLabel, registrant, block.timestamp));
         IDotnsRegistrarController.Registration memory registration =
@@ -46,8 +46,8 @@ contract BasicDotnsIntegrationReverts is BaseDotns {
         string memory nameLabel = NAME_POPFULL;
         address registrant = ed;
 
+        _grantPopLite(registrant);
         vm.startPrank(registrant);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
 
         bytes32 secret = keccak256(abi.encodePacked(nameLabel, registrant, block.timestamp));
         IDotnsRegistrarController.Registration memory registration =
@@ -73,8 +73,7 @@ contract BasicDotnsIntegrationReverts is BaseDotns {
         address parentOwner = ed;
         address attacker = tiago;
 
-        vm.prank(parentOwner);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+        _grantPopFull(parentOwner);
         _commitAndRegister(NAME_POPFULL, parentOwner, true);
 
         bytes32 parentNode = _namehash(dotNode, keccak256(bytes(NAME_POPFULL)));
@@ -92,8 +91,7 @@ contract BasicDotnsIntegrationReverts is BaseDotns {
     function test_parent_can_reassign_existing_subdomain() public {
         address parentOwner = ed;
 
-        vm.prank(parentOwner);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+        _grantPopFull(parentOwner);
         _commitAndRegister(NAME_POPFULL, parentOwner, true);
         bytes32 parentNode = _namehash(dotNode, keccak256(bytes(NAME_POPFULL)));
 
@@ -117,8 +115,7 @@ contract BasicDotnsIntegrationReverts is BaseDotns {
         address parentOwner = ed;
         address attacker = tiago;
 
-        vm.prank(parentOwner);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+        _grantPopFull(parentOwner);
         _commitAndRegister(NAME_POPFULL, parentOwner, true);
 
         bytes32 node = _namehash(dotNode, keccak256(bytes(NAME_POPFULL)));

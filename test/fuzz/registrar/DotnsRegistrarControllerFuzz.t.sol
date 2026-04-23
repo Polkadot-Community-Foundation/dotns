@@ -2,7 +2,6 @@
 pragma solidity ^0.8.30;
 
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
-import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {Store} from "../../../contracts/store/Store.sol";
 
 contract DotnsRegistrarControllerFuzzTest is BaseDotns {
@@ -10,9 +9,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         address registrant = ed;
         string memory nameLabel = _labelNoStatusPriced(bound(salt, 0, 64));
 
-        vm.startPrank(registrant);
-        popRules.setUserPopStatus(IPopRules.PopStatus.NoStatus);
-        vm.stopPrank();
+        _grantNoStatus(registrant);
 
         IDotnsRegistrarController.Registration memory registration =
             _commitFor(nameLabel, registrant, true);
@@ -46,9 +43,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         address registrant = tiago;
         string memory nameLabel = _labelPriceZero(bound(salt, 0, 64));
 
-        vm.startPrank(registrant);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
-        vm.stopPrank();
+        _grantPopLite(registrant);
 
         IDotnsRegistrarController.Registration memory registration =
             _commitFor(nameLabel, registrant, false);
@@ -83,13 +78,8 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         address payer = leonardo;
         string memory nameLabel = _labelPopfull(bound(salt, 0, 64));
 
-        vm.startPrank(nameOwner);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
-        vm.stopPrank();
-
-        vm.startPrank(payer);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
-        vm.stopPrank();
+        _grantPopFull(nameOwner);
+        _grantPopFull(payer);
 
         IDotnsRegistrarController.Registration memory registration =
             _commitFor(nameLabel, nameOwner, true, payer);
@@ -124,9 +114,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         address recipient = leonardo;
         string memory nameLabel = _labelPopfull(bound(salt, 0, 64));
 
-        vm.startPrank(sender);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
-        vm.stopPrank();
+        _grantPopFull(sender);
 
         IDotnsRegistrarController.Registration memory registration =
             _commitFor(nameLabel, sender, true);
@@ -160,8 +148,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         uint256 primarySalt = bound(salt, 0, 63);
         string memory primaryName = _labelPopfull(primarySalt);
 
-        vm.prank(nameOwner);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+        _grantPopFull(nameOwner);
 
         IDotnsRegistrarController.Registration memory primaryRegistration =
             _commitFor(primaryName, nameOwner, true);
@@ -173,8 +160,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
 
         string memory giftedName = _labelNoStatusPriced(primarySalt + 1);
 
-        vm.prank(payer);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+        _grantPopFull(payer);
 
         IDotnsRegistrarController.Registration memory giftedRegistration =
             _commitFor(giftedName, nameOwner, true, payer);
@@ -190,8 +176,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         address recipient = leonardo;
         string memory nameLabel = _labelPopfull(bound(salt, 0, 64));
 
-        vm.prank(sender);
-        popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+        _grantPopFull(sender);
 
         IDotnsRegistrarController.Registration memory registration =
             _commitFor(nameLabel, sender, true);

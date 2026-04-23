@@ -10,7 +10,6 @@ import {
     ERC165Upgradeable
 } from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import {IDotnsReverseResolver} from "./IDotnsReverseResolver.sol";
-import {IDotnsRegistrarController} from "../registrars/IDotnsRegistrarController.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
@@ -30,17 +29,12 @@ contract DotnsReverseResolver is
     ///      An empty string indicates that no reverse name is set.
     mapping(address owner => string name) private reverseNames;
 
-    /// @notice DEPRECATED: Address authorised to modify reverse name records.
-    /// @dev Retained for UUPS storage layout compatibility. Use protocolRegistry instead.
-    /// TODO: Remove on fresh deploy (not upgrade). Restore __gap accordingly.
-    IDotnsRegistrarController public registrarController;
-
     /// @notice Protocol-level address registry for all DotNS contracts.
     IDotnsProtocolRegistry public protocolRegistry;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
     // forge-lint: disable-next-line(mixed-case-variable)
-    uint256[49] private __gap;
+    uint256[50] private __gap;
 
     /// @notice Restricts access to the configured registrar.
     modifier onlyRegistrar() {
@@ -55,10 +49,11 @@ contract DotnsReverseResolver is
 
     /// @notice Initializes the reverse resolver.
     /// @dev This function may only be called once.
-    // TODO: On fresh deploy (not upgrade), accept IDotnsProtocolRegistry and set protocolRegistry here.
-    function initialize() external initializer {
+    /// @param registry Protocol-level address registry used to resolve sibling contracts.
+    function initialize(IDotnsProtocolRegistry registry) external initializer {
         __Ownable_init(msg.sender);
         __ERC165_init();
+        protocolRegistry = registry;
     }
 
     /// @inheritdoc IDotnsReverseResolver
@@ -81,13 +76,6 @@ contract DotnsReverseResolver is
     {
         return interfaceId == type(IDotnsReverseResolver).interfaceId
             || super.supportsInterface(interfaceId);
-    }
-
-    /// @inheritdoc IDotnsReverseResolver
-    // TODO: On fresh deploy (not upgrade), remove this function. Set protocolRegistry in initialize instead.
-    function updateProtocolRegistry(IDotnsProtocolRegistry registry) external override onlyOwner {
-        protocolRegistry = registry;
-        emit ProtocolRegistryUpdated(registry);
     }
 
     /// @notice Internal check enforcing registrar-only access.
