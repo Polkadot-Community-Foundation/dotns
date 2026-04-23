@@ -2,7 +2,6 @@
 pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
-import {IDotnsPopController} from "../../../contracts/registrars/IDotnsPopController.sol";
 import {
     IDotnsRegistrarController
 } from "../../../contracts/registrars/IDotnsRegistrarController.sol";
