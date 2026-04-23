@@ -741,8 +741,6 @@ contract DotnsPopControllerTests is BaseDotns {
         assertFalse(reservedAfter);
     }
 
-    // ----- H-01: standalone mint holder guard -----
-
     // Expired heads do not block standalone mints. Both the controller's
     // internal queue entry and the PopRules reservation slot must expire
     // before a stranger's priceWithCheck admits the mint; PopRules uses a
@@ -809,8 +807,6 @@ contract DotnsPopControllerTests is BaseDotns {
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf(BASE_LABEL_A))), ed);
     }
 
-    // ----- M-02: priceWithCheck classification and tier enforcement -----
-
     // Governance-reserved labels (baselength <= 5) must revert through
     // priceWithCheck regardless of user tier.
     function test_registerBaseName_reverts_for_governance_length_name() public {
@@ -867,8 +863,6 @@ contract DotnsPopControllerTests is BaseDotns {
         assertEq(address(dotnsPopController).balance, controllerBalanceBefore);
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf(BASE_LABEL_A))), ed);
     }
-
-    // ----- M-05: reserveLiteName as independent primitive -----
 
     // reserveLiteName must be unaffected by pressure on an unrelated base
     // stem. Under the new priceWithCheck gate, that pressure now takes the
@@ -950,8 +944,6 @@ contract DotnsPopControllerTests is BaseDotns {
         vm.expectRevert();
         IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("overli01")));
     }
-
-    // ----- Auxiliary edge cases -----
 
     // Zero-length base label fails the shape check before anything else runs.
     function test_registerBaseName_zero_length_label_reverts() public {

@@ -98,11 +98,6 @@ contract DotnsPopResolverTests is BaseDotns {
         assertEq(dotnsPopResolver.chatKey(_nodeOf("alice42")), second);
     }
 
-    // -------------------------------------------------------------------
-    // M-01: chat-key length must be exactly 65 bytes (uncompressed
-    // secp256k1 public key: 1 prefix + 32 X + 32 Y).
-    // -------------------------------------------------------------------
-
     function test_setChatKey_accepts_exactly_65_bytes() public {
         // Canonical uncompressed secp256k1 shape: 0x04 prefix, 32 X, 32 Y.
         bytes32 node = _nodeOf("alice42");
@@ -179,15 +174,6 @@ contract DotnsPopResolverTests is BaseDotns {
         vm.expectRevert(abi.encodeWithSelector(IDotnsPopResolver.NotPopController.selector, ed));
         dotnsPopResolver.setChatKey(_nodeOf("alice42"), key);
     }
-
-    // -------------------------------------------------------------------
-    // M-03: setLiteLink must keep the forward and reverse indices in
-    // lockstep. After any sequence of calls, for every stored
-    // `(fullNode, liteLabelhash)` pair both
-    // `liteLink(fullNode) == liteLabelhash` and
-    // `fullClaim(liteLabelhash) == fullNode` must hold, and no stale
-    // inverse entry may remain.
-    // -------------------------------------------------------------------
 
     function test_setLiteLink_same_full_node_relink_clears_old_reverse() public {
         bytes32 fullA = _nodeOf("alice");
@@ -350,8 +336,5 @@ contract DotnsPopResolverTests is BaseDotns {
         assertEq(dotnsPopResolver.fullClaim(liteX), bytes32(0));
     }
 
-    // -------------------------------------------------------------------
-    // Helpers.
-    // -------------------------------------------------------------------
     // 65-byte chat-key helper now lives on BaseDotns as `_validChatKey`.
 }

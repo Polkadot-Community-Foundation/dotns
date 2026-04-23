@@ -83,9 +83,7 @@ contract UpgradePopSystem is BaseDeployer {
         console.log("=== PoP System Upgrade ===");
         console.log("Chain ID:", block.chainid);
 
-        vm.startBroadcast(msg.sender);
         Deployment memory deployment = upgradeAll(msg.sender, popGateway);
-        vm.stopBroadcast();
 
         verifyUpgrade(deployment, popGateway);
     }
@@ -128,13 +126,13 @@ contract UpgradePopSystem is BaseDeployer {
             protocolRegistryOwner
         );
 
+        vm.startBroadcast(protocolRegistryOwner);
         deployment.popResolverProxy = Upgrades.deployUUPSProxy(
             _POP_RESOLVER_NEW,
             abi.encodeCall(
                 DotnsPopResolver.initialize, (IDotnsProtocolRegistry(PROTOCOL_REGISTRY_PROXY))
             )
         );
-
         deployment.popControllerProxy = Upgrades.deployUUPSProxy(
             _POP_CONTROLLER_NEW,
             abi.encodeCall(
@@ -142,13 +140,11 @@ contract UpgradePopSystem is BaseDeployer {
                 (IDotnsProtocolRegistry(PROTOCOL_REGISTRY_PROXY), DEFAULT_RESERVATION_DURATION)
             )
         );
-
         DotnsProtocolRegistry protocolRegistry = DotnsProtocolRegistry(PROTOCOL_REGISTRY_PROXY);
-        vm.startPrank(protocolRegistryOwner);
         protocolRegistry.set(DotnsConstants.POP_RESOLVER, deployment.popResolverProxy);
         protocolRegistry.set(DotnsConstants.POP_CONTROLLER, deployment.popControllerProxy);
         protocolRegistry.set(DotnsConstants.POP_GATEWAY, popGateway);
-        vm.stopPrank();
+        vm.stopBroadcast();
 
         _upgrade(REGISTRY_PROXY, _REGISTRY_NEW, _REGISTRY_OLD, registryOwner);
         _upgrade(REGISTRAR_PROXY, _REGISTRAR_NEW, _REGISTRAR_OLD, registrarOwner);
@@ -159,10 +155,10 @@ contract UpgradePopSystem is BaseDeployer {
         // validation back-to-back. A dedicated `UpgradePopRules.s.sol`
         // script runs against live Paseo in its own forge-script process.
 
-        vm.startPrank(registrarOwner);
+        vm.startBroadcast(registrarOwner);
         DotnsRegistrar(REGISTRAR_PROXY)
             .addController(IDotnsController(deployment.popControllerProxy));
-        vm.stopPrank();
+        vm.stopBroadcast();
     }
 
     /// @notice Post-upgrade verification checks; called by both `run` and fork tests.

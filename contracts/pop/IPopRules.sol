@@ -67,9 +67,12 @@ interface IPopRules {
     /// @notice Reservation metadata for a base name (digits removed).
     /// @param owner Address holding exclusive claim rights during the reservation window.
     /// @param expires UNIX timestamp when the reservation expires.
+    /// @param controller Address that wrote the reservation; the only address
+    ///        permitted to release it before expiry.
     struct Reservation {
         address owner;
         uint64 expires;
+        address controller;
     }
 
     /// @notice Classifies a name into a required PoP tier per DotNS naming rules.

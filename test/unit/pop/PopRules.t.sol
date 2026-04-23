@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
+import {IDotnsController} from "../../../contracts/registrars/IDotnsController.sol";
 
 contract PopRulesTests is BaseDotns {
     function test_classify_governance() public view {
@@ -144,5 +145,52 @@ contract PopRulesTests is BaseDotns {
 
         assertEq(holder, leonardo);
         assertGt(refreshedExpiry, firstExpiry);
+    }
+
+    function test_releaseBaseName_reverts_for_non_reserving_controller() public {
+        _authoriseTestAsController();
+        popRules.reserveBaseNameForPop("longnamebob", leonardo);
+
+        address otherController = makeAddr("otherController");
+        vm.prank(owner);
+        dotnsRegistrar.addController(IDotnsController(otherController));
+
+        vm.prank(otherController);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPopRules.PopError.selector, "Only reserving controller can release"
+            )
+        );
+        popRules.releaseBaseName("longnamebob");
+
+        (address holder,) = popRules.getBaseNameReservation("longnamebob");
+        assertEq(holder, leonardo);
+    }
+
+    function test_releaseBaseName_succeeds_for_reserving_controller() public {
+        _authoriseTestAsController();
+        popRules.reserveBaseNameForPop("longnamebob", leonardo);
+
+        popRules.releaseBaseName("longnamebob");
+
+        (address holder,) = popRules.getBaseNameReservation("longnamebob");
+        assertEq(holder, address(0));
+    }
+
+    function test_releaseBaseName_expired_slot_cleared_by_any_controller() public {
+        _authoriseTestAsController();
+        popRules.reserveBaseNameForPop("longnamebob", leonardo);
+
+        vm.warp(block.timestamp + popRules.MAX_RESERVATION_TIME() + 1);
+
+        address otherController = makeAddr("otherController");
+        vm.prank(owner);
+        dotnsRegistrar.addController(IDotnsController(otherController));
+
+        vm.prank(otherController);
+        popRules.releaseBaseName("longnamebob");
+
+        (address holder,) = popRules.getBaseNameReservation("longnamebob");
+        assertEq(holder, address(0));
     }
 }

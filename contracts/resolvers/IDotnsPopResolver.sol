@@ -8,9 +8,9 @@ pragma solidity ^0.8.30;
 ///      - Lite link: for a full-person node, the labelhash of the lite-person
 ///        username it was minted from (when the link was made).
 ///      - Full claim: reverse index mapping a lite labelhash to the full-person
-///        node it was promoted to. Mirrors `lite link` on every write so
-///        downstream consumers (e.g. Nova) that look up by lite username
-///        resolve the full name without scanning events.
+///        node it was promoted to. Mirrors `lite link` on every write so a
+///        caller that holds a lite labelhash can resolve the full-person node
+///        without scanning events.
 ///
 ///      Lives separately from the per-user {Store} so that the Store can remain a
 ///      labels-only, protocol-write / user-read surface, and follows the project's

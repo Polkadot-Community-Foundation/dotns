@@ -142,7 +142,8 @@ contract PopRules is
             // casting to 'uint64' is safe because MAX_RESERVATION_TIME will never be large enough to cause a revert
             // forge-lint: disable-next-line(unsafe-typecast)
             uint64 expiryTime = uint64(block.timestamp + MAX_RESERVATION_TIME);
-            reservations[strippedBase] = Reservation({owner: userAddress, expires: expiryTime});
+            reservations[strippedBase] =
+                Reservation({owner: userAddress, expires: expiryTime, controller: msg.sender});
             emit BaseNameReserved(strippedBase, userAddress, expiryTime);
         }
     }
@@ -444,13 +445,27 @@ contract PopRules is
         // large enough to cause a revert.
         // forge-lint: disable-next-line(unsafe-typecast)
         uint64 expiryTime = uint64(block.timestamp + MAX_RESERVATION_TIME);
-        reservations[baseName] = Reservation({owner: userAddress, expires: expiryTime});
+        reservations[baseName] =
+            Reservation({owner: userAddress, expires: expiryTime, controller: msg.sender});
         emit BaseNameReserved(baseName, userAddress, expiryTime);
     }
 
     /// @inheritdoc IPopRules
     function releaseBaseName(string calldata baseName) external override onlyRegistry {
         _requireCanonicalLabel(baseName);
+        Reservation memory reservation = reservations[baseName];
+        // Live reservations can only be cleared by the controller that wrote
+        // them, so one registrar-authorised controller cannot wipe another's
+        // active slot. Expired reservations are dead weight and may be cleared
+        // by any authorised controller as garbage collection. Reservations
+        // with a zero controller predate this field and also fall through to
+        // the GC path for backwards compatibility.
+        if (_isLive(reservation) && reservation.controller != address(0)) {
+            require(
+                msg.sender == reservation.controller,
+                PopError("Only reserving controller can release")
+            );
+        }
         delete reservations[baseName];
         emit BaseNameReleased(baseName);
     }
