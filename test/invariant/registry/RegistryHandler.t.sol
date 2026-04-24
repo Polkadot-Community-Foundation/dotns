@@ -14,9 +14,9 @@ import {
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 
-/// @title Registry Handler for Invariant Testing
-/// @notice Executes bounded random actions on the registry: register base domains,
-///         create subnodes, reassign subnodes, set resolvers, and transfer base domains.
+// @title Registry Handler for Invariant Testing
+// @notice Executes bounded random actions on the registry: register base domains,
+//         create subnodes, reassign subnodes, set resolvers, and transfer base domains.
 contract RegistryHandler is Test {
     using stdStorage for StdStorage;
 
@@ -32,16 +32,16 @@ contract RegistryHandler is Test {
     address[] public actors;
     mapping(address actor => IPopRules.PopStatus status) public actorStatus;
 
-    /// @notice Registered base domain labels.
+    // @notice Registered base domain labels.
     string[] internal _registeredLabels;
-    /// @notice Owners at time of registration (may change via transfer).
+    // @notice Owners at time of registration (may change via transfer).
     address[] internal _registeredOwners;
 
-    /// @notice Subnode hashes.
+    // @notice Subnode hashes.
     bytes32[] internal _subnodeHashes;
-    /// @notice Parent node for each subnode (same index).
+    // @notice Parent node for each subnode (same index).
     bytes32[] internal _subnodeParents;
-    /// @notice Current subnode owner (updated on reassignment).
+    // @notice Current subnode owner (updated on reassignment).
     address[] internal _subnodeOwners;
 
     uint256 public labelNonce;
@@ -64,15 +64,12 @@ contract RegistryHandler is Test {
         actors.push(actor);
         actorStatus[actor] = status;
         if (status != IPopRules.PopStatus.NoStatus) {
-            stdstorage
-                .target(address(popRules))
-                .sig("userPopStatus(address)")
-                .with_key(actor)
+            stdstorage.target(address(popRules)).sig("userPopStatus(address)").with_key(actor)
                 .checked_write(uint256(status));
         }
     }
 
-    /// @notice Register a base domain and create a subnode under it.
+    // @notice Register a base domain and create a subnode under it.
     function registerAndCreateSubnode(uint256 actorSeed, uint256 subnodeOwnerSeed) external {
         if (actors.length < 2) return;
 
@@ -86,7 +83,7 @@ contract RegistryHandler is Test {
         _createSubnode(parentNode, "sub", label, domainOwner, subnodeOwner);
     }
 
-    /// @notice Reassign an existing subnode to a different owner.
+    // @notice Reassign an existing subnode to a different owner.
     function reassignSubnode(uint256 subnodeSeed, uint256 newOwnerSeed) external {
         if (_subnodeHashes.length == 0 || actors.length < 2) return;
 
@@ -124,7 +121,7 @@ contract RegistryHandler is Test {
         _subnodeOwners[index] = newOwner;
     }
 
-    /// @notice Transfer a base domain ERC721 token.
+    // @notice Transfer a base domain ERC721 token.
     function transferBaseDomain(uint256 labelSeed, uint256 recipientSeed) external {
         if (_registeredLabels.length == 0 || actors.length < 2) return;
 

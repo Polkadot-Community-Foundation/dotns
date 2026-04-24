@@ -12,11 +12,11 @@ import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Vm} from "forge-std/Vm.sol";
 
-/// @title DotnsPopControllerTests
-/// @notice Behavioural unit tests for the dedicated PoP controller driving the
-///         gateway flow. Parameterised coverage (label format, chat-key payload,
-///         duration boundary) lives in the sibling fuzz file; these tests assert
-///         specific behaviours that do not benefit from input variation.
+// @title DotnsPopControllerTests
+// @notice Behavioural unit tests for the dedicated PoP controller driving the
+//         gateway flow. Parameterised coverage (label format, chat-key payload,
+//         duration boundary) lives in the sibling fuzz file; these tests assert
+//         specific behaviours that do not benefit from input variation.
 contract DotnsPopControllerTests is BaseDotns {
     function test_reserveBaseName_mints_and_wires_registry_and_resolver() public {
         // Lite path requires PopLite tier and a classification-valid lite label.

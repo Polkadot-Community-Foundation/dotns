@@ -19,6 +19,8 @@ interface IDotnsResolver {
     /// @notice Sets the resolved address for a node
     /// @param node The node identifier
     /// @param value The address to associate with the node
+    /// @custom:reverts NotAuthorised
+    /// @custom:emits AddressSet
     function setAddress(bytes32 node, address value) external;
 
     /// @notice Returns the resolved address for a node

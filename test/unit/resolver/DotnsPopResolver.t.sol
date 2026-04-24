@@ -5,11 +5,11 @@ import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IDotnsPopResolver} from "../../../contracts/resolvers/IDotnsPopResolver.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 
-/// @title DotnsPopResolverTests
-/// @notice Behavioural unit tests for {DotnsPopResolver}. Coverage of byte-exact
-///         persistence across arbitrary payloads lives in the PoP-controller fuzz
-///         file; here we only assert behaviour that is not a default-value check
-///         or a tautological storage-read.
+// @title DotnsPopResolverTests
+// @notice Behavioural unit tests for {DotnsPopResolver}. Coverage of byte-exact
+//         persistence across arbitrary payloads lives in the PoP-controller fuzz
+//         file; here we only assert behaviour that is not a default-value check
+//         or a tautological storage-read.
 contract DotnsPopResolverTests is BaseDotns {
     function test_setChatKey_writes_and_emits() public {
         bytes32 node = _nodeOf("alice42");

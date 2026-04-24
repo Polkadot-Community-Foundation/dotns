@@ -100,6 +100,7 @@ contract PopRules is
     ///      without rewriting the base setup.
     /// @param _startingPrice Base price in wei for NoStatus users.
     /// @param registry Protocol-level address registry used to resolve sibling contracts.
+    /// @custom:reverts InvalidInitialization
     function initialize(
         uint256 _startingPrice,
         IDotnsProtocolRegistry registry

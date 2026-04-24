@@ -160,6 +160,14 @@ interface IDotnsPopController is IDotnsController {
     /// @param user The lite-person account receiving the username.
     /// @param chatKey ECDH chat-key bytes to persist on {IDotnsChatKeyResolver}.
     /// @param reservedBaseLabel Optional base name to reserve. Empty string skips.
+    /// @custom:reverts AlreadyReserved
+    /// @custom:reverts InvalidBaseLabel
+    /// @custom:reverts InvalidLiteLabel
+    /// @custom:reverts NotGateway
+    /// @custom:reverts QueueFull
+    /// @custom:emits LiteNameReserved
+    /// @custom:emits NameRegistered
+    /// @custom:emits ReservationQueued
     function reserveBaseName(
         string calldata liteLabel,
         address user,
@@ -178,6 +186,10 @@ interface IDotnsPopController is IDotnsController {
     /// @param liteLabel The lite-person `NAMEXX` label to register.
     /// @param user The lite-person account receiving the username.
     /// @param chatKey ECDH chat-key bytes to persist on {IDotnsChatKeyResolver}.
+    /// @custom:reverts InvalidLiteLabel
+    /// @custom:reverts NotGateway
+    /// @custom:emits LiteNameReserved
+    /// @custom:emits NameRegistered
     function reserveLiteName(
         string calldata liteLabel,
         address user,
@@ -203,19 +215,33 @@ interface IDotnsPopController is IDotnsController {
     /// @param label The full-person label to register.
     /// @param user The full-person account receiving the username.
     /// @param link Tagged union selecting the chat-key source.
+    /// @custom:reverts InvalidBaseLabel
+    /// @custom:reverts InvalidLiteLabel
+    /// @custom:reverts NotGateway
+    /// @custom:reverts NotHolder
+    /// @custom:emits BaseNameClaimed
+    /// @custom:emits LiteToFullLinked
+    /// @custom:emits NameRegistered
+    /// @custom:emits StandaloneNameRegistered
     function registerBaseName(string calldata label, address user, Link calldata link) external;
 
     /// @notice Permissionlessly removes expired entries from the head of a reservation queue.
     /// @param reservedBaseLabel The reserved label whose queue should be compacted.
+    /// @custom:reverts InvalidBaseLabel
+    /// @custom:emits ReservationExpired
     function expireReservation(string calldata reservedBaseLabel) external;
 
     /// @notice Lets the caller voluntarily drop their own active reservation.
+    /// @custom:reverts NoActiveReservation
+    /// @custom:emits ReservationExpired
+    /// @custom:emits ReservationRelinquished
     function relinquishReservation() external;
 
     /// @notice Returns whether a label currently has a live reservation at the queue head.
     /// @param reservedBaseLabel The label to query.
     /// @return reserved True when a live head reservation exists.
     /// @return holder The current head-of-queue account.
+    /// @custom:reverts InvalidBaseLabel
     function isReservedForClaim(string calldata reservedBaseLabel)
         external
         view
@@ -224,5 +250,7 @@ interface IDotnsPopController is IDotnsController {
     /// @notice Updates the reservation duration used to decide when queue entries expire.
     /// @dev Callable only by the contract owner.
     /// @param duration New reservation duration in seconds.
+    /// @custom:reverts OwnableUnauthorizedAccount
+    /// @custom:emits ReservationDurationSet
     function setReservationDuration(uint64 duration) external;
 }

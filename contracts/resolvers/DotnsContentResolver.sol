@@ -48,8 +48,9 @@ contract DotnsContentResolver is
         _disableInitializers();
     }
 
-    /// @notice Initializes the content resolver
+    /// @notice Initialises the content resolver
     /// @param registry Protocol-level address registry used to resolve sibling contracts.
+    /// @custom:reverts InvalidInitialization
     function initialize(IDotnsProtocolRegistry registry) external initializer {
         __Ownable_init(msg.sender);
         __ERC165_init();

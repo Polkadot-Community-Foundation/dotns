@@ -15,90 +15,90 @@ import {LabelUtils} from "../../../contracts/utils/LabelUtils.sol";
 import {DotnsRegistrar} from "../../../contracts/registrars/DotnsRegistrar.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 
-/// @title Registrar Controller Handler
-/// @notice Handler contract that executes bounded random actions against the controller.
-/// @dev Maintains ghost state to track registrations, commitments, transfers, and actors
-///      for invariant checks.
+// @title Registrar Controller Handler
+// @notice Handler contract that executes bounded random actions against the controller.
+// @dev Maintains ghost state to track registrations, commitments, transfers, and actors
+//      for invariant checks.
 contract RegistrarControllerHandler is Test {
     using stdStorage for StdStorage;
 
     StdStorage internal stdstorage;
 
-    /// @notice Namehash of the .dot TLD.
+    // @notice Namehash of the .dot TLD.
     bytes32 private constant DOT_NODE = DotnsConstants.DOT_NODE;
-    /// @notice The registrar controller under test.
+    // @notice The registrar controller under test.
     IDotnsRegistrarController public controller;
 
-    /// @notice The forward registry.
+    // @notice The forward registry.
     IDotnsRegistry public registry;
 
-    /// @notice The base registrar (ERC721).
+    // @notice The base registrar (ERC721).
     DotnsRegistrar public registrar;
 
-    /// @notice The reverse resolver.
+    // @notice The reverse resolver.
     IDotnsReverseResolver public reverseResolver;
 
-    /// @notice The PoP rules contract.
+    // @notice The PoP rules contract.
     IPopRules public popRules;
 
-    /// @notice The store factory.
+    // @notice The store factory.
     IStoreFactory public storeFactory;
 
-    /// @notice List of actor addresses used for testing.
+    // @notice List of actor addresses used for testing.
     address[] public actors;
 
-    /// @notice Mapping of actor address to their PoP status.
+    // @notice Mapping of actor address to their PoP status.
     mapping(address actor => IPopRules.PopStatus status) public actorStatus;
 
-    /// @notice Labels that have been successfully registered.
+    // @notice Labels that have been successfully registered.
     string[] internal _registeredLabels;
 
-    /// @notice Owners corresponding to registered labels (same index).
+    // @notice Owners corresponding to registered labels (same index).
     address[] internal _registeredOwners;
 
-    /// @notice Labels registered with reserved=true.
+    // @notice Labels registered with reserved=true.
     string[] internal _reservedLabels;
 
-    /// @notice Owners of reserved registrations (same index as _reservedLabels).
+    // @notice Owners of reserved registrations (same index as _reservedLabels).
     address[] internal _reservedOwners;
 
-    /// @notice Commitments that have been consumed by successful registrations.
+    // @notice Commitments that have been consumed by successful registrations.
     bytes32[] internal _consumedCommitments;
 
-    /// @notice Commitments that are currently active (pending reveal).
+    // @notice Commitments that are currently active (pending reveal).
     bytes32[] internal _activeCommitments;
 
-    /// @notice Mapping to track which labels have been registered.
+    // @notice Mapping to track which labels have been registered.
     mapping(bytes32 labelhash => bool registered) public labelRegistered;
 
-    /// @notice Counter for generating unique labels.
+    // @notice Counter for generating unique labels.
     uint256 public labelNonce;
 
-    /// @notice Total count of successful registrations.
+    // @notice Total count of successful registrations.
     uint256 public registrationCount;
 
-    /// @notice Labels that have been transferred.
+    // @notice Labels that have been transferred.
     string[] internal _transferredLabels;
 
-    /// @notice Recipients of transferred labels (same index as _transferredLabels).
+    // @notice Recipients of transferred labels (same index as _transferredLabels).
     address[] internal _transferredRecipients;
 
-    /// @notice Total count of successful transfers.
+    // @notice Total count of successful transfers.
     uint256 public transferCount;
 
-    /// @notice Minimum commitment age from the controller.
+    // @notice Minimum commitment age from the controller.
     uint256 public minCommitmentAge;
 
-    /// @notice Maximum commitment age from the controller.
+    // @notice Maximum commitment age from the controller.
     uint256 public maxCommitmentAge;
 
-    /// @notice Initializes the handler with protocol contracts.
-    /// @param _controller The registrar controller.
-    /// @param _registry The forward registry.
-    /// @param _registrar The base registrar.
-    /// @param _reverseResolver The reverse resolver.
-    /// @param _popRules The PoP rules contract.
-    /// @param _storeFactory The store factory.
+    // @notice Initializes the handler with protocol contracts.
+    // @param _controller The registrar controller.
+    // @param _registry The forward registry.
+    // @param _registrar The base registrar.
+    // @param _reverseResolver The reverse resolver.
+    // @param _popRules The PoP rules contract.
+    // @param _storeFactory The store factory.
     constructor(
         DotnsRegistrarController _controller,
         IDotnsRegistry _registry,
@@ -118,26 +118,23 @@ contract RegistrarControllerHandler is Test {
         maxCommitmentAge = _controller.maxCommitmentAge();
     }
 
-    /// @notice Adds an actor with a specific PoP status.
-    /// @param actor The actor address.
-    /// @param status The PoP status to assign.
+    // @notice Adds an actor with a specific PoP status.
+    // @param actor The actor address.
+    // @param status The PoP status to assign.
     function addActor(address actor, IPopRules.PopStatus status) external {
         actors.push(actor);
         actorStatus[actor] = status;
 
         if (status != IPopRules.PopStatus.NoStatus) {
-            stdstorage
-                .target(address(popRules))
-                .sig("userPopStatus(address)")
-                .with_key(actor)
+            stdstorage.target(address(popRules)).sig("userPopStatus(address)").with_key(actor)
                 .checked_write(uint256(status));
         }
     }
 
-    /// @notice Performs a complete commit-reveal registration flow.
-    /// @dev Generates a unique label, commits, warps time, and registers.
-    /// @param actorSeed Seed for selecting an actor.
-    /// @param reservedSeed Seed for determining if name should be reserved.
+    // @notice Performs a complete commit-reveal registration flow.
+    // @dev Generates a unique label, commits, warps time, and registers.
+    // @param actorSeed Seed for selecting an actor.
+    // @param reservedSeed Seed for determining if name should be reserved.
     function commitAndRegister(uint256 actorSeed, uint256 reservedSeed) external {
         if (actors.length == 0) return;
 
@@ -182,9 +179,9 @@ contract RegistrarControllerHandler is Test {
         }
     }
 
-    /// @notice Performs a commit-only action without registration.
-    /// @dev Creates a pending commitment that may or may not be revealed.
-    /// @param actorSeed Seed for selecting an actor.
+    // @notice Performs a commit-only action without registration.
+    // @dev Creates a pending commitment that may or may not be revealed.
+    // @param actorSeed Seed for selecting an actor.
     function commitOnly(uint256 actorSeed) external {
         if (actors.length == 0) return;
 
@@ -205,11 +202,11 @@ contract RegistrarControllerHandler is Test {
         _activeCommitments.push(commitment);
     }
 
-    /// @notice Performs a registration with overpayment to test refunds.
-    /// @dev Sends more ETH than required and verifies refund mechanics.
-    /// @param actorSeed Seed for selecting an actor.
-    /// @param overpaymentSeed Seed for overpayment amount.
-    /// @param reservedSeed Seed for determining if name should be reserved.
+    // @notice Performs a registration with overpayment to test refunds.
+    // @dev Sends more ETH than required and verifies refund mechanics.
+    // @param actorSeed Seed for selecting an actor.
+    // @param overpaymentSeed Seed for overpayment amount.
+    // @param reservedSeed Seed for determining if name should be reserved.
     function registerWithOverpayment(
         uint256 actorSeed,
         uint256 overpaymentSeed,
@@ -261,60 +258,60 @@ contract RegistrarControllerHandler is Test {
         }
     }
 
-    /// @notice Advances block timestamp to simulate time passage.
-    /// @dev Bounded to prevent excessive time warps.
-    /// @param timeDelta Time to advance in seconds.
+    // @notice Advances block timestamp to simulate time passage.
+    // @dev Bounded to prevent excessive time warps.
+    // @param timeDelta Time to advance in seconds.
     function advanceTime(uint256 timeDelta) external {
         uint256 boundedDelta = timeDelta % (maxCommitmentAge * 2);
         vm.warp(block.timestamp + boundedDelta);
     }
 
-    /// @notice Returns all successfully registered labels.
-    /// @return labels Array of registered label strings.
+    // @notice Returns all successfully registered labels.
+    // @return labels Array of registered label strings.
     function getRegisteredLabels() external view returns (string[] memory labels) {
         labels = _registeredLabels;
     }
 
-    /// @notice Returns owners corresponding to registered labels.
-    /// @return owners Array of owner addresses.
+    // @notice Returns owners corresponding to registered labels.
+    // @return owners Array of owner addresses.
     function getRegisteredOwners() external view returns (address[] memory owners) {
         owners = _registeredOwners;
     }
 
-    /// @notice Returns labels registered with reserved=true.
-    /// @return labels Array of reserved label strings.
+    // @notice Returns labels registered with reserved=true.
+    // @return labels Array of reserved label strings.
     function getReservedLabels() external view returns (string[] memory labels) {
         labels = _reservedLabels;
     }
 
-    /// @notice Returns owners of reserved registrations.
-    /// @return owners Array of reserved owner addresses.
+    // @notice Returns owners of reserved registrations.
+    // @return owners Array of reserved owner addresses.
     function getReservedOwners() external view returns (address[] memory owners) {
         owners = _reservedOwners;
     }
 
-    /// @notice Returns commitments consumed by successful registrations.
-    /// @return commitments Array of consumed commitment hashes.
+    // @notice Returns commitments consumed by successful registrations.
+    // @return commitments Array of consumed commitment hashes.
     function getConsumedCommitments() external view returns (bytes32[] memory commitments) {
         commitments = _consumedCommitments;
     }
 
-    /// @notice Returns currently active (pending) commitments.
-    /// @return commitments Array of active commitment hashes.
+    // @notice Returns currently active (pending) commitments.
+    // @return commitments Array of active commitment hashes.
     function getActiveCommitments() external view returns (bytes32[] memory commitments) {
         commitments = _activeCommitments;
     }
 
-    /// @notice Returns the total count of successful registrations.
-    /// @return count Number of registrations.
+    // @notice Returns the total count of successful registrations.
+    // @return count Number of registrations.
     function getRegistrationCount() external view returns (uint256 count) {
         count = registrationCount;
     }
 
-    /// @notice Transfers a registered name between actors.
-    /// @dev Picks a random registered name and transfers it to a different actor.
-    /// @param registrationSeed Seed for selecting which registered name to transfer.
-    /// @param recipientSeed Seed for selecting the recipient actor.
+    // @notice Transfers a registered name between actors.
+    // @dev Picks a random registered name and transfers it to a different actor.
+    // @param registrationSeed Seed for selecting which registered name to transfer.
+    // @param recipientSeed Seed for selecting the recipient actor.
     function transferName(uint256 registrationSeed, uint256 recipientSeed) external {
         if (_registeredLabels.length == 0 || actors.length < 2) return;
 
@@ -338,11 +335,11 @@ contract RegistrarControllerHandler is Test {
         ++transferCount;
     }
 
-    /// @notice Transfers a registered name through a chain of actors (A→B→C→...→N).
-    /// @dev Exercises multi-hop label writes: the `_labels` mapping must persist across
-    ///      the entire chain so that every recipient's Store gets the correct label.
-    /// @param registrationSeed Seed for selecting which registered name to transfer.
-    /// @param hopSeed Seed for determining the number of hops and selecting recipients.
+    // @notice Transfers a registered name through a chain of actors (A→B→C→...→N).
+    // @dev Exercises multi-hop label writes: the `_labels` mapping must persist across
+    //      the entire chain so that every recipient's Store gets the correct label.
+    // @param registrationSeed Seed for selecting which registered name to transfer.
+    // @param hopSeed Seed for determining the number of hops and selecting recipients.
     function chainTransfer(uint256 registrationSeed, uint256 hopSeed) external {
         if (_registeredLabels.length == 0 || actors.length < 3) return;
 
@@ -374,22 +371,22 @@ contract RegistrarControllerHandler is Test {
         _registeredOwners[index] = currentOwner;
     }
 
-    /// @notice Returns labels that have been transferred.
-    /// @return labels Array of transferred label strings.
+    // @notice Returns labels that have been transferred.
+    // @return labels Array of transferred label strings.
     function getTransferredLabels() external view returns (string[] memory labels) {
         labels = _transferredLabels;
     }
 
-    /// @notice Returns recipients of transferred labels.
-    /// @return recipients Array of transfer recipient addresses.
+    // @notice Returns recipients of transferred labels.
+    // @return recipients Array of transfer recipient addresses.
     function getTransferredRecipients() external view returns (address[] memory recipients) {
         recipients = _transferredRecipients;
     }
 
-    /// @notice Picks an actor different from `exclude`.
-    /// @param exclude Address to exclude from selection.
-    /// @param seed Seed for selecting among remaining actors.
-    /// @return actor A different actor, or address(0) if none found.
+    // @notice Picks an actor different from `exclude`.
+    // @param exclude Address to exclude from selection.
+    // @param seed Seed for selecting among remaining actors.
+    // @return actor A different actor, or address(0) if none found.
     function _pickDifferentActor(
         address exclude,
         uint256 seed
@@ -405,16 +402,16 @@ contract RegistrarControllerHandler is Test {
         return address(0);
     }
 
-    /// @notice Generates a unique label for registration.
-    /// @dev Uses incrementing nonce to ensure uniqueness across calls.
-    /// @return label A unique label string with minimum 3 characters.
+    // @notice Generates a unique label for registration.
+    // @dev Uses incrementing nonce to ensure uniqueness across calls.
+    // @return label A unique label string with minimum 3 characters.
     function _generateUniqueLabel() internal returns (string memory label) {
         label = string(abi.encodePacked("name", vm.toString(labelNonce)));
         ++labelNonce;
     }
 
-    /// @notice Removes a commitment from the active commitments array.
-    /// @param commitment The commitment hash to remove.
+    // @notice Removes a commitment from the active commitments array.
+    // @param commitment The commitment hash to remove.
     function _removeActiveCommitment(bytes32 commitment) internal {
         uint256 length = _activeCommitments.length;
         for (uint256 i; i < length; ++i) {
@@ -426,6 +423,6 @@ contract RegistrarControllerHandler is Test {
         }
     }
 
-    /// @notice Allows the handler to receive ETH refunds.
+    // @notice Allows the handler to receive ETH refunds.
     receive() external payable {}
 }

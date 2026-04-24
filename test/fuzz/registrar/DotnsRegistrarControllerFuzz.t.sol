@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
-import {Store} from "../../../contracts/store/Store.sol";
+import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
 
 contract DotnsRegistrarControllerFuzzTest is BaseDotns {
     function testFuzz_register_refunds_overpayment(uint256 extra, uint256 salt) public {
@@ -132,12 +132,11 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), recipient);
 
-        Store recipientStore = Store(address(storeFactory.getDeployedStore(recipient)));
+        ILabelStore recipientStore = ILabelStore(storeFactory.getLabelStore(recipient));
         assertTrue(address(recipientStore) != address(0));
 
-        bytes32 storeKey = _storeKey(labelhash);
-        assertEq(recipientStore.getValueFor(recipient, storeKey), string.concat(nameLabel, ".dot"));
-        assertTrue(recipientStore.isLocked(recipient, storeKey));
+        assertEq(recipientStore.getLabel(labelhash), string.concat(nameLabel, ".dot"));
+        assertTrue(recipientStore.isLocked(labelhash));
     }
 
     function testFuzz_third_party_registration_does_not_overwrite_owner_reverse(uint256 salt)

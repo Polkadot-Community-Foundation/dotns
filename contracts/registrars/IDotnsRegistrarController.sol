@@ -105,6 +105,8 @@ interface IDotnsRegistrarController is IDotnsController {
     /// @notice Returns whether a label is available for registration.
     /// @param label Label to check.
     /// @return isAvailable True if the label can be registered.
+    /// @custom:reverts InvalidLabel
+    /// @custom:reverts NameNotAvailable
     function available(string calldata label) external view returns (bool isAvailable);
 
     /// @notice Computes the commitment hash for a registration.
@@ -117,16 +119,33 @@ interface IDotnsRegistrarController is IDotnsController {
 
     /// @notice Submits a commitment for a future registration.
     /// @param commitment Commitment hash produced by makeCommitment.
+    /// @custom:reverts UnexpiredCommitmentExists
+    /// @custom:emits NameCommitted
     function commit(bytes32 commitment) external;
 
     /// @notice Registers a name after the commitment delay.
     /// @dev Registration parameters must match the committed values.
     /// @param registration Registration parameters.
+    /// @custom:reverts CommitmentNotFound
+    /// @custom:reverts CommitmentTooNew
+    /// @custom:reverts CommitmentTooOld
+    /// @custom:reverts InsufficientValue
+    /// @custom:reverts InvalidLabel
+    /// @custom:reverts NameNotAvailable
+    /// @custom:reverts RefundFailed
+    /// @custom:emits NameRegistered
     function register(Registration calldata registration) external payable;
 
     /// @notice Registers a name after the commitment delay.
     /// @dev Registration parameters must match the committed values.
     /// @param registration Registration parameters.
+    /// @custom:reverts CommitmentNotFound
+    /// @custom:reverts CommitmentTooNew
+    /// @custom:reverts CommitmentTooOld
+    /// @custom:reverts InvalidLabel
+    /// @custom:reverts NameNotAvailable
+    /// @custom:reverts NotWhiteListedOrOwner
+    /// @custom:emits NameRegistered
     function registerReserved(Registration calldata registration) external;
 
     /// @notice Checks if the given address is whitelisted to call `registerReserved`.
@@ -137,6 +156,7 @@ interface IDotnsRegistrarController is IDotnsController {
     /// @notice Adds or removes an address from the whitelist for `registerReserved`.
     /// @param who Address to update.
     /// @param whiteListStatus True to add to whitelist, false to remove.
-    /// @custom:reverts NotOwner if caller is not the contract owner.
+    /// @custom:reverts OwnableUnauthorizedAccount
+    /// @custom:emits WhiteListed
     function whiteListAddress(address who, bool whiteListStatus) external;
 }

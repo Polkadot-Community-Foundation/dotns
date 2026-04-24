@@ -5,16 +5,15 @@ import {BaseDotns} from "../base/BaseDotns.t.sol";
 
 import {IDotnsRegistry} from "../../contracts/registry/IDotnsRegistry.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import {IStore} from "../../contracts/store/IStore.sol";
+import {ILabelStore} from "../../contracts/store/ILabelStore.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
-import {StoreUtils} from "../../contracts/utils/StoreUtils.sol";
 import {LabelUtils} from "../../contracts/utils/LabelUtils.sol";
 
-/// @title PopLifecycleFlow
-/// @notice Integration coverage for a PoP-gateway-minted full username across
-///         its full on-chain lifecycle: reservation, claim, record writes,
-///         subname issuance, transfer, and cross-contract lookup paths a
-///         downstream consumer walks starting from the lite username string.
+// @title PopLifecycleFlow
+// @notice Integration coverage for a PoP-gateway-minted full username across
+//         its full on-chain lifecycle: reservation, claim, record writes,
+//         subname issuance, transfer, and cross-contract lookup paths a
+//         downstream consumer walks starting from the lite username string.
 contract PopLifecycleFlow is BaseDotns {
     // Lite baselength 7 + 2 trailing digits classifies as PopLite.
     string internal constant LITE_LABEL = "aliceli01";
@@ -42,11 +41,9 @@ contract PopLifecycleFlow is BaseDotns {
         assertEq(dotnsPopResolver.chatKey(fullNode), CHAT_KEY);
 
         // Same label mirrored in the owner's Store under the canonical store key.
-        IStore ownerStore = storeFactory.getDeployedStore(owner);
+        ILabelStore ownerStore = ILabelStore(storeFactory.getLabelStore(owner));
         assertEq(
-            ownerStore.getValueFor(
-                owner, StoreUtils.storeKey(LabelUtils.labelhashMemory(FULL_LABEL))
-            ),
+            ownerStore.getLabel(LabelUtils.labelhashMemory(FULL_LABEL)),
             string.concat(FULL_LABEL, DotnsConstants.TLD)
         );
     }
@@ -100,9 +97,9 @@ contract PopLifecycleFlow is BaseDotns {
 
         // Store writes are one-shot-locked at registration time, so the label
         // stays under the original owner's Store even after transfer.
-        IStore edStore = storeFactory.getDeployedStore(ed);
+        ILabelStore edStore = ILabelStore(storeFactory.getLabelStore(ed));
         assertEq(
-            edStore.getValueFor(ed, StoreUtils.storeKey(LabelUtils.labelhashMemory(FULL_LABEL))),
+            edStore.getLabel(LabelUtils.labelhashMemory(FULL_LABEL)),
             string.concat(FULL_LABEL, DotnsConstants.TLD)
         );
     }

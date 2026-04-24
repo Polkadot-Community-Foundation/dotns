@@ -65,6 +65,7 @@ contract DotnsPopResolver is
     ///      the only storage this setup needs because the authorised writer
     ///      is resolved dynamically through `POP_CONTROLLER`.
     /// @param registry Protocol-level address registry used for writer resolution.
+    /// @custom:reverts InvalidInitialization
     function initialize(IDotnsProtocolRegistry registry) external initializer {
         __Ownable_init(msg.sender);
         __ERC165_init();

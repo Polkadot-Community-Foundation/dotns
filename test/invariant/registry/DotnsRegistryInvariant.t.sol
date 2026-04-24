@@ -33,7 +33,7 @@ contract DotnsRegistryInvariantTest is BaseDotns {
         excludeContract(address(storeFactory));
     }
 
-    /// @notice The parent domain owner must always be able to reassign subnodes.
+    // @notice The parent domain owner must always be able to reassign subnodes.
     function invariant_parent_can_always_reassign_subnodes() public {
         bytes32[] memory subnodes = handler.getSubnodeHashes();
         bytes32[] memory parents = handler.getSubnodeParents();
@@ -81,7 +81,7 @@ contract DotnsRegistryInvariantTest is BaseDotns {
         }
     }
 
-    /// @notice The direct subnode owner must always be authorized for node operations.
+    // The direct subnode owner must always be authorised for node operations.
     function invariant_subnode_owner_authorized() public view {
         bytes32[] memory subnodes = handler.getSubnodeHashes();
         address[] memory owners = handler.getSubnodeOwners();
@@ -92,7 +92,7 @@ contract DotnsRegistryInvariantTest is BaseDotns {
         }
     }
 
-    /// @notice Subnodes must always exist once created.
+    // @notice Subnodes must always exist once created.
     function invariant_subnodes_always_exist() public view {
         bytes32[] memory subnodes = handler.getSubnodeHashes();
 

@@ -16,7 +16,6 @@ import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
 import {IPopRules} from "../pop/IPopRules.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
-import {Store} from "../store/Store.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
 import {LabelUtils} from "../utils/LabelUtils.sol";
@@ -83,11 +82,14 @@ contract DotnsRegistrarController is
         _disableInitializers();
     }
 
-    /// @notice Initializes the registrar controller.
+    /// @notice Initialises the registrar controller.
     /// @dev Validates commitment window bounds and wires the protocol registry.
     /// @param registry Protocol-level address registry used to resolve sibling contracts.
     /// @param minAge Minimum commitment age in seconds.
     /// @param maxAge Maximum commitment age in seconds.
+    /// @custom:reverts InvalidInitialization
+    /// @custom:reverts MaxCommitmentAgeTooHigh
+    /// @custom:reverts MaxCommitmentAgeTooLow
     function initialize(
         IDotnsProtocolRegistry registry,
         uint256 minAge,
@@ -278,7 +280,7 @@ contract DotnsRegistrarController is
     )
         internal
     {
-        Store store = RegistrationUtils.registerAndStore(
+        address labelStore = RegistrationUtils.registerAndStore(
             RegistrationUtils.RegistrationContext({
                 protocolRegistry: protocolRegistry,
                 user: registration.owner,
@@ -296,9 +298,7 @@ contract DotnsRegistrarController is
             );
         }
 
-        emit NameRegistered(
-            registration.label, labelhash, registration.owner, baseCost, address(store)
-        );
+        emit NameRegistered(registration.label, labelhash, registration.owner, baseCost, labelStore);
     }
 
     /// @notice Returns implementation version.

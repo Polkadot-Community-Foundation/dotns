@@ -148,6 +148,8 @@ contract DotnsPopController is
     ///      through the same event the setter uses later.
     /// @param registry Protocol-level address registry.
     /// @param reservationDuration_ Initial reservation duration in seconds.
+    /// @custom:reverts InvalidInitialization
+    /// @custom:emits ReservationDurationSet
     function initialize(
         IDotnsProtocolRegistry registry,
         uint64 reservationDuration_
@@ -416,16 +418,14 @@ contract DotnsPopController is
     )
         internal
     {
-        address storeAddr = address(
-            RegistrationUtils.registerAndStore(
-                RegistrationUtils.RegistrationContext({
-                    protocolRegistry: protocolRegistry,
-                    user: user,
-                    label: label,
-                    labelhash: labelhash,
-                    node: node
-                })
-            )
+        address storeAddr = RegistrationUtils.registerAndStore(
+            RegistrationUtils.RegistrationContext({
+                protocolRegistry: protocolRegistry,
+                user: user,
+                label: label,
+                labelhash: labelhash,
+                node: node
+            })
         );
 
         IDotnsPopResolver resolver = _popResolver();

@@ -12,7 +12,6 @@ import {IDotnsRegistrar} from "../registrars/IDotnsRegistrar.sol";
 import {DotnsRegistrar} from "../registrars/DotnsRegistrar.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
-import {RegistrationUtils} from "../utils/RegistrationUtils.sol";
 import {LabelUtils} from "../utils/LabelUtils.sol";
 import {IDotnsProtocolRegistry} from "./IDotnsProtocolRegistry.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
@@ -57,8 +56,10 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         _disableInitializers();
     }
 
-    /// @notice Initializes the registry.
+    /// @notice Initialises the registry.
     /// @param registry Protocol-level address registry used to resolve sibling contracts.
+    /// @custom:reverts InvalidInitialization
+    /// @custom:reverts NotAllowed
     function initialize(IDotnsProtocolRegistry registry) external initializer {
         __Ownable_init(msg.sender);
 
@@ -174,10 +175,12 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         return records[node].exists;
     }
 
-    /// @notice Writes subnode registration to the owner's Store.
-    /// @dev Acquires or deploys a Store for the owner, then writes the full subnode name.
-    /// @param storeOwner Subnode owner whose Store receives the record.
-    /// @param node Derived subnode identifier.
+    /// @notice Writes subnode registration to the owner's `LabelStore`.
+    /// @dev Acquires or deploys a `LabelStore` for the owner, then writes the full subnode name
+    ///      keyed by `node` (opaque bytes32 — for subnodes this is the namehash, not the
+    ///      labelhash, and that distinction is caller-local).
+    /// @param storeOwner Subnode owner whose store receives the record.
+    /// @param node Derived subnode namehash used as the label-store key.
     /// @param fullName Canonical full subnode name.
     function _writeSubnodeToStore(
         address storeOwner,
@@ -187,8 +190,7 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         internal
     {
         IStoreFactory factory = IStoreFactory(protocolRegistry.get(DotnsConstants.STORE_FACTORY));
-        address[] memory controllers = RegistrationUtils.storeControllers(protocolRegistry);
-        factory.writeToStore(controllers, storeOwner, node, fullName);
+        factory.writeLabel(storeOwner, node, fullName);
     }
 
     function _parentNamehash(string calldata parentLabel) internal pure returns (bytes32 node) {

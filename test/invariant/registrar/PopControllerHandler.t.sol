@@ -11,12 +11,12 @@ import {PopRules, IPopRules} from "../../../contracts/pop/PopRules.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 import {LabelUtils} from "../../../contracts/utils/LabelUtils.sol";
 
-/// @title PopControllerHandler
-/// @notice Bounded random-action handler for {DotnsPopController} invariant tests.
-/// @dev Cycles through an actor set and a fixed base-label set so the fuzzer
-///      explores combinations deterministically. Tracks every labelhash that has
-///      hosted a reservation, every minted lite token, and every successful
-///      claim so invariants can iterate over just what exists.
+// @title PopControllerHandler
+// @notice Bounded random-action handler for {DotnsPopController} invariant tests.
+// @dev Cycles through an actor set and a fixed base-label set so the fuzzer
+//      explores combinations deterministically. Tracks every labelhash that has
+//      hosted a reservation, every minted lite token, and every successful
+//      claim so invariants can iterate over just what exists.
 contract PopControllerHandler is Test {
     using stdStorage for StdStorage;
 
@@ -71,10 +71,7 @@ contract PopControllerHandler is Test {
         // superset of PopLite), PopFull base labels, and NoStatus base labels
         // (which merely require userStatus != PopLite).
         for (uint256 i = 0; i < actors_.length; i++) {
-            stdstorage
-                .target(address(popRules_))
-                .sig("userPopStatus(address)")
-                .with_key(actors_[i])
+            stdstorage.target(address(popRules_)).sig("userPopStatus(address)").with_key(actors_[i])
                 .checked_write(uint256(IPopRules.PopStatus.PopFull));
         }
     }
@@ -220,15 +217,15 @@ contract PopControllerHandler is Test {
         vm.warp(block.timestamp + (secondsForward % (30 days)));
     }
 
-    /// @notice Builds a classification-valid PoP lite label.
-    /// @dev Shape: `<tag><4 letters from actor><2 digits>`. Total baselength
-    ///      is 7 with exactly 2 trailing digits, which classifies as PopLite
-    ///      under PopRules. Tag disambiguates the reserve vs claim call sites
-    ///      so neither collides with the other in the ERC721 namespace. The
-    ///      letter block is derived from the actor address via keccak so each
-    ///      actor lives in its own lite namespace. Suffix wraps modulo 100 so
-    ///      the label stays within the 2-trailing-digit rule; collisions past
-    ///      100 reuses are swallowed by the caller's try/catch.
+    // @notice Builds a classification-valid PoP lite label.
+    // @dev Shape: `<tag><4 letters from actor><2 digits>`. Total baselength
+    //      is 7 with exactly 2 trailing digits, which classifies as PopLite
+    //      under PopRules. Tag disambiguates the reserve vs claim call sites
+    //      so neither collides with the other in the ERC721 namespace. The
+    //      letter block is derived from the actor address via keccak so each
+    //      actor lives in its own lite namespace. Suffix wraps modulo 100 so
+    //      the label stays within the 2-trailing-digit rule; collisions past
+    //      100 reuses are swallowed by the caller's try/catch.
     function _buildLiteLabel(
         string memory tag,
         address actor,

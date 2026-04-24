@@ -4,7 +4,7 @@ pragma solidity ^0.8.30;
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IDotnsRegistry} from "../../../contracts/registry/IDotnsRegistry.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
-import {Store} from "../../../contracts/store/Store.sol";
+import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
 
 contract DotnsRegistryTests is BaseDotns {
     function test_root_record_is_initialized_and_owned_by_owner() public view {
@@ -45,8 +45,6 @@ contract DotnsRegistryTests is BaseDotns {
         bytes32 subLabelHash = keccak256(bytes(subLabel));
         bytes32 expectedSubnode = _namehash(parentNode, subLabelHash);
 
-        _ensureStoreFor(ed);
-
         IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
             parentNode: parentNode, subLabel: subLabel, parentLabel: parentLabel, owner: ed
         });
@@ -72,8 +70,6 @@ contract DotnsRegistryTests is BaseDotns {
         bytes32 subLabelHash = keccak256(bytes(subLabel));
         bytes32 node = _namehash(parentNode, subLabelHash);
         address newResolver = makeAddr("resolver");
-
-        _ensureStoreFor(ed);
 
         IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
             parentNode: parentNode, subLabel: subLabel, parentLabel: parentLabel, owner: ed
@@ -101,8 +97,6 @@ contract DotnsRegistryTests is BaseDotns {
         bytes32 subLabelHash = keccak256(bytes(subLabel));
         bytes32 node = _namehash(parentNode, subLabelHash);
         address newResolver = makeAddr("resolver");
-
-        _ensureStoreFor(ed);
 
         IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
             parentNode: parentNode, subLabel: subLabel, parentLabel: parentLabel, owner: ed
@@ -145,8 +139,8 @@ contract DotnsRegistryTests is BaseDotns {
         assertTrue(dotnsRegistry.recordExists(leafNode));
         assertEq(dotnsRegistry.resolver(leafNode), address(dotnsReverseResolver));
 
-        Store tiagoStore = Store(address(storeFactory.getDeployedStore(tiago)));
-        assertEq(tiagoStore.getValueFor(tiago, _storeKey(leafNode)), "leaf.child.parentnode06.dot");
+        ILabelStore tiagoStore = ILabelStore(storeFactory.getLabelStore(tiago));
+        assertEq(tiagoStore.getLabel(leafNode), "leaf.child.parentnode06.dot");
     }
 
     function test_subnode_owner_creates_nested_subnode_under_owned_parent() public {
@@ -156,8 +150,6 @@ contract DotnsRegistryTests is BaseDotns {
         string memory childLabel = "child";
         bytes32 childLabelHash = keccak256(bytes(childLabel));
         bytes32 expectedChildNode = _namehash(parentNode, childLabelHash);
-
-        _ensureStoreFor(tiago);
 
         IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
             parentNode: parentNode, subLabel: childLabel, parentLabel: parentLabel, owner: tiago
@@ -377,8 +369,6 @@ contract DotnsRegistryTests is BaseDotns {
         string memory parentLabelB = "bravobro";
         bytes32 parentNodeA = _register(parentLabelA, owner, IPopRules.PopStatus.PopFull);
         bytes32 parentNodeB = _register(parentLabelB, owner, IPopRules.PopStatus.PopFull);
-
-        _ensureStoreFor(ed);
 
         string memory subLabel = "app";
 

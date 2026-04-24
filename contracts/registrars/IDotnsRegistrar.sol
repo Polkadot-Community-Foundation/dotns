@@ -50,6 +50,9 @@ interface IDotnsRegistrar is IERC721 {
     /// @param id Token identifier.
     /// @param owner Owner of the name.
     /// @param label The human-readable label string (e.g. "alice").
+    /// @custom:reverts NameNotAvailable
+    /// @custom:reverts NotController
+    /// @custom:emits NameRegistered
     function register(uint256 id, address owner, string calldata label) external;
 
     /// @notice Adds an authorised controller.
@@ -58,11 +61,15 @@ interface IDotnsRegistrar is IERC721 {
     ///      controller, and any future controller all pass without the registrar
     ///      depending on a specific controller shape.
     /// @param controller Controller to authorise.
+    /// @custom:reverts OwnableUnauthorizedAccount
+    /// @custom:emits ControllerAdded
     function addController(IDotnsController controller) external;
 
     /// @notice Removes an authorised controller.
     /// @dev Callable only by the contract owner.
     /// @param controller Controller to deauthorise.
+    /// @custom:reverts OwnableUnauthorizedAccount
+    /// @custom:emits ControllerRemoved
     function removeController(IDotnsController controller) external;
 
     /// @notice Returns the human-readable label a token was registered with.

@@ -93,7 +93,7 @@ contract DotnsDeployer is BaseDeployer {
         // validation still runs on every proxy; no checks are skipped.
         Deployment memory deployment;
         deployment.protocolRegistry = _deployProtocolRegistry(OWNER);
-        deployment.storeFactory = _deployStoreFactory(OWNER);
+        deployment.storeFactory = _deployStoreFactory(OWNER, deployment.protocolRegistry);
         deployment.registrar = _deployRegistrar(OWNER, deployment.protocolRegistry);
         deployment.reverseResolver = _deployReverseResolver(OWNER, deployment.protocolRegistry);
         deployment.registry = _deployRegistry(OWNER, deployment.protocolRegistry);
@@ -123,13 +123,23 @@ contract DotnsDeployer is BaseDeployer {
         protocolRegistry = DotnsProtocolRegistry(proxy);
     }
 
-    function _deployStoreFactory(address owner) internal returns (address proxy) {
+    function _deployStoreFactory(
+        address owner,
+        address protocolRegistryProxy
+    )
+        internal
+        returns (address proxy)
+    {
         vm.startBroadcast(owner);
-        storeFactory = new StoreFactory();
+        storeFactory = new StoreFactory(protocolRegistryProxy);
         vm.stopBroadcast();
         proxy = address(storeFactory);
         vm.label(proxy, "StoreFactory");
+        vm.label(storeFactory.labelStoreBeacon(), "LabelStoreBeacon");
+        vm.label(storeFactory.userStoreBeacon(), "UserStoreBeacon");
         logDeployment("StoreFactory", proxy);
+        logDeployment("LabelStoreBeacon", storeFactory.labelStoreBeacon());
+        logDeployment("UserStoreBeacon", storeFactory.userStoreBeacon());
     }
 
     function _deployRegistrar(
@@ -323,41 +333,51 @@ contract DotnsDeployer is BaseDeployer {
         console.log("Protocol registry keys set");
     }
 
-    function _verifyDeployment(Deployment memory d, address expectedOwner) internal view {
-        _verifyOwnership(d, expectedOwner);
-        _verifyRegistryKeys(d, expectedOwner);
-        _verifyRegistryPointers(d);
-        _verifyControllerAuthorisation(d);
+    function _verifyDeployment(Deployment memory deployment, address expectedOwner) internal view {
+        _verifyOwnership(deployment, expectedOwner);
+        _verifyRegistryKeys(deployment, expectedOwner);
+        _verifyRegistryPointers(deployment);
+        _verifyControllerAuthorisation(deployment);
 
-        require(DotnsRegistry(d.registry).recordExists(bytes32(0)), "Root record missing");
+        require(DotnsRegistry(deployment.registry).recordExists(bytes32(0)), "Root record missing");
         console.log("=== Deployment verification complete ===");
     }
 
-    function _verifyOwnership(Deployment memory d, address expectedOwner) internal view {
-        _assertOwner(DotnsRegistrar(d.registrar).owner(), expectedOwner, "Registrar: wrong owner");
+    function _verifyOwnership(Deployment memory deployment, address expectedOwner) internal view {
         _assertOwner(
-            DotnsRegistrarController(d.registrarController).owner(),
+            DotnsRegistrar(deployment.registrar).owner(), expectedOwner, "Registrar: wrong owner"
+        );
+        _assertOwner(
+            DotnsRegistrarController(deployment.registrarController).owner(),
             expectedOwner,
             "Controller: wrong owner"
         );
-        _assertOwner(DotnsRegistry(d.registry).owner(), expectedOwner, "Registry: wrong owner");
         _assertOwner(
-            DotnsReverseResolver(d.reverseResolver).owner(),
+            DotnsRegistry(deployment.registry).owner(), expectedOwner, "Registry: wrong owner"
+        );
+        _assertOwner(
+            DotnsReverseResolver(deployment.reverseResolver).owner(),
             expectedOwner,
             "ReverseResolver: wrong owner"
         );
-        _assertOwner(DotnsResolver(d.resolver).owner(), expectedOwner, "Resolver: wrong owner");
         _assertOwner(
-            DotnsContentResolver(d.contentResolver).owner(),
+            DotnsResolver(deployment.resolver).owner(), expectedOwner, "Resolver: wrong owner"
+        );
+        _assertOwner(
+            DotnsContentResolver(deployment.contentResolver).owner(),
             expectedOwner,
             "ContentResolver: wrong owner"
         );
-        _assertOwner(PopRules(d.popRules).owner(), expectedOwner, "PopRules: wrong owner");
+        _assertOwner(PopRules(deployment.popRules).owner(), expectedOwner, "PopRules: wrong owner");
         _assertOwner(
-            DotnsPopController(d.popController).owner(), expectedOwner, "PopController: wrong owner"
+            DotnsPopController(deployment.popController).owner(),
+            expectedOwner,
+            "PopController: wrong owner"
         );
         _assertOwner(
-            DotnsPopResolver(d.popResolver).owner(), expectedOwner, "PopResolver: wrong owner"
+            DotnsPopResolver(deployment.popResolver).owner(),
+            expectedOwner,
+            "PopResolver: wrong owner"
         );
         _assertOwner(protocolRegistry.owner(), expectedOwner, "ProtocolRegistry: wrong owner");
     }
@@ -366,17 +386,27 @@ contract DotnsDeployer is BaseDeployer {
         require(actual == expected, label);
     }
 
-    function _verifyRegistryKeys(Deployment memory d, address expectedOwner) internal view {
-        _assertKey(DotnsConstants.REGISTRAR, d.registrar, "Key: registrar");
-        _assertKey(DotnsConstants.CONTROLLER, d.registrarController, "Key: controller");
-        _assertKey(DotnsConstants.REGISTRY, d.registry, "Key: registry");
-        _assertKey(DotnsConstants.REVERSE_RESOLVER, d.reverseResolver, "Key: reverseResolver");
-        _assertKey(DotnsConstants.RESOLVER, d.resolver, "Key: resolver");
-        _assertKey(DotnsConstants.CONTENT_RESOLVER, d.contentResolver, "Key: contentResolver");
-        _assertKey(DotnsConstants.POP_RULES, d.popRules, "Key: popRules");
-        _assertKey(DotnsConstants.STORE_FACTORY, d.storeFactory, "Key: storeFactory");
-        _assertKey(DotnsConstants.POP_CONTROLLER, d.popController, "Key: popController");
-        _assertKey(DotnsConstants.POP_RESOLVER, d.popResolver, "Key: popResolver");
+    function _verifyRegistryKeys(
+        Deployment memory deployment,
+        address expectedOwner
+    )
+        internal
+        view
+    {
+        _assertKey(DotnsConstants.REGISTRAR, deployment.registrar, "Key: registrar");
+        _assertKey(DotnsConstants.CONTROLLER, deployment.registrarController, "Key: controller");
+        _assertKey(DotnsConstants.REGISTRY, deployment.registry, "Key: registry");
+        _assertKey(
+            DotnsConstants.REVERSE_RESOLVER, deployment.reverseResolver, "Key: reverseResolver"
+        );
+        _assertKey(DotnsConstants.RESOLVER, deployment.resolver, "Key: resolver");
+        _assertKey(
+            DotnsConstants.CONTENT_RESOLVER, deployment.contentResolver, "Key: contentResolver"
+        );
+        _assertKey(DotnsConstants.POP_RULES, deployment.popRules, "Key: popRules");
+        _assertKey(DotnsConstants.STORE_FACTORY, deployment.storeFactory, "Key: storeFactory");
+        _assertKey(DotnsConstants.POP_CONTROLLER, deployment.popController, "Key: popController");
+        _assertKey(DotnsConstants.POP_RESOLVER, deployment.popResolver, "Key: popResolver");
         _assertKey(DotnsConstants.POP_GATEWAY, expectedOwner, "Key: popGateway");
     }
 
@@ -384,44 +414,50 @@ contract DotnsDeployer is BaseDeployer {
         require(protocolRegistry.get(key) == expected, label);
     }
 
-    function _verifyRegistryPointers(Deployment memory d) internal view {
+    function _verifyRegistryPointers(Deployment memory deployment) internal view {
         address expected = address(protocolRegistry);
         _assertPointer(
-            address(DotnsRegistrar(d.registrar).protocolRegistry()),
+            address(DotnsRegistrar(deployment.registrar).protocolRegistry()),
             expected,
             "Registrar: not wired"
         );
         _assertPointer(
-            address(DotnsRegistrarController(d.registrarController).protocolRegistry()),
+            address(DotnsRegistrarController(deployment.registrarController).protocolRegistry()),
             expected,
             "Controller: not wired"
         );
         _assertPointer(
-            address(DotnsRegistry(d.registry).protocolRegistry()), expected, "Registry: not wired"
+            address(DotnsRegistry(deployment.registry).protocolRegistry()),
+            expected,
+            "Registry: not wired"
         );
         _assertPointer(
-            address(DotnsReverseResolver(d.reverseResolver).protocolRegistry()),
+            address(DotnsReverseResolver(deployment.reverseResolver).protocolRegistry()),
             expected,
             "ReverseResolver: not wired"
         );
         _assertPointer(
-            address(DotnsResolver(d.resolver).protocolRegistry()), expected, "Resolver: not wired"
+            address(DotnsResolver(deployment.resolver).protocolRegistry()),
+            expected,
+            "Resolver: not wired"
         );
         _assertPointer(
-            address(DotnsContentResolver(d.contentResolver).protocolRegistry()),
+            address(DotnsContentResolver(deployment.contentResolver).protocolRegistry()),
             expected,
             "ContentResolver: not wired"
         );
         _assertPointer(
-            address(PopRules(d.popRules).protocolRegistry()), expected, "PopRules: not wired"
+            address(PopRules(deployment.popRules).protocolRegistry()),
+            expected,
+            "PopRules: not wired"
         );
         _assertPointer(
-            address(DotnsPopController(d.popController).protocolRegistry()),
+            address(DotnsPopController(deployment.popController).protocolRegistry()),
             expected,
             "PopController: not wired"
         );
         _assertPointer(
-            address(DotnsPopResolver(d.popResolver).protocolRegistry()),
+            address(DotnsPopResolver(deployment.popResolver).protocolRegistry()),
             expected,
             "PopResolver: not wired"
         );
@@ -431,13 +467,15 @@ contract DotnsDeployer is BaseDeployer {
         require(actual == expected, label);
     }
 
-    function _verifyControllerAuthorisation(Deployment memory d) internal view {
+    function _verifyControllerAuthorisation(Deployment memory deployment) internal view {
         require(
-            DotnsRegistrar(d.registrar).controllers(IDotnsController(d.registrarController)),
+            DotnsRegistrar(deployment.registrar)
+                .controllers(IDotnsController(deployment.registrarController)),
             "Controller not added to registrar"
         );
         require(
-            DotnsRegistrar(d.registrar).controllers(IDotnsController(d.popController)),
+            DotnsRegistrar(deployment.registrar)
+                .controllers(IDotnsController(deployment.popController)),
             "PopController not added to registrar"
         );
     }

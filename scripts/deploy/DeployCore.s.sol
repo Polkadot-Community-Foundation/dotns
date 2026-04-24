@@ -29,7 +29,7 @@ contract DeployCore is BaseDeployer {
         initDeployment(DeploymentNetwork.folder(block.chainid), vm.toString(block.chainid));
 
         address protocolRegistry = _deployProtocolRegistry(owner);
-        _deployStoreFactory(owner);
+        _deployStoreFactory(owner, protocolRegistry);
         _deployRegistrar(owner, protocolRegistry);
         _deployReverseResolver(owner, protocolRegistry);
         _deployRegistry(owner, protocolRegistry);
@@ -48,12 +48,16 @@ contract DeployCore is BaseDeployer {
         );
     }
 
-    function _deployStoreFactory(address owner) internal {
+    function _deployStoreFactory(address owner, address protocolRegistry) internal {
         vm.startBroadcast(owner);
-        StoreFactory factory = new StoreFactory();
+        StoreFactory factory = new StoreFactory(protocolRegistry);
         vm.stopBroadcast();
         vm.label(address(factory), "StoreFactory");
+        vm.label(factory.labelStoreBeacon(), "LabelStoreBeacon");
+        vm.label(factory.userStoreBeacon(), "UserStoreBeacon");
         logDeployment("StoreFactory", address(factory));
+        logDeployment("LabelStoreBeacon", factory.labelStoreBeacon());
+        logDeployment("UserStoreBeacon", factory.userStoreBeacon());
     }
 
     function _deployRegistrar(

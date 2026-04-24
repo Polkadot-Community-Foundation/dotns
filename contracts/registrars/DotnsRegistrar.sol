@@ -16,7 +16,6 @@ import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
-import {RegistrationUtils} from "../utils/RegistrationUtils.sol";
 import {LabelUtils} from "../utils/LabelUtils.sol";
 import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
@@ -75,11 +74,12 @@ contract DotnsRegistrar is
         _disableInitializers();
     }
 
-    /// @notice Initializes the registrar.
+    /// @notice Initialises the registrar.
     /// @dev Uses OpenZeppelin upgradeable initializers.
     /// @param name ERC721 token name.
     /// @param symbol ERC721 token symbol.
     /// @param registry Protocol-level address registry used to resolve sibling contracts.
+    /// @custom:reverts InvalidInitialization
     function initialize(
         string calldata name,
         string calldata symbol,
@@ -188,28 +188,25 @@ contract DotnsRegistrar is
         }
     }
 
-    /// @notice Ensures the recipient has a Store and writes the label to it if available.
-    /// @dev Deploys a Store for the recipient via `getOrCreateStore` when one does not exist,
-    ///      then writes the label entry if `_labels[tokenId]` is populated and the key
-    ///      does not already have a value (locked entries are skipped).
-    ///      Silently returns if the store factory is not set.
+    /// @notice Ensures the recipient has a `LabelStore` and writes the transferred label to it.
+    /// @dev Deploys a `LabelStore` for the recipient via the factory when one does not exist,
+    ///      then writes the label entry if `_labels[tokenId]` is populated. Locked entries are
+    ///      skipped idempotently by `StoreUtils.writeLabel`. Silently returns if the store
+    ///      factory is not set (early-bootstrap tests).
     /// @param to Address of the transfer recipient.
     /// @param tokenId The transferred token identifier.
     function _syncRecipientStore(address to, uint256 tokenId) internal {
         IStoreFactory factory = IStoreFactory(protocolRegistry.get(DotnsConstants.STORE_FACTORY));
         if (address(factory) == address(0)) return;
 
-        address[] memory controllers_ = RegistrationUtils.storeControllers(protocolRegistry);
-
         string memory label = _labels[tokenId];
         if (bytes(label).length == 0) {
-            factory.getOrCreateStore(controllers_, to);
+            factory.ensureLabelStore(to);
             return;
         }
 
         bytes32 labelhash = LabelUtils.labelhashMemory(label);
-
-        factory.writeToStore(controllers_, to, labelhash, string.concat(label, DotnsConstants.TLD));
+        factory.writeLabel(to, labelhash, string.concat(label, DotnsConstants.TLD));
     }
 
     /// @inheritdoc UUPSUpgradeable

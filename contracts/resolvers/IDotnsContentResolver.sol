@@ -34,6 +34,8 @@ interface IDotnsContentResolver {
     /// @dev The caller must own the node in the DotNS registry or be an approved operator
     /// @param node The node whose content hash is being set
     /// @param hash Opaque content hash bytes
+    /// @custom:reverts NotAuthorised
+    /// @custom:emits ContentHashUpdated
     function setContenthash(bytes32 node, bytes calldata hash) external;
 
     /// @notice Returns the content hash associated with a node
@@ -46,6 +48,8 @@ interface IDotnsContentResolver {
     /// @param node The node whose text record is being set
     /// @param key Text record key (e.g., "ipfs", "avatar")
     /// @param value Text record value
+    /// @custom:reverts NotAuthorised
+    /// @custom:emits TextUpdated
     function setText(bytes32 node, string calldata key, string calldata value) external;
 
     /// @notice Returns a text record for a node
@@ -55,8 +59,9 @@ interface IDotnsContentResolver {
     function text(bytes32 node, string calldata key) external view returns (string memory value);
 
     /// @notice Enable or disable approval for a third party ("operator") to manage all of `msg.sender`'s nodes
-    /// @param operator Address to authorize or revoke
+    /// @param operator Address to authorise or revoke
     /// @param approved True to approve, false to revoke
+    /// @custom:emits ApprovalForAll
     function setApprovalForAll(address operator, bool approved) external;
 
     /// @notice Query if an address is an approved operator for another address

@@ -23,5 +23,16 @@ interface IDotnsProtocolRegistry {
     /// @dev Callable only by the contract owner.
     /// @param key The well-known key identifying the contract role.
     /// @param addr The address to assign. Must not be the zero address.
+    /// @custom:reverts OwnableUnauthorizedAccount
+    /// @custom:reverts ZeroAddress
+    /// @custom:emits AddressUpdated
     function set(bytes32 key, address addr) external;
+
+    /// @notice Returns true iff `addr` is currently registered under at least one well-known key.
+    /// @dev O(1) refcount-backed lookup. Canonical auth check consumed by LabelStore writes and
+    ///      StoreFactory label-store deploys. Governance-controlled: only addresses governance
+    ///      has actively registered return true.
+    /// @param addr The address to check.
+    /// @return registered True iff `addr != 0` and at least one registry key points to `addr`.
+    function isRegisteredAddress(address addr) external view returns (bool registered);
 }

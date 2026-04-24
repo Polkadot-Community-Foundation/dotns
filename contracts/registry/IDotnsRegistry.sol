@@ -84,12 +84,21 @@ interface IDotnsRegistry {
     /// @dev Callable only by the current owner of `parentNode`.
     /// @param record SubnodeRecord.
     /// @return subnode The derived subnode identifier.
+    /// @custom:reverts InvalidLabel
+    /// @custom:reverts NotAllowed
+    /// @custom:reverts NotAuthorised
+    /// @custom:reverts ParentLabelMismatch
+    /// @custom:emits NewOwner
     function setSubnodeOwner(SubnodeRecord calldata record) external returns (bytes32 subnode);
 
     /// @notice Sets the resolver for an existing subnode.
     /// @dev Callable only by the current owner of `parentNode`.
     ///      The subnode owner can still use `setResolver` directly.
     /// @param record SubnodeResolverRecord.
+    /// @custom:reverts InvalidLabel
+    /// @custom:reverts NotAuthorised
+    /// @custom:reverts ParentLabelMismatch
+    /// @custom:emits NewResolver
     function setSubnodeResolver(SubnodeResolverRecord calldata record) external;
 
     /// @notice Creates a node record for a tokenised base registration.
@@ -99,6 +108,10 @@ interface IDotnsRegistry {
     /// @param node Node identifier.
     /// @param newOwner New owner address for event emission and validation.
     /// @param resolverAddr Resolver address to set for the node.
+    /// @custom:reverts NodeAlreadyOwned
+    /// @custom:reverts NotAllowed
+    /// @custom:reverts NotAuthorised
+    /// @custom:emits NodeTransferred
     function setOwner(bytes32 node, address newOwner, address resolverAddr) external;
 
     /// @notice Sets or clears the resolver for a node.
@@ -106,6 +119,8 @@ interface IDotnsRegistry {
     ///      For tokenised nodes, authorisation is based on ERC721 owner/approvals.
     /// @param node Node identifier.
     /// @param resolverAddr Resolver contract address (zero clears).
+    /// @custom:reverts NotAuthorised
+    /// @custom:emits NewResolver
     function setResolver(bytes32 node, address resolverAddr) external;
 
     /// @notice Returns the owner of a node.

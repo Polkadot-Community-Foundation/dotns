@@ -5,7 +5,7 @@ import {BaseDotns} from "../base/BaseDotns.t.sol";
 import {IPopRules} from "../../contracts/pop/IPopRules.sol";
 import {IDotnsRegistry} from "../../contracts/registry/IDotnsRegistry.sol";
 import {IDotnsRegistrarController} from "../../contracts/registrars/IDotnsRegistrarController.sol";
-import {Store} from "../../contracts/store/Store.sol";
+import {ILabelStore} from "../../contracts/store/ILabelStore.sol";
 
 contract BasicDotnsIntegration is BaseDotns {
     string internal constant NAME_POPFULL = "waytall1";
@@ -113,13 +113,11 @@ contract BasicDotnsIntegration is BaseDotns {
             assertEq(dotnsReverseResolver.nameOf(flow.nameOwner), "");
         }
 
-        Store ownerStore = Store(address(storeFactory.getDeployedStore(flow.nameOwner)));
+        ILabelStore ownerStore = ILabelStore(storeFactory.getLabelStore(flow.nameOwner));
         assertTrue(address(ownerStore) != address(0));
 
-        bytes32 storeKey = _storeKey(labelHash);
-
-        assertEq(ownerStore.getValueFor(flow.nameOwner, storeKey), fullName);
-        assertTrue(ownerStore.isLocked(flow.nameOwner, storeKey));
+        assertEq(ownerStore.getLabel(labelHash), fullName);
+        assertTrue(ownerStore.isLocked(labelHash));
         _assertStoreContainsValue(flow.nameOwner, ownerStore, fullName);
 
         vm.startPrank(flow.nameOwner);
@@ -136,7 +134,7 @@ contract BasicDotnsIntegration is BaseDotns {
             _setSubnode(flow.nameOwner, node, flow.otherSub, flow.name, flow.otherOwner);
         assertEq(dotnsRegistry.owner(otherSubnode), flow.otherOwner);
 
-        Store otherOwnerStore = Store(address(storeFactory.getDeployedStore(flow.otherOwner)));
+        ILabelStore otherOwnerStore = ILabelStore(storeFactory.getLabelStore(flow.otherOwner));
         assertTrue(address(otherOwnerStore) != address(0));
         _assertStoreContainsValue(
             flow.otherOwner, otherOwnerStore, _fullSubname(flow.otherSub, flow.name)
@@ -184,8 +182,8 @@ contract BasicDotnsIntegration is BaseDotns {
         assertTrue(dotnsRegistry.recordExists(transferRecipientNode));
         assertEq(dotnsRegistry.owner(transferRecipientNode), flow.transferTo);
 
-        Store transferRecipientStore =
-            Store(address(storeFactory.getDeployedStore(flow.transferTo)));
+        ILabelStore transferRecipientStore =
+            ILabelStore(storeFactory.getLabelStore(flow.transferTo));
         assertTrue(address(transferRecipientStore) != address(0));
 
         string memory transferRecipientFullName =
@@ -282,14 +280,14 @@ contract BasicDotnsIntegration is BaseDotns {
 
     function _assertStoreContainsValue(
         address user,
-        Store store,
+        ILabelStore store,
         string memory expectedValue
     )
         internal
     {
-        vm.startPrank(user);
-        string[] memory values = store.getValues();
-        vm.stopPrank();
+        uint256 count = store.getLabelCount();
+        string[] memory values = store.getLabels(0, count);
+        user;
         require(_contains(values, expectedValue), "Store value missing");
     }
 

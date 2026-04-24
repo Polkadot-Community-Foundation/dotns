@@ -9,10 +9,10 @@ import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {StringUtils} from "../../../contracts/utils/StringUtils.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
-/// @title DotnsPopControllerFuzz
-/// @notice Property-based tests for {DotnsPopController}.
-/// @dev Each fuzz replaces a family of near-identical unit tests with a single
-///      property assertion the fuzzer explores across inputs.
+// @title DotnsPopControllerFuzz
+// @notice Property-based tests for {DotnsPopController}.
+// @dev Each fuzz replaces a family of near-identical unit tests with a single
+//      property assertion the fuzzer explores across inputs.
 contract DotnsPopControllerFuzz is BaseDotns {
     // Decimal string of `value` padded to exactly two digits when `value < 10`.
     // Callers bound `value` to `[0, 99]` so the resulting suffix matches the

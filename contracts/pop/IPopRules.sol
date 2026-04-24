@@ -73,6 +73,7 @@ interface IPopRules {
     /// @param name The name label being evaluated.
     /// @return requirement Required tier for registration.
     /// @return message Explanation of the classification result.
+    /// @custom:reverts PopError
     function classifyName(string calldata name)
         external
         pure
@@ -84,6 +85,9 @@ interface IPopRules {
     ///      classification check; no-ops when the slot is already live.
     /// @param baseName The base label with trailing digits removed.
     /// @param user The address receiving reservation rights.
+    /// @custom:reverts NotRegistry
+    /// @custom:reverts PopError
+    /// @custom:emits BaseNameReserved
     function reserveBaseName(string calldata baseName, address user) external;
 
     /// @notice Emitted when a base-name reservation is cleared.
@@ -100,6 +104,9 @@ interface IPopRules {
     ///      lockstep.
     /// @param baseName The base label to reserve (no trailing digits).
     /// @param user The address receiving reservation rights.
+    /// @custom:reverts NotRegistry
+    /// @custom:reverts PopError
+    /// @custom:emits BaseNameReserved
     function reserveBaseNameForPop(string calldata baseName, address user) external;
 
     /// @notice Clears a reservation for a base-name stem.
@@ -107,6 +114,9 @@ interface IPopRules {
     ///      by the PoP controller when a reservation is claimed, relinquished, or
     ///      a queue head promotion leaves the slot empty.
     /// @param baseName The base label whose reservation should be cleared.
+    /// @custom:reverts NotRegistry
+    /// @custom:reverts PopError
+    /// @custom:emits BaseNameReleased
     function releaseBaseName(string calldata baseName) external;
 
     /// @notice Retrieves reservation information for a base name.
@@ -115,6 +125,7 @@ interface IPopRules {
     /// @param baseName The base label without trailing digits.
     /// @return owner The address assigned to the reservation.
     /// @return expires UNIX timestamp when the reservation expires.
+    /// @custom:reverts PopError
     function getBaseNameReservation(string calldata baseName)
         external
         view
@@ -127,6 +138,7 @@ interface IPopRules {
     /// @return reservedStatus True if a live reservation is active.
     /// @return owner The reservation holder (zero when not reserved).
     /// @return expires UNIX timestamp when the reservation expires.
+    /// @custom:reverts PopError
     function isBaseNameReserved(string calldata baseName)
         external
         view
@@ -140,6 +152,7 @@ interface IPopRules {
     /// @param name Domain label.
     /// @param userAddress Registering user for the given label.
     /// @return metadata Price with PoP requirements and classification.
+    /// @custom:reverts PopError
     function priceWithCheck(
         string calldata name,
         address userAddress
@@ -159,6 +172,7 @@ interface IPopRules {
     /// @param name Domain label.
     /// @param userAddress Registering user for the given label.
     /// @return metadata Price with PoP requirements and classification.
+    /// @custom:reverts PopError
     function priceWithoutCheck(
         string calldata name,
         address userAddress
@@ -172,11 +186,13 @@ interface IPopRules {
     ///      have at least two trailing digits, so the two spaces are disjoint.
     /// @param name The label to check.
     /// @return isBase True when the label has no trailing digits.
+    /// @custom:reverts PopError
     function isBaseName(string calldata name) external pure returns (bool isBase);
 
     /// @notice Calculates registration cost for a label.
     /// @dev Pure length-based pricing; ignores PoP status and reservation state.
     /// @param name Domain label to price.
     /// @return cost Registration cost in wei.
+    /// @custom:reverts PopError
     function price(string calldata name) external view returns (uint256 cost);
 }

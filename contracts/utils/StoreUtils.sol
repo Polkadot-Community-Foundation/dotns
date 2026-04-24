@@ -1,134 +1,53 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {Store} from "../store/Store.sol";
-import {IStore} from "../store/IStore.sol";
+import {ILabelStore} from "../store/ILabelStore.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
-import {DotnsConstants} from "./DotnsConstants.sol";
 
 /// @title DotNS Store Utilities Library
-/// @notice Provides Store acquisition and management utilities for any contract that requires a store.
-///
-/// @dev Store Resolution Strategy:
-///      The library implements a two-tier resolution strategy:
-///      1. Direct lookup: Store already exists and is mapped to the target owner.
-///      2. Fresh deployment: No store exists; deploy, authorize controllers, and transfer ownership.
-///
-/// @dev Ownership Model:
-///      Two distinct ownership concepts exist:
-///      - Factory mapping: Tracks which address has which Store for lookup purposes.
-///      - Store.owner (Ownable): Controls who can authorize contracts to write to the Store.
-///      Both must be transferred to the target owner for correct operation.
-///
+/// @notice Canonical helpers for protocol writes into per-user `LabelStore` instances.
+/// @dev One auth rule, one write path. Every DotNS consumer (controller, registrar,
+///      registry, PoP controller) funnels label writes through `writeLabel` so
+///      authorisation and deploy-on-first-use semantics are identical across flows.
 /// @custom:security-contact admin@parity.io
 library StoreUtils {
-    /// @notice Computes the Store key for a registered label.
-    /// @dev Returns `keccak256(abi.encodePacked(DOTNS_REGISTERED_KEY, labelhash))`.
-    ///      Uses scratch-space assembly to avoid ABI-encoding overhead.
-    /// @param labelhash `keccak256(bytes(label))`.
-    /// @return key Store key used for DotNS-written registration entries.
-    function storeKey(bytes32 labelhash) internal pure returns (bytes32 key) {
-        bytes32 prefix = DotnsConstants.DOTNS_REGISTERED_KEY;
-        assembly {
-            let pointer := mload(0x40)
-            mstore(pointer, prefix)
-            mstore(add(pointer, 0x20), labelhash)
-            key := keccak256(pointer, 0x40)
+    /// @notice Returns the `LabelStore` for `user`, deploying one via the factory if absent.
+    /// @dev Callable only from addresses that are protocol-registered (otherwise the
+    ///      factory's `deployLabelStoreFor` reverts with `NotAuthorised`).
+    /// @param factory The store factory.
+    /// @param user The user whose label store is being resolved.
+    /// @return store The resolved or newly deployed store address.
+    function ensureLabelStore(IStoreFactory factory, address user)
+        internal
+        returns (address store)
+    {
+        store = factory.getLabelStore(user);
+        if (store == address(0)) {
+            store = factory.deployLabelStoreFor(user);
         }
     }
 
-    /// @notice Returns the Store for `owner`, deploying one if needed.
-    /// @dev Unifies Store acquisition across registration flows. Handles two cases:
-    ///
-    ///      Case 1 - Direct Lookup:
-    ///      Store already mapped to `owner` in the factory. Returns immediately.
-    ///
-    ///      Case 2 - Fresh Deployment:
-    ///      No store exists for owner. Deploys a new Store under the calling controller,
-    ///      authorizes all provided controllers for DotNS writes, transfers Store.owner
-    ///      to the target owner, then migrates the factory mapping to owner.
-    ///
-    /// @dev Deployment Flow:
-    ///      1. factory.deploy() creates Store with msg.sender as Ownable owner
-    ///      2. authorizeDotnsController() succeeds because msg.sender is owner
-    ///      3. store.transferOwnership(owner) transfers Ownable ownership
-    ///      4. factory.transferOwnership(owner) transfers factory mapping
-    ///      After step 4, msg.sender has no factory mapping and can deploy again.
-    ///
-    /// @dev Reentrancy Consideration:
-    ///      No explicit reentrancy guard is applied. The deployed Store contract
-    ///      does not make external calls that could re-enter this function.
-    ///      StoreFactory and Store are not upgradeable.
-    ///
-    /// @param factory The StoreFactory instance used to resolve or deploy Stores.
-    /// @param controllers The addresses that should be authorized as DotNS controllers.
-    /// @param owner The target Store owner address.
-    /// @return store The resolved or newly deployed Store instance.
-    function getOrCreateStore(
+    /// @notice Writes `label` under `labelhash` for `user`, deploying their `LabelStore` if needed.
+    /// @dev Idempotent: if the slot is already locked, the call is a no-op. This lets repeat
+    ///      protocol flows (e.g. ERC721 transfer back to a prior owner) pass through without
+    ///      reverting on the existing lock.
+    /// @param factory The store factory.
+    /// @param user The label store owner.
+    /// @param labelhash The labelhash key.
+    /// @param label The label string (typically the full name, e.g. "alice.dot").
+    /// @return store The resolved or newly deployed store address.
+    function writeLabel(
         IStoreFactory factory,
-        address[] memory controllers,
-        address owner
+        address user,
+        bytes32 labelhash,
+        string memory label
     )
         internal
-        returns (Store store)
+        returns (address store)
     {
-        IStore existing = factory.getDeployedStore(owner);
-        if (address(existing) != address(0)) {
-            return Store(address(existing));
+        store = ensureLabelStore(factory, user);
+        if (!ILabelStore(store).isLocked(labelhash)) {
+            ILabelStore(store).storeLabel(labelhash, label);
         }
-
-        store = Store(address(factory.deploy()));
-
-        for (uint256 i; i < controllers.length; i++) {
-            store.authorizeDotnsController(controllers[i]);
-        }
-
-        store.transferOwnership(owner);
-        factory.transferOwnership(owner);
-    }
-
-    /// @notice Writes a name entry to the owner's Store, creating the Store if needed.
-    /// @dev Used by Controller (registration), Registrar (transfers), and Registry (subnodes).
-    ///      Skips the write if the key already has a value (prevents overwriting locked entries).
-    /// @param factory The StoreFactory instance.
-    /// @param controllers Addresses to authorize as DotNS controllers on a new Store.
-    /// @param owner The Store owner.
-    /// @param keyInput The input hashed with DOTNS_REGISTERED_KEY to derive the store key
-    ///        (labelhash for registrations, node for subnodes).
-    /// @param fullName The full domain name including TLD (e.g. "alice.dot").
-    /// @return store The resolved or newly deployed Store instance.
-    function writeToStore(
-        IStoreFactory factory,
-        address[] memory controllers,
-        address owner,
-        bytes32 keyInput,
-        string memory fullName
-    )
-        internal
-        returns (Store store)
-    {
-        store = getOrCreateStore(factory, controllers, owner);
-        bytes32 key = storeKey(keyInput);
-        if (bytes(store.getValueFor(owner, key)).length == 0) {
-            store.setValueFor(owner, key, fullName);
-        }
-    }
-
-    /// @notice Checks whether a Store exists for the given owner.
-    /// @dev Performs a read-only lookup against the factory without any state changes.
-    /// @param factory The StoreFactory instance to query.
-    /// @param owner The address to check for an existing Store.
-    /// @return exists True if a Store is mapped to `owner`, false otherwise.
-    function hasStore(IStoreFactory factory, address owner) internal view returns (bool exists) {
-        exists = address(factory.getDeployedStore(owner)) != address(0);
-    }
-
-    /// @notice Returns the Store address for an owner without deploying.
-    /// @dev Returns zero address if no Store exists. Use `hasStore` for boolean checks.
-    /// @param factory The StoreFactory instance to query.
-    /// @param owner The address to look up.
-    /// @return store The Store address, or zero if none exists.
-    function getStore(IStoreFactory factory, address owner) internal view returns (address store) {
-        store = address(factory.getDeployedStore(owner));
     }
 }

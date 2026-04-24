@@ -26,18 +26,18 @@ library StringUtils {
     ///      - 4 bytes: 0xF0-0xF7
     ///      - 5 bytes: 0xF8-0xFB (rare, outside Unicode standard)
     ///      - 6 bytes: 0xFC-0xFD (rare, outside Unicode standard)
-    /// @param s The UTF-8 encoded string to measure.
+    /// @param value The UTF-8 encoded string to measure.
     /// @return len The number of Unicode characters in the string.
-    function strlen(string memory s) internal pure returns (uint256 len) {
+    function strlen(string memory value) internal pure returns (uint256 len) {
         uint256 i = 0;
-        uint256 bytelength = bytes(s).length;
+        uint256 bytelength = bytes(value).length;
         for (len = 0; i < bytelength; len++) {
-            bytes1 b = bytes(s)[i];
-            if (b < 0x80) i += 1;
-            else if (b < 0xE0) i += 2;
-            else if (b < 0xF0) i += 3;
-            else if (b < 0xF8) i += 4;
-            else if (b < 0xFC) i += 5;
+            bytes1 byteValue = bytes(value)[i];
+            if (byteValue < 0x80) i += 1;
+            else if (byteValue < 0xE0) i += 2;
+            else if (byteValue < 0xF0) i += 3;
+            else if (byteValue < 0xF8) i += 4;
+            else if (byteValue < 0xFC) i += 5;
             else i += 6;
         }
     }
@@ -46,10 +46,10 @@ library StringUtils {
     /// @dev Lowercase ASCII letters, digits, and hyphen only; hyphen may not be
     ///      the first or last character. No dots allowed; use {isNamePath} for
     ///      dotted forms. Mirrors the label rules enforced at the registrar.
-    /// @param s Candidate label.
-    /// @return isValid True if `s` is a canonical DNS label.
-    function isSingleLabel(string calldata s) internal pure returns (bool isValid) {
-        bytes calldata label = bytes(s);
+    /// @param value Candidate label.
+    /// @return isValid True if `value` is a canonical DNS label.
+    function isSingleLabel(string calldata value) internal pure returns (bool isValid) {
+        bytes calldata label = bytes(value);
         return _isDnsLabel(label, 0, label.length);
     }
 
@@ -63,11 +63,11 @@ library StringUtils {
     ///      arbitrated by {IPopRules.reserveBaseNameForPop}. Keeping a single
     ///      namespace avoids the ambiguity dotli/dweb would otherwise see between
     ///      `andrew.47` (lite) and `andrew` owning `47` as a subname.
-    /// @param s Candidate label.
+    /// @param value Candidate label.
     /// @return isValid True if the label is a DNS label with at least
     ///         {MIN_LITE_SUFFIX_DIGITS} trailing digits.
-    function isLitePersonLabel(string calldata s) internal pure returns (bool isValid) {
-        bytes calldata raw = bytes(s);
+    function isLitePersonLabel(string calldata value) internal pure returns (bool isValid) {
+        bytes calldata raw = bytes(value);
         uint256 length = raw.length;
         if (length < MIN_LITE_SUFFIX_DIGITS + 1) return false;
 
@@ -90,10 +90,10 @@ library StringUtils {
     ///      segments (leading, trailing, or consecutive dots) fail. Used when
     ///      callers submit multi-label paths (e.g. `alice.dot`) rather than
     ///      bare labels.
-    /// @param s Candidate name path.
+    /// @param value Candidate name path.
     /// @return isValid True if every dot-separated segment is a canonical DNS label.
-    function isNamePath(string calldata s) internal pure returns (bool isValid) {
-        bytes calldata path = bytes(s);
+    function isNamePath(string calldata value) internal pure returns (bool isValid) {
+        bytes calldata path = bytes(value);
         uint256 length = path.length;
         if (length == 0) return false;
 
@@ -139,10 +139,10 @@ library StringUtils {
 
     /// @notice Converts an address to its checksummed hexadecimal string representation.
     /// @dev Wraps OpenZeppelin's Strings.toHexString(). Returns lowercase hex with "0x" prefix.
-    /// @param a The address to convert.
+    /// @param account The address to convert.
     /// @return The hexadecimal string representation (42 characters including "0x").
-    function addressToHex(address a) internal pure returns (string memory) {
-        return a.toHexString();
+    function addressToHex(address account) internal pure returns (string memory) {
+        return account.toHexString();
     }
 
     /// @notice Converts a bytes32 value to a string, treating it as a null-terminated ASCII string.

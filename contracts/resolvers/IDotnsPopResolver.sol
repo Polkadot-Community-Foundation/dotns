@@ -49,6 +49,9 @@ interface IDotnsPopResolver {
     ///      affine coordinates). Any other length reverts with {InvalidChatKeyLength}.
     /// @param node The node whose chat key is being written.
     /// @param chatKey ECDH public key bytes (pallet-side type is `[u8; 65]`).
+    /// @custom:reverts InvalidChatKeyLength
+    /// @custom:reverts NotPopController
+    /// @custom:emits ChatKeyUpdated
     function setChatKey(bytes32 node, bytes calldata chatKey) external;
 
     /// @notice Sets the lite-person link for a full-person `node`.
@@ -60,6 +63,8 @@ interface IDotnsPopResolver {
     ///      to a new `fullNode` clears `liteLink(oldFull)`.
     /// @param fullNode The full-person node carrying the link.
     /// @param liteLabelhash The labelhash of the linked lite-person username.
+    /// @custom:reverts NotPopController
+    /// @custom:emits LiteLinkUpdated
     function setLiteLink(bytes32 fullNode, bytes32 liteLabelhash) external;
 
     /// @notice Returns the chat key associated with a node.

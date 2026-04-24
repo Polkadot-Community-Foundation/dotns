@@ -3,13 +3,13 @@ pragma solidity ^0.8.30;
 
 import {Test} from "forge-std/Test.sol";
 
-/// @title Decoupling invariant for the dedicated PoP controller
-/// @notice Pins the architectural claim made in `DotnsPopController.sol`:
-///         neither the PoP controller nor the public commit-reveal controller
-///         imports the other. A future refactor that adds such an import would
-///         silently recouple the two flows; this test fails the build if that
-///         happens. Lives at the source-file level because this is a textual
-///         invariant, not a behavioural one.
+// @title Decoupling invariant for the dedicated PoP controller
+// @notice Pins the architectural claim made in `DotnsPopController.sol`:
+//         neither the PoP controller nor the public commit-reveal controller
+//         imports the other. A future refactor that adds such an import would
+//         silently recouple the two flows; this test fails the build if that
+//         happens. Lives at the source-file level because this is a textual
+//         invariant, not a behavioural one.
 contract DotnsPopControllerDecouplingTest is Test {
     string internal constant POP_CONTROLLER_PATH = "contracts/registrars/DotnsPopController.sol";
     string internal constant REGISTRAR_CONTROLLER_PATH =
