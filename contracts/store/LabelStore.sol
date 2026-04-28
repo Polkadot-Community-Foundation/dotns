@@ -63,8 +63,6 @@ contract LabelStore is Initializable, ILabelStore {
         _protocolRegistry = protocolRegistry_;
     }
 
-    /// @dev Single-write lock invariant: once a labelhash is recorded the slot is locked
-    /// permanently, so each labelhash is bound to exactly one label for the life of the store.
     /// @inheritdoc ILabelStore
     function storeLabel(
         bytes32 labelhash,

@@ -87,8 +87,6 @@ contract PopRules is
         _popRulesInit(_startingPrice, registry);
     }
 
-    /// @dev Self-attested PoP tier kept here as a temporary stand-in until a precompile exposes
-    ///      personhood state from the runtime pallet; once that lands, this setter is retired.
     /// @inheritdoc IPopRules
     function setUserPopStatus(PopStatus status) external override {
         userPopStatus[msg.sender] = status;
@@ -106,9 +104,6 @@ contract PopRules is
         return _classifyValidatedName(name);
     }
 
-    /// @dev Reservations only fire for lite-eligible labels per `_classifyValidatedName`; the call
-    ///      is a no-op when an existing reservation is still live so concurrent registrations cannot
-    ///      stomp the original reserver's slot.
     /// @inheritdoc IPopRules
     function reserveBaseName(
         string calldata name,
@@ -170,8 +165,6 @@ contract PopRules is
         return (_isLive(reservation), reservation.owner, reservation.expires);
     }
 
-    /// @dev Used on the direct-registration path where the payer and the registrant are the same
-    ///      account; reverts when the user does not meet the label's required PoP tier.
     /// @inheritdoc IPopRules
     function priceWithCheck(
         string calldata name,
@@ -211,9 +204,6 @@ contract PopRules is
         return metadata;
     }
 
-    /// @dev Used on the cross-payer registration path where a third party funds a registration on
-    ///      behalf of the recipient; surfaces tier mismatch as metadata instead of reverting so the
-    ///      controller can layer the cross-tier insurance fee on top.
     /// @inheritdoc IPopRules
     function priceWithoutCheck(
         string calldata name,
@@ -252,9 +242,6 @@ contract PopRules is
         return _priceValidatedName(bytes(name).length);
     }
 
-    /// @dev Non-zero only when `account` cannot meet the label's required PoP tier; the value is the
-    ///      length-scaled list price and acts as cross-payer friction at registration time and as the
-    ///      transfer-time floor consumed by `DotnsNameEscrow.chargeTransferFee`.
     /// @inheritdoc IPopRules
     function reachFee(
         string calldata name,

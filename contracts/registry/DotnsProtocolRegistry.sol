@@ -44,16 +44,11 @@ contract DotnsProtocolRegistry is
     }
 
     /// @inheritdoc IDotnsProtocolRegistry
-    /// @dev Returns `address(0)` for unregistered keys; callers must validate when a non-zero
-    ///      address is required.
     function get(bytes32 key) external view override returns (address addr) {
         return _addresses[key];
     }
 
     /// @inheritdoc IDotnsProtocolRegistry
-    /// @dev Maintains `_registeredRefcount` so the same address mapped to multiple keys remains
-    ///      reported as registered until every key has been rewired away from it. No-ops when
-    ///      `addr` already matches the stored value to keep upgrade scripts idempotent.
     function set(bytes32 key, address addr) external override onlyOwner {
         require(addr != address(0), ZeroAddress());
 
@@ -70,8 +65,6 @@ contract DotnsProtocolRegistry is
     }
 
     /// @inheritdoc IDotnsProtocolRegistry
-    /// @dev Treats `address(0)` as unregistered regardless of refcount so callers can use this
-    ///      as a simple peer-trust check without zero-address pre-validation.
     function isRegisteredAddress(address addr) external view override returns (bool registered) {
         return addr != address(0) && _registeredRefcount[addr] > 0;
     }

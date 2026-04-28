@@ -76,10 +76,6 @@ contract DotnsPopResolver is
     }
 
     /// @inheritdoc IDotnsPopResolver
-    /// @dev Enforces the exactly-65-byte uncompressed secp256k1 public-key shape
-    ///      (1 prefix byte plus the 32-byte X and 32-byte Y affine coordinates)
-    ///      so off-chain consumers can rely on the stored layout without
-    ///      re-validating it on every read.
     function setChatKey(
         bytes32 node,
         bytes calldata chatKeyBytes
@@ -94,10 +90,6 @@ contract DotnsPopResolver is
     }
 
     /// @inheritdoc IDotnsPopResolver
-    /// @dev Maintains a bidirectional `liteLink` / `fullClaim` index so
-    ///      `fullClaim(liteLink(node)) == node` always holds. Stale inverse
-    ///      entries are cleared before the rewrite to keep the forward and
-    ///      reverse maps in lockstep across re-links.
     function setLiteLink(
         bytes32 fullNode,
         bytes32 liteLabelhash

@@ -55,8 +55,6 @@ contract UserStore is Initializable, IUserStore {
         _owner = user_;
     }
 
-    /// @dev Restricted to the bound owner. Any prior non-empty value is snapshotted into the
-    /// per-key history list with the current block timestamp before the new value overwrites it.
     /// @inheritdoc IUserStore
     function setValue(bytes32 key, bytes calldata value) external override onlyOwner {
         require(key != bytes32(0), InvalidKey());

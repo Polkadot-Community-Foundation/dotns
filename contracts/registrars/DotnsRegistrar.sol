@@ -67,7 +67,7 @@ contract DotnsRegistrar is
     }
 
     /// @notice Initialises the registrar.
-    /// @dev Uses OpenZeppelin upgradeable initializers and is callable once through the UUPS
+    /// @dev Uses OpenZeppelin upgradeable initialisers and is callable once through the UUPS
     /// proxy. `_disableInitializers` on the implementation makes direct calls revert.
     /// @custom:reverts InvalidInitialization
     /// @custom:reverts NotInitializing
@@ -205,10 +205,6 @@ contract DotnsRegistrar is
     }
 
     /// @inheritdoc ERC721Upgradeable
-    /// @dev Hook ordering matters: clear the sender's reverse name and mirror the label into
-    /// the recipient's `LabelStore` BEFORE the fee-on-transfer charge so the escrow's accounting
-    /// always sees the post-move custody graph. Mints, burns, and self-transfers short-circuit
-    /// the fee path because they have no economic counterpart.
     function _update(
         address to,
         uint256 tokenId,

@@ -78,8 +78,8 @@ interface IPopRules {
 
     /// @notice Creates a reservation entry for the digit-stripped version of a name.
     /// @dev Commit-reveal reservation path. Callable only by an authorised controller on the
-    ///      registrar. Applies the lite-eligibility classification check; no-ops when the slot is
-    ///      already live so concurrent registrations cannot stomp the original reserver.
+    ///      registrar. Reverts unless the label is classified as `PopLite`; no-ops when the slot
+    ///      is already live so concurrent registrations cannot stomp the original reserver.
     /// @param baseName The base label with trailing digits removed.
     /// @param user The address receiving reservation rights.
     /// @custom:emits BaseNameReserved
@@ -96,7 +96,8 @@ interface IPopRules {
     ///      in the registrar's `controllers` set. Does not apply the lite-format classification
     ///      that `reserveBaseName` enforces; the caller supplies the bare stem directly. Reverts
     ///      if the slot is already held by another user and still live so the caller's local
-    ///      bookkeeping and PopRules state stay in lockstep.
+    ///      bookkeeping and PopRules state stay in lockstep. If the slot is already live for the
+    ///      same user, refreshes expiry to `block.timestamp + MAX_RESERVATION_TIME`.
     /// @param baseName The base label to reserve (no trailing digits).
     /// @param user The address receiving reservation rights.
     /// @custom:emits BaseNameReserved
@@ -105,9 +106,10 @@ interface IPopRules {
     function reserveBaseNameForPop(string calldata baseName, address user) external;
 
     /// @notice Clears a reservation for a base-name stem.
-    /// @dev Callable by any controller in the registrar's `controllers` set. Used by the PoP
-    ///      controller when a reservation is claimed, relinquished, or a queue head promotion
-    ///      leaves the slot empty.
+    /// @dev Callable by controllers in the registrar's `controllers` set. Live reservations may
+    ///      only be cleared by the same controller that wrote them; expired reservations may be
+    ///      cleared by any authorised controller. Used by the PoP controller when a reservation is
+    ///      claimed, relinquished, or a queue head promotion leaves the slot empty.
     /// @param baseName The base label whose reservation should be cleared.
     /// @custom:emits BaseNameReleased
     /// @custom:reverts NotRegistry

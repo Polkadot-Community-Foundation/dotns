@@ -85,7 +85,7 @@ contract DotnsNameEscrow is
         _disableInitializers();
     }
 
-    /// @notice Initializes the name escrow.
+    /// @notice Initialises the name escrow.
     /// @param registry Protocol registry used to resolve registrar and controller addresses.
     /// @param cooldownSeconds Refund cooldown after release.
     /// @custom:emits CooldownUpdated
@@ -217,10 +217,6 @@ contract DotnsNameEscrow is
         );
     }
 
-    /// @dev Both `priceForTo` and `reachFloor` are inputs because either can dominate: the delta
-    ///      against the prior `runningMax` captures cross-tier upgrades, while `reachFloor` enforces
-    ///      a length-scaled friction floor when the recipient cannot meet the label's required tier.
-    ///      The fee charged is `max(delta, reachFloor)` so neither path can be bypassed.
     /// @inheritdoc IDotnsNameEscrow
     function chargeTransferFee(ChargeTransferFeeParams calldata params)
         external
@@ -278,9 +274,6 @@ contract DotnsNameEscrow is
         }
     }
 
-    /// @dev First step of the phased lifecycle: release transfers the NFT into escrow custody and
-    ///      starts the cooldown clock; the recipient may then call `withdraw` once cooldown elapses
-    ///      to credit their pull balance, and finally `claimWithdrawal` to receive native funds.
     /// @inheritdoc IDotnsNameEscrow
     function release(uint256 tokenId) external override nonReentrant {
         IDotnsRegistrar registrar = _registrar();
@@ -327,9 +320,6 @@ contract DotnsNameEscrow is
         );
     }
 
-    /// @dev Second step of the phased lifecycle: after cooldown, books the refund into the
-    ///      recipient's pending balance, drawing from `tokenReserved` first and falling back to
-    ///      `insuranceFund` on shortfall. Funds are not transferred here, only credited.
     /// @inheritdoc IDotnsNameEscrow
     function withdraw(uint256 tokenId) external override nonReentrant {
         ReleasePosition storage position = _positions[tokenId];
@@ -375,9 +365,6 @@ contract DotnsNameEscrow is
         emit RefundWithdrawn(tokenId, recipient, asset, owed);
     }
 
-    /// @dev Final step of the phased lifecycle: pulls the caller's accumulated pending balance.
-    ///      Pull-payment isolation here means a single failing receiver cannot wedge other users'
-    ///      withdrawals because each recipient owns their own ledger entry.
     /// @inheritdoc IDotnsNameEscrow
     function claimWithdrawal() external override nonReentrant returns (uint256 amount) {
         amount = _pendingWithdrawals[msg.sender];
@@ -399,9 +386,6 @@ contract DotnsNameEscrow is
         amount = _pendingWithdrawals[recipient];
     }
 
-    /// @dev Hands the NFT back to the controller for re-registration and clears `runningMax` so
-    ///      the next registrant starts from a fresh price baseline rather than inheriting the
-    ///      previous owner's transfer-fee high-water mark.
     /// @inheritdoc IDotnsNameEscrow
     function reclaim(
         uint256 tokenId,
