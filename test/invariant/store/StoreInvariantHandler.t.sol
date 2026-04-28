@@ -8,10 +8,10 @@ import {IUserStore} from "../../../contracts/store/IUserStore.sol";
 import {DotnsProtocolRegistry} from "../../../contracts/registry/DotnsProtocolRegistry.sol";
 
 contract StoreInvariantHandler is Test {
-    StoreFactory public immutable factory;
-    DotnsProtocolRegistry public immutable registry;
-    address public immutable owner;
-    address public immutable protocolWriter;
+    StoreFactory public immutable FACTORY;
+    DotnsProtocolRegistry public immutable REGISTRY;
+    address public immutable OWNER;
+    address public immutable PROTOCOL_WRITER;
 
     address[] public users;
     address[] public labelStores;
@@ -29,10 +29,10 @@ contract StoreInvariantHandler is Test {
         address _owner,
         address _protocolWriter
     ) {
-        factory = _factory;
-        registry = _registry;
-        owner = _owner;
-        protocolWriter = _protocolWriter;
+        FACTORY = _factory;
+        REGISTRY = _registry;
+        OWNER = _owner;
+        PROTOCOL_WRITER = _protocolWriter;
     }
 
     function addUser(uint8 seed) external {
@@ -44,10 +44,10 @@ contract StoreInvariantHandler is Test {
     function deployLabelStore(uint8 userSeed) external {
         if (users.length == 0) return;
         address user = users[userSeed % users.length];
-        if (factory.getLabelStore(user) != address(0)) return;
+        if (FACTORY.getLabelStore(user) != address(0)) return;
 
-        vm.prank(owner);
-        address store = factory.deployLabelStoreFor(user);
+        vm.prank(OWNER);
+        address store = FACTORY.deployLabelStoreFor(user);
         labelStores.push(store);
     }
 
@@ -57,7 +57,7 @@ contract StoreInvariantHandler is Test {
         address store = labelStores[storeSeed % labelStores.length];
         if (ILabelStore(store).isLocked(labelhash)) return;
 
-        vm.prank(protocolWriter);
+        vm.prank(PROTOCOL_WRITER);
         ILabelStore(store).storeLabel(labelhash, label);
 
         _writtenLabelhashes[store].push(labelhash);
@@ -68,10 +68,10 @@ contract StoreInvariantHandler is Test {
     function claimUserStore(uint8 userSeed) external {
         if (users.length == 0) return;
         address user = users[userSeed % users.length];
-        if (factory.getUserStore(user) != address(0)) return;
+        if (FACTORY.getUserStore(user) != address(0)) return;
 
         vm.prank(user);
-        address store = factory.claimUserStore();
+        address store = FACTORY.claimUserStore();
         userStores.push(store);
         userStoreOwnerOf[store] = user;
     }

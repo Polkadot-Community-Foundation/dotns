@@ -35,6 +35,8 @@ contract UserStoreFuzzTest is BaseDotns {
             if (i % 3 == 0) {
                 value = ""; // intentionally empty some of the time
             } else {
+                // Safe because `count` is bounded to 1..8, so `i` is always < 8 here.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 value = bytes(abi.encodePacked("v", uint8(i)));
             }
 
@@ -66,6 +68,8 @@ contract UserStoreFuzzTest is BaseDotns {
 
         vm.startPrank(ed);
         for (uint256 i; i < versions; ++i) {
+            // Safe because `versions` is bounded to 2..9, so `i` is always < 9 here.
+            // forge-lint: disable-next-line(unsafe-typecast)
             store.setValue(key, bytes(abi.encodePacked("v", uint8(i))));
         }
         vm.stopPrank();

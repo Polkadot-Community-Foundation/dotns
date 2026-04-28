@@ -26,7 +26,6 @@ import {
     IDotnsProtocolRegistry
 } from "../../contracts/registry/DotnsProtocolRegistry.sol";
 import {DotnsNameEscrow} from "../../contracts/escrow/DotnsNameEscrow.sol";
-import {IDotnsNameEscrow} from "../../contracts/escrow/IDotnsNameEscrow.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 import {LabelUtils} from "../../contracts/utils/LabelUtils.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";

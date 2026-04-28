@@ -16,6 +16,7 @@ contract DotnsPopControllerDecouplingTest is Test {
         "contracts/registrars/DotnsRegistrarController.sol";
 
     function test_popController_does_not_import_commit_reveal_controller() public view {
+        // forge-lint: disable-next-line(unsafe-cheatcode)
         string memory source = vm.readFile(POP_CONTROLLER_PATH);
         assertFalse(
             _contains(source, "import {IDotnsRegistrarController}"),
@@ -28,6 +29,7 @@ contract DotnsPopControllerDecouplingTest is Test {
     }
 
     function test_commitReveal_controller_does_not_import_pop_controller() public view {
+        // forge-lint: disable-next-line(unsafe-cheatcode)
         string memory source = vm.readFile(REGISTRAR_CONTROLLER_PATH);
         assertFalse(
             _contains(source, "import {IDotnsPopController}"),

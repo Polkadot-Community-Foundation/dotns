@@ -50,6 +50,7 @@ abstract contract BaseDeployer is Script {
             // key; the FIRST call with a given key starts a fresh object, so
             // we have to re-insert every prior address before the first new
             // log.
+            // forge-lint: disable-next-line(unsafe-cheatcode)
             string memory priorJson = vm.readFile(manifestPath);
             string[] memory names = vm.parseJsonKeys(priorJson, "$");
 
@@ -85,8 +86,10 @@ abstract contract BaseDeployer is Script {
         mkdirInputs[0] = "mkdir";
         mkdirInputs[1] = "-p";
         mkdirInputs[2] = _parentDirectory(manifestPath);
+        // forge-lint: disable-next-line(unsafe-cheatcode)
         vm.ffi(mkdirInputs);
 
+        // forge-lint: disable-next-line(unsafe-cheatcode)
         vm.writeFile(manifestPath, manifestJson);
     }
 

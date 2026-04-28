@@ -50,7 +50,7 @@ contract DotnsResolver is
         _disableInitializers();
     }
 
-    /// @notice Initialises the resolver
+    /// @notice Initialises the resolver.
     /// @param registry Protocol-level address registry used to resolve sibling contracts.
     /// @custom:reverts InvalidInitialization
     /// @custom:emits OwnershipTransferred

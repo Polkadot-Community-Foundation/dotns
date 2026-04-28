@@ -3,7 +3,6 @@ pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../base/BaseDotns.t.sol";
 import {IPopRules} from "../../contracts/pop/IPopRules.sol";
-import {IDotnsPopController} from "../../contracts/registrars/IDotnsPopController.sol";
 import {ILabelStore} from "../../contracts/store/ILabelStore.sol";
 import {IUserStore} from "../../contracts/store/IUserStore.sol";
 import {LabelStore} from "../../contracts/store/LabelStore.sol";
@@ -46,6 +45,7 @@ contract StoreIntegrationTest is BaseDotns {
         // DotnsPopResolver.setChatKey requires exactly 65 bytes (uncompressed ECDSA pubkey).
         bytes memory chatKey = new bytes(65);
         for (uint256 i; i < 65; ++i) {
+            // forge-lint: disable-next-line(unsafe-typecast)
             chatKey[i] = bytes1(uint8(i + 1));
         }
 
