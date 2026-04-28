@@ -10,12 +10,14 @@ import {DotnsConstants} from "./DotnsConstants.sol";
 ///      live in every controller, registrar, or resolver. Every caller that maps a
 ///      label to an on-chain node goes through this library, which is the single
 ///      source of truth for how a label hashes.
-///
 /// @dev Deliberate non-goals:
 ///      - Validation (single-label checks, min-length rules, availability): each caller
 ///        owns its own validation policy alongside its own interface-declared errors.
 ///        Centralising validation here would require centralising the error types, which
 ///        breaks interface-level error ownership.
+///      - Lowercase ASCII letters/digits/hyphen rules with hyphen-position constraints
+///        live in {StringUtils.isSingleLabel}; this library treats the input as opaque
+///        bytes once a caller has run its own checks.
 /// @custom:security-contact admin@parity.io
 library LabelUtils {
     /// @notice Computes `keccak256(bytes(label))` via memory-safe scratch space.
@@ -44,7 +46,9 @@ library LabelUtils {
 
     /// @notice Computes `namehash(parent, labelhash)` against an arbitrary parent.
     /// @dev General form of {namehash}; use when the parent is not the `.dot` TLD
-    ///      (e.g. subnode derivation under a non-TLD parent in the forward registry).
+    ///      (e.g. subnode derivation under a non-TLD parent in the forward registry,
+    ///      or a PoP namespace root). For top-level `.dot` registrations prefer
+    ///      {namehash} which hard-codes `DOT_NODE`.
     /// @param parent Parent node.
     /// @param labelhash_ `keccak256(bytes(label))`.
     /// @return node `namehash(parent, labelhash)`.
@@ -62,6 +66,8 @@ library LabelUtils {
     }
 
     /// @notice Computes `namehash(DOT_NODE, labelhash)` via memory-safe scratch space.
+    /// @dev Specialised to the `.dot` TLD; cheaper than {namehashUnder} because
+    ///      the parent constant is folded in at compile time.
     /// @param labelhash_ `keccak256(bytes(label))`.
     /// @return node The node identifier under the `.dot` TLD.
     function namehash(bytes32 labelhash_) internal pure returns (bytes32 node) {
@@ -75,7 +81,9 @@ library LabelUtils {
     }
 
     /// @notice Derives `(labelhash, node)` from a label in one call.
-    /// @dev Convenience combinator; every controller that consumes a label needs both.
+    /// @dev Convenience combinator for registration flows: hashes the label
+    ///      exactly once and returns both identifiers callers need without
+    ///      recomputing.
     /// @param label Label string.
     /// @return hash `keccak256(bytes(label))`.
     /// @return node `namehash(DOT_NODE, hash)`.

@@ -16,8 +16,10 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
 /// @title DotnsPopResolver
 /// @notice Per-node resolver holding records produced by the PoP username flow.
-/// @dev Authorised writer is the `POP_CONTROLLER` address on the protocol registry;
-///      rotating the PoP controller requires no resolver upgrade.
+/// @dev Writes are gated on the protocol-registered `POP_CONTROLLER` rather
+///      than on node ownership. PoP records are issued by the gateway as part
+///      of identity issuance, not curated by the holder, so authority lives
+///      with the controller and not the user.
 /// @custom:security-contact admin@parity.io
 contract DotnsPopResolver is
     Initializable,
@@ -39,10 +41,9 @@ contract DotnsPopResolver is
 
     /// @notice Reverse index mapping a lite labelhash to the full-person node
     ///         it was promoted to.
-    /// @dev Written alongside `_liteLinks` on every claim so consumers that
-    ///      look up by lite username resolve the full name without scanning
-    ///      events. Zero when the lite label has never been linked to a full
-    ///      claim.
+    /// @dev Written alongside `_liteLinks` on every claim so consumers that look
+    ///      up by lite username resolve the full name without scanning events.
+    ///      Zero when the lite label has never been linked to a full claim.
     mapping(bytes32 liteLabelhash => bytes32 fullNode) private _fullClaims;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
@@ -65,6 +66,8 @@ contract DotnsPopResolver is
     ///      the only storage this setup needs because the authorised writer
     ///      is resolved dynamically through `POP_CONTROLLER`.
     /// @param registry Protocol-level address registry used for writer resolution.
+    /// @custom:emits OwnershipTransferred
+    /// @custom:emits Initialized
     /// @custom:reverts InvalidInitialization
     function initialize(IDotnsProtocolRegistry registry) external initializer {
         __Ownable_init(msg.sender);
@@ -73,6 +76,10 @@ contract DotnsPopResolver is
     }
 
     /// @inheritdoc IDotnsPopResolver
+    /// @dev Enforces the exactly-65-byte uncompressed secp256k1 public-key shape
+    ///      (1 prefix byte plus the 32-byte X and 32-byte Y affine coordinates)
+    ///      so off-chain consumers can rely on the stored layout without
+    ///      re-validating it on every read.
     function setChatKey(
         bytes32 node,
         bytes calldata chatKeyBytes
@@ -81,15 +88,16 @@ contract DotnsPopResolver is
         override
         onlyPopController
     {
-        // Chat keys are uncompressed secp256k1 public keys: 1 prefix byte plus
-        // the 32-byte X and 32-byte Y affine coordinates. Reject any other
-        // length so downstream consumers can rely on the stored shape.
         require(chatKeyBytes.length == 65, InvalidChatKeyLength(chatKeyBytes.length));
         _chatKeys[node] = chatKeyBytes;
         emit ChatKeyUpdated(node, chatKeyBytes);
     }
 
     /// @inheritdoc IDotnsPopResolver
+    /// @dev Maintains a bidirectional `liteLink` / `fullClaim` index so
+    ///      `fullClaim(liteLink(node)) == node` always holds. Stale inverse
+    ///      entries are cleared before the rewrite to keep the forward and
+    ///      reverse maps in lockstep across re-links.
     function setLiteLink(
         bytes32 fullNode,
         bytes32 liteLabelhash
@@ -98,12 +106,6 @@ contract DotnsPopResolver is
         override
         onlyPopController
     {
-        // Null any stale inverse entries before re-writing so the forward and
-        // reverse indices stay in lockstep after every call. Without this,
-        // re-linking the same `fullNode` to a new `liteLabelhash` (or vice
-        // versa) would leave the previous inverse pointing at a node it no
-        // longer claims, breaking the `fullClaim(liteLink(node)) == node`
-        // invariant.
         bytes32 oldLite = _liteLinks[fullNode];
         bytes32 oldFull = _fullClaims[liteLabelhash];
         if (oldLite != bytes32(0) && oldLite != liteLabelhash) {

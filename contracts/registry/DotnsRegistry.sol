@@ -18,12 +18,10 @@ import {StringUtils} from "../utils/StringUtils.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
 /// @title Dotns Registry
+/// @author Parity
 /// @notice Upgradeable on-chain registry for hierarchical name ownership and resolution.
-/// @dev Stores ownership and resolver data for DotNS nodes.
-///      Explicit ownership is stored for subnodes.
-///      Tokenised base nodes use the sentinel owner pattern:
-///      - records[node].owner == address(0) means ownership is derived from the ERC721 registrar.
-///      Authorisation for tokenised nodes follows ERC721 owner/approvals.
+/// @dev Tokenised second-level nodes store `owner == address(0)` as a sentinel and defer to
+///      `IDotnsRegistrar.ownerOf`; subnodes carry an explicit owner address in `records`.
 /// @custom:security-contact admin@parity.io
 contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, IDotnsRegistry {
     using StoreUtils for IStoreFactory;
@@ -35,11 +33,9 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     /// @notice Protocol-level address registry for all DotNS contracts.
     IDotnsProtocolRegistry public protocolRegistry;
 
-    /// @dev Reserved storage space to allow for layout changes in the future.
     uint256[50] private __gap;
 
     /// @notice Restricts access to the current owner of `node`.
-    /// @param node Node identifier.
     modifier authorised(bytes32 node) {
         _authorised(node);
         _;
@@ -57,6 +53,8 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     }
 
     /// @notice Initialises the registry.
+    /// @dev Seeds the root node (`bytes32(0)`) with the deployer as owner so sub-TLD bootstrap
+    ///      writes can pass the `authorised(parentNode)` check.
     /// @param registry Protocol-level address registry used to resolve sibling contracts.
     /// @custom:reverts InvalidInitialization
     /// @custom:reverts NotAllowed
@@ -176,12 +174,8 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     }
 
     /// @notice Writes subnode registration to the owner's `LabelStore`.
-    /// @dev Acquires or deploys a `LabelStore` for the owner, then writes the full subnode name
-    ///      keyed by `node` (opaque bytes32 — for subnodes this is the namehash, not the
-    ///      labelhash, and that distinction is caller-local).
-    /// @param storeOwner Subnode owner whose store receives the record.
-    /// @param node Derived subnode namehash used as the label-store key.
-    /// @param fullName Canonical full subnode name.
+    /// @dev Keys the entry by `node` (full namehash) rather than labelhash so a single store
+    ///      lookup yields the canonical full name without re-walking the parent chain.
     function _writeSubnodeToStore(
         address storeOwner,
         bytes32 node,
@@ -193,6 +187,9 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         factory.writeLabel(storeOwner, node, fullName);
     }
 
+    /// @notice Computes the namehash of `parentLabel` rooted at the configured TLD.
+    /// @dev Walks the label right-to-left in calldata using memory-safe assembly to avoid the
+    ///      cost of slicing into intermediate `bytes` and to keep gas linear in the label depth.
     function _parentNamehash(string calldata parentLabel) internal pure returns (bytes32 node) {
         bytes calldata labels = bytes(parentLabel);
         uint256 end = labels.length;
@@ -227,9 +224,8 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     }
 
     /// @notice Internal authorisation check for node ownership.
-    /// @dev For explicit-owner nodes, caller must equal stored owner.
-    ///      For tokenised nodes (sentinel owner), caller must be ERC721 owner or approved.
-    /// @param node Node identifier.
+    /// @dev Honours the sentinel-zero pattern: if the registry has no explicit owner, fall back
+    ///      to the registrar's ERC-721 owner / approved / operator-for-all chain.
     function _authorised(bytes32 node) internal view {
         Record storage record = records[node];
         require(record.exists, NotAuthorised());
@@ -254,18 +250,16 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     }
 
     /// @notice Internal check for registrar-authorised controller privileges.
-    /// @dev The registry trusts every controller the registrar trusts. Using the
-    ///      registrar's `controllers` mapping as the authority keeps controller
-    ///      authorisation in exactly one place (the registrar) rather than making
-    ///      the registry carry a parallel list, and lets the commit-reveal and PoP
-    ///      controllers coexist without a per-registry configuration change.
+    /// @dev The registry trusts every controller the registrar trusts. Routing controller
+    ///      authorisation through the registrar's `controllers` mapping keeps the trust list
+    ///      in one place and lets commit-reveal and PoP controllers coexist without registry
+    ///      reconfiguration on each addition.
     function _onlyRegistrarController() internal view {
         DotnsRegistrar registrar = DotnsRegistrar(protocolRegistry.get(DotnsConstants.REGISTRAR));
         require(registrar.controllers(IDotnsController(msg.sender)), NotAuthorised());
     }
 
     /// @notice Returns implementation version.
-    /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
         versionString = "1.5.0";
     }

@@ -2,27 +2,18 @@
 pragma solidity ^0.8.30;
 
 /// @title Proof of Personhood Rules for Dotns
-/// @notice Proof of personhood interface defining Dotns price calculation, PoP-tier requirements, and base-name reservation rules
-/// @dev Provides the classification logic for Dotns labels, enforces suffix constraints, and exposes reservation metadata.
-///      Names are evaluated according to the following rules:
-///      • Length ≤ 5: Reserved
-///      • Length 6–8 without trailing digits: PopFull required
-///      • Length 6–8 with 2 trailing digits: PopLite required
-///      • Length ≥ 9 without trailing digits: PopFull required
-///      • Length ≥ 9 with 2 trailing digits: NoStatus (open)
-///      Trailing digits beyond 2 are invalid. Internal digits do not affect classification.
-///      Reservation rules apply to a label stripped of trailing digits.
-///      Its also important to note that for Pop Full there are no restrictions to name registrations any
-///      Character combination is valid, the same is valid for Light and No status users with the exception of
-///      Requiring 2 suffix digits appended to the username being registered
-/// @dev The pricing applied is mainly for POP No status users as measure to prevent spam
+/// @notice Proof of personhood interface defining Dotns price calculation, PoP-tier requirements, and base-name reservation rules.
+/// @dev Classifies labels into the PoP tier required for registration and exposes reservation metadata.
+///      Length <= 5 is reserved for governance; lengths 6-8 require PopFull unless they carry exactly two
+///      trailing digits (PopLite); lengths >= 9 require PopFull unless they carry exactly two trailing
+///      digits (NoStatus, open). More than two trailing digits is invalid; internal digits do not affect
+///      classification. Reservations are keyed by the digit-stripped stem so `alice` and `alice42` share a slot.
+/// @dev Pricing is primarily a spam deterrent for NoStatus users; verified PopLite and PopFull users pay zero.
 /// @custom:security-contact admin@parity.io
 interface IPopRules {
     /// @notice Proof-of-Personhood eligibility tier.
-    /// @dev Defines verification requirements for a given name classification.
-    ///      `NoStatus` is the default for unverified users; `PopLite` and
-    ///      `PopFull` correspond to the two personhood tiers; `Reserved` is
-    ///      used both for governance-held names and for base stems held by
+    /// @dev `NoStatus` is the default for unverified users; `PopLite` and `PopFull` are the two
+    ///      personhood tiers; `Reserved` covers both governance-held names and base stems held by
     ///      another user through the reservation table.
     enum PopStatus {
         NoStatus,
@@ -36,6 +27,9 @@ interface IPopRules {
     /// @param owner Address obtaining the reservation right.
     /// @param expires UNIX timestamp when the reservation expires.
     event BaseNameReserved(string indexed baseName, address indexed owner, uint64 expires);
+
+    /// @notice Emitted when a user updates their PoP status via {setUserPopStatus}.
+    event UserPopStatusSet(address indexed user, PopStatus status);
 
     /// @notice Thrown when a name violates PoP-tier or reservation requirements.
     /// @param reason Human-readable explanation of the failure condition.
@@ -59,8 +53,7 @@ interface IPopRules {
     /// @notice Reservation metadata for a base name (digits removed).
     /// @param owner Address holding exclusive claim rights during the reservation window.
     /// @param expires UNIX timestamp when the reservation expires.
-    /// @param controller Address that wrote the reservation; the only address
-    ///        permitted to release it before expiry.
+    /// @param controller Address that wrote the reservation; the only address permitted to release it before expiry.
     struct Reservation {
         address owner;
         uint64 expires;
@@ -68,8 +61,8 @@ interface IPopRules {
     }
 
     /// @notice Classifies a name into a required PoP tier per DotNS naming rules.
-    /// @dev Pure; inputs are the label bytes only. Callers use the returned
-    ///      tier to decide which pricing and verification branch applies.
+    /// @dev Pure; inputs are the label bytes only. Callers use the returned tier to decide which
+    ///      pricing and verification branch applies.
     /// @param name The name label being evaluated.
     /// @return requirement Required tier for registration.
     /// @return message Explanation of the classification result.
@@ -79,15 +72,19 @@ interface IPopRules {
         pure
         returns (PopStatus requirement, string memory message);
 
+    /// @notice Sets the caller's PoP tier in the rules contract.
+    /// @custom:emits UserPopStatusSet
+    function setUserPopStatus(PopStatus status) external;
+
     /// @notice Creates a reservation entry for the digit-stripped version of a name.
-    /// @dev Commit-reveal reservation path. Callable only by an authorised
-    ///      controller on the registrar. Applies the lite-eligibility
-    ///      classification check; no-ops when the slot is already live.
+    /// @dev Commit-reveal reservation path. Callable only by an authorised controller on the
+    ///      registrar. Applies the lite-eligibility classification check; no-ops when the slot is
+    ///      already live so concurrent registrations cannot stomp the original reserver.
     /// @param baseName The base label with trailing digits removed.
     /// @param user The address receiving reservation rights.
+    /// @custom:emits BaseNameReserved
     /// @custom:reverts NotRegistry
     /// @custom:reverts PopError
-    /// @custom:emits BaseNameReserved
     function reserveBaseName(string calldata baseName, address user) external;
 
     /// @notice Emitted when a base-name reservation is cleared.
@@ -95,33 +92,31 @@ interface IPopRules {
     event BaseNameReleased(string indexed baseName);
 
     /// @notice Writes or refreshes a reservation for a bare base-name stem.
-    /// @dev Gateway-driven reservation path used by the PoP controller. Callable
-    ///      by any controller in the registrar's `controllers` set. Does not
-    ///      apply the lite-format classification that `reserveBaseName`
-    ///      enforces; the caller is expected to supply the bare stem directly.
-    ///      Reverts if the slot is already held by another user and still live
-    ///      so the caller's local bookkeeping and PopRules state stay in
-    ///      lockstep.
+    /// @dev Gateway-driven reservation path used by the PoP controller. Callable by any controller
+    ///      in the registrar's `controllers` set. Does not apply the lite-format classification
+    ///      that `reserveBaseName` enforces; the caller supplies the bare stem directly. Reverts
+    ///      if the slot is already held by another user and still live so the caller's local
+    ///      bookkeeping and PopRules state stay in lockstep.
     /// @param baseName The base label to reserve (no trailing digits).
     /// @param user The address receiving reservation rights.
+    /// @custom:emits BaseNameReserved
     /// @custom:reverts NotRegistry
     /// @custom:reverts PopError
-    /// @custom:emits BaseNameReserved
     function reserveBaseNameForPop(string calldata baseName, address user) external;
 
     /// @notice Clears a reservation for a base-name stem.
-    /// @dev Callable by any controller in the registrar's `controllers` set. Used
-    ///      by the PoP controller when a reservation is claimed, relinquished, or
-    ///      a queue head promotion leaves the slot empty.
+    /// @dev Callable by any controller in the registrar's `controllers` set. Used by the PoP
+    ///      controller when a reservation is claimed, relinquished, or a queue head promotion
+    ///      leaves the slot empty.
     /// @param baseName The base label whose reservation should be cleared.
+    /// @custom:emits BaseNameReleased
     /// @custom:reverts NotRegistry
     /// @custom:reverts PopError
-    /// @custom:emits BaseNameReleased
     function releaseBaseName(string calldata baseName) external;
 
     /// @notice Retrieves reservation information for a base name.
-    /// @dev Raw accessor: returns the stored slot regardless of expiry. Use
-    ///      {isBaseNameReserved} when live-window semantics are needed.
+    /// @dev Raw accessor: returns the stored slot regardless of expiry. Use {isBaseNameReserved}
+    ///      when live-window semantics are needed.
     /// @param baseName The base label without trailing digits.
     /// @return owner The address assigned to the reservation.
     /// @return expires UNIX timestamp when the reservation expires.
@@ -132,8 +127,8 @@ interface IPopRules {
         returns (address owner, uint64 expires);
 
     /// @notice Indicates whether a base name is currently reserved.
-    /// @dev Applies the live-window predicate to the stored slot so an
-    ///      expired reservation reads as free.
+    /// @dev Applies the live-window predicate to the stored slot so an expired reservation reads
+    ///      as free.
     /// @param baseName The base label without trailing digits.
     /// @return reservedStatus True if a live reservation is active.
     /// @return owner The reservation holder (zero when not reserved).
@@ -145,10 +140,9 @@ interface IPopRules {
         returns (bool reservedStatus, address owner, uint64 expires);
 
     /// @notice Calculates price with PoP classification and reservation enforcement.
-    /// @dev Reverting pricing path used by the commit-reveal controller.
-    ///      Rejects governance-reserved names and base-name registrations held
-    ///      by another user. The price applied is a spam deterrent and is
-    ///      significant only for NoStatus users; verified users pay zero.
+    /// @dev Reverting pricing path used by the commit-reveal controller. Rejects governance-reserved
+    ///      names and base-name registrations held by another user. Price is a spam deterrent and
+    ///      is significant only for NoStatus users; verified users pay zero.
     /// @param name Domain label.
     /// @param userAddress Registering user for the given label.
     /// @return metadata Price with PoP requirements and classification.
@@ -161,14 +155,12 @@ interface IPopRules {
         view
         returns (PriceWithMeta memory metadata);
 
-    /// @notice Calculates price with PoP classification and reservation metadata,
-    ///         without reverting on conflicts.
-    /// @dev Non-reverting counterpart to `priceWithCheck`: surfaces the same
-    ///      fields, but reports a `Reserved` status through `metadata` instead
-    ///      of reverting when the base stem is held by another user. Used by
-    ///      front-ends that need to present a price and eligibility preview
-    ///      without forcing a transaction attempt. Governance-reserved names
-    ///      are not rejected here either; the caller decides what to do.
+    /// @notice Calculates price with PoP classification and reservation metadata, without reverting on conflicts.
+    /// @dev Non-reverting counterpart to `priceWithCheck`: surfaces the same fields, but reports a
+    ///      `Reserved` status through `metadata` instead of reverting when the base stem is held
+    ///      by another user. Used by front-ends that need to present a price and eligibility
+    ///      preview without forcing a transaction attempt. Governance-reserved names are not
+    ///      rejected here either; the caller decides what to do.
     /// @param name Domain label.
     /// @param userAddress Registering user for the given label.
     /// @return metadata Price with PoP requirements and classification.
@@ -181,9 +173,18 @@ interface IPopRules {
         view
         returns (PriceWithMeta memory metadata);
 
+    /// @notice Friction fee owed when `account` reaches into a label tier above its verification level.
+    /// @dev Non-zero only when `account` cannot meet the label's required PoP tier; the value is the
+    ///      length-scaled list price. Acts as cross-payer friction at registration time and as the
+    ///      transfer-time floor consumed by `DotnsNameEscrow.chargeTransferFee`.
+    /// @param name Domain label being acted on.
+    /// @param account Account whose verification reach is being measured.
+    /// @custom:reverts PopError
+    function reachFee(string calldata name, address account) external view returns (uint256 fee);
+
     /// @notice Returns whether `name` is a base name under PoP rules.
-    /// @dev A base name has no trailing digits; lite-person labels always
-    ///      have at least two trailing digits, so the two spaces are disjoint.
+    /// @dev A base name has no trailing digits; lite-person labels always have at least two
+    ///      trailing digits, so the two spaces are disjoint.
     /// @param name The label to check.
     /// @return isBase True when the label has no trailing digits.
     /// @custom:reverts PopError

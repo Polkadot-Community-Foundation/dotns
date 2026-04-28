@@ -6,6 +6,7 @@ import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol"
 import {UpgradeableBeacon} from "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 
 import {IStoreFactory} from "./IStoreFactory.sol";
+import {IDotnsStore} from "./IDotnsStore.sol";
 import {ILabelStore} from "./ILabelStore.sol";
 import {IUserStore} from "./IUserStore.sol";
 import {LabelStore} from "./LabelStore.sol";
@@ -66,10 +67,14 @@ contract StoreFactory is Ownable, IStoreFactory {
     ///      Keeping the implementation deployments inside the constructor removes a
     ///      class of operator error: there is no "did I deploy the implementation first?" step
     ///      and no way to pass the wrong implementation address.
+    /// @dev Implementations and beacons are deployed inline so a single factory address fully
+    ///      describes the store topology, removing a class of operator error around mismatched
+    ///      beacons.
     /// @param protocolRegistry_ The protocol registry for writer auth on label stores.
     /// @custom:reverts InvalidProtocolRegistry
     constructor(address protocolRegistry_) Ownable(msg.sender) {
         require(protocolRegistry_ != address(0), InvalidProtocolRegistry(protocolRegistry_));
+        IDotnsProtocolRegistry(protocolRegistry_).isRegisteredAddress(address(0));
 
         protocolRegistry = protocolRegistry_;
         labelStoreBeacon = address(new UpgradeableBeacon(address(new LabelStore()), address(this)));
@@ -88,6 +93,7 @@ contract StoreFactory is Ownable, IStoreFactory {
 
         bytes memory initData = abi.encodeCall(ILabelStore.initialize, (user, protocolRegistry));
         store = address(new BeaconProxy(labelStoreBeacon, initData));
+        require(IDotnsStore(store).owner() == user, ImplementationBindingMismatch());
         _labelStores[user] = store;
         _labelStoreList.push(store);
 
@@ -124,6 +130,7 @@ contract StoreFactory is Ownable, IStoreFactory {
         onlyOwner
     {
         require(newImplementation != address(0), InvalidImplementation(newImplementation));
+        ILabelStore(newImplementation).protocolRegistry();
         UpgradeableBeacon(labelStoreBeacon).upgradeTo(newImplementation);
         emit LabelStoreImplementationUpgraded(newImplementation);
     }
@@ -137,6 +144,7 @@ contract StoreFactory is Ownable, IStoreFactory {
 
         bytes memory initData = abi.encodeCall(IUserStore.initialize, (msg.sender));
         store = address(new BeaconProxy(userStoreBeacon, initData));
+        require(IDotnsStore(store).owner() == msg.sender, ImplementationBindingMismatch());
         _userStores[msg.sender] = store;
         _userStoreList.push(store);
 
@@ -169,6 +177,7 @@ contract StoreFactory is Ownable, IStoreFactory {
     /// @inheritdoc IStoreFactory
     function upgradeUserStoreImplementation(address newImplementation) external override onlyOwner {
         require(newImplementation != address(0), InvalidImplementation(newImplementation));
+        IUserStore(newImplementation).getKeyCount();
         UpgradeableBeacon(userStoreBeacon).upgradeTo(newImplementation);
         emit UserStoreImplementationUpgraded(newImplementation);
     }
@@ -193,7 +202,7 @@ contract StoreFactory is Ownable, IStoreFactory {
     /// @param source Storage array to slice.
     /// @param offset Start index.
     /// @param limit Maximum entries to return.
-    /// @return slice Result slice — empty when `offset >= source.length`.
+    /// @return slice Result slice; empty when `offset >= source.length`.
     function _paginateAddresses(
         address[] storage source,
         uint256 offset,

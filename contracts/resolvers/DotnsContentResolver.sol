@@ -17,8 +17,10 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
 /// @title Dotns Content Resolver
 /// @notice Implements `IDotnsContentResolver` interface with content hash, text records, and operator approvals
-/// @dev Stores opaque content hash bytes and text key-value pairs per node
-///      Authorisation enforced via DotNS registry ownership or approved operators
+/// @dev Writes are gated on node ownership (or an operator approved by the
+///      owner) rather than on a privileged writer address. Content records are
+///      user-managed metadata, so authority follows the node owner across
+///      transfers without any registrar coordination.
 /// @custom:security-contact admin@parity.io
 contract DotnsContentResolver is
     Initializable,
@@ -51,6 +53,8 @@ contract DotnsContentResolver is
     /// @notice Initialises the content resolver
     /// @param registry Protocol-level address registry used to resolve sibling contracts.
     /// @custom:reverts InvalidInitialization
+    /// @custom:emits OwnershipTransferred
+    /// @custom:emits Initialized
     function initialize(IDotnsProtocolRegistry registry) external initializer {
         __Ownable_init(msg.sender);
         __ERC165_init();
@@ -108,8 +112,10 @@ contract DotnsContentResolver is
         return operators[owner][operator];
     }
 
-    /// @notice Ensures caller is either the node owner or an approved operator
-    /// @param node Node identifier
+    /// @notice Ensures caller is either the node owner or an approved operator.
+    /// @dev Operator approval mirrors ERC721 semantics so a single delegate can
+    ///      manage all of an owner's nodes without per-node approvals.
+    /// @param node Node identifier.
     function _requireNodeOwnerOrOperator(bytes32 node) internal view {
         IDotnsRegistry _registry = IDotnsRegistry(protocolRegistry.get(DotnsConstants.REGISTRY));
         address nodeOwner = _registry.owner(node);
@@ -119,8 +125,8 @@ contract DotnsContentResolver is
         );
     }
 
-    /// @notice Returns implementation version
-    /// @return versionString Current version string
+    /// @notice Returns implementation version.
+    /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
         versionString = "1.2.0";
     }

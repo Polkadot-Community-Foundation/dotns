@@ -15,8 +15,10 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
 /// @title Dotns Reverse Resolver
 /// @notice Resolves an address to its associated .dot name.
-/// @dev Maintains an on-chain mapping from addresses to name strings.
-///      Writes are restricted to an authorised registrar.
+/// @dev Writes are gated on a fixed writer address resolved from the protocol
+///      registry (the registrar or its controller), not on node ownership.
+///      Reverse records bind to an EOA rather than a registry node, so authority
+///      is delegated to the contract that mints names on the user's behalf.
 /// @custom:security-contact admin@parity.io
 contract DotnsReverseResolver is
     Initializable,
@@ -25,8 +27,8 @@ contract DotnsReverseResolver is
     ERC165Upgradeable,
     IDotnsReverseResolver
 {
-    /// @dev Mapping from address to its reverse name.
-    ///      An empty string indicates that no reverse name is set.
+    /// @dev Mapping from address to its reverse name. An empty string indicates
+    ///      that no reverse name is set.
     mapping(address owner => string name) private reverseNames;
 
     /// @notice Protocol-level address registry for all DotNS contracts.
@@ -48,8 +50,10 @@ contract DotnsReverseResolver is
     }
 
     /// @notice Initialises the reverse resolver.
-    /// @dev This function may only be called once.
+    /// @dev May only be called once per proxy.
     /// @param registry Protocol-level address registry used to resolve sibling contracts.
+    /// @custom:emits OwnershipTransferred
+    /// @custom:emits Initialized
     /// @custom:reverts InvalidInitialization
     function initialize(IDotnsProtocolRegistry registry) external initializer {
         __Ownable_init(msg.sender);
@@ -88,8 +92,8 @@ contract DotnsReverseResolver is
         );
     }
 
-    /// @notice Returns implementation version
-    /// @return versionString Current version string
+    /// @notice Returns implementation version.
+    /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
         versionString = "1.2.0";
     }

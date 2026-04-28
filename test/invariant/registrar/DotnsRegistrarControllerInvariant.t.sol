@@ -74,9 +74,9 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
             ILabelStore store = ILabelStore(storeFactory.getLabelStore(registrationOwner));
 
             if (address(store) != address(0)) {
-                bytes32 labelhash = keccak256(bytes(registeredLabels[i]));
+                bytes32 node = _namehash(dotNode, keccak256(bytes(registeredLabels[i])));
 
-                assertTrue(store.isLocked(labelhash), "Store entry must be locked");
+                assertTrue(store.isLocked(node), "Store entry must be locked");
             }
         }
     }
@@ -136,15 +136,15 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
 
             assertTrue(address(store) != address(0), "Transfer recipient must have a store");
 
-            bytes32 labelhash = keccak256(bytes(transferredLabels[i]));
+            bytes32 node = _namehash(dotNode, keccak256(bytes(transferredLabels[i])));
 
             assertEq(
-                store.getLabel(labelhash),
+                store.getLabel(node),
                 string.concat(transferredLabels[i], ".dot"),
                 "Transfer-created store entry must contain correct label"
             );
 
-            assertTrue(store.isLocked(labelhash), "Transfer-created store entry must be locked");
+            assertTrue(store.isLocked(node), "Transfer-created store entry must be locked");
         }
     }
 
@@ -158,10 +158,10 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
 
             assertTrue(address(store) != address(0), "Current owner must have a store");
 
-            bytes32 labelhash = keccak256(bytes(registeredLabels[i]));
+            bytes32 node = _namehash(dotNode, keccak256(bytes(registeredLabels[i])));
 
             assertEq(
-                store.getLabel(labelhash),
+                store.getLabel(node),
                 string.concat(registeredLabels[i], ".dot"),
                 "Current owner store must contain correct label after any number of transfers"
             );

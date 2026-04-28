@@ -14,6 +14,9 @@ import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 ///      and never mutate. Writes are gated to addresses currently registered in
 ///      `DotnsProtocolRegistry` (`isRegisteredAddress`); every labelhash is single-write and
 ///      permanently locked on first use.
+/// @dev Labels-only by invariant: this store holds registration records only. Every other
+///      per-name category (reverse, content, forward address, chat key, lite link) lives on a
+///      dedicated resolver, never here.
 /// @dev Storage collision: the `BeaconProxy` stores the beacon address at EIP-1967 slot
 ///      `keccak256("eip1967.proxy.beacon") - 1`, which is non-sequential and cannot collide
 ///      with this contract's sequential storage slots.
@@ -28,7 +31,7 @@ contract LabelStore is Initializable, ILabelStore {
     /// @dev labelhash => stored label string.
     mapping(bytes32 labelhash => string label) private _labels;
 
-    /// @dev labelhash => permanent lock flag (monotonic false → true).
+    /// @dev labelhash => permanent lock flag (monotonic false to true).
     mapping(bytes32 labelhash => bool locked) private _locked;
 
     /// @dev Insertion-order list of all stored labelhashes. Append-only.
@@ -60,6 +63,8 @@ contract LabelStore is Initializable, ILabelStore {
         _protocolRegistry = protocolRegistry_;
     }
 
+    /// @dev Single-write lock invariant: once a labelhash is recorded the slot is locked
+    /// permanently, so each labelhash is bound to exactly one label for the life of the store.
     /// @inheritdoc ILabelStore
     function storeLabel(
         bytes32 labelhash,

@@ -49,9 +49,9 @@ interface IUserStore is IDotnsStore {
     ///      for any caller other than the bound owner.
     /// @param key The key to write.
     /// @param value The new current value (may be empty).
+    /// @custom:emits ValueSet
     /// @custom:reverts NotOwner
     /// @custom:reverts InvalidKey
-    /// @custom:emits ValueSet
     function setValue(bytes32 key, bytes calldata value) external;
 
     /// @notice Returns the current value under `key`, or empty bytes if unset.

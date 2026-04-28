@@ -8,14 +8,14 @@ pragma solidity ^0.8.30;
 ///      - Lite link: for a full-person node, the labelhash of the lite-person
 ///        username it was minted from (when the link was made).
 ///      - Full claim: reverse index mapping a lite labelhash to the full-person
-///        node it was promoted to. Mirrors `lite link` on every write so a
+///        node it was promoted to. Mirrors `liteLink` on every write so a
 ///        caller that holds a lite labelhash can resolve the full-person node
 ///        without scanning events.
 ///
-///      Lives separately from the per-user {Store} so that the Store can remain a
-///      labels-only, protocol-write / user-read surface, and follows the project's
-///      resolver-per-record-category convention used by {IDotnsContentResolver}
-///      and {IDotnsReverseResolver}.
+///      Lives separately from the per-user `LabelStore` so that the store can remain
+///      a labels-only, protocol-write / user-read surface, and follows the project's
+///      resolver-per-record-category convention used by {IDotnsContentResolver} and
+///      {IDotnsReverseResolver}.
 ///
 ///      Write authorisation is delegated to the address registered as
 ///      `DotnsProtocolRegistry.POP_CONTROLLER` at call time, so rotating the PoP
@@ -49,9 +49,9 @@ interface IDotnsPopResolver {
     ///      affine coordinates). Any other length reverts with {InvalidChatKeyLength}.
     /// @param node The node whose chat key is being written.
     /// @param chatKey ECDH public key bytes (pallet-side type is `[u8; 65]`).
+    /// @custom:emits ChatKeyUpdated
     /// @custom:reverts InvalidChatKeyLength
     /// @custom:reverts NotPopController
-    /// @custom:emits ChatKeyUpdated
     function setChatKey(bytes32 node, bytes calldata chatKey) external;
 
     /// @notice Sets the lite-person link for a full-person `node`.
@@ -60,11 +60,12 @@ interface IDotnsPopResolver {
     ///      forward (`liteLink`) and reverse (`fullClaim`) indices remain
     ///      consistent: re-linking the same `fullNode` to a new `liteLabelhash`
     ///      clears `fullClaim(oldLite)`, and re-linking the same `liteLabelhash`
-    ///      to a new `fullNode` clears `liteLink(oldFull)`.
+    ///      to a new `fullNode` clears `liteLink(oldFull)`. The invariant
+    ///      `fullClaim(liteLink(node)) == node` always holds after the call.
     /// @param fullNode The full-person node carrying the link.
     /// @param liteLabelhash The labelhash of the linked lite-person username.
-    /// @custom:reverts NotPopController
     /// @custom:emits LiteLinkUpdated
+    /// @custom:reverts NotPopController
     function setLiteLink(bytes32 fullNode, bytes32 liteLabelhash) external;
 
     /// @notice Returns the chat key associated with a node.

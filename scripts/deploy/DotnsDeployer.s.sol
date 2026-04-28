@@ -8,6 +8,7 @@ import {PopRules} from "../../contracts/pop/PopRules.sol";
 import {DotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
 import {DotnsRegistrarController} from "../../contracts/registrars/DotnsRegistrarController.sol";
 import {DotnsPopController} from "../../contracts/registrars/DotnsPopController.sol";
+import {DotnsNameEscrow} from "../../contracts/escrow/DotnsNameEscrow.sol";
 import {IDotnsController} from "../../contracts/registrars/IDotnsController.sol";
 import {DotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
 import {DotnsReverseResolver} from "../../contracts/resolvers/DotnsReverseResolver.sol";
@@ -37,6 +38,11 @@ contract DotnsDeployer is BaseDeployer {
     ///      rotates this post-deploy via `DotnsPopController.setReservationDuration`.
     uint64 public constant DEFAULT_RESERVATION_DURATION = 7 days;
 
+    /// @notice Default refund cooldown for the freshly-deployed name escrow.
+    /// @dev The protocol owner rotates this post-deploy via
+    ///      `DotnsNameEscrow.updateCooldown`.
+    uint256 public constant ESCROW_COOLDOWN = 7 days;
+
     StoreFactory public storeFactory;
 
     PopRules public popRules;
@@ -48,6 +54,7 @@ contract DotnsDeployer is BaseDeployer {
     DotnsPopResolver public dotnsPopResolver;
     DotnsRegistrarController public dotnsRegistrarController;
     DotnsPopController public dotnsPopController;
+    DotnsNameEscrow public dotnsNameEscrow;
     DotnsProtocolRegistry public protocolRegistry;
 
     /// @notice Per-proxy handle returned from the deploy pipeline, kept as a
@@ -63,6 +70,7 @@ contract DotnsDeployer is BaseDeployer {
         address popRules;
         address registrarController;
         address protocolRegistry;
+        address nameEscrow;
         address popResolver;
         address popController;
     }
@@ -100,6 +108,7 @@ contract DotnsDeployer is BaseDeployer {
         deployment.contentResolver = _deployContentResolver(OWNER, deployment.protocolRegistry);
         deployment.resolver = _deployResolver(OWNER, deployment.protocolRegistry);
         deployment.popRules = _deployPopRules(OWNER, deployment.protocolRegistry);
+        deployment.nameEscrow = _deployNameEscrow(OWNER, deployment.protocolRegistry);
         deployment.registrarController =
             _deployRegistrarController(OWNER, deployment.protocolRegistry);
         deployment.popResolver = _deployPopResolver(OWNER, deployment.protocolRegistry);
@@ -270,6 +279,25 @@ contract DotnsDeployer is BaseDeployer {
         dotnsRegistrarController = DotnsRegistrarController(proxy);
     }
 
+    function _deployNameEscrow(
+        address owner,
+        address protocolRegistryProxy
+    )
+        internal
+        returns (address proxy)
+    {
+        proxy = _broadcastDeployUups(
+            owner,
+            "DotnsNameEscrow.sol:DotnsNameEscrow",
+            abi.encodeCall(
+                DotnsNameEscrow.initialize,
+                (IDotnsProtocolRegistry(protocolRegistryProxy), ESCROW_COOLDOWN)
+            ),
+            "DotnsNameEscrow"
+        );
+        dotnsNameEscrow = DotnsNameEscrow(payable(proxy));
+    }
+
     function _deployPopResolver(
         address owner,
         address protocolRegistryProxy
@@ -324,6 +352,7 @@ contract DotnsDeployer is BaseDeployer {
         protocolRegistry.set(DotnsConstants.CONTENT_RESOLVER, deployment.contentResolver);
         protocolRegistry.set(DotnsConstants.POP_RULES, deployment.popRules);
         protocolRegistry.set(DotnsConstants.STORE_FACTORY, deployment.storeFactory);
+        protocolRegistry.set(DotnsConstants.NAME_ESCROW, deployment.nameEscrow);
         protocolRegistry.set(DotnsConstants.POP_CONTROLLER, deployment.popController);
         protocolRegistry.set(DotnsConstants.POP_RESOLVER, deployment.popResolver);
         // `popGateway` defaults to the deploying owner for local deploys. Governance
@@ -370,6 +399,11 @@ contract DotnsDeployer is BaseDeployer {
         );
         _assertOwner(PopRules(deployment.popRules).owner(), expectedOwner, "PopRules: wrong owner");
         _assertOwner(
+            DotnsNameEscrow(payable(deployment.nameEscrow)).owner(),
+            expectedOwner,
+            "NameEscrow: wrong owner"
+        );
+        _assertOwner(
             DotnsPopController(deployment.popController).owner(),
             expectedOwner,
             "PopController: wrong owner"
@@ -405,6 +439,7 @@ contract DotnsDeployer is BaseDeployer {
         );
         _assertKey(DotnsConstants.POP_RULES, deployment.popRules, "Key: popRules");
         _assertKey(DotnsConstants.STORE_FACTORY, deployment.storeFactory, "Key: storeFactory");
+        _assertKey(DotnsConstants.NAME_ESCROW, deployment.nameEscrow, "Key: nameEscrow");
         _assertKey(DotnsConstants.POP_CONTROLLER, deployment.popController, "Key: popController");
         _assertKey(DotnsConstants.POP_RESOLVER, deployment.popResolver, "Key: popResolver");
         _assertKey(DotnsConstants.POP_GATEWAY, expectedOwner, "Key: popGateway");
@@ -450,6 +485,11 @@ contract DotnsDeployer is BaseDeployer {
             address(PopRules(deployment.popRules).protocolRegistry()),
             expected,
             "PopRules: not wired"
+        );
+        _assertPointer(
+            address(DotnsNameEscrow(payable(deployment.nameEscrow)).protocolRegistry()),
+            expected,
+            "NameEscrow: not wired"
         );
         _assertPointer(
             address(DotnsPopController(deployment.popController).protocolRegistry()),

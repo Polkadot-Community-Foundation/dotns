@@ -97,8 +97,8 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         assertEq(dotnsReverseResolver.nameOf(nameOwner), string.concat(nameLabel, ".dot"));
 
         ILabelStore ownerStore = ILabelStore(storeFactory.getLabelStore(nameOwner));
-        assertEq(ownerStore.getLabel(labelHash), string.concat(nameLabel, ".dot"));
-        assertTrue(ownerStore.isLocked(labelHash));
+        assertEq(ownerStore.getLabel(node), string.concat(nameLabel, ".dot"));
+        assertTrue(ownerStore.isLocked(node));
     }
 
     function test_register_poplite_reserves_base_name() public {
@@ -183,7 +183,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         assertEq(dotnsRegistry.owner(node), nameOwner);
 
         ILabelStore edStore = ILabelStore(storeFactory.getLabelStore(nameOwner));
-        assertEq(edStore.getLabel(labelHash), string.concat(nameLabel, ".dot"));
+        assertEq(edStore.getLabel(node), string.concat(nameLabel, ".dot"));
     }
 
     function test_registerreserved_revertnon_owner() public {
@@ -312,8 +312,9 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         uint256 tokenId = _tokenIdForLabel(nameLabel);
 
+        uint256 fee = dotnsRegistrar.quoteTransferFee(tokenId, leonardo);
         vm.prank(ed);
-        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+        dotnsRegistrar.transferFrom{value: fee}(ed, leonardo, tokenId);
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), leonardo);
 
@@ -322,10 +323,8 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         ILabelStore leonardoStore = ILabelStore(leonardoStoreAddr);
 
-        bytes32 labelhash = keccak256(bytes(nameLabel));
-
-        assertEq(leonardoStore.getLabel(labelhash), string.concat(nameLabel, ".dot"));
-        assertTrue(leonardoStore.isLocked(labelhash));
+        assertEq(leonardoStore.getLabel(bytes32(tokenId)), string.concat(nameLabel, ".dot"));
+        assertTrue(leonardoStore.isLocked(bytes32(tokenId)));
     }
 
     function test_transfer_back_skips_locked_entry() public {
@@ -335,16 +334,17 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         uint256 tokenId = _tokenIdForLabel(nameLabel);
 
+        uint256 outboundFee = dotnsRegistrar.quoteTransferFee(tokenId, leonardo);
         vm.prank(ed);
-        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+        dotnsRegistrar.transferFrom{value: outboundFee}(ed, leonardo, tokenId);
 
+        uint256 returnFee = dotnsRegistrar.quoteTransferFee(tokenId, ed);
         vm.prank(leonardo);
-        dotnsRegistrar.transferFrom(leonardo, ed, tokenId);
+        dotnsRegistrar.transferFrom{value: returnFee}(leonardo, ed, tokenId);
 
         ILabelStore edStore = ILabelStore(storeFactory.getLabelStore(ed));
-        bytes32 labelhash = keccak256(bytes(nameLabel));
-        assertEq(edStore.getLabel(labelhash), string.concat(nameLabel, ".dot"));
-        assertTrue(edStore.isLocked(labelhash));
+        assertEq(edStore.getLabel(bytes32(tokenId)), string.concat(nameLabel, ".dot"));
+        assertTrue(edStore.isLocked(bytes32(tokenId)));
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
     }
@@ -357,8 +357,9 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         uint256 tokenId = _tokenIdForLabel(nameLabel);
         assertEq(dotnsReverseResolver.nameOf(ed), "primarymove01.dot");
 
+        uint256 _xferFee = dotnsRegistrar.quoteTransferFee(tokenId, leonardo);
         vm.prank(ed);
-        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+        dotnsRegistrar.transferFrom{value: _xferFee}(ed, leonardo, tokenId);
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), leonardo);
         assertEq(dotnsReverseResolver.nameOf(ed), "");
@@ -372,33 +373,10 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         _register(nameLabel, tiago, IPopRules.PopStatus.PopFull);
 
         ILabelStore tiagoStore = ILabelStore(storeFactory.getLabelStore(tiago));
-        bytes32 labelhash = keccak256(bytes(nameLabel));
-        assertEq(tiagoStore.getLabel(labelhash), string.concat(nameLabel, ".dot"));
+        uint256 tokenId = _tokenIdForLabel(nameLabel);
+        assertEq(tiagoStore.getLabel(bytes32(tokenId)), string.concat(nameLabel, ".dot"));
 
         assertEq(storeFactory.getLabelStore(address(0)), address(0));
-    }
-
-    function test_transfer_succeeds_when_sender_has_no_store() public {
-        string memory nameLabel = "nostore01";
-        bytes32 labelhash = keccak256(bytes(nameLabel));
-        bytes32 node = _namehash(dotNode, labelhash);
-        uint256 tokenId = uint256(node);
-
-        vm.prank(address(dotnsRegistrarController));
-        dotnsRegistrar.register(tokenId, ed, nameLabel);
-
-        // Sender has no Store — transfer should still succeed
-        assertEq(storeFactory.getLabelStore(ed), address(0));
-
-        vm.prank(ed);
-        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
-
-        assertEq(dotnsRegistrar.ownerOf(tokenId), leonardo);
-
-        // Recipient gets a Store with the label written (label comes from _labels, not sender Store)
-        assertTrue(storeFactory.getLabelStore(leonardo) != address(0));
-        ILabelStore leonardoStore = ILabelStore(storeFactory.getLabelStore(leonardo));
-        assertEq(leonardoStore.getLabel(labelhash), "nostore01.dot");
     }
 
     function test_safe_transfer_writes_to_store() public {
@@ -408,17 +386,17 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         uint256 tokenId = _tokenIdForLabel(nameLabel);
 
+        uint256 _xferFee = dotnsRegistrar.quoteTransferFee(tokenId, leonardo);
         vm.prank(ed);
-        dotnsRegistrar.safeTransferFrom(ed, leonardo, tokenId);
+        dotnsRegistrar.safeTransferFrom{value: _xferFee}(ed, leonardo, tokenId);
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), leonardo);
 
         ILabelStore leonardoStore = ILabelStore(storeFactory.getLabelStore(leonardo));
         assertTrue(address(leonardoStore) != address(0));
 
-        bytes32 labelhash = keccak256(bytes(nameLabel));
-        assertEq(leonardoStore.getLabel(labelhash), string.concat(nameLabel, ".dot"));
-        assertTrue(leonardoStore.isLocked(labelhash));
+        assertEq(leonardoStore.getLabel(bytes32(tokenId)), string.concat(nameLabel, ".dot"));
+        assertTrue(leonardoStore.isLocked(bytes32(tokenId)));
     }
 
     function test_transfer_via_approved_operator_writes_to_store() public {
@@ -439,9 +417,8 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         ILabelStore leonardoStore = ILabelStore(storeFactory.getLabelStore(leonardo));
         assertTrue(address(leonardoStore) != address(0));
 
-        bytes32 labelhash = keccak256(bytes(nameLabel));
-        assertEq(leonardoStore.getLabel(labelhash), string.concat(nameLabel, ".dot"));
-        assertTrue(leonardoStore.isLocked(labelhash));
+        assertEq(leonardoStore.getLabel(bytes32(tokenId)), string.concat(nameLabel, ".dot"));
+        assertTrue(leonardoStore.isLocked(bytes32(tokenId)));
     }
 
     function test_transfer_deploys_store_without_label() public {
@@ -455,13 +432,14 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         assertEq(storeFactory.getLabelStore(leonardo), address(0));
 
+        uint256 _xferFee = dotnsRegistrar.quoteTransferFee(tokenId, leonardo);
         vm.prank(ed);
-        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+        dotnsRegistrar.transferFrom{value: _xferFee}(ed, leonardo, tokenId);
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), leonardo);
         assertTrue(storeFactory.getLabelStore(leonardo) != address(0));
 
         ILabelStore leonardoStore = ILabelStore(storeFactory.getLabelStore(leonardo));
-        assertEq(leonardoStore.getLabel(labelhash), "");
+        assertEq(leonardoStore.getLabel(bytes32(tokenId)), "");
     }
 }

@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 /// @title IStoreFactory
 /// @notice Interface for the DotNS per-user store factory.
-/// @dev Owns two `UpgradeableBeacon` instances — one for `LabelStore` (protocol-managed),
+/// @dev Owns two `UpgradeableBeacon` instances; one for `LabelStore` (protocol-managed),
 ///      one for `UserStore` (user-claimed). Each user may acquire at most one of each,
 ///      forever. There is no transfer, no redeploy, no additional store type.
 /// @custom:security-contact admin@parity.io
@@ -47,6 +47,9 @@ interface IStoreFactory {
     /// @param caller The unauthorised msg.sender.
     error NotAuthorised(address caller);
 
+    /// @notice Thrown when a freshly deployed proxy does not report the expected owner.
+    error ImplementationBindingMismatch();
+
     /// @notice Returns the `UpgradeableBeacon` address backing all `LabelStore` proxies.
     /// @return beacon Address of the beacon contract.
     function labelStoreBeacon() external view returns (address beacon);
@@ -63,10 +66,11 @@ interface IStoreFactory {
     /// @dev Callable by the factory owner OR any address currently registered in the protocol registry.
     /// @param user The user the store is bound to forever.
     /// @return store The deployed store address.
+    /// @custom:emits LabelStoreDeployed
     /// @custom:reverts NotAuthorised
     /// @custom:reverts InvalidUser
     /// @custom:reverts AlreadyDeployed
-    /// @custom:emits LabelStoreDeployed
+    /// @custom:reverts ImplementationBindingMismatch
     function deployLabelStoreFor(address user) external returns (address store);
 
     /// @notice Returns the `LabelStore` address bound to `user`, or the zero address if none.
@@ -95,17 +99,18 @@ interface IStoreFactory {
     /// @notice Upgrades the `LabelStore` implementation for every existing and future proxy.
     /// @dev Callable by the factory owner only. Delegates to `UpgradeableBeacon.upgradeTo`.
     /// @param newImplementation The new implementation address.
+    /// @custom:emits LabelStoreImplementationUpgraded
     /// @custom:reverts InvalidImplementation
     /// @custom:reverts OwnableUnauthorizedAccount
-    /// @custom:emits LabelStoreImplementationUpgraded
     function upgradeLabelStoreImplementation(address newImplementation) external;
 
     /// @notice Caller claims their `UserStore` beacon-proxy.
-    /// @dev Self-claim only — `_owner` on the resulting store is always `msg.sender`,
+    /// @dev Self-claim only; `_owner` on the resulting store is always `msg.sender`,
     ///      regardless of who pays gas. One store per caller, forever.
     /// @return store The deployed store address.
-    /// @custom:reverts AlreadyDeployed
     /// @custom:emits UserStoreClaimed
+    /// @custom:reverts AlreadyDeployed
+    /// @custom:reverts ImplementationBindingMismatch
     function claimUserStore() external returns (address store);
 
     /// @notice Returns the `UserStore` address bound to `user`, or the zero address if none.
@@ -134,8 +139,8 @@ interface IStoreFactory {
     /// @notice Upgrades the `UserStore` implementation for every existing and future proxy.
     /// @dev Callable by the factory owner only. Delegates to `UpgradeableBeacon.upgradeTo`.
     /// @param newImplementation The new implementation address.
+    /// @custom:emits UserStoreImplementationUpgraded
     /// @custom:reverts InvalidImplementation
     /// @custom:reverts OwnableUnauthorizedAccount
-    /// @custom:emits UserStoreImplementationUpgraded
     function upgradeUserStoreImplementation(address newImplementation) external;
 }

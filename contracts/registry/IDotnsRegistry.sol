@@ -1,21 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-/// @title Dot Registry
+/// @title IDotnsRegistry
+/// @author Parity
 /// @notice Minimal on-chain registry for hierarchical name ownership and resolution.
-/// @dev Defines the canonical storage and mutation surface for DotNS nodes.
-///      The registry stores explicit owners for non-tokenised nodes (subnodes).
-///      For tokenised nodes (base .dot registrations), implementations may use a sentinel owner:
-///      - records[node].owner == address(0) means "owner is derived from the ERC721 registrar".
-///      In that mode, authorisation MUST be based on ERC721 owner/approvals.
+/// @dev Tokenised second-level nodes are owned through the registrar (ERC-721); subnodes are
+///      owned directly by the address stored in `Record.owner`.
 /// @custom:security-contact admin@parity.io
 interface IDotnsRegistry {
-    /// @notice Record describing a subnode creation request
-    /// @param parentNode Parent node
-    /// @param subLabel Human readable subnode label e.g "alice"
-    /// @param parentLabel Canonical parent name without the `.dot` suffix e.g. bob or child.bob
-    /// @param owner Address to assign as owner of the created subnode
-    /// @dev Label string is included for convenience, for the store
+    /// @notice Record describing a subnode creation request.
+    /// @param subLabel Human readable subnode label e.g "alice".
+    /// @param parentLabel Canonical parent name without the `.dot` suffix e.g. bob or child.bob.
+    /// @param owner Address to assign as owner of the created subnode.
     struct SubnodeRecord {
         bytes32 parentNode;
         string subLabel;
@@ -36,17 +32,12 @@ interface IDotnsRegistry {
     /// @notice Emitted when a new subnode owner is set.
     /// @param node Parent node.
     /// @param label Labelhash of the created subnode.
-    /// @param owner New owner of the subnode.
     event NewOwner(bytes32 indexed node, bytes32 indexed label, address owner);
 
     /// @notice Emitted when ownership of a node is transferred.
-    /// @param node Node whose owner changed.
-    /// @param owner New owner of the node.
     event NodeTransferred(bytes32 indexed node, address owner);
 
     /// @notice Emitted when a resolver is set or updated.
-    /// @param node Node whose resolver changed.
-    /// @param resolver New resolver for the node.
     event NewResolver(bytes32 indexed node, address resolver);
 
     /// @notice Thrown when an invalid (zero) address is provided.
@@ -59,7 +50,6 @@ interface IDotnsRegistry {
     error NotRegistryController();
 
     /// @notice Thrown when attempting to create a node that already exists.
-    /// @param node The node identifier that already exists.
     error NodeAlreadyOwned(bytes32 node);
 
     /// @notice Thrown when a sublabel is not a canonical lowercase ASCII DNS label.
@@ -69,7 +59,6 @@ interface IDotnsRegistry {
     error ParentLabelMismatch();
 
     /// @notice Record describing a subnode resolver update request.
-    /// @param parentNode Parent node identifier.
     /// @param subLabel Human-readable subnode label e.g "alice".
     /// @param parentLabel Canonical parent name without `.dot` suffix e.g bob or child.bob.
     /// @param resolver Resolver contract address (zero clears).
@@ -81,58 +70,51 @@ interface IDotnsRegistry {
     }
 
     /// @notice Creates or reassigns a subnode and assigns its owner.
-    /// @dev Callable only by the current owner of `parentNode`.
-    /// @param record SubnodeRecord.
-    /// @return subnode The derived subnode identifier.
+    /// @dev Callable only by the current owner of `record.parentNode`. Indexes the subnode
+    ///      under the new owner's `LabelStore` keyed by the namehashed `subnode` so off-chain
+    ///      consumers can enumerate names per address.
+    /// @custom:emits NewOwner
     /// @custom:reverts InvalidLabel
     /// @custom:reverts NotAllowed
     /// @custom:reverts NotAuthorised
     /// @custom:reverts ParentLabelMismatch
-    /// @custom:emits NewOwner
     function setSubnodeOwner(SubnodeRecord calldata record) external returns (bytes32 subnode);
 
     /// @notice Sets the resolver for an existing subnode.
-    /// @dev Callable only by the current owner of `parentNode`.
-    ///      The subnode owner can still use `setResolver` directly.
-    /// @param record SubnodeResolverRecord.
+    /// @dev Callable only by the current owner of `record.parentNode`. The subnode owner can
+    ///      still update the resolver directly via `setResolver`.
+    /// @custom:emits NewResolver
     /// @custom:reverts InvalidLabel
     /// @custom:reverts NotAuthorised
     /// @custom:reverts ParentLabelMismatch
-    /// @custom:emits NewResolver
     function setSubnodeResolver(SubnodeResolverRecord calldata record) external;
 
     /// @notice Creates a node record for a tokenised base registration.
-    /// @dev Callable only by the configured `registrarController`.
-    ///      Implementations SHOULD use the sentinel owner pattern:
-    ///      - store owner as address(0) to derive ownership from the ERC721 registrar.
-    /// @param node Node identifier.
-    /// @param newOwner New owner address for event emission and validation.
-    /// @param resolverAddr Resolver address to set for the node.
+    /// @dev Restricted to the registrar's controllers. Stores `owner = address(0)` as a
+    ///      sentinel so reads delegate to `IDotnsRegistrar.ownerOf` and ERC-721 transfers
+    ///      remain authoritative.
+    /// @custom:emits NodeTransferred
     /// @custom:reverts NodeAlreadyOwned
     /// @custom:reverts NotAllowed
     /// @custom:reverts NotAuthorised
-    /// @custom:emits NodeTransferred
     function setOwner(bytes32 node, address newOwner, address resolverAddr) external;
 
     /// @notice Sets or clears the resolver for a node.
-    /// @dev Callable only by the current node owner.
-    ///      For tokenised nodes, authorisation is based on ERC721 owner/approvals.
-    /// @param node Node identifier.
+    /// @dev Callable only by the current node owner. For tokenised nodes, authorisation falls
+    ///      back to ERC-721 owner / approved / operator-for-all via the registrar.
     /// @param resolverAddr Resolver contract address (zero clears).
-    /// @custom:reverts NotAuthorised
     /// @custom:emits NewResolver
+    /// @custom:reverts NotAuthorised
     function setResolver(bytes32 node, address resolverAddr) external;
 
     /// @notice Returns the owner of a node.
-    /// @dev For tokenised nodes (sentinel owner), returns the ERC721 owner.
-    /// @param node Node identifier.
+    /// @dev For tokenised nodes the stored owner is the zero sentinel; the implementation falls
+    ///      back to `IDotnsRegistrar.ownerOf(uint256(node))`.
     function owner(bytes32 node) external view returns (address);
 
     /// @notice Returns the resolver of a node.
-    /// @param node Node identifier.
     function resolver(bytes32 node) external view returns (address);
 
     /// @notice Returns whether a node exists.
-    /// @param node Node identifier.
     function recordExists(bytes32 node) external view returns (bool);
 }

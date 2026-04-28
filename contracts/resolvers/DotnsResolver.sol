@@ -17,8 +17,9 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
 /// @title Dotns Resolver
 /// @notice Stores forward-resolution address records for DotNS nodes
-/// @dev Maps node identifiers to a resolved address.
-///      Write access is restricted to the owner of the node as recorded in the DotNS registry.
+/// @dev Writes are gated on node ownership in the forward registry, not on a
+///      privileged writer address. Address records describe where a name points
+///      and only the current node owner has the authority to set that target.
 /// @custom:security-contact admin@parity.io
 contract DotnsResolver is
     Initializable,
@@ -34,11 +35,11 @@ contract DotnsResolver is
     // forge-lint: disable-next-line(mixed-case-variable)
     uint256[50] private __gap;
 
-    /// @notice Node → resolved address
+    /// @notice Node => resolved address.
     mapping(bytes32 node => address owner) private addresses;
 
-    /// @notice Restricts access to the owner of `node` as recorded in the registry
-    /// @param node Node identifier
+    /// @notice Restricts access to the owner of `node` as recorded in the registry.
+    /// @param node Node identifier.
     modifier onlyNodeOwner(bytes32 node) {
         _onlyNodeOwner(node);
         _;
@@ -52,6 +53,8 @@ contract DotnsResolver is
     /// @notice Initialises the resolver
     /// @param registry Protocol-level address registry used to resolve sibling contracts.
     /// @custom:reverts InvalidInitialization
+    /// @custom:emits OwnershipTransferred
+    /// @custom:emits Initialized
     function initialize(IDotnsProtocolRegistry registry) external initializer {
         __Ownable_init(msg.sender);
         __ERC165_init();
@@ -75,15 +78,17 @@ contract DotnsResolver is
             interfaceId == type(IDotnsResolver).interfaceId || super.supportsInterface(interfaceId);
     }
 
-    /// @notice Internal ownership check for a registry node
-    /// @param node Node identifier
+    /// @notice Internal ownership check for a registry node.
+    /// @dev Resolves the registry lazily through `protocolRegistry` so a registry
+    ///      upgrade or rewire is picked up automatically without a resolver upgrade.
+    /// @param node Node identifier.
     function _onlyNodeOwner(bytes32 node) internal view {
         IDotnsRegistry _registry = IDotnsRegistry(protocolRegistry.get(DotnsConstants.REGISTRY));
         require(_registry.owner(node) == msg.sender, NotAuthorised(node, msg.sender));
     }
 
-    /// @notice Returns implementation version
-    /// @return versionString Current version string
+    /// @notice Returns implementation version.
+    /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
         versionString = "1.2.0";
     }

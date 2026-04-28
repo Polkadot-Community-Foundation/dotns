@@ -120,9 +120,13 @@ Without it, each contract would store direct addresses to every contract it call
 
 The registered keys include `REGISTRAR`, `CONTROLLER`, `REGISTRY`, `REVERSE_RESOLVER`, `RESOLVER`, `CONTENT_RESOLVER`, `POP_RULES`, `STORE_FACTORY`, `POP_CONTROLLER`, `POP_RESOLVER`, and `POP_GATEWAY`.
 
-### `StoreFactory` and `Store`
+### `StoreFactory`, `LabelStore`, and `UserStore`
 
-Per-user storage used to persist DotNS-written immutable records. Each account that has ever received a DotNS name gets a dedicated Store on first write; the factory deploys and tracks it. A Store entry, once written, is locked and cannot be overwritten, which is what gives registration records the durability callers expect. The Store invariant is labels only: registration records go here; every other per-name category (reverse, content, forward address, chat key, lite link) goes to a dedicated resolver.
+Stores are the per-user storage layer. They exist because two query paths the rest of the system needs are not answerable from anywhere else: "what names has this address ever held?" cannot be served by resolvers (keyed per-node) or the registry (live ownership only, no history), and "what user-controlled records does this address publish?" has nowhere on a resolver to live since the data is not bound to any one name. Each address gets at most one of each store, forever, and the factory is the single source of truth for which store belongs to which user.
+
+`LabelStore` is the protocol-managed half. The registrar and the controller set write a label entry once and the slot is permanently locked. The invariant is labels only: every per-name record category (reverse, content, forward address, chat key, lite link) goes to a dedicated resolver, and the Store stays the durable per-owner registration ledger. Because entries are append-only, transferring a name writes a fresh entry on the recipient and leaves the sender's locked entry in place, so `LabelStore` doubles as the address's lifetime-of-ownership ledger while the registry continues to answer for live ownership.
+
+`UserStore` is the user-claimed half. The bound owner is the only writer and prior values are snapshotted into a per-key history. It exists so that user-controlled records that do not belong to a name have a home that bills the user's own contract rather than polluting a shared resolver. The labels-only invariant is preserved by the split: nothing user-written ever lands on the protocol-managed side.
 
 ### Deployments
 

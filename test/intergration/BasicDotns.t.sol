@@ -116,8 +116,8 @@ contract BasicDotnsIntegration is BaseDotns {
         ILabelStore ownerStore = ILabelStore(storeFactory.getLabelStore(flow.nameOwner));
         assertTrue(address(ownerStore) != address(0));
 
-        assertEq(ownerStore.getLabel(labelHash), fullName);
-        assertTrue(ownerStore.isLocked(labelHash));
+        assertEq(ownerStore.getLabel(node), fullName);
+        assertTrue(ownerStore.isLocked(node));
         _assertStoreContainsValue(flow.nameOwner, ownerStore, fullName);
 
         vm.startPrank(flow.nameOwner);
@@ -145,8 +145,9 @@ contract BasicDotnsIntegration is BaseDotns {
         vm.stopPrank();
         assertEq(dotnsContentResolver.contenthash(otherSubnode), CID_B);
 
+        uint256 _xferFee = dotnsRegistrar.quoteTransferFee(tokenId, flow.transferTo);
         vm.startPrank(flow.nameOwner);
-        dotnsRegistrar.transferFrom(flow.nameOwner, flow.transferTo, tokenId);
+        dotnsRegistrar.transferFrom{value: _xferFee}(flow.nameOwner, flow.transferTo, tokenId);
         vm.stopPrank();
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), flow.transferTo);

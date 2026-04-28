@@ -8,7 +8,7 @@ import {IDotnsStore} from "./IDotnsStore.sol";
 /// @dev The `LabelStore` is the protocol-managed half of the per-user storage pair:
 ///      write-only by addresses registered in the protocol registry, read-only by
 ///      everyone else, and permanently locked per `labelhash` on first write. It
-///      holds registration records only — every other per-name category (reverse,
+///      holds registration records only; every other per-name category (reverse,
 ///      content, forward address, chat key, lite link) lives on a dedicated
 ///      resolver, not here.
 /// @custom:security-contact admin@parity.io
@@ -67,12 +67,12 @@ interface ILabelStore is IDotnsStore {
     /// @dev Gated to addresses registered in the protocol registry. Reverts on any re-write.
     /// @param labelhash The labelhash key.
     /// @param label The label string to store.
+    /// @custom:emits LabelStored
+    /// @custom:emits LabelLockedPermanently
     /// @custom:reverts NotAuthorised
     /// @custom:reverts InvalidLabel
     /// @custom:reverts LabelLocked
     /// @custom:reverts LabelAlreadyExists
-    /// @custom:emits LabelStored
-    /// @custom:emits LabelLockedPermanently
     function storeLabel(bytes32 labelhash, string calldata label) external;
 
     /// @notice Returns the protocol registry this store queries for write authorisation.
@@ -123,7 +123,7 @@ interface ILabelStore is IDotnsStore {
 
     /// @notice Paginated read over the labelhash keys, in insertion order.
     /// @dev Advanced read for callers that need the raw labelhash keys. Symmetric with
-    ///      {getLabels} — same indices map to the same entries.
+    ///      {getLabels}; same indices map to the same entries.
     /// @param offset Start index.
     /// @param limit Maximum entries to return.
     /// @return labelhashes Slice of labelhash keys.

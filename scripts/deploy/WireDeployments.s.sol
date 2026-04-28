@@ -8,6 +8,7 @@ import {DeploymentNetwork} from "./DeploymentNetwork.sol";
 import {DotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
 import {DotnsRegistrarController} from "../../contracts/registrars/DotnsRegistrarController.sol";
 import {DotnsPopController} from "../../contracts/registrars/DotnsPopController.sol";
+import {DotnsNameEscrow} from "../../contracts/escrow/DotnsNameEscrow.sol";
 import {IDotnsController} from "../../contracts/registrars/IDotnsController.sol";
 import {DotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
 import {DotnsProtocolRegistry} from "../../contracts/registry/DotnsProtocolRegistry.sol";
@@ -40,6 +41,7 @@ contract WireDeployments is BaseDeployer {
         address popRules;
         address registrarController;
         address protocolRegistry;
+        address nameEscrow;
         address popResolver;
         address popController;
     }
@@ -71,6 +73,7 @@ contract WireDeployments is BaseDeployer {
         addr.popRules = _readAddress("PopRules");
         addr.registrarController = _readAddress("DotnsRegistrarController");
         addr.protocolRegistry = _readAddress("DotnsProtocolRegistry");
+        addr.nameEscrow = _readAddress("DotnsNameEscrow");
         addr.popResolver = _readAddress("DotnsPopResolver");
         addr.popController = _readAddress("DotnsPopController");
     }
@@ -110,6 +113,7 @@ contract WireDeployments is BaseDeployer {
         registry.set(DotnsConstants.CONTENT_RESOLVER, addr.contentResolver);
         registry.set(DotnsConstants.POP_RULES, addr.popRules);
         registry.set(DotnsConstants.STORE_FACTORY, addr.storeFactory);
+        registry.set(DotnsConstants.NAME_ESCROW, addr.nameEscrow);
         registry.set(DotnsConstants.POP_CONTROLLER, addr.popController);
         registry.set(DotnsConstants.POP_RESOLVER, addr.popResolver);
         registry.set(DotnsConstants.POP_GATEWAY, popGateway);
@@ -173,6 +177,10 @@ contract WireDeployments is BaseDeployer {
         );
         require(PopRules(addr.popRules).owner() == expectedOwner, "PopRules: wrong owner");
         require(
+            DotnsNameEscrow(payable(addr.nameEscrow)).owner() == expectedOwner,
+            "NameEscrow: wrong owner"
+        );
+        require(
             DotnsPopController(addr.popController).owner() == expectedOwner,
             "PopController: wrong owner"
         );
@@ -203,6 +211,7 @@ contract WireDeployments is BaseDeployer {
         require(
             registry.get(DotnsConstants.STORE_FACTORY) == addr.storeFactory, "Key: storeFactory"
         );
+        require(registry.get(DotnsConstants.NAME_ESCROW) == addr.nameEscrow, "Key: nameEscrow");
         require(
             registry.get(DotnsConstants.POP_CONTROLLER) == addr.popController, "Key: popController"
         );

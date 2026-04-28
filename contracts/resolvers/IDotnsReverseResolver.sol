@@ -3,25 +3,28 @@ pragma solidity ^0.8.30;
 
 /// @title Dotns Reverse Resolver
 /// @notice Interface for writing and reading reverse name records for addresses.
-/// @dev Defines the minimal surface required to associate an address with a human-readable name.
-///      Implementations are expected to enforce authorisation for writes.
+/// @dev Defines the minimal surface required to associate an address with a
+///      human-readable name. Reverse records bind to an EOA rather than a
+///      registry node, so implementations are expected to enforce a
+///      writer-policy gate (typically the registrar or its controller) rather
+///      than node ownership.
 /// @custom:security-contact admin@parity.io
 interface IDotnsReverseResolver {
     /// @notice Thrown when a caller is not authorised to modify reverse records.
     /// @param caller The address attempting the modification.
     error NotRegistrarController(address caller);
 
-    /// @notice Emitted when a name is associated with an address
+    /// @notice Emitted when a name is associated with an address.
     /// @param addr The address for which the reverse name is being set.
     /// @param name The human-readable name associated with the address.
     event ReverseNameSet(address indexed addr, string indexed name);
 
     /// @notice Associates an address with a reverse name record.
-    /// @dev This function overwrites any existing reverse record for `addr`.
+    /// @dev Overwrites any existing reverse record for `addr`.
     /// @param addr The address for which the reverse name is being set.
     /// @param name The human-readable name associated with the address.
-    /// @custom:reverts NotRegistrarController
     /// @custom:emits ReverseNameSet
+    /// @custom:reverts NotRegistrarController
     function setReverseName(address addr, string calldata name) external;
 
     /// @notice Returns the reverse name for an address.

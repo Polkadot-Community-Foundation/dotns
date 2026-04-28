@@ -10,7 +10,7 @@ import {IUserStore} from "./IUserStore.sol";
 /// @notice Permanent per-user generic key/value store with per-key history.
 /// @dev One instance per user, deployed as a `BeaconProxy` by `StoreFactory.claimUserStore`.
 ///      Bound to its claimer forever: `_owner` is set once at `initialize` and only that
-///      address may write. History is append-only — every `setValue` that supersedes a
+///      address may write. History is append-only; every `setValue` that supersedes a
 ///      non-empty prior value records the supersession with `block.timestamp`.
 /// @dev Cost isolation: each user's writes bill their own contract, keeping shared
 ///      resolvers from being polluted by one user's blob usage.
@@ -55,6 +55,8 @@ contract UserStore is Initializable, IUserStore {
         _owner = user_;
     }
 
+    /// @dev Restricted to the bound owner. Any prior non-empty value is snapshotted into the
+    /// per-key history list with the current block timestamp before the new value overwrites it.
     /// @inheritdoc IUserStore
     function setValue(bytes32 key, bytes calldata value) external override onlyOwner {
         require(key != bytes32(0), InvalidKey());

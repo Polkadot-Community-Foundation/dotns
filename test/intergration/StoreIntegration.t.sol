@@ -29,12 +29,12 @@ contract StoreIntegrationTest is BaseDotns {
         address storeAddr = storeFactory.getLabelStore(ed);
         assertTrue(storeAddr != address(0));
 
-        bytes32 labelhash = keccak256(bytes(label));
+        bytes32 node = _namehash(dotNode, keccak256(bytes(label)));
         ILabelStore store = ILabelStore(storeAddr);
         assertEq(store.owner(), ed);
-        assertTrue(store.hasLabel(labelhash));
-        assertTrue(store.isLocked(labelhash));
-        assertEq(store.getLabel(labelhash), "alicelives01.dot");
+        assertTrue(store.hasLabel(node));
+        assertTrue(store.isLocked(node));
+        assertEq(store.getLabel(node), "alicelives01.dot");
         assertEq(store.getLabelCount(), 1);
         assertEq(store.getLabelAt(0), "alicelives01.dot");
     }
@@ -55,11 +55,11 @@ contract StoreIntegrationTest is BaseDotns {
         address storeAddr = storeFactory.getLabelStore(ed);
         assertTrue(storeAddr != address(0));
 
-        bytes32 labelhash = keccak256(bytes(base));
+        bytes32 node = _namehash(dotNode, keccak256(bytes(base)));
         ILabelStore store = ILabelStore(storeAddr);
         assertEq(store.owner(), ed);
-        assertTrue(store.hasLabel(labelhash));
-        assertEq(store.getLabel(labelhash), string.concat(base, ".dot"));
+        assertTrue(store.hasLabel(node));
+        assertEq(store.getLabel(node), string.concat(base, ".dot"));
     }
 
     function test_erc721_transfer_syncs_label_to_recipient_store() public {
@@ -67,14 +67,14 @@ contract StoreIntegrationTest is BaseDotns {
         bytes32 node = _register(label, ed, IPopRules.PopStatus.NoStatus);
         uint256 tokenId = uint256(node);
 
+        uint256 outboundFee = dotnsRegistrar.quoteTransferFee(tokenId, leonardo);
         vm.prank(ed);
-        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+        dotnsRegistrar.transferFrom{value: outboundFee}(ed, leonardo, tokenId);
 
         address recipientStore = storeFactory.getLabelStore(leonardo);
         assertTrue(recipientStore != address(0));
-        bytes32 labelhash = keccak256(bytes(label));
-        assertEq(ILabelStore(recipientStore).getLabel(labelhash), string.concat(label, ".dot"));
-        assertTrue(ILabelStore(recipientStore).isLocked(labelhash));
+        assertEq(ILabelStore(recipientStore).getLabel(node), string.concat(label, ".dot"));
+        assertTrue(ILabelStore(recipientStore).isLocked(node));
     }
 
     function test_double_transfer_back_does_not_revert_on_existing_lock() public {
@@ -82,17 +82,18 @@ contract StoreIntegrationTest is BaseDotns {
         string memory label = NOSTATUS_LABEL_A;
         bytes32 node = _register(label, ed, IPopRules.PopStatus.NoStatus);
         uint256 tokenId = uint256(node);
-        bytes32 labelhash = keccak256(bytes(label));
 
+        uint256 outboundFee = dotnsRegistrar.quoteTransferFee(tokenId, leonardo);
         vm.prank(ed);
-        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+        dotnsRegistrar.transferFrom{value: outboundFee}(ed, leonardo, tokenId);
+        uint256 returnFee = dotnsRegistrar.quoteTransferFee(tokenId, ed);
         vm.prank(leonardo);
-        dotnsRegistrar.transferFrom(leonardo, ed, tokenId);
+        dotnsRegistrar.transferFrom{value: returnFee}(leonardo, ed, tokenId);
 
         address edStore = storeFactory.getLabelStore(ed);
         address leonardoStore = storeFactory.getLabelStore(leonardo);
-        assertTrue(ILabelStore(edStore).isLocked(labelhash));
-        assertTrue(ILabelStore(leonardoStore).isLocked(labelhash));
+        assertTrue(ILabelStore(edStore).isLocked(node));
+        assertTrue(ILabelStore(leonardoStore).isLocked(node));
     }
 
     function test_user_claim_round_trip_with_history() public {
@@ -117,14 +118,14 @@ contract StoreIntegrationTest is BaseDotns {
         string memory label = "preupgrade01";
         _register(label, ed, IPopRules.PopStatus.NoStatus);
         address storeAddr = storeFactory.getLabelStore(ed);
-        bytes32 labelhash = keccak256(bytes(label));
+        bytes32 node = _namehash(dotNode, keccak256(bytes(label)));
 
         LabelStoreV2Int newImplementation = new LabelStoreV2Int();
         vm.prank(owner);
         storeFactory.upgradeLabelStoreImplementation(address(newImplementation));
 
         assertEq(LabelStoreV2Int(storeAddr).marker(), "label-v2");
-        assertEq(ILabelStore(storeAddr).getLabel(labelhash), string.concat(label, ".dot"));
+        assertEq(ILabelStore(storeAddr).getLabel(node), string.concat(label, ".dot"));
     }
 
     function test_beacon_upgrade_preserves_user_store_state() public {
@@ -149,6 +150,7 @@ contract StoreIntegrationTest is BaseDotns {
         _register("predeploy01", ed, IPopRules.PopStatus.NoStatus);
 
         assertEq(storeFactory.getLabelStore(ed), predeployed);
-        assertTrue(ILabelStore(predeployed).hasLabel(keccak256("predeploy01")));
+        bytes32 node = _namehash(dotNode, keccak256("predeploy01"));
+        assertTrue(ILabelStore(predeployed).hasLabel(node));
     }
 }

@@ -15,13 +15,13 @@ import {DotnsConstants} from "./DotnsConstants.sol";
 /// @dev Exists so that every controller (public commit-reveal, PoP gateway, future
 ///      privileged flows) calls the same sequence. Without this library each controller
 ///      re-implements the sequence, and the implementations drift.
-///
-/// @dev Scope:
-///      This library is deliberately minimal. It only performs the steps that every
-///      registration flow needs regardless of policy:
+/// @dev Scope: this library is deliberately minimal. It only performs the steps
+///      that every registration flow needs regardless of policy:
 ///        1. Mint the ERC721 name token on the base registrar.
 ///        2. Write the forward registry entry (node => owner + default resolver).
-///        3. Ensure a `LabelStore` exists for the owner and write the registration entry.
+///        3. Resolve the per-user `LabelStore` (deploying on demand) so the caller
+///           can pass it back. The registrar writes the labels-only store entry
+///           internally.
 ///      Flow-specific concerns (pricing, reverse-record setting, chat-key persistence,
 ///      reservation queue mutation) stay inside the calling controller.
 /// @custom:security-contact admin@parity.io
@@ -60,10 +60,13 @@ library RegistrationUtils {
     /// @dev Callable by any authorised controller. Emits no events; each controller
     ///      emits its own flow-level event after this returns, so behavioural drift
     ///      between flows stays contained at the emission layer rather than at the
-    ///      underlying state-transition layer.
-    ///
-    ///      Store authorisation is handled by the protocol registry (`isRegisteredAddress`)
-    ///      on every write, so no per-store allowlist bookkeeping is needed here.
+    ///      underlying state-transition layer. Store authorisation is handled by the
+    ///      protocol registry (`isRegisteredAddress`) on every write, so no per-store
+    ///      allowlist bookkeeping is needed here.
+    /// @dev The registrar writes the `LabelStore` entry directly inside `register`
+    ///      so this helper deliberately does not call `StoreUtils.writeLabel`.
+    ///      Doing it twice would deploy or touch the store on every flow and
+    ///      could conflict with the registrar's locked-entry semantics.
     /// @param context Registration inputs. See {RegistrationContext}.
     /// @return labelStore The resolved or newly deployed `LabelStore` address for `context.user`.
     function registerAndStore(RegistrationContext memory context)
@@ -75,8 +78,7 @@ library RegistrationUtils {
         siblings.registrar.register(uint256(context.node), context.user, context.label);
         siblings.registry.setOwner(context.node, context.user, address(siblings.reverseResolver));
 
-        string memory fullName = string.concat(context.label, DotnsConstants.TLD);
-        labelStore = siblings.storeFactory.writeLabel(context.user, context.labelhash, fullName);
+        labelStore = siblings.storeFactory.getLabelStore(context.user);
     }
 
     /// @notice Resolves sibling contracts via the protocol registry.

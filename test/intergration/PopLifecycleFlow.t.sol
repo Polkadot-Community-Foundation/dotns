@@ -42,10 +42,7 @@ contract PopLifecycleFlow is BaseDotns {
 
         // Same label mirrored in the owner's Store under the canonical store key.
         ILabelStore ownerStore = ILabelStore(storeFactory.getLabelStore(owner));
-        assertEq(
-            ownerStore.getLabel(LabelUtils.labelhashMemory(FULL_LABEL)),
-            string.concat(FULL_LABEL, DotnsConstants.TLD)
-        );
+        assertEq(ownerStore.getLabel(fullNode), string.concat(FULL_LABEL, DotnsConstants.TLD));
     }
 
     function test_pop_full_name_is_first_class_erc721_name() public {
@@ -69,8 +66,9 @@ contract PopLifecycleFlow is BaseDotns {
         bytes32 subnode = _setSubnode(ed, fullNode, SUB_LABEL, FULL_LABEL, leonardo);
         assertEq(dotnsRegistry.owner(subnode), leonardo);
 
+        uint256 _xferFee = dotnsRegistrar.quoteTransferFee(fullTokenId, tiago);
         vm.prank(ed);
-        IERC721(address(dotnsRegistrar)).transferFrom(ed, tiago, fullTokenId);
+        dotnsRegistrar.transferFrom{value: _xferFee}(ed, tiago, fullTokenId);
 
         // Post-transfer invariants. Only ownership fields change; PoP-layer
         // records are keyed by node and survive intact.
@@ -99,8 +97,7 @@ contract PopLifecycleFlow is BaseDotns {
         // stays under the original owner's Store even after transfer.
         ILabelStore edStore = ILabelStore(storeFactory.getLabelStore(ed));
         assertEq(
-            edStore.getLabel(LabelUtils.labelhashMemory(FULL_LABEL)),
-            string.concat(FULL_LABEL, DotnsConstants.TLD)
+            edStore.getLabel(_nodeOf(FULL_LABEL)), string.concat(FULL_LABEL, DotnsConstants.TLD)
         );
     }
 

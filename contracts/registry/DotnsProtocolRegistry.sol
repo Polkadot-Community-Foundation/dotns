@@ -10,13 +10,11 @@ import {
 import {IDotnsProtocolRegistry} from "./IDotnsProtocolRegistry.sol";
 
 /// @title Dotns Protocol Registry
+/// @author Parity
 /// @notice Upgradeable address registry for all DotNS protocol contracts.
-/// @dev Consolidates protocol contract addresses behind a single `bytes32 => address` mapping.
-///      Individual contracts query this registry instead of storing sibling references,
-///      reducing storage fragmentation and simplifying upgrades.
-/// @dev Refcount-backed reverse lookup (`isRegisteredAddress`) supports O(1) "is this address
-///      currently trusted by the protocol?" checks. Correct under key reassignment: an address
-///      referenced by multiple keys stays registered until the last reference is overwritten.
+/// @dev Single source of truth for sibling-contract lookups. All siblings resolve each other via
+///      well-known `bytes32` constants in `DotnsConstants` rather than holding direct addresses,
+///      so an upgrade or rewire only mutates this contract.
 /// @custom:security-contact admin@parity.io
 contract DotnsProtocolRegistry is
     Initializable,
@@ -24,14 +22,14 @@ contract DotnsProtocolRegistry is
     OwnableUpgradeable,
     IDotnsProtocolRegistry
 {
-    /// @dev Internal mapping from well-known key to contract address.
+    /// @notice Address stored for each well-known protocol key.
     mapping(bytes32 key => address addr) private _addresses;
 
-    /// @dev Per-address refcount: number of well-known keys currently pointing at `addr`.
-    ///      Non-zero iff `addr` is reachable from at least one key. Maintained in `set`.
+    /// @notice Reference count per address, incremented for every key it is registered under.
+    /// @dev Lets `isRegisteredAddress` answer in O(1) and survive a contract being mapped to
+    ///      multiple keys without being treated as deregistered when only one key is rewired.
     mapping(address addr => uint256 refcount) private _registeredRefcount;
 
-    /// @dev Reserved storage space to allow for layout changes in the future.
     uint256[50] private __gap;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -46,15 +44,16 @@ contract DotnsProtocolRegistry is
     }
 
     /// @inheritdoc IDotnsProtocolRegistry
+    /// @dev Returns `address(0)` for unregistered keys; callers must validate when a non-zero
+    ///      address is required.
     function get(bytes32 key) external view override returns (address addr) {
         return _addresses[key];
     }
 
     /// @inheritdoc IDotnsProtocolRegistry
-    /// @dev Maintains `_registeredRefcount` invariant:
-    ///      sum(_registeredRefcount[a]) over all non-zero a == count of keys whose value is non-zero.
-    ///      No-op when the existing mapping already points at `addr` so repeat
-    ///      calls don't inflate the refcount.
+    /// @dev Maintains `_registeredRefcount` so the same address mapped to multiple keys remains
+    ///      reported as registered until every key has been rewired away from it. No-ops when
+    ///      `addr` already matches the stored value to keep upgrade scripts idempotent.
     function set(bytes32 key, address addr) external override onlyOwner {
         require(addr != address(0), ZeroAddress());
 
@@ -71,12 +70,13 @@ contract DotnsProtocolRegistry is
     }
 
     /// @inheritdoc IDotnsProtocolRegistry
+    /// @dev Treats `address(0)` as unregistered regardless of refcount so callers can use this
+    ///      as a simple peer-trust check without zero-address pre-validation.
     function isRegisteredAddress(address addr) external view override returns (bool registered) {
         return addr != address(0) && _registeredRefcount[addr] > 0;
     }
 
     /// @notice Returns implementation version.
-    /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
         versionString = "1.2.0";
     }

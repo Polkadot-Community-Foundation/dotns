@@ -127,16 +127,17 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         bytes32 node = _namehash(dotNode, labelhash);
         uint256 tokenId = uint256(node);
 
+        uint256 _xferFee = dotnsRegistrar.quoteTransferFee(tokenId, recipient);
         vm.prank(sender);
-        dotnsRegistrar.transferFrom(sender, recipient, tokenId);
+        dotnsRegistrar.transferFrom{value: _xferFee}(sender, recipient, tokenId);
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), recipient);
 
         ILabelStore recipientStore = ILabelStore(storeFactory.getLabelStore(recipient));
         assertTrue(address(recipientStore) != address(0));
 
-        assertEq(recipientStore.getLabel(labelhash), string.concat(nameLabel, ".dot"));
-        assertTrue(recipientStore.isLocked(labelhash));
+        assertEq(recipientStore.getLabel(node), string.concat(nameLabel, ".dot"));
+        assertTrue(recipientStore.isLocked(node));
     }
 
     function testFuzz_third_party_registration_does_not_overwrite_owner_reverse(uint256 salt)
@@ -189,8 +190,9 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
 
         assertEq(dotnsReverseResolver.nameOf(sender), string.concat(nameLabel, ".dot"));
 
+        uint256 _xferFee = dotnsRegistrar.quoteTransferFee(tokenId, recipient);
         vm.prank(sender);
-        dotnsRegistrar.transferFrom(sender, recipient, tokenId);
+        dotnsRegistrar.transferFrom{value: _xferFee}(sender, recipient, tokenId);
 
         assertEq(dotnsReverseResolver.nameOf(sender), "");
     }
