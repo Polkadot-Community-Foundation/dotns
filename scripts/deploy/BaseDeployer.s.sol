@@ -52,6 +52,7 @@ abstract contract BaseDeployer is Script {
             // log.
             string memory priorJson = vm.readFile(manifestPath);
             string[] memory names = vm.parseJsonKeys(priorJson, "$");
+
             for (uint256 i = 0; i < names.length; ++i) {
                 address addr = vm.parseJsonAddress(priorJson, string.concat(".", names[i]));
                 manifestJson = vm.serializeAddress(MANIFEST_OBJECT_KEY, names[i], addr);
