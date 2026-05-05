@@ -267,7 +267,7 @@ contract DotnsNameEscrowTest is BaseDotns {
         uint256 tokenId = _registerNoStatus(LABEL, ed);
         _approveAndRelease(tokenId, ed);
 
-        // Released but not claimed/withdrawn — not reclaimable yet.
+        // Released but not claimed/withdrawn; not reclaimable yet.
         vm.prank(address(dotnsRegistrarController));
         vm.expectRevert(abi.encodeWithSelector(IDotnsNameEscrow.NotReclaimable.selector, tokenId));
         dotnsNameEscrow.reclaim(tokenId, leonardo);

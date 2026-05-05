@@ -185,8 +185,9 @@ contract DotnsRegistrar is
     }
 
     /// @notice Returns implementation version.
+    /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.5.0";
+        versionString = "1.0.0";
     }
 
     /// @inheritdoc IDotnsRegistrar

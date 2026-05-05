@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../base/BaseDotns.t.sol";
+import {IDotnsPopController} from "../../contracts/registrars/IDotnsPopController.sol";
 import {IPopRules} from "../../contracts/pop/IPopRules.sol";
 import {ILabelStore} from "../../contracts/store/ILabelStore.sol";
 import {IUserStore} from "../../contracts/store/IUserStore.sol";
@@ -50,7 +51,9 @@ contract StoreIntegrationTest is BaseDotns {
         }
 
         vm.prank(popGateway);
-        dotnsPopController.registerBaseName(base, ed, _linkFresh(chatKey));
+        dotnsPopController.registerBaseName(
+            IDotnsPopController.FullRegistration({label: base, user: ed, link: _linkFresh(chatKey)})
+        );
 
         address storeAddr = storeFactory.getLabelStore(ed);
         assertTrue(storeAddr != address(0));

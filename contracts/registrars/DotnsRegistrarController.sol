@@ -413,8 +413,9 @@ contract DotnsRegistrarController is
     }
 
     /// @notice Returns implementation version.
+    /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.6.0";
+        versionString = "1.0.0";
     }
 
     /// @notice Internal check enforcing whitelist-or-owner access.

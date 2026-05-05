@@ -73,6 +73,23 @@ contract DotnsPopController is
     /// @dev Keeps `expireReservation` gas bounded.
     uint16 public constant MAX_RESERVATION_QUEUE = 64;
 
+    /// @notice Selector for the typed {reserveLiteName} overload.
+    /// @dev Hard-coded to disambiguate from the `(bytes)` overload at compile time. Must stay
+    /// in sync with the {LiteRegistration} field layout.
+    bytes4 private constant SELECTOR_RESERVE_LITE =
+        bytes4(keccak256("reserveLiteName((string,address,bytes))"));
+
+    /// @notice Selector for the typed {reserveBaseName} overload.
+    /// @dev `BaseReservation` is `(LiteRegistration, string)` and `LiteRegistration` is
+    /// `(string,address,bytes)`, hence the nested tuple in the canonical signature.
+    bytes4 private constant SELECTOR_RESERVE_BASE =
+        bytes4(keccak256("reserveBaseName(((string,address,bytes),string))"));
+
+    /// @notice Selector for the typed {registerBaseName} overload.
+    /// @dev `Link` is `(uint8,string,bytes)` because `LinkKind` is an enum.
+    bytes4 private constant SELECTOR_REGISTER_BASE =
+        bytes4(keccak256("registerBaseName((string,address,(uint8,string,bytes)))"));
+
     /// @notice Reservation queue entry: a user and the timestamp they joined the queue.
     /// @dev Packs into a single storage slot (20 + 8 bytes).
     struct ReservationEntry {
@@ -153,81 +170,73 @@ contract DotnsPopController is
     }
 
     /// @inheritdoc IDotnsPopController
-    function reserveLiteName(
-        string calldata liteLabel,
-        address user,
-        bytes calldata chatKey
-    )
-        external
-        override
-        onlyGateway
-    {
-        _reserveLite(liteLabel, user, chatKey);
+    function reserveLiteName(LiteRegistration calldata params) external override onlyGateway {
+        _reserveLite(params);
     }
 
     /// @inheritdoc IDotnsPopController
-    function reserveBaseName(
-        string calldata liteLabel,
-        address user,
-        bytes calldata chatKey,
-        string calldata reservedBaseLabel
-    )
-        external
-        override
-        onlyGateway
-    {
-        _reserveLite(liteLabel, user, chatKey);
+    function reserveLiteName(bytes calldata payload) external override onlyGateway {
+        _dispatchTyped(SELECTOR_RESERVE_LITE, payload);
+    }
 
-        if (bytes(reservedBaseLabel).length != 0) {
+    /// @inheritdoc IDotnsPopController
+    function reserveBaseName(BaseReservation calldata params) external override onlyGateway {
+        _reserveLite(params.lite);
+
+        if (bytes(params.reservedBaseLabel).length != 0) {
             // Classification and tier enforcement for the base-name reservation.
             // Runs before any queue mutation so a mis-tiered reservation never
             // even touches the queue.
-            _popRules().priceWithCheck(reservedBaseLabel, user);
+            _popRules().priceWithCheck(params.reservedBaseLabel, params.lite.user);
 
-            bytes32 reservedHash = _validateBaseLabelHash(reservedBaseLabel);
+            bytes32 reservedHash = _validateBaseLabelHash(params.reservedBaseLabel);
             _advanceExpiredHead(reservedHash);
 
             // `_removeUserFromQueue` early-returns when the user has no active
             // reservation, so no outer guard is needed.
-            _removeUserFromQueue(user);
-            _enqueueReservation(reservedHash, reservedBaseLabel, user);
+            _removeUserFromQueue(params.lite.user);
+            _enqueueReservation(reservedHash, params.reservedBaseLabel, params.lite.user);
         }
+    }
+
+    /// @inheritdoc IDotnsPopController
+    function reserveBaseName(bytes calldata payload) external override onlyGateway {
+        _dispatchTyped(SELECTOR_RESERVE_BASE, payload);
     }
 
     /// @notice Lite-only mint shared by {reserveLiteName} and the lite leg of {reserveBaseName}.
     /// @dev Gated by `priceWithCheck` so the lite label's classification and the user's tier
     /// are honoured here too. The gateway-only modifier is enforced at the entrypoints that
-    /// call this internal.
-    function _reserveLite(
-        string calldata liteLabel,
-        address user,
-        bytes calldata chatKey
-    )
-        internal
-    {
+    /// call this internal. Takes the {LiteRegistration} struct directly so both call sites
+    /// pass the same payload shape: the typed entrypoint forwards its own `params`, the
+    /// `reserveBaseName` entrypoint forwards `params.lite`.
+    function _reserveLite(LiteRegistration calldata params) internal {
         // Classification and tier enforcement for the lite label. Runs before
         // any state mutation so a mis-tiered request never touches the registry.
-        _popRules().priceWithCheck(liteLabel, user);
+        _popRules().priceWithCheck(params.liteLabel, params.user);
 
-        (bytes32 labelhash, bytes32 node) = _validateLiteLabel(liteLabel);
+        (bytes32 labelhash, bytes32 node) = _validateLiteLabel(params.liteLabel);
 
         _advanceExpiredHead(labelhash);
 
-        _completeGatewayRegistration(user, liteLabel, labelhash, node, chatKey, bytes32(0));
+        _completeGatewayRegistration(
+            params.user, params.liteLabel, labelhash, node, params.chatKey, bytes32(0)
+        );
 
-        emit LiteNameReserved(labelhash, user, liteLabel);
+        emit LiteNameReserved(labelhash, params.user, params.liteLabel);
     }
 
     /// @inheritdoc IDotnsPopController
-    function registerBaseName(
-        string calldata label,
-        address user,
-        Link calldata link
-    )
-        external
-        override
-        onlyGateway
-    {
+    function registerBaseName(bytes calldata payload) external override onlyGateway {
+        _dispatchTyped(SELECTOR_REGISTER_BASE, payload);
+    }
+
+    /// @inheritdoc IDotnsPopController
+    function registerBaseName(FullRegistration calldata params) external override onlyGateway {
+        Link calldata link = params.link;
+        address user = params.user;
+        string calldata label = params.label;
+
         // Classification and tier enforcement for the full-person label. Runs
         // ahead of the reservation-axis detection so a mis-tiered request never
         // even touches the queue.
@@ -328,36 +337,36 @@ contract DotnsPopController is
         emit ReservationDurationSet(duration);
     }
 
-    /// @notice Returns the queue metadata (`head`, `tail`) for `labelhash`.
-    /// @dev Read-only accessor used by invariant tests to probe queue bounds. Exposing the
-    /// pair rather than the internal struct keeps the storage layout private whilst allowing
-    /// property checks over live queues.
-    function reservationMeta(bytes32 labelhash) external view returns (uint64 head, uint64 tail) {
+    /// @inheritdoc IDotnsPopController
+    function reservationMeta(bytes32 labelhash)
+        external
+        view
+        override
+        returns (uint64 head, uint64 tail)
+    {
         ReservationQueueMeta memory meta = _reservationMeta[labelhash];
         return (meta.head, meta.tail);
     }
 
-    /// @notice Returns the queue entry at `index` for `labelhash`.
-    /// @return entryOwner Owner of the slot (zero if relinquished or empty).
+    /// @inheritdoc IDotnsPopController
     function reservationEntry(
         bytes32 labelhash,
         uint64 index
     )
         external
         view
+        override
         returns (address entryOwner, uint64 joinedAt)
     {
         ReservationEntry memory entry = _reservationEntries[labelhash][index];
         return (entry.owner, entry.joinedAt);
     }
 
-    /// @notice Returns `user`'s current reservation pointer.
-    /// @dev A zero `labelhash` means the user holds no reservation; `index` is meaningful
-    /// only when `labelhash` is non-zero. Returning the struct lets callers read both fields
-    /// in one call instead of two.
+    /// @inheritdoc IDotnsPopController
     function userReservation(address user)
         external
         view
+        override
         returns (UserReservation memory reservation)
     {
         return _userReservations[user];
@@ -375,6 +384,7 @@ contract DotnsPopController is
     }
 
     /// @notice Returns implementation version.
+    /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
         versionString = "1.0.0";
     }
@@ -608,6 +618,36 @@ contract DotnsPopController is
     function _onlyGateway() internal view {
         address gateway = protocolRegistry.get(DotnsConstants.POP_GATEWAY);
         require(msg.sender == gateway, NotGateway(msg.sender));
+    }
+
+    /// @notice Routes a raw cross-chain payload to the typed entrypoint identified by `selector`.
+    /// @dev Prepends `selector` to `payload` and `delegatecall`s `address(this)` so the typed
+    /// overload runs with the original `msg.sender` (the gateway), making the typed path the
+    /// single source of truth. The `bytes` payload from the cross-chain caller is already
+    /// `abi.encode(StructTuple)`, so concatenating `selector ‖ payload` is exactly the
+    /// calldata the typed overload expects. Reverts bubble up byte-for-byte so the caller sees
+    /// the same error it would have seen on a direct typed call.
+    ///
+    /// Note: `onlyGateway` runs twice, once on the outer bytes overload and again on the
+    /// inner typed overload that the delegatecall lands on. The second check is a cheap,
+    /// intentional belt-and-braces; both checks read the same registry slot.
+    ///
+    /// Why the OZ unsafe-allow is acceptable here:
+    /// - The destination is hard-coded to `address(this)`, the proxy itself. No external
+    ///   contract ever runs in our storage context.
+    /// - `selector` is one of three module-private constants pointing at our own typed
+    ///   entrypoints. The caller cannot redirect the dispatch elsewhere.
+    /// - The proxy round-trip (proxy → impl → impl.delegatecall(this) → proxy → impl)
+    ///   ends in the same implementation, in the same storage context, that a direct
+    ///   typed call would land in.
+    /// @custom:oz-upgrades-unsafe-allow delegatecall
+    function _dispatchTyped(bytes4 selector, bytes calldata payload) private {
+        (bool ok, bytes memory ret) = address(this).delegatecall(bytes.concat(selector, payload));
+        if (!ok) {
+            assembly {
+                revert(add(ret, 32), mload(ret))
+            }
+        }
     }
 
     /// @inheritdoc UUPSUpgradeable

@@ -60,7 +60,7 @@ contract EscrowHandler is Test {
     ///      only ever climbs between mint and reclaim, then resets to zero on reclaim.
     mapping(uint256 tokenId => uint256 max) public lastObservedRunningMax;
 
-    /// @notice Label used to register each tokenId — required for re-registration after finalise.
+    /// @notice Label used to register each tokenId; required for re-registration after finalise.
     mapping(uint256 tokenId => string label) public labelByTokenId;
 
     /// @notice Cumulative native amount credited into the insurance fund by handler-driven flows.
@@ -253,7 +253,7 @@ contract EscrowHandler is Test {
             if (newInsurance > priorInsurance) {
                 // Cross-tier (different prices): funds went into the insurance fund and there
                 // is no refundable position. We must not double-count `ownerPrice` as both
-                // reserves (deposit) and insurance — leave depositAmounts at zero in that case.
+                // reserves (deposit) and insurance; leave depositAmounts at zero in that case.
                 depositAmounts[tokenId] = 0;
                 ghost_insurancePaidIn += (newInsurance - priorInsurance);
                 lockedRecipient[tokenId] = address(0);
@@ -262,7 +262,7 @@ contract EscrowHandler is Test {
                 lockedRecipient[tokenId] = ownerAddr;
             }
 
-            // Track InsuranceDraw outflows surfaced by this transaction (defensive — the
+            // Track InsuranceDraw outflows surfaced by this transaction (defensive; the
             // register path itself does not draw insurance, but recordLogs is already on).
             _accountInsuranceDraws(logs);
 
@@ -397,7 +397,7 @@ contract EscrowHandler is Test {
     /// @notice Re-registers a withdrawn (reclaim-ready) name with a (possibly different) actor.
     /// @dev Exercises the full-cycle custody reuse path: register → release → withdraw → reclaim.
     ///      The controller's `register()` routes through `escrow.reclaim()` automatically when
-    ///      the token is in escrow custody — no separate finalise step exists.
+    ///      the token is in escrow custody; no separate finalise step exists.
     /// @param tokenSeed Seed for selecting which withdrawn token to reclaim.
     /// @param actorSeed Seed for selecting the new registrant.
     function reRegisterReclaimed(uint256 tokenSeed, uint256 actorSeed) external {
@@ -441,7 +441,7 @@ contract EscrowHandler is Test {
     }
 
     /// @notice Transfers a deposited token to a different actor without paying a cross-tier fee.
-    /// @dev Plain transferFrom path — no fee branch is hit because escrow custody is not
+    /// @dev Plain transferFrom path; no fee branch is hit because escrow custody is not
     ///      involved and tier prices may match. Used to seed the recipient-locked invariant
     ///      (the locked recipient must NOT change despite NFT custody moving).
     /// @param tokenSeed Seed for selecting which deposited token to transfer.
@@ -479,7 +479,7 @@ contract EscrowHandler is Test {
     ///      early when the recipient's price is zero (no fee path needed) or the inner
     ///      call reverts.
     /// @param tokenIdSeed Seed for selecting which deposited token to transfer.
-    /// @param fromSeed Unused — current owner is derived on-chain. Retained for fuzzer entropy.
+    /// @param fromSeed Unused (current owner is derived on-chain). Retained for fuzzer entropy.
     /// @param toSeed Seed for selecting the recipient.
     function transferPayable(uint256 tokenIdSeed, uint256 fromSeed, uint256 toSeed) external {
         // `fromSeed` injects fuzzer entropy without overriding the registrar's required

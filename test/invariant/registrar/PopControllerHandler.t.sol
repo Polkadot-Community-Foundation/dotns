@@ -104,34 +104,48 @@ contract PopControllerHandler is Test {
         return priorLiteLabels.length;
     }
 
-    function reserve(uint256 actorIndex, uint256 baseIndex, bool attachReservation) external {
+    function reserve(
+        uint256 actorIndex,
+        uint256 baseIndex,
+        bool attachReservation,
+        bool useBytes
+    )
+        external
+    {
         // Reserves a lite label for an actor, optionally enqueuing on a base
         // label. Swallows known-good reverts (QueueFull, AlreadyReserved,
-        // ERC721 collision) so the runner keeps exploring. Suffix starts at 10
-        // so vm.toString always yields >=2 digits matching the NAMEXX format.
+        // ERC721 collision) so the runner keeps exploring. `useBytes` chooses
+        // between the typed and bytes overloads so existing invariants run
+        // against mixed dispatch paths; the only thing the dispatch path
+        // should change is the call shape, not the resulting state.
         address actor = _actor(actorIndex);
         _liteSuffix[actor]++;
         string memory liteLabel = _buildLiteLabel("rsv", actor, _liteSuffix[actor]);
         string memory reservedBase = attachReservation ? _baseLabel(baseIndex) : "";
 
-        vm.prank(GATEWAY);
-        try CONTROLLER.reserveBaseName(liteLabel, actor, "", reservedBase) {
+        IDotnsPopController.BaseReservation memory params = IDotnsPopController.BaseReservation({
+            lite: IDotnsPopController.LiteRegistration({
+                liteLabel: liteLabel, user: actor, chatKey: ""
+            }),
+            reservedBaseLabel: reservedBase
+        });
+
+        if (_callReserveBaseName(params, useBytes)) {
             if (attachReservation) _track(keccak256(bytes(reservedBase)));
             bytes32 node = LabelUtils.namehashUnder(
                 DotnsConstants.DOT_NODE, LabelUtils.labelhashMemory(liteLabel)
             );
             mintedLiteTokenIds.push(uint256(node));
             priorLiteLabels.push(liteLabel);
-        } catch {}
+        }
     }
 
-    function claim(uint256 actorIndex, uint256 baseIndex) external {
+    function claim(uint256 actorIndex, uint256 baseIndex, bool useBytes) external {
         // Drives the claim path end-to-end when the actor happens to hold the
         // live head of the queue for the picked base label. Missing preconditions
         // (wrong actor, expired head, empty queue) surface as a revert and are
-        // swallowed so the runner keeps exploring. Captures the (liteHash,
-        // fullNode) pair behind every successful claim so the inverse-index
-        // invariant can replay them.
+        // swallowed so the runner keeps exploring. `useBytes` selects the
+        // dispatch path for both the lite leg and the full register leg.
         address actor = _actor(actorIndex);
         string memory baseLabel = _baseLabel(baseIndex);
 
@@ -142,38 +156,49 @@ contract PopControllerHandler is Test {
         _liteSuffix[actor]++;
         string memory liteLabel = _buildLiteLabel("clm", actor, _liteSuffix[actor]);
 
-        vm.prank(GATEWAY);
-        try CONTROLLER.reserveBaseName(liteLabel, actor, "", "") {
-            IDotnsPopController.Link memory link = IDotnsPopController.Link({
-                kind: IDotnsPopController.LinkKind.LiteUsername, liteLabel: liteLabel, chatKey: ""
-            });
+        IDotnsPopController.BaseReservation memory liteParams = IDotnsPopController.BaseReservation({
+            lite: IDotnsPopController.LiteRegistration({
+                liteLabel: liteLabel, user: actor, chatKey: ""
+            }),
+            reservedBaseLabel: ""
+        });
+        if (!_callReserveBaseName(liteParams, useBytes)) return;
 
-            vm.prank(GATEWAY);
-            try CONTROLLER.registerBaseName(baseLabel, actor, link) {
-                bytes32 liteLabelhash = LabelUtils.labelhashMemory(liteLabel);
-                bytes32 fullNode = LabelUtils.namehashUnder(
-                    DotnsConstants.DOT_NODE, LabelUtils.labelhashMemory(baseLabel)
-                );
-                claimedLiteLabelhashes.push(liteLabelhash);
-                claimedFullNodes.push(fullNode);
-                mintedLiteTokenIds.push(
-                    uint256(LabelUtils.namehashUnder(DotnsConstants.DOT_NODE, liteLabelhash))
-                );
-                mintedLiteTokenIds.push(uint256(fullNode));
-                priorLiteLabels.push(liteLabel);
-            } catch {}
-        } catch {}
+        IDotnsPopController.Link memory link = IDotnsPopController.Link({
+            kind: IDotnsPopController.LinkKind.LiteUsername, liteLabel: liteLabel, chatKey: ""
+        });
+        IDotnsPopController.FullRegistration memory fullParams =
+            IDotnsPopController.FullRegistration({label: baseLabel, user: actor, link: link});
+        if (!_callRegisterBaseName(fullParams, useBytes)) return;
+
+        bytes32 liteLabelhash = LabelUtils.labelhashMemory(liteLabel);
+        bytes32 fullNode = LabelUtils.namehashUnder(
+            DotnsConstants.DOT_NODE, LabelUtils.labelhashMemory(baseLabel)
+        );
+        claimedLiteLabelhashes.push(liteLabelhash);
+        claimedFullNodes.push(fullNode);
+        mintedLiteTokenIds.push(
+            uint256(LabelUtils.namehashUnder(DotnsConstants.DOT_NODE, liteLabelhash))
+        );
+        mintedLiteTokenIds.push(uint256(fullNode));
+        priorLiteLabels.push(liteLabel);
     }
 
-    function reLink(uint256 actorIndex, uint256 baseIndex, uint256 liteIndex) external {
+    function reLink(
+        uint256 actorIndex,
+        uint256 baseIndex,
+        uint256 liteIndex,
+        bool useBytes
+    )
+        external
+    {
         // Drives the resolver overwrite paths (M-03). Picks an already-used
         // lite label and re-registers it against a fresh base-label claim,
         // so the same liteHash ends up mapped to a new fullNode. When the
         // handler re-uses the same (baseLabel, actor) pair later, we also
         // exercise the symmetric case: same fullNode mapped to a new
-        // liteHash. The full pre-conditions (actor must hold queue head for
-        // the picked baseLabel) are the same as for `claim`, so missing
-        // pre-conditions simply no-op like the rest of the handler.
+        // liteHash. `useBytes` selects the dispatch path for the register
+        // call.
         uint256 liteCount = priorLiteLabels.length;
         if (liteCount == 0) return;
 
@@ -188,17 +213,17 @@ contract PopControllerHandler is Test {
         IDotnsPopController.Link memory link = IDotnsPopController.Link({
             kind: IDotnsPopController.LinkKind.LiteUsername, liteLabel: liteLabel, chatKey: ""
         });
+        IDotnsPopController.FullRegistration memory params =
+            IDotnsPopController.FullRegistration({label: baseLabel, user: actor, link: link});
+        if (!_callRegisterBaseName(params, useBytes)) return;
 
-        vm.prank(GATEWAY);
-        try CONTROLLER.registerBaseName(baseLabel, actor, link) {
-            bytes32 liteLabelhash = LabelUtils.labelhashMemory(liteLabel);
-            bytes32 fullNode = LabelUtils.namehashUnder(
-                DotnsConstants.DOT_NODE, LabelUtils.labelhashMemory(baseLabel)
-            );
-            claimedLiteLabelhashes.push(liteLabelhash);
-            claimedFullNodes.push(fullNode);
-            mintedLiteTokenIds.push(uint256(fullNode));
-        } catch {}
+        bytes32 liteLabelhash = LabelUtils.labelhashMemory(liteLabel);
+        bytes32 fullNode = LabelUtils.namehashUnder(
+            DotnsConstants.DOT_NODE, LabelUtils.labelhashMemory(baseLabel)
+        );
+        claimedLiteLabelhashes.push(liteLabelhash);
+        claimedFullNodes.push(fullNode);
+        mintedLiteTokenIds.push(uint256(fullNode));
     }
 
     function relinquish(uint256 actorIndex) external {
@@ -215,6 +240,56 @@ contract PopControllerHandler is Test {
     function warp(uint256 secondsForward) external {
         // Exercises expiry paths. Bounded so state doesn't drift off a cliff.
         vm.warp(block.timestamp + (secondsForward % (30 days)));
+    }
+
+    function _callReserveBaseName(
+        IDotnsPopController.BaseReservation memory params,
+        bool useBytes
+    )
+        internal
+        returns (bool ok)
+    {
+        // Routes through the typed or bytes overload depending on `useBytes`. Returns
+        // true on success, false on revert so the caller's bookkeeping (ghost arrays)
+        // stays consistent with on-chain state regardless of dispatch path.
+        if (useBytes) {
+            vm.prank(GATEWAY);
+            try CONTROLLER.reserveBaseName(abi.encode(params)) {
+                return true;
+            } catch {
+                return false;
+            }
+        }
+        vm.prank(GATEWAY);
+        try CONTROLLER.reserveBaseName(params) {
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    function _callRegisterBaseName(
+        IDotnsPopController.FullRegistration memory params,
+        bool useBytes
+    )
+        internal
+        returns (bool ok)
+    {
+        // Mirror of `_callReserveBaseName` for the `registerBaseName` overloads.
+        if (useBytes) {
+            vm.prank(GATEWAY);
+            try CONTROLLER.registerBaseName(abi.encode(params)) {
+                return true;
+            } catch {
+                return false;
+            }
+        }
+        vm.prank(GATEWAY);
+        try CONTROLLER.registerBaseName(params) {
+            return true;
+        } catch {
+            return false;
+        }
     }
 
     // @notice Builds a classification-valid PoP lite label.

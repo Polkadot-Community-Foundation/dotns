@@ -95,7 +95,7 @@ contract DotnsReverseResolver is
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.2.0";
+        versionString = "1.0.0";
     }
 
     /// @inheritdoc UUPSUpgradeable
