@@ -4,8 +4,9 @@ pragma solidity ^0.8.30;
 import {IDotnsController} from "./IDotnsController.sol";
 
 /// @title IDotnsPopController
-/// @notice Interface for the dedicated PoP controller orchestrating lite-person and full-person username issuance on behalf of the PoP gateway pallet.
-/// @dev Deliberately disjoint from `IDotnsRegistrarController`. The two controllers coexist
+/// @notice Interface for the dedicated PoP controller orchestrating lite-person and full-person
+/// username issuance on behalf of the PoP gateway pallet. @dev Deliberately disjoint from
+/// `IDotnsRegistrarController`. The two controllers coexist
 /// on `DotnsRegistrar` via its multi-controller affordance and neither imports the other.
 /// Collision handling reduces to the registrar's ERC721 availability check (first-to-mint
 /// wins). Reservation queuing for `reservedBaseLabel` is an intra-PoP coordination mechanism
@@ -119,7 +120,15 @@ interface IDotnsPopController is IDotnsController {
         string indexed label, bytes32 indexed labelhash, address indexed owner, address store
     );
 
-    /// @notice Thrown when the caller is not the PoP gateway.
+    /// @notice Thrown when the call's substrate origin is not `Root`.
+    /// @dev The implementation gates entrypoints on revive's
+    ///      `ISystem.callerIsRoot()` precompile rather than on `msg.sender`,
+    ///      because under `RuntimeOrigin::root()` the PVM `caller` syscall
+    ///      traps. The `caller` field is therefore always `address(0)` and is
+    ///      reserved for forward compatibility; indexers must not rely on it
+    ///      to identify a spoofing actor.
+    /// @param caller Reserved; always `address(0)` under the Root-origin auth
+    ///        model.
     error NotGateway(address caller);
 
     /// @notice Thrown when a supplied lite-person label does not match `NAMEXX`.
@@ -137,11 +146,13 @@ interface IDotnsPopController is IDotnsController {
     /// @notice Thrown when attempting to enqueue a user who already has an active reservation.
     error AlreadyReserved(address user, bytes32 labelhash);
 
-    /// @notice Thrown when someone tries to mint a base label in standalone mode while another user holds the live head-of-queue reservation.
+    /// @notice Thrown when someone tries to mint a base label in standalone mode while another user
+    /// holds the live head-of-queue reservation.
     error NotHolder(address user, bytes32 labelhash);
 
-    /// @notice Registers a lite-person username on behalf of `params.user` and optionally enqueues a reservation for a base name they intend to claim as a full person later.
-    /// @dev The base-name leg only runs when `params.reservedBaseLabel` is non-empty, and runs
+    /// @notice Registers a lite-person username on behalf of `params.user` and optionally enqueues
+    /// a reservation for a base name they intend to claim as a full person later. @dev The
+    /// base-name leg only runs when `params.reservedBaseLabel` is non-empty, and runs
     /// PopRules `priceWithCheck` BEFORE any queue mutation so a mis-tiered reservation never
     /// even touches the queue. The user is removed from any prior queue position before being
     /// enqueued, so a single user holds at most one live reservation across all labels.
@@ -178,8 +189,9 @@ interface IDotnsPopController is IDotnsController {
     /// @custom:reverts QueueFull
     function reserveBaseName(bytes calldata payload) external;
 
-    /// @notice Registers a lite-person username on behalf of `params.user` without touching the base-name reservation queue.
-    /// @dev Cross-chain callers pass the ABI-encoded {LiteRegistration} tuple directly as the
+    /// @notice Registers a lite-person username on behalf of `params.user` without touching the
+    /// base-name reservation queue. @dev Cross-chain callers pass the ABI-encoded
+    /// {LiteRegistration} tuple directly as the
     /// call's payload; Solidity decodes it from `msg.data` into `params`.
     /// @param params Registration request; see {LiteRegistration}.
     /// @custom:emits LiteNameReserved
@@ -198,8 +210,8 @@ interface IDotnsPopController is IDotnsController {
     /// junk past the tail is silently dropped (no state corruption; decoded
     /// values are unchanged).
     /// Worked example off-chain:
-    ///   `bytes payload = abi.encode(LiteRegistration({liteLabel: "alice42", user: u, chatKey: k}));`
-    /// @param payload `abi.encode(LiteRegistration)` produced by the cross-chain caller.
+    ///   `bytes payload = abi.encode(LiteRegistration({liteLabel: "alice42", user: u, chatKey:
+    /// k}));` @param payload `abi.encode(LiteRegistration)` produced by the cross-chain caller.
     /// @custom:emits LiteNameReserved
     /// @custom:emits NameRegistered
     /// @custom:reverts InvalidLiteLabel

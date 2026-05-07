@@ -28,6 +28,7 @@ import {
 import {DotnsNameEscrow} from "../../contracts/escrow/DotnsNameEscrow.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 import {LabelUtils} from "../../contracts/utils/LabelUtils.sol";
+import {ISystem} from "../../contracts/external/revive/ISystem.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 // @title BaseDotns
@@ -88,7 +89,10 @@ abstract contract BaseDotns is Test {
     // @notice Deployed PoP controller instance (gateway-driven lite/full issuance).
     DotnsPopController public dotnsPopController;
 
-    // @notice Test account representing the privileged PoP gateway origin.
+    // @notice Test actor used by legacy `prank`-based PoP call sites.
+    // @dev Auth is enforced via {_mockCallerIsRoot}; this address has no
+    //      privileged role. Retained so existing prank boilerplate compiles
+    //      while the test surface migrates.
     address public popGateway;
 
     // @notice Default reservation duration used by the PoP controller.
@@ -105,7 +109,10 @@ abstract contract BaseDotns is Test {
 
     // @notice Rent price applied to PoP NoStatus users for spam resistance.
     // @dev This value is passed into PopRules initialization in this base test.
-    uint256 public constant RENT_PRICE = 2e15 wei;
+    // @dev Aliased to {DotnsConstants.RENT_PRICE} so deploy scripts and the test
+    //      base see the same value; downstream test suites reference `RENT_PRICE`
+    //      directly.
+    uint256 public constant RENT_PRICE = DotnsConstants.RENT_PRICE;
 
     // @notice Default escrow cooldown used in tests.
     uint256 public constant ESCROW_COOLDOWN = 7 days;
@@ -251,11 +258,24 @@ abstract contract BaseDotns is Test {
         protocolRegistry.set(DotnsConstants.CONTENT_RESOLVER, dotnsContentResolverAddress);
         protocolRegistry.set(DotnsConstants.POP_RESOLVER, dotnsPopResolverAddress);
         protocolRegistry.set(DotnsConstants.POP_CONTROLLER, dotnsPopControllerAddress);
-        protocolRegistry.set(DotnsConstants.POP_GATEWAY, popGateway);
         protocolRegistry.set(DotnsConstants.NAME_ESCROW, dotnsNameEscrowAddress);
 
         vm.stopPrank();
         vm.warp(block.timestamp + 365 days);
+
+        // Foundry does not provide revive's System precompile. Default it to
+        // Root so existing PoP-flow tests exercise business logic without
+        // per-test auth boilerplate; negative-auth tests flip it to false.
+        _mockCallerIsRoot(true);
+    }
+
+    // @notice Mocks revive's System precompile callerIsRoot result.
+    function _mockCallerIsRoot(bool returnValue) internal {
+        vm.mockCall(
+            DotnsConstants.REVIVE_SYSTEM,
+            abi.encodeWithSelector(ISystem.callerIsRoot.selector),
+            abi.encode(returnValue)
+        );
     }
 
     // @notice Computes the namehash of `parent` and `labelhash`.
@@ -269,8 +289,8 @@ abstract contract BaseDotns is Test {
     }
 
     // @notice Computes the ERC721 tokenId used by DotnsRegistrar for a given label.
-    // @dev DotnsRegistrar mints tokenId = uint256(node), where node = namehash(DOT_NODE, labelhash).
-    //      This helper prevents tests from accidentally using uint256(node) as the tokenId.
+    // @dev DotnsRegistrar mints tokenId = uint256(node), where node = namehash(DOT_NODE,
+    // labelhash). This helper prevents tests from accidentally using uint256(node) as the tokenId.
     // @param label The label to compute for (without the `.dot` suffix).
     // @return tokenId The ERC721 tokenId (uint256(node)).
     function _tokenIdForLabel(string memory label) internal pure returns (uint256 tokenId) {
@@ -319,9 +339,9 @@ abstract contract BaseDotns is Test {
         _setUserPopStatus(who, IPopRules.PopStatus.NoStatus);
     }
 
-    // @notice Drives `DotnsPopController.reserveBaseName` through the configured gateway.
+    // @notice Drives `DotnsPopController.reserveBaseName` through the simulated Root origin.
     // @dev Single canonical helper for PoP-gateway reservations across unit and fuzz
-    //      test suites. Keeps the `vm.prank(popGateway)` boilerplate in one place.
+    //      test suites. The default {_mockCallerIsRoot} setup satisfies `onlyGateway`.
     function _reservePop(
         address user,
         string memory liteLabel,
@@ -330,7 +350,6 @@ abstract contract BaseDotns is Test {
     )
         internal
     {
-        vm.prank(popGateway);
         dotnsPopController.reserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
@@ -416,8 +435,8 @@ abstract contract BaseDotns is Test {
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
     }
 
-    // @notice Submits a commitment, waits for the minimum age, then registers with the exact oracle price.
-    // @dev Prices are obtained via `popRules.priceWithCheck(label, owner)`.
+    // @notice Submits a commitment, waits for the minimum age, then registers with the exact oracle
+    // price. @dev Prices are obtained via `popRules.priceWithCheck(label, owner)`.
     // @param registration Registration parameters.
     function _commitRegistrationAndRegister(
         IDotnsRegistrarController.Registration memory registration
@@ -459,8 +478,8 @@ abstract contract BaseDotns is Test {
         dotnsRegistrarController.register{value: requiredPayment}(registration);
     }
 
-    // @notice Registers `label` for `labelOwner` under the requested PoP status and returns its node
-    // @dev For NoStatus, no status is set on the oracle.
+    // @notice Registers `label` for `labelOwner` under the requested PoP status and returns its
+    // node @dev For NoStatus, no status is set on the oracle.
     //      For PopLite/PopFull, status is set for `(labelOwner, label)` before commit–reveal.
     // @param label The label to register (without the `.dot` suffix)
     // @param labelOwner The address that will own the registered label

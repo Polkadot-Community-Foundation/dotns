@@ -18,6 +18,23 @@ library DotnsConstants {
     /// @notice TLD suffix appended to labels when building full domain names.
     string internal constant TLD = ".dot";
 
+    /// @notice Address of revive's System precompile, exposed by every revive runtime
+    ///         that opts the precompile in.
+    /// @dev Mirrors the upstream `SYSTEM_ADDR` constant in
+    ///      `substrate/frame/revive/uapi/sol/ISystem.sol`. Consumed by
+    ///      `DotnsPopController` to authenticate Root-origin dispatches via
+    ///      `ISystem.callerIsRoot()`.
+    address internal constant REVIVE_SYSTEM = address(0x0900);
+
+    /// @notice Default deploy-time NoStatus rent price passed into
+    ///         `PopRules.initialize` as `_startingPrice`.
+    /// @dev 10 DOT under revive's 18-decimal Asset Hub convention. Single
+    ///      source of truth for deploy scripts and tests so the value cannot
+    ///      drift between call sites. Live deployments rotate the runtime
+    ///      `startingPrice` on `PopRules` rather than rebuilding consumers
+    ///      against a new constant.
+    uint256 internal constant RENT_PRICE = 10 ether;
+
     /// @notice Well-known key for the ERC721 registrar backing name ownership.
     /// @dev Role: token-of-record for `.dot` names. Mints, burns, and tracks the
     ///      `tokenId => label` mapping consumed by the forward registry on
@@ -25,8 +42,8 @@ library DotnsConstants {
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant REGISTRAR = bytes32("registrar");
 
-    /// @notice Well-known key for the registrar controller orchestrating commit-reveal registration.
-    /// @dev Role: commit-reveal entry point for the public registration flow.
+    /// @notice Well-known key for the registrar controller orchestrating commit-reveal
+    /// registration. @dev Role: commit-reveal entry point for the public registration flow.
     ///      Calls `register` on the registrar after pricing and validation.
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant CONTROLLER = bytes32("controller");
@@ -65,14 +82,6 @@ library DotnsConstants {
     ///      approvals. Writes gated on node ownership or operator approval.
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant CONTENT_RESOLVER = bytes32("contentResolver");
-
-    /// @notice Well-known key for the privileged PoP gateway address allowed to drive
-    ///         lite/full-person username flows via `DotnsPopController`.
-    /// @dev External account or pallet adapter configured by governance; the
-    ///      `DotnsPopController` reads it to gate its privileged entry points, so
-    ///      rotating the gateway is a single `set` call with no upgrade needed.
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 internal constant POP_GATEWAY = bytes32("popGateway");
 
     /// @notice Well-known key for the dedicated PoP controller orchestrating lite/full-person
     ///         username issuance on behalf of the PoP gateway.

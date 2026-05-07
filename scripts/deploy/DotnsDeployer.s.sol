@@ -31,8 +31,6 @@ import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 ///      registry keys and authorises both controllers on the registrar.
 /// @custom:security-contact admin@parity.io
 contract DotnsDeployer is BaseDeployer {
-    uint256 public constant RENT_PRICE = 2e15 wei;
-
     /// @notice Default reservation duration for the freshly-deployed PoP controller.
     /// @dev Mirrors `pallet_resources::UsernameReservationDuration`; the protocol owner
     ///      rotates this post-deploy via `DotnsPopController.setReservationDuration`.
@@ -79,7 +77,9 @@ contract DotnsDeployer is BaseDeployer {
     ///         and writes the resulting manifest under `deployments/`.
     /// @dev Network-specific output folder is chosen from `block.chainid`; see
     ///      {_getDeploymentFolder}. The broadcasting account becomes the owner
-    ///      of every proxy and the default `POP_GATEWAY` until governance rotates it.
+    ///      of every proxy. PoP-controller auth is gated on the substrate
+    ///      `Root` origin via revive's System precompile, so no on-chain
+    ///      gateway address is configured here.
     function run() external {
         uint256 chainId = block.chainid;
 
@@ -253,7 +253,8 @@ contract DotnsDeployer is BaseDeployer {
             owner,
             "PopRules.sol:PopRules",
             abi.encodeCall(
-                PopRules.initialize, (RENT_PRICE, IDotnsProtocolRegistry(protocolRegistryProxy))
+                PopRules.initialize,
+                (DotnsConstants.RENT_PRICE, IDotnsProtocolRegistry(protocolRegistryProxy))
             ),
             "PopRules"
         );
@@ -355,9 +356,6 @@ contract DotnsDeployer is BaseDeployer {
         protocolRegistry.set(DotnsConstants.NAME_ESCROW, deployment.nameEscrow);
         protocolRegistry.set(DotnsConstants.POP_CONTROLLER, deployment.popController);
         protocolRegistry.set(DotnsConstants.POP_RESOLVER, deployment.popResolver);
-        // `popGateway` defaults to the deploying owner for local deploys. Governance
-        // rotates it post-deploy via `protocolRegistry.set(DotnsConstants.POP_GATEWAY, ...)`.
-        protocolRegistry.set(DotnsConstants.POP_GATEWAY, owner);
         vm.stopBroadcast();
         console.log("Protocol registry keys set");
     }
@@ -442,7 +440,6 @@ contract DotnsDeployer is BaseDeployer {
         _assertKey(DotnsConstants.NAME_ESCROW, deployment.nameEscrow, "Key: nameEscrow");
         _assertKey(DotnsConstants.POP_CONTROLLER, deployment.popController, "Key: popController");
         _assertKey(DotnsConstants.POP_RESOLVER, deployment.popResolver, "Key: popResolver");
-        _assertKey(DotnsConstants.POP_GATEWAY, expectedOwner, "Key: popGateway");
     }
 
     function _assertKey(bytes32 key, address expected, string memory label) internal view {

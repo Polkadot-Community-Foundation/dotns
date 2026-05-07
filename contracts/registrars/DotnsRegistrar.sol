@@ -322,7 +322,8 @@ contract DotnsRegistrar is
         factory = IStoreFactory(protocolRegistry.get(DotnsConstants.STORE_FACTORY));
     }
 
-    /// @notice Writes the canonical full name into `owner`'s `LabelStore` keyed by `bytes32(tokenId)`.
+    /// @notice Writes the canonical full name into `owner`'s `LabelStore` keyed by
+    /// `bytes32(tokenId)`.
     function _writeOwnerLabel(address owner, uint256 tokenId, string calldata label) private {
         if (bytes(label).length == 0) return;
         IStoreFactory factory = _storeFactory();

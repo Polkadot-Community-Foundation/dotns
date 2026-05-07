@@ -68,7 +68,7 @@ Commit-reveal controller for the public registration path. A caller first submit
 
 ### `DotnsPopController`
 
-Dedicated controller for the Proof-of-Personhood gateway flow. Lives behind its own UUPS proxy with its own storage and is registered on the registrar via `addController` alongside the commit-reveal controller. Two entry points, both restricted to the address registered under `POP_GATEWAY` on the protocol registry.
+Dedicated controller for the Proof-of-Personhood gateway flow. Lives behind its own UUPS proxy with its own storage and is registered on the registrar via `addController` alongside the commit-reveal controller. Two entry points, both restricted to calls where revive's System precompile reports `callerIsRoot()`.
 
 The first, `reserveBaseName`, mints a lite-person username to a user. Lite labels are DNS labels with at least two trailing digits (for example `alice42`); the gateway strips any separator the pallet uses before calling so that the on-chain label is flat. The call also persists the user's chat key on the PoP resolver and optionally enqueues a reservation for a full-person base name the user intends to claim later.
 
@@ -118,7 +118,7 @@ On-chain lookup table mapping well-known `bytes32` keys (declared in `DotnsConst
 
 Without it, each contract would store direct addresses to every contract it calls. An upgrade that changes one address would require calling `updateX()` on every contract that references it. With N contracts and M cross-references, that is M separate owner transactions per address change. The protocol registry reduces this to one: update the key in the registry, and every caller picks up the new address on its next call. The indirection also means a governance-driven rotation of, say, the PoP controller does not break any consumer that has already been deployed.
 
-The registered keys include `REGISTRAR`, `CONTROLLER`, `REGISTRY`, `REVERSE_RESOLVER`, `RESOLVER`, `CONTENT_RESOLVER`, `POP_RULES`, `STORE_FACTORY`, `POP_CONTROLLER`, `POP_RESOLVER`, and `POP_GATEWAY`.
+The registered keys include `REGISTRAR`, `CONTROLLER`, `REGISTRY`, `REVERSE_RESOLVER`, `RESOLVER`, `CONTENT_RESOLVER`, `POP_RULES`, `STORE_FACTORY`, `POP_CONTROLLER`, and `POP_RESOLVER`.
 
 ### `StoreFactory`, `LabelStore`, and `UserStore`
 

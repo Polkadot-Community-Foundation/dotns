@@ -25,7 +25,8 @@ contract UserStore is Initializable, IUserStore {
     /// @dev key => current value bytes.
     mapping(bytes32 key => bytes value) private _current;
 
-    /// @dev key => insertion-order list of prior non-empty values and their supersession timestamps.
+    /// @dev key => insertion-order list of prior non-empty values and their supersession
+    /// timestamps.
     mapping(bytes32 key => Entry[] entries) private _history;
 
     /// @dev Insertion-order list of all keys ever written. Append-only (never pruned).

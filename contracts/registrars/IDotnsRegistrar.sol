@@ -20,7 +20,8 @@ interface IDotnsRegistrar is IERC721 {
     /// @notice Thrown when the protocol registry has no escrow address configured.
     error EscrowNotConfigured();
 
-    /// @notice Thrown when a standard ERC721 transfer is attempted but the recipient tier requires a non-zero fee delta.
+    /// @notice Thrown when a standard ERC721 transfer is attempted but the recipient tier requires
+    /// a non-zero fee delta.
     error TransferFeeRequired(uint256 tokenId, address to, uint256 requiredFee);
 
     /// @notice Emitted when a name is registered.

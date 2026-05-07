@@ -16,8 +16,8 @@ import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
 /// @title Dotns Content Resolver
-/// @notice Implements `IDotnsContentResolver` interface with content hash, text records, and operator approvals
-/// @dev Writes are gated on node ownership (or an operator approved by the
+/// @notice Implements `IDotnsContentResolver` interface with content hash, text records, and
+/// operator approvals @dev Writes are gated on node ownership (or an operator approved by the
 ///      owner) rather than on a privileged writer address. Content records are
 ///      user-managed metadata, so authority follows the node owner across
 ///      transfers without any registrar coordination.

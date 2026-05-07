@@ -39,8 +39,8 @@ interface IStoreFactory {
     /// @param protocolRegistry The invalid registry argument.
     error InvalidProtocolRegistry(address protocolRegistry);
 
-    /// @notice Thrown when a zero implementation address is supplied to the constructor or an upgrade.
-    /// @param implementation The invalid implementation argument.
+    /// @notice Thrown when a zero implementation address is supplied to the constructor or an
+    /// upgrade. @param implementation The invalid implementation argument.
     error InvalidImplementation(address implementation);
 
     /// @notice Thrown when an unauthorised address attempts to deploy a label store.
@@ -63,8 +63,8 @@ interface IStoreFactory {
     function protocolRegistry() external view returns (address registry);
 
     /// @notice Deploys a `LabelStore` beacon-proxy bound to `user`.
-    /// @dev Callable by the factory owner OR any address currently registered in the protocol registry.
-    /// @param user The user the store is bound to forever.
+    /// @dev Callable by the factory owner OR any address currently registered in the protocol
+    /// registry. @param user The user the store is bound to forever.
     /// @return store The deployed store address.
     /// @custom:emits LabelStoreDeployed
     /// @custom:reverts NotAuthorised

@@ -12,8 +12,8 @@ import {IDotnsStore} from "./IDotnsStore.sol";
 ///      anyone, paginated.
 /// @custom:security-contact admin@parity.io
 interface IUserStore is IDotnsStore {
-    /// @notice A historical (prior) value for a key and the block timestamp at which it was snapshotted.
-    /// @param value The prior value that was just superseded.
+    /// @notice A historical (prior) value for a key and the block timestamp at which it was
+    /// snapshotted. @param value The prior value that was just superseded.
     /// @param timestamp Block timestamp at the moment of supersession.
     struct Entry {
         bytes value;

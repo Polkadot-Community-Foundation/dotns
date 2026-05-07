@@ -9,6 +9,7 @@ import {DotnsResolver} from "../../contracts/resolvers/DotnsResolver.sol";
 import {DotnsContentResolver} from "../../contracts/resolvers/DotnsContentResolver.sol";
 import {PopRules} from "../../contracts/pop/PopRules.sol";
 import {IDotnsProtocolRegistry} from "../../contracts/registry/IDotnsProtocolRegistry.sol";
+import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 
 /// @title DeployRecords
 /// @notice Second stage. Deploys the resolver layer that holds per-name
@@ -17,8 +18,6 @@ import {IDotnsProtocolRegistry} from "../../contracts/registry/IDotnsProtocolReg
 ///         proxy binds to it on initialise.
 /// @custom:security-contact admin@parity.io
 contract DeployRecords is BaseDeployer {
-    uint256 public constant RENT_PRICE = 10e15 wei;
-
     function run() external {
         address owner = msg.sender;
         vm.label(owner, "OWNER");
@@ -79,7 +78,8 @@ contract DeployRecords is BaseDeployer {
             owner,
             "PopRules.sol:PopRules",
             abi.encodeCall(
-                PopRules.initialize, (RENT_PRICE, IDotnsProtocolRegistry(protocolRegistry))
+                PopRules.initialize,
+                (DotnsConstants.RENT_PRICE, IDotnsProtocolRegistry(protocolRegistry))
             ),
             "PopRules"
         );

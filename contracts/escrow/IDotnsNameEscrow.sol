@@ -35,8 +35,8 @@ interface IDotnsNameEscrow {
     ///      cross-tier upgrades against the per-token watermark, while `reachFloor` enforces a
     ///      length-scaled friction floor whenever the recipient is below the label's required tier.
     /// @param priceForTo Recipient-tier price quoted from PopRules.
-    /// @param reachFloor Length-scaled friction floor when the recipient is below the required tier.
-    /// @param payer The original `msg.sender` of the registrar transfer entrypoint.
+    /// @param reachFloor Length-scaled friction floor when the recipient is below the required
+    /// tier. @param payer The original `msg.sender` of the registrar transfer entrypoint.
     /// @param to NFT recipient.
     struct ChargeTransferFeeParams {
         uint256 tokenId;
@@ -96,7 +96,8 @@ interface IDotnsNameEscrow {
 
     /// @notice Emitted when a cross-tier fee is paid into the insurance fund.
     /// @param payer Original `msg.sender` whose value funded the fee.
-    /// @param isRegistration True when emitted from `depositInsurance`; false from `chargeTransferFee`.
+    /// @param isRegistration True when emitted from `depositInsurance`; false from
+    /// `chargeTransferFee`.
     event CrossTierFeePaid(
         uint256 indexed tokenId,
         address indexed payer,
@@ -105,7 +106,8 @@ interface IDotnsNameEscrow {
         bool isRegistration
     );
 
-    /// @notice Emitted when a withdrawal draws from the insurance fund to cover a shortfall in `tokenReserved`.
+    /// @notice Emitted when a withdrawal draws from the insurance fund to cover a shortfall in
+    /// `tokenReserved`.
     event InsuranceDraw(uint256 indexed tokenId, uint256 amount);
 
     /// @notice Emitted when overpayment is refunded to the payer.
@@ -241,8 +243,9 @@ interface IDotnsNameEscrow {
     /// @return balance Current insurance fund balance, in wei.
     function insuranceFund() external view returns (uint256 balance);
 
-    /// @notice Returns the highest price ever charged for a token across registration and transfers.
-    /// @dev Monotonically non-decreasing per token while a position is live; only `reclaim` resets it
+    /// @notice Returns the highest price ever charged for a token across registration and
+    /// transfers. @dev Monotonically non-decreasing per token while a position is live; only
+    /// `reclaim` resets it
     ///      so that a fresh registration starts from a clean baseline rather than inheriting the
     ///      previous owner's high-water mark.
     /// @return max The current running maximum, in wei.
@@ -260,8 +263,9 @@ interface IDotnsNameEscrow {
     /// @custom:reverts EscrowNotApproved
     function release(uint256 tokenId) external;
 
-    /// @notice Credits the refundable deposit for a released token to the recipient's pending balance.
-    /// @dev Second step of the phased lifecycle. Must be called after `withdrawAvailableAt` has
+    /// @notice Credits the refundable deposit for a released token to the recipient's pending
+    /// balance. @dev Second step of the phased lifecycle. Must be called after
+    /// `withdrawAvailableAt` has
     ///      elapsed; draws from the per-asset `tokenReserved` pool first and falls back to the
     ///      shared insurance fund on shortfall. Funds are not transferred here, only credited to
     ///      the pull-payment ledger.
@@ -285,7 +289,8 @@ interface IDotnsNameEscrow {
     function claimWithdrawal() external returns (uint256 amount);
 
     /// @notice Returns the pending refund balance owed to `recipient`.
-    /// @return amount Native amount currently credited to `recipient` and pullable via `claimWithdrawal`.
+    /// @return amount Native amount currently credited to `recipient` and pullable via
+    /// `claimWithdrawal`.
     function pendingWithdrawal(address recipient) external view returns (uint256 amount);
 
     /// @notice Transfers a released-and-claimed token from escrow custody to a new owner.

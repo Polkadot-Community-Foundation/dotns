@@ -2,14 +2,17 @@
 pragma solidity ^0.8.30;
 
 /// @title Proof of Personhood Rules for Dotns
-/// @notice Proof of personhood interface defining Dotns price calculation, PoP-tier requirements, and base-name reservation rules.
-/// @dev Classifies labels into the PoP tier required for registration and exposes reservation metadata.
-///      Length <= 5 is reserved for governance; lengths 6-8 require PopFull unless they carry exactly two
-///      trailing digits (PopLite); lengths >= 9 require PopFull unless they carry exactly two trailing
-///      digits (NoStatus, open). More than two trailing digits is invalid; internal digits do not affect
-///      classification. Reservations are keyed by the digit-stripped stem so `alice` and `alice42` share a slot.
-/// @dev Pricing is primarily a spam deterrent for NoStatus users; verified PopLite and PopFull users pay zero.
-/// @custom:security-contact admin@parity.io
+/// @notice Proof of personhood interface defining Dotns price calculation, PoP-tier requirements,
+/// and base-name reservation rules. @dev Classifies labels into the PoP tier required for
+/// registration and exposes reservation metadata.
+///      Length <= 5 is reserved for governance; lengths 6-8 require PopFull unless they carry
+/// exactly two trailing digits (PopLite); lengths >= 9 require PopFull unless they carry exactly
+/// two trailing
+///      digits (NoStatus, open). More than two trailing digits is invalid; internal digits do not
+/// affect classification. Reservations are keyed by the digit-stripped stem so `alice` and
+/// `alice42` share a slot.
+/// @dev Pricing is primarily a spam deterrent for NoStatus users; verified PopLite and PopFull
+/// users pay zero. @custom:security-contact admin@parity.io
 interface IPopRules {
     /// @notice Proof-of-Personhood eligibility tier.
     /// @dev `NoStatus` is the default for unverified users; `PopLite` and `PopFull` are the two
@@ -30,6 +33,13 @@ interface IPopRules {
 
     /// @notice Emitted when a user updates their PoP status via {setUserPopStatus}.
     event UserPopStatusSet(address indexed user, PopStatus status);
+
+    /// @notice Emitted when the spam-deterrent NoStatus starting price is rotated.
+    /// @dev Owner-only setter {updateStartingPrice}; the new value is consumed
+    ///      by `_priceValidatedName` on the next pricing read.
+    /// @param oldPrice Previous wei value.
+    /// @param newPrice New wei value.
+    event StartingPriceUpdated(uint256 oldPrice, uint256 newPrice);
 
     /// @notice Thrown when a name violates PoP-tier or reservation requirements.
     /// @param reason Human-readable explanation of the failure condition.
@@ -53,7 +63,8 @@ interface IPopRules {
     /// @notice Reservation metadata for a base name (digits removed).
     /// @param owner Address holding exclusive claim rights during the reservation window.
     /// @param expires UNIX timestamp when the reservation expires.
-    /// @param controller Address that wrote the reservation; the only address permitted to release it before expiry.
+    /// @param controller Address that wrote the reservation; the only address permitted to release
+    /// it before expiry.
     struct Reservation {
         address owner;
         uint64 expires;
@@ -75,6 +86,12 @@ interface IPopRules {
     /// @notice Sets the caller's PoP tier in the rules contract.
     /// @custom:emits UserPopStatusSet
     function setUserPopStatus(PopStatus status) external;
+
+    /// @notice Updates the spam-deterrent starting price for NoStatus pricing.
+    /// @dev Owner-only. The new value flows into `_priceValidatedName` on the next
+    ///      pricing read; no redeploy. Emits {StartingPriceUpdated}.
+    /// @param newStartingPrice New base price in wei.
+    function updateStartingPrice(uint256 newStartingPrice) external;
 
     /// @notice Creates a reservation entry for the digit-stripped version of a name.
     /// @dev Commit-reveal reservation path. Callable only by an authorised controller on the
@@ -142,8 +159,9 @@ interface IPopRules {
         returns (bool reservedStatus, address owner, uint64 expires);
 
     /// @notice Calculates price with PoP classification and reservation enforcement.
-    /// @dev Reverting pricing path used by the commit-reveal controller. Rejects governance-reserved
-    ///      names and base-name registrations held by another user. Price is a spam deterrent and
+    /// @dev Reverting pricing path used by the commit-reveal controller. Rejects
+    /// governance-reserved names and base-name registrations held by another user. Price is a spam
+    /// deterrent and
     ///      is significant only for NoStatus users; verified users pay zero.
     /// @param name Domain label.
     /// @param userAddress Registering user for the given label.
@@ -157,8 +175,9 @@ interface IPopRules {
         view
         returns (PriceWithMeta memory metadata);
 
-    /// @notice Calculates price with PoP classification and reservation metadata, without reverting on conflicts.
-    /// @dev Non-reverting counterpart to `priceWithCheck`: surfaces the same fields, but reports a
+    /// @notice Calculates price with PoP classification and reservation metadata, without reverting
+    /// on conflicts. @dev Non-reverting counterpart to `priceWithCheck`: surfaces the same fields,
+    /// but reports a
     ///      `Reserved` status through `metadata` instead of reverting when the base stem is held
     ///      by another user. Used by front-ends that need to present a price and eligibility
     ///      preview without forcing a transaction attempt. Governance-reserved names are not
@@ -175,8 +194,9 @@ interface IPopRules {
         view
         returns (PriceWithMeta memory metadata);
 
-    /// @notice Friction fee owed when `account` reaches into a label tier above its verification level.
-    /// @dev Non-zero only when `account` cannot meet the label's required PoP tier; the value is the
+    /// @notice Friction fee owed when `account` reaches into a label tier above its verification
+    /// level. @dev Non-zero only when `account` cannot meet the label's required PoP tier; the
+    /// value is the
     ///      length-scaled list price. Acts as cross-payer friction at registration time and as the
     ///      transfer-time floor consumed by `DotnsNameEscrow.chargeTransferFee`.
     /// @param name Domain label being acted on.

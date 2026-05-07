@@ -31,9 +31,9 @@ contract DotnsPopControllerTests is BaseDotns {
         assertEq(dotnsPopResolver.chatKey(node), chatKey);
     }
 
-    function test_reserveBaseName_reverts_for_non_gateway_caller() public {
-        vm.prank(ed);
-        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, ed));
+    function test_reserveBaseName_reverts_when_origin_is_not_root() public {
+        _mockCallerIsRoot(false);
+        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(0)));
         dotnsPopController.reserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
@@ -177,11 +177,11 @@ contract DotnsPopControllerTests is BaseDotns {
         assertFalse(reserved);
     }
 
-    function test_registerBaseName_reverts_for_non_gateway_caller() public {
+    function test_registerBaseName_reverts_when_origin_is_not_root() public {
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xaa));
 
-        vm.prank(ed);
-        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, ed));
+        _mockCallerIsRoot(false);
+        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(0)));
         dotnsPopController.registerBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_A, user: ed, link: link})
         );
@@ -751,12 +751,10 @@ contract DotnsPopControllerTests is BaseDotns {
     // authorisation on the registrar.
     function test_controller_authorised_but_not_gateway_cannot_enter_pop_flow() public {
         // The public commit-reveal controller is already a registered controller.
-        address otherController = address(dotnsRegistrarController);
-
-        vm.prank(otherController);
-        vm.expectRevert(
-            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, otherController)
-        );
+        // Even from that origin, the Root-gate must reject the call.
+        _mockCallerIsRoot(false);
+        vm.prank(address(dotnsRegistrarController));
+        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(0)));
         dotnsPopController.reserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
@@ -1002,9 +1000,9 @@ contract DotnsPopControllerTests is BaseDotns {
 
     // Non-gateway callers are rejected even if they are otherwise authorised
     // controllers on the registrar.
-    function test_reserveLiteName_reverts_for_non_gateway_caller() public {
-        vm.prank(ed);
-        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, ed));
+    function test_reserveLiteName_reverts_when_origin_is_not_root() public {
+        _mockCallerIsRoot(false);
+        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(0)));
         dotnsPopController.reserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
@@ -1112,14 +1110,14 @@ contract DotnsPopControllerTests is BaseDotns {
         return string.concat("fill", string(letters), "01");
     }
 
-    function testFuzz_bytes_overloads_reject_non_gateway(uint8 which) public {
+    function testFuzz_bytes_overloads_reject_non_root_origin(uint8 which) public {
         // `which` selects which of the three bytes overloads to invoke; the
-        // `onlyGateway` modifier must reject a non-gateway caller on each.
+        // `onlyGateway` modifier must reject a non-Root origin on each.
         // Single fuzz replaces three near-identical unit tests.
         which = uint8(bound(uint256(which), 0, 2));
 
-        vm.prank(ed);
-        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, ed));
+        _mockCallerIsRoot(false);
+        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(0)));
 
         if (which == 0) {
             dotnsPopController.reserveLiteName(

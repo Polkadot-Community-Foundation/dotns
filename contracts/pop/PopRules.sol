@@ -94,6 +94,13 @@ contract PopRules is
     }
 
     /// @inheritdoc IPopRules
+    function updateStartingPrice(uint256 newStartingPrice) external override onlyOwner {
+        require(newStartingPrice > 0, PopError("Price must be greater than 0"));
+        emit StartingPriceUpdated(startingPrice, newStartingPrice);
+        startingPrice = newStartingPrice;
+    }
+
+    /// @inheritdoc IPopRules
     function classifyName(string calldata name)
         public
         pure
@@ -125,7 +132,10 @@ contract PopRules is
 
         Reservation memory existingReservation = reservations[strippedBase];
         if (!_isLive(existingReservation)) {
-            // casting to 'uint64' is safe because MAX_RESERVATION_TIME will never be large enough to cause a revert
+            // `block.timestamp + MAX_RESERVATION_TIME` cannot overflow `uint64`:
+            // `MAX_RESERVATION_TIME` is bounded (1 year of seconds, ~3.15e7),
+            // and `uint64` saturates at ~5.84e11; that horizon doesn't arrive
+            // until year 2554. Truncation under the cast is therefore unreachable.
             // forge-lint: disable-next-line(unsafe-typecast)
             uint64 expiryTime = uint64(block.timestamp + MAX_RESERVATION_TIME);
             reservations[strippedBase] =
@@ -261,8 +271,8 @@ contract PopRules is
     }
 
     /// @notice Single canonical "is `userStatus` at reach for `required`?" predicate.
-    /// @dev Both `reachFee` and `priceWithCheck` build on this so the tier-eligibility rule lives in
-    ///      exactly one place and the two callers cannot disagree about who clears a given label.
+    /// @dev Both `reachFee` and `priceWithCheck` build on this so the tier-eligibility rule lives
+    /// in exactly one place and the two callers cannot disagree about who clears a given label.
     function _meetsReach(PopStatus required, PopStatus userStatus) private pure returns (bool) {
         if (required == PopStatus.PopFull) {
             return userStatus == PopStatus.PopFull;

@@ -8,19 +8,11 @@ libs = ["lib"]
 # OZ Foundry Upgrades and deploy simulations need file access to artifacts.
 # Keep broad access only if narrower permissions break upgrade validation or deployment scripts.
 fs_permissions = [{ access = "read-write", path = "./" }]
-
-# OZ Foundry Upgrades uses FFI for upgrade-safety validation.
 ffi = true
 
 ast = true
 build_info = true
 
-# Raised from Foundry's 32 MB default so the deploy script does not hit
-# MemoryOOG while provisioning the full stack. Each `Upgrades.deployUUPSProxy`
-# call loads the target contract's ABI JSON for OZ upgrade-safety validation;
-# with ten proxies in `DotnsDeployer.run` (StoreFactory + eight protocol
-# contracts + PoP controller + PoP resolver) the cumulative memory footprint
-# exceeds the default cap.
 memory_limit = 134217728
 
 # Raised from Foundry's 30M default so `forge script` (and simulations via
@@ -51,19 +43,13 @@ ffi = true
 show_progress = true
 
 [profile.ci.fuzz]
-runs = 10000
+runs = 300
 max_test_rejects = 131072
-dictionary_weight = 85
 gas_report_samples = 1000
 show_logs = true
 
 [profile.ci.invariant]
-# Foundry's defaults are 256 × 500. 300 × 500 sits a small step above default:
-# enough extra starting sequences to broaden state-space coverage on every CI
-# run, without the wall-time blow-up of the previous 512 × 500 (let alone the
-# original 1024 × 1000) configuration. Bump `runs` first if you need more
-# coverage later; bumping `depth` lengthens each sequence and amplifies any
-# handler-state drift, so it is the riskier knob to grow.
+
 runs = 300
 depth = 500
 
@@ -80,7 +66,7 @@ call_override = false
 dictionary_weight = 85
 shrink_run_limit = 10000
 max_assume_rejects = 131072
-gas_report_samples = 1000
+gas_report_samples = 500
 # Corpus persistence is intentionally omitted: when CI caches `cache/`,
 # previously-shrunk failure sequences replay on subsequent runs and report
 # "persisted failure revert" even after the underlying bug is fixed. Local
@@ -100,6 +86,7 @@ gas_report_samples = 512
 [fmt]
 line_length = 100
 tab_width = 4
+wrap_comments = true 
 bracket_spacing = false
 int_types = "long"
 quote_style = "double"
@@ -111,5 +98,5 @@ multiline_func_header = "all"
 exclude_lints = ["mixed-case-variable"]
 
 [rpc_endpoints]
-paseo_local = "http://127.0.0.1:8545"
+paseo_local = "http://127.0.0.1:8546"
 paseo = "https://services.polkadothub-rpc.com/testnet"

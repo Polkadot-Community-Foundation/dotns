@@ -60,7 +60,8 @@ interface IDotnsRegistrarController is IDotnsController {
     /// @notice Thrown when attempting to register an unavailable name.
     error NameNotAvailable(string label);
 
-    /// @notice Thrown when attempting to register a name whose base stem is reserved by another user.
+    /// @notice Thrown when attempting to register a name whose base stem is reserved by another
+    /// user.
     error NameReserved(string label);
 
     /// @notice Thrown when a label is not a canonical lowercase ASCII DNS label.

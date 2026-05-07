@@ -10,6 +10,7 @@ import {
 import {PopRules, IPopRules} from "../../../contracts/pop/PopRules.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 import {LabelUtils} from "../../../contracts/utils/LabelUtils.sol";
+import {ISystem} from "../../../contracts/external/revive/ISystem.sol";
 
 // @title PopControllerHandler
 // @notice Bounded random-action handler for {DotnsPopController} invariant tests.
@@ -23,7 +24,6 @@ contract PopControllerHandler is Test {
     StdStorage internal stdstorage;
 
     DotnsPopController public immutable CONTROLLER;
-    address public immutable GATEWAY;
     uint16 public constant MAX_QUEUE = 64;
 
     address[] public actors;
@@ -49,14 +49,8 @@ contract PopControllerHandler is Test {
     // string because the controller re-hashes internally on every call.
     string[] public priorLiteLabels;
 
-    constructor(
-        DotnsPopController controller_,
-        address gateway_,
-        address[] memory actors_,
-        PopRules popRules_
-    ) {
+    constructor(DotnsPopController controller_, address[] memory actors_, PopRules popRules_) {
         CONTROLLER = controller_;
-        GATEWAY = gateway_;
         actors = actors_;
         // baselength 8, no trailing digits: PopFull classification.
         baseLabels.push("alicebob");
@@ -252,15 +246,14 @@ contract PopControllerHandler is Test {
         // Routes through the typed or bytes overload depending on `useBytes`. Returns
         // true on success, false on revert so the caller's bookkeeping (ghost arrays)
         // stays consistent with on-chain state regardless of dispatch path.
+        _mockCallerIsRoot(true);
         if (useBytes) {
-            vm.prank(GATEWAY);
             try CONTROLLER.reserveBaseName(abi.encode(params)) {
                 return true;
             } catch {
                 return false;
             }
         }
-        vm.prank(GATEWAY);
         try CONTROLLER.reserveBaseName(params) {
             return true;
         } catch {
@@ -276,20 +269,27 @@ contract PopControllerHandler is Test {
         returns (bool ok)
     {
         // Mirror of `_callReserveBaseName` for the `registerBaseName` overloads.
+        _mockCallerIsRoot(true);
         if (useBytes) {
-            vm.prank(GATEWAY);
             try CONTROLLER.registerBaseName(abi.encode(params)) {
                 return true;
             } catch {
                 return false;
             }
         }
-        vm.prank(GATEWAY);
         try CONTROLLER.registerBaseName(params) {
             return true;
         } catch {
             return false;
         }
+    }
+
+    function _mockCallerIsRoot(bool returnValue) internal {
+        vm.mockCall(
+            DotnsConstants.REVIVE_SYSTEM,
+            abi.encodeWithSelector(ISystem.callerIsRoot.selector),
+            abi.encode(returnValue)
+        );
     }
 
     // @notice Builds a classification-valid PoP lite label.

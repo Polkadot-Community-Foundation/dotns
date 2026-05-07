@@ -19,6 +19,7 @@ import {LabelUtils} from "../utils/LabelUtils.sol";
 import {RegistrationUtils} from "../utils/RegistrationUtils.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
+import {ISystem} from "../external/revive/ISystem.sol";
 
 /// @title DotnsPopController
 /// @notice Dedicated PoP controller orchestrating lite-person and full-person username
@@ -137,7 +138,15 @@ contract DotnsPopController is
     /// @dev Reserved storage space to allow for layout changes in the future.
     uint256[50] private __gap;
 
-    /// @notice Restricts calls to the privileged PoP gateway address stored in the protocol registry under `POP_GATEWAY`.
+    /// @notice Restricts calls to invocations whose substrate origin is `Root`.
+    /// @dev Verified through revive's System precompile (`callerIsRoot`) at
+    ///      {DotnsConstants.REVIVE_SYSTEM}. `msg.sender` is intentionally not consulted: under
+    ///      `RuntimeOrigin::root()` the PVM `caller` syscall traps with
+    ///      `RootNotAllowed`, so any expression that reads `msg.sender` in the
+    ///      outermost frame would revert before the gate could run. The trust
+    ///      boundary therefore moves entirely to the runtime: anything that can
+    ///      construct `RuntimeOrigin::root()` and reach `pallet_revive::bare_call`
+    ///      is accepted as the gateway.
     modifier onlyGateway() {
         _onlyGateway();
         _;
@@ -594,7 +603,8 @@ contract DotnsPopController is
         return IPopRules(protocolRegistry.get(DotnsConstants.POP_RULES));
     }
 
-    /// @notice Writes the new head of the queue into PopRules so the public commit-reveal flow rejects registrations of this base name for anyone other than `newHead`.
+    /// @notice Writes the new head of the queue into PopRules so the public commit-reveal flow
+    /// rejects registrations of this base name for anyone other than `newHead`.
     function _syncPopRulesToHead(bytes32 labelhash, address newHead) internal {
         string memory baseLabel = _reservedBaseLabel[labelhash];
         if (bytes(baseLabel).length == 0 || newHead == address(0)) return;
@@ -606,7 +616,8 @@ contract DotnsPopController is
         rules.reserveBaseNameForPop(baseLabel, newHead);
     }
 
-    /// @notice Clears the PopRules slot and the local label bookkeeping when the queue empties (claim, last-relinquish, last-expire).
+    /// @notice Clears the PopRules slot and the local label bookkeeping when the queue empties
+    /// (claim, last-relinquish, last-expire).
     function _releasePopRulesSlot(bytes32 labelhash) internal {
         string memory baseLabel = _reservedBaseLabel[labelhash];
         if (bytes(baseLabel).length == 0) return;
@@ -614,23 +625,29 @@ contract DotnsPopController is
         delete _reservedBaseLabel[labelhash];
     }
 
-    /// @notice Internal check enforcing PoP-gateway-only access.
+    /// @notice Internal check enforcing PoP-gateway-only access through the
+    ///         revive System precompile.
+    /// @dev Calls `ISystem(DotnsConstants.REVIVE_SYSTEM).callerIsRoot()` and reverts with
+    ///      `NotGateway(address(0))` when the substrate origin is not `Root`.
+    ///      The zero address in the revert payload is deliberate: the contract
+    ///      never reads `msg.sender` in the gate (see the modifier docstring),
+    ///      so there is no spoofable identity to surface. Indexers should treat
+    ///      the field as reserved.
     function _onlyGateway() internal view {
-        address gateway = protocolRegistry.get(DotnsConstants.POP_GATEWAY);
-        require(msg.sender == gateway, NotGateway(msg.sender));
+        require(ISystem(DotnsConstants.REVIVE_SYSTEM).callerIsRoot(), NotGateway(address(0)));
     }
 
     /// @notice Routes a raw cross-chain payload to the typed entrypoint identified by `selector`.
     /// @dev Prepends `selector` to `payload` and `delegatecall`s `address(this)` so the typed
-    /// overload runs with the original `msg.sender` (the gateway), making the typed path the
+    /// overload runs in the original call context, making the typed path the
     /// single source of truth. The `bytes` payload from the cross-chain caller is already
-    /// `abi.encode(StructTuple)`, so concatenating `selector ‖ payload` is exactly the
+    /// `abi.encode(StructTuple)`, so concatenating `selector with payload` is exactly the
     /// calldata the typed overload expects. Reverts bubble up byte-for-byte so the caller sees
     /// the same error it would have seen on a direct typed call.
     ///
     /// Note: `onlyGateway` runs twice, once on the outer bytes overload and again on the
     /// inner typed overload that the delegatecall lands on. The second check is a cheap,
-    /// intentional belt-and-braces; both checks read the same registry slot.
+    /// intentional belt-and-braces; both checks query the same precompile.
     ///
     /// Why the OZ unsafe-allow is acceptable here:
     /// - The destination is hard-coded to `address(this)`, the proxy itself. No external

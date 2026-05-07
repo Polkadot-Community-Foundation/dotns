@@ -14,8 +14,8 @@ import {UserStore} from "./UserStore.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 
 /// @title StoreFactory
-/// @notice Factory for the two per-user DotNS store types, sharing one factory contract and two beacons.
-/// @dev Each user may acquire AT MOST two stores, ever:
+/// @notice Factory for the two per-user DotNS store types, sharing one factory contract and two
+/// beacons. @dev Each user may acquire AT MOST two stores, ever:
 ///      - a `LabelStore`, deployed via `deployLabelStoreFor` by a protocol-registered caller
 ///        during registration; and
 ///      - a `UserStore`, claimed via `claimUserStore` by the user themselves.

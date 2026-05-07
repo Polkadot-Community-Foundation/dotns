@@ -13,8 +13,8 @@ import {IDotnsStore} from "./IDotnsStore.sol";
 ///      resolver, not here.
 /// @custom:security-contact admin@parity.io
 interface ILabelStore is IDotnsStore {
-    /// @notice Emitted when a label is stored for the first (and only) time under a given labelhash.
-    /// @param owner The user this store is bound to.
+    /// @notice Emitted when a label is stored for the first (and only) time under a given
+    /// labelhash. @param owner The user this store is bound to.
     /// @param labelhash The labelhash key.
     /// @param label The stored label string (typically the full name, e.g. "alice.dot").
     event LabelStored(address indexed owner, bytes32 indexed labelhash, string label);

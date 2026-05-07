@@ -40,8 +40,9 @@ contract DotnsNameEscrow is
     ///      uncontested window to pull their refund before the controller hands the name out again.
     uint256 public cooldown;
 
-    /// @notice Total amount of a specific asset reserved across all positions. Keyed by asset address.
-    /// @dev Keyed by asset so future ERC20 support can track per-token liabilities independently;
+    /// @notice Total amount of a specific asset reserved across all positions. Keyed by asset
+    /// address. @dev Keyed by asset so future ERC20 support can track per-token liabilities
+    /// independently;
     ///      `address(0)` represents the native token and is the only asset currently accepted.
     mapping(address asset => uint256 amount) public tokenReserved;
 
@@ -51,15 +52,18 @@ contract DotnsNameEscrow is
 
     mapping(uint256 tokenId => uint256 indexPlusOne) private _releasedIndexPlusOne;
 
-    /// @notice Cumulative balance of cross-tier fees and registration excess held against unreleased shortfalls.
-    /// @dev Credited by cross-tier registration deposits, reach-floor friction, and transfer-fee deltas;
-    ///      debited only when `withdraw` needs to top up a refund that exceeds the asset's reserved balance.
+    /// @notice Cumulative balance of cross-tier fees and registration excess held against
+    /// unreleased shortfalls. @dev Credited by cross-tier registration deposits, reach-floor
+    /// friction, and transfer-fee deltas;
+    ///      debited only when `withdraw` needs to top up a refund that exceeds the asset's reserved
+    /// balance.
     uint256 public insuranceFund;
 
-    /// @notice Highest price ever charged for the name identified by tokenId, across registration and any transfers.
-    /// @dev Monotonically increasing per-token watermark; the transfer-fee delta is computed against this
-    ///      prior value so each onward sale only pays the incremental tier difference, and it resets on
-    ///      `reclaim` only so a fresh registration starts from a clean baseline.
+    /// @notice Highest price ever charged for the name identified by tokenId, across registration
+    /// and any transfers. @dev Monotonically increasing per-token watermark; the transfer-fee delta
+    /// is computed against this
+    ///      prior value so each onward sale only pays the incremental tier difference, and it
+    /// resets on `reclaim` only so a fresh registration starts from a clean baseline.
     mapping(uint256 tokenId => uint256 max) public runningMax;
 
     /// @dev Pull-payment ledger isolating each recipient's refund balance so a failing or reentrant
@@ -437,7 +441,7 @@ contract DotnsNameEscrow is
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.1.0";
+        versionString = "1.0.0";
     }
 
     /// @notice Returns the configured registrar from the protocol registry.
