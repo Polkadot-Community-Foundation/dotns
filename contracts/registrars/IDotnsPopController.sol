@@ -51,6 +51,22 @@ interface IDotnsPopController is IDotnsController {
         uint64 index;
     }
 
+    /// @notice Reservation queue entry: a user and the timestamp they joined the queue.
+    /// @dev Packs into a single storage slot (20 + 8 bytes).
+    struct ReservationEntry {
+        address owner;
+        uint64 joinedAt;
+    }
+
+    /// @notice Metadata describing the occupied range of a reservation queue.
+    /// @dev Uses monotonically increasing indices. Active entries occupy `[head, tail)`;
+    /// `length = tail - head`. Slots past `head` are deleted as the head advances so
+    /// garbage never accumulates.
+    struct ReservationQueueMeta {
+        uint64 head;
+        uint64 tail;
+    }
+
     /// @notice Lite-person registration payload.
     /// @dev Single struct so the gateway can ABI-encode one tuple as the cross-chain payload
     /// and the contract decodes it directly out of `msg.data`. All fields are required;
@@ -151,13 +167,15 @@ interface IDotnsPopController is IDotnsController {
     error NotHolder(address user, bytes32 labelhash);
 
     /// @notice Registers a lite-person username on behalf of `params.user` and optionally enqueues
-    /// a reservation for a base name they intend to claim as a full person later. @dev The
-    /// base-name leg only runs when `params.reservedBaseLabel` is non-empty, and runs
-    /// PopRules `priceWithCheck` BEFORE any queue mutation so a mis-tiered reservation never
-    /// even touches the queue. The user is removed from any prior queue position before being
-    /// enqueued, so a single user holds at most one live reservation across all labels.
-    /// Cross-chain callers pass the ABI-encoded {BaseReservation} tuple directly as the call's
-    /// payload; Solidity decodes it from `msg.data` into `params`.
+    /// a reservation for a base name they intend to claim as a full person later. @dev Callable
+    /// only when the substrate origin is `Root`, verified via revive's
+    /// `ISystem.callerIsRoot()` precompile. The base-name leg only runs when
+    /// `params.reservedBaseLabel` is non-empty, and runs PopRules `priceWithCheck`
+    /// BEFORE any queue mutation so a mis-tiered reservation never even touches the
+    /// queue. The user is removed from any prior queue position before being enqueued,
+    /// so a single user holds at most one live reservation across all labels.
+    /// Cross-chain callers pass the ABI-encoded {BaseReservation} tuple directly as
+    /// the call's payload; Solidity decodes it from `msg.data` into `params`.
     /// @param params Reservation request; see {BaseReservation}.
     /// @custom:emits LiteNameReserved
     /// @custom:emits NameRegistered
@@ -174,7 +192,7 @@ interface IDotnsPopController is IDotnsController {
     /// @dev `payload` is `abi.encode(BaseReservation({...}))`, the bare ABI-encoded struct
     /// with NO function-selector prefix and NO leading bytes-length word. The contract
     /// prepends the typed selector and `delegatecall`s itself so the typed entrypoint runs
-    /// with the original `msg.sender` and remains the single source of truth.
+    /// in the original call context and remains the single source of truth.
     /// Note: `abi.decode` ignores trailing bytes past the encoded struct, so off-chain
     /// encoders MUST NOT assume strict length validation.
     /// @param payload `abi.encode(BaseReservation)` produced by the cross-chain caller.
@@ -190,9 +208,11 @@ interface IDotnsPopController is IDotnsController {
     function reserveBaseName(bytes calldata payload) external;
 
     /// @notice Registers a lite-person username on behalf of `params.user` without touching the
-    /// base-name reservation queue. @dev Cross-chain callers pass the ABI-encoded
-    /// {LiteRegistration} tuple directly as the
-    /// call's payload; Solidity decodes it from `msg.data` into `params`.
+    /// base-name reservation queue. @dev Callable only when the substrate origin is `Root`,
+    /// verified via revive's
+    /// `ISystem.callerIsRoot()` precompile. Cross-chain callers pass the ABI-encoded
+    /// {LiteRegistration} tuple directly as the call's payload; Solidity decodes it
+    /// from `msg.data` into `params`.
     /// @param params Registration request; see {LiteRegistration}.
     /// @custom:emits LiteNameReserved
     /// @custom:emits NameRegistered
@@ -204,7 +224,7 @@ interface IDotnsPopController is IDotnsController {
     /// @dev `payload` is `abi.encode(LiteRegistration({...}))`, the bare ABI-encoded struct
     /// with NO function-selector prefix and NO leading bytes-length word. The contract
     /// prepends the typed selector and `delegatecall`s itself so the typed entrypoint runs
-    /// with the original `msg.sender` and remains the single source of truth.
+    /// in the original call context and remains the single source of truth.
     /// Note: `abi.decode` ignores trailing bytes past the encoded struct, so
     /// off-chain encoders MUST NOT assume strict length validation; pad-only
     /// junk past the tail is silently dropped (no state corruption; decoded
@@ -219,7 +239,8 @@ interface IDotnsPopController is IDotnsController {
     function reserveLiteName(bytes calldata payload) external;
 
     /// @notice Registers a full-person username on behalf of `params.user`.
-    /// @dev Two orthogonal axes drive the state machine:
+    /// @dev Callable only when the substrate origin is `Root`, verified via revive's
+    /// `ISystem.callerIsRoot()` precompile. Two orthogonal axes drive the state machine:
     /// (1) Reservation axis: `params.user` is "claiming" iff they hold the live head-of-queue
     /// reservation on `params.label`. A claim wipes the entire queue (`_clearQueue`) and releases
     /// the PopRules slot; a non-claim silently relinquishes any pending entry the user holds
@@ -245,7 +266,7 @@ interface IDotnsPopController is IDotnsController {
     /// @dev `payload` is `abi.encode(FullRegistration({...}))`, the bare ABI-encoded struct
     /// with NO function-selector prefix and NO leading bytes-length word. The contract
     /// prepends the typed selector and `delegatecall`s itself so the typed entrypoint runs
-    /// with the original `msg.sender` and remains the single source of truth.
+    /// in the original call context and remains the single source of truth.
     /// Note: `abi.decode` ignores trailing bytes past the encoded struct, so off-chain
     /// encoders MUST NOT assume strict length validation.
     /// @param payload `abi.encode(FullRegistration)` produced by the cross-chain caller.

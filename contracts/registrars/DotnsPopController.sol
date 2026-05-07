@@ -91,22 +91,6 @@ contract DotnsPopController is
     bytes4 private constant SELECTOR_REGISTER_BASE =
         bytes4(keccak256("registerBaseName((string,address,(uint8,string,bytes)))"));
 
-    /// @notice Reservation queue entry: a user and the timestamp they joined the queue.
-    /// @dev Packs into a single storage slot (20 + 8 bytes).
-    struct ReservationEntry {
-        address owner;
-        uint64 joinedAt;
-    }
-
-    /// @notice Metadata describing the occupied range of a reservation queue.
-    /// @dev Uses monotonically increasing indices. Active entries occupy `[head, tail)`;
-    /// `length = tail - head`. Slots past `head` are deleted as the head advances so
-    /// garbage never accumulates.
-    struct ReservationQueueMeta {
-        uint64 head;
-        uint64 tail;
-    }
-
     /// @notice Protocol-level address registry for all DotNS contracts.
     IDotnsProtocolRegistry public protocolRegistry;
 
@@ -414,14 +398,16 @@ contract DotnsPopController is
     )
         internal
     {
-        address storeAddr = RegistrationUtils.registerAndStore(
-            RegistrationUtils.RegistrationContext({
-                protocolRegistry: protocolRegistry,
-                user: user,
-                label: label,
-                labelhash: labelhash,
-                node: node
-            })
+        address storeAddr = address(
+            RegistrationUtils.registerAndStore(
+                RegistrationUtils.RegistrationContext({
+                    protocolRegistry: protocolRegistry,
+                    user: user,
+                    label: label,
+                    labelhash: labelhash,
+                    node: node
+                })
+            )
         );
 
         IDotnsPopResolver resolver = _popResolver();
@@ -647,14 +633,14 @@ contract DotnsPopController is
     ///
     /// Note: `onlyGateway` runs twice, once on the outer bytes overload and again on the
     /// inner typed overload that the delegatecall lands on. The second check is a cheap,
-    /// intentional belt-and-braces; both checks query the same precompile.
+    /// intentional belt-and-braces; both checks read the same registry slot.
     ///
     /// Why the OZ unsafe-allow is acceptable here:
     /// - The destination is hard-coded to `address(this)`, the proxy itself. No external
     ///   contract ever runs in our storage context.
     /// - `selector` is one of three module-private constants pointing at our own typed
     ///   entrypoints. The caller cannot redirect the dispatch elsewhere.
-    /// - The proxy round-trip (proxy → impl → impl.delegatecall(this) → proxy → impl)
+    /// - The proxy round-trip (proxy => impl => impl.delegatecall(this) => proxy => impl)
     ///   ends in the same implementation, in the same storage context, that a direct
     ///   typed call would land in.
     /// @custom:oz-upgrades-unsafe-allow delegatecall
