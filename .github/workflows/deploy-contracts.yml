@@ -66,6 +66,12 @@ jobs:
       - name: Deploy contracts
         id: deploy
         if: steps.rpc_wait.outcome == 'success'
+        # The deploy script reads PRIVATE_KEY from `.env` for local devs,
+        # or from the shell env for CI. CI uses anvil's well-known dev
+        # account #0 because the deploy target is an ephemeral local
+        # anvil — this key has no value on any real chain.
+        env:
+          PRIVATE_KEY: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
         run: |
           set +e
           bun run deploy:anvil > deploy.log 2>&1

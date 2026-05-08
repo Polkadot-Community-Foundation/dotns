@@ -3,30 +3,6 @@ set -euo pipefail
 
 BIN_DIR="$(pwd)/bin"
 
-# Local-development test keys. NEITHER OF THESE IS A REAL CREDENTIAL.
-# Both are checked into source so a fresh clone can run `forge test` and
-# `bun run deploy:anvil` / `bun run deploy:testnet` (paseo testnet only)
-# without any out-of-band setup. They MUST NOT be used on any production
-# chain or hold funds beyond throwaway testnet balances.
-#
-# REVIVE_PK / REVIVE_ADDRESS — deterministic test wallet for the revive
-# eth-rpc adapter pointed at paseo-assethub. Address is referenced in
-# `package.json` as the deployer for `deploy:testnet`. Anyone with this
-# private key can sign as that address on paseo, which is fine for
-# testnet ergonomics but means the address must never be granted any
-# privileged role (mainnet owner, governance signer, multisig member).
-REVIVE_PK="5fb92d6e98884f76de468fa3f6278f8807c48bebc13595d45af5bdc4da702133"
-REVIVE_ADDRESS="0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac"
-
-# ANVIL — well-known anvil-default account #0; same value foundry's
-# `anvil` ships with by default. Used by `bun run deploy:anvil`.
-ANVIL="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-ANVIL_ADDRESS="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
-
-# Foundry keystore password for the dev wallets imported below. Local
-# keystores on the dev machine; never reused for any non-test wallet.
-WALLET_PASSWORD="123456"
-
 # External Solidity dependencies pinned by commit SHA. Tags can be
 # moved on the upstream repo; commit SHAs cannot. The `tag` column is
 # advisory (used in install logs) and the `sha` column is what the
@@ -117,34 +93,6 @@ apply_dependency_patches(){
   bash scripts/shell/apply-oz-patches.sh
 }
 
-setup_wallet() {
-  local wallet_name="$1"
-  local private_key="$2"
-  local address="$3"
-  local keystore_dir="${FOUNDRY_KEYSTORES_DIR:-$HOME/.foundry/keystores}"
-  local keystore_path="$keystore_dir/$wallet_name"
-
-  if [ -f "$keystore_path" ]; then
-    echo "  ℹ Wallet '$wallet_name' already exists (address: $address)"
-    return 0
-  fi
-
-  cast wallet import "$wallet_name" --private-key "$private_key" --unsafe-password "$WALLET_PASSWORD"
-  echo "  ✓ Wallet '$wallet_name' created (address: $address)"
-}
-
-setup_foundry_wallet(){
-  echo "Setting up Foundry wallets..."
-
-  if ! command -v cast >/dev/null 2>&1; then
-    echo "WARNING: 'cast' command not found. Install Foundry: https://getfoundry.sh"
-    return 0
-  fi
-
-  setup_wallet "revive" "$REVIVE_PK" "$REVIVE_ADDRESS"
-  setup_wallet "anvil-polkadot" "$ANVIL" "$ANVIL_ADDRESS"
-}
-
 check_missing_files(){
   echo "Checking for missing source files..."
   
@@ -156,6 +104,5 @@ check_missing_files(){
 
 init_submodules
 apply_dependency_patches
-setup_foundry_wallet
 check_missing_files
 echo "Setup complete!"

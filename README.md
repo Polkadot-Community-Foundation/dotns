@@ -28,7 +28,12 @@ To deploy on Paseo, and to run fork tests, you need a local ETH-RPC adapter.
 
 A `docker-compose` file is provided. It starts the ETH-RPC adapter pointed at the live Paseo Asset Hub endpoint. We route through the adapter rather than the public RPC directly because the adapter is more stable under the traffic pattern a deploy or fork test produces; the public endpoint rate-limits and occasionally stalls, which drops mid-flight transactions and invalidates fork-test state. Anvil is not in the picture here: `forge test` spins up its own in-process EVM for unit, fuzz, and invariant tests, and fork tests run against the adapter, not against a local Anvil chain.
 
-Start the adapter, then run one of the deployment scripts from `package.json`:
+Start the adapter, then prepare a `.env` and run one of the deployment scripts from `package.json`. The deploy script imports the configured `PRIVATE_KEY` into an ephemeral Foundry keystore wallet, runs the multi-stage pipeline against that wallet, and deletes both the wallet and `.env` on exit so no key material persists on disk.
+
+```bash
+cp .env.example .env
+# edit .env: set PRIVATE_KEY (and optionally RPC_URL)
+```
 
 ```bash
 # fresh deploy, proxied through the adapter to the local Paseo fork
@@ -38,6 +43,12 @@ bun run deploy:anvil
 ```bash
 # fresh deploy, proxied through the adapter to live Paseo
 bun run deploy:testnet
+```
+
+For one-off non-interactive runs you can skip `.env` and pass the key inline:
+
+```bash
+PRIVATE_KEY=0x… RPC_URL=paseo bun run deploy
 ```
 
 The fresh-deploy pipeline is split across five scripts under `scripts/deploy/`, each a separate `forge script` invocation:
