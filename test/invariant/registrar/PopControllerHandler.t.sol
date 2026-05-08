@@ -7,11 +7,10 @@ import {
     DotnsPopController,
     IDotnsPopController
 } from "../../../contracts/registrars/DotnsPopController.sol";
-import {PopRules, IPopRules} from "../../../contracts/pop/PopRules.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 import {LabelUtils} from "../../../contracts/utils/LabelUtils.sol";
 import {ISystem} from "../../../contracts/external/revive/ISystem.sol";
-import {IPersonhood} from "../../../contracts/external/IPersonhood.sol";
+import {IPersonhood} from "../../../contracts/external/personhood/IPersonhood.sol";
 
 // @title PopControllerHandler
 // @notice Bounded random-action handler for {DotnsPopController} invariant tests.

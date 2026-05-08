@@ -2,11 +2,10 @@
 pragma solidity ^0.8.30;
 
 import {BaseDotns} from "../base/BaseDotns.t.sol";
-import {IPopRules} from "../../contracts/pop/IPopRules.sol";
 import {IDotnsRegistry} from "../../contracts/registry/IDotnsRegistry.sol";
 import {IDotnsRegistrarController} from "../../contracts/registrars/IDotnsRegistrarController.sol";
 import {ILabelStore} from "../../contracts/store/ILabelStore.sol";
-import {IPersonhood} from "../../contracts/external/IPersonhood.sol";
+import {IPersonhood} from "../../contracts/external/personhood/IPersonhood.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 
 contract BasicDotnsIntegration is BaseDotns {

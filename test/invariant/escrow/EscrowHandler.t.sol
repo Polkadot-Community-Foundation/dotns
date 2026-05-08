@@ -9,7 +9,7 @@ import {
 import {DotnsRegistrar} from "../../../contracts/registrars/DotnsRegistrar.sol";
 import {DotnsNameEscrow, IDotnsNameEscrow} from "../../../contracts/escrow/DotnsNameEscrow.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
-import {IPersonhood} from "../../../contracts/external/IPersonhood.sol";
+import {IPersonhood} from "../../../contracts/external/personhood/IPersonhood.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 
 /// @title Escrow Handler

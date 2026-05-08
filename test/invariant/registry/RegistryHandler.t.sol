@@ -13,7 +13,7 @@ import {
 } from "../../../contracts/registrars/DotnsRegistrarController.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
-import {IPersonhood} from "../../../contracts/external/IPersonhood.sol";
+import {IPersonhood} from "../../../contracts/external/personhood/IPersonhood.sol";
 
 // @title Registry Handler for Invariant Testing
 // @notice Executes bounded random actions on the registry: register base domains,

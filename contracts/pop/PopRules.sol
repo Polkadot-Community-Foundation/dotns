@@ -15,7 +15,7 @@ import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {IDotnsController} from "../registrars/IDotnsController.sol";
 import {DotnsRegistrar} from "../registrars/DotnsRegistrar.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
-import {IPersonhood} from "../external/IPersonhood.sol";
+import {IPersonhood} from "../external/personhood/IPersonhood.sol";
 
 /// @title PopRules
 /// @notice Implements DotNS pricing with PoP-tier validation and base-name reservations.

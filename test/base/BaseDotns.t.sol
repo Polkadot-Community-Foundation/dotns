@@ -28,7 +28,7 @@ import {DotnsNameEscrow} from "../../contracts/escrow/DotnsNameEscrow.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 import {LabelUtils} from "../../contracts/utils/LabelUtils.sol";
 import {ISystem} from "../../contracts/external/revive/ISystem.sol";
-import {IPersonhood} from "../../contracts/external/IPersonhood.sol";
+import {IPersonhood} from "../../contracts/external/personhood/IPersonhood.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 // @title BaseDotns

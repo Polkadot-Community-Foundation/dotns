@@ -14,7 +14,7 @@ import {IStoreFactory} from "../../../contracts/store/IStoreFactory.sol";
 import {LabelUtils} from "../../../contracts/utils/LabelUtils.sol";
 import {DotnsRegistrar} from "../../../contracts/registrars/DotnsRegistrar.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
-import {IPersonhood} from "../../../contracts/external/IPersonhood.sol";
+import {IPersonhood} from "../../../contracts/external/personhood/IPersonhood.sol";
 
 // @title Registrar Controller Handler
 // @notice Handler contract that executes bounded random actions against the controller.
