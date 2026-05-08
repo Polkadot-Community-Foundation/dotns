@@ -143,19 +143,24 @@ Stores are the per-user storage layer. They exist because two query paths the re
 
 ### Deployments
 
-Paseo Asset Hub (chainId `x`):
+Paseo Asset Hub (chainId `420420417`). Source of truth: [`deployments/paseo-assethub/420420417.json`](deployments/paseo-assethub/420420417.json).
 
-| Contract                 | Address                                    |
-| ------------------------ | ------------------------------------------ |
-| DotnsProtocolRegistry    | x |
-| StoreFactory             | x |
-| DotnsRegistrar           | x |
-| DotnsReverseResolver     | x |
-| DotnsRegistry            | x |
-| DotnsContentResolver     | x |
-| DotnsResolver            | x |
-| PopRules                 | x |
-| DotnsRegistrarController | x |
+| Contract                 | Address                                      |
+| ------------------------ | -------------------------------------------- |
+| DotnsProtocolRegistry    | `0xc07A2F24387DA27283CD87b9F24573b74C9e0c9b` |
+| DotnsRegistrar           | `0x6c40817cdb96Ab57A4d9E9fa21D0eEa8307BDDE8` |
+| DotnsRegistry            | `0xE6c0fB6D5492666144A8a4a015E25a98ACa604cA` |
+| DotnsRegistrarController | `0x732C38082CFAebed505A46e4e2D6414154694580` |
+| DotnsPopController       | `0xfE1e25E8d521CaaA8055301CA61Ec3557263Ca76` |
+| PopRules                 | `0x5f2Dd23Ee3ceD39B293701ccE8355DdDd83Cd324` |
+| DotnsResolver            | `0x5E174c960F5276Bd0387F200cE42f98fe927E220` |
+| DotnsReverseResolver     | `0xd5C3dcC7CE44593fEB1D72017A3539c4dB14e54a` |
+| DotnsContentResolver     | `0x108376A5B6DDc6BE3201C94Fd169BE444f220076` |
+| DotnsPopResolver         | `0x29Ace5d2C57109c82A30Db175e645880572c6369` |
+| DotnsNameEscrow          | `0x034b072eB8AF5cEfd820390bfe239bD911174ad2` |
+| StoreFactory             | `0x9C38DFec452391696a8f0D3daFE71F7Eb29e08f8` |
+| LabelStoreBeacon         | `0x6B609A89Fec9898B441E17f1618670bdD08c437e` |
+| UserStoreBeacon          | `0xbeb79e8BB2bC610822e8748e5439B9D890d88FF5` |
 
 ### Mental model for new features
 
