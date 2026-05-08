@@ -11,6 +11,7 @@ import {PopRules, IPopRules} from "../../../contracts/pop/PopRules.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 import {LabelUtils} from "../../../contracts/utils/LabelUtils.sol";
 import {ISystem} from "../../../contracts/external/revive/ISystem.sol";
+import {IPersonhood} from "../../../contracts/external/IPersonhood.sol";
 
 // @title PopControllerHandler
 // @notice Bounded random-action handler for {DotnsPopController} invariant tests.
@@ -49,7 +50,7 @@ contract PopControllerHandler is Test {
     // string because the controller re-hashes internally on every call.
     string[] public priorLiteLabels;
 
-    constructor(DotnsPopController controller_, address[] memory actors_, PopRules popRules_) {
+    constructor(DotnsPopController controller_, address[] memory actors_) {
         CONTROLLER = controller_;
         actors = actors_;
         // baselength 8, no trailing digits: PopFull classification.
@@ -59,15 +60,26 @@ contract PopControllerHandler is Test {
         // baselength 10, no trailing digits: PopFull classification.
         baseLabels.push("carolcarol");
 
-        // Every actor needs PopFull status on the PoP rules oracle so the
+        // Every actor needs PopFull status on the personhood precompile so the
         // classification/tier guard in PopRules.priceWithCheck admits every
         // label the handler can generate: PopLite lite labels (PopFull is a
         // superset of PopLite), PopFull base labels, and NoStatus base labels
         // (which merely require userStatus != PopLite).
         for (uint256 i = 0; i < actors_.length; i++) {
-            stdstorage.target(address(popRules_)).sig("userPopStatus(address)").with_key(actors_[i])
-                .checked_write(uint256(IPopRules.PopStatus.PopFull));
+            _mockPersonhoodTier(actors_[i], 2);
         }
+    }
+
+    function _mockPersonhoodTier(address account, uint8 statusByte) internal {
+        bytes32 contextAlias =
+            statusByte == 0 ? bytes32(0) : keccak256(abi.encode(account, statusByte));
+        vm.mockCall(
+            DotnsConstants.PERSONHOOD,
+            abi.encodeWithSelector(
+                IPersonhood.personhoodStatus.selector, account, DotnsConstants.PERSONHOOD_CONTEXT
+            ),
+            abi.encode(IPersonhood.PersonhoodInfo({status: statusByte, contextAlias: contextAlias}))
+        );
     }
 
     function actorsCount() external view returns (uint256) {

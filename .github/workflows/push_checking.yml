@@ -1,5 +1,16 @@
 name: Run Solidity Tests
 
+# SECURITY ATTENTION
+# This workflow uses `pull_request_target` for the on-close cleanup job
+# only. `pull_request_target` runs in the BASE branch's workflow context
+# with repository secrets and a write-scoped GITHUB_TOKEN. The cleanup
+# job is gated on `github.event.action == 'closed'` and does NOT check
+# out PR-head code, so no untrusted code executes under that context.
+#
+# Adding other `pull_request_target` event types (`opened`, `synchronize`,
+# `reopened`, etc.) or any step that checks out `pull_request.head.sha`
+# inside a `pull_request_target` job would let a malicious PR exfiltrate
+# repo secrets. Re-review carefully if this trigger surface widens.
 on:
   pull_request:
     branches: [main]
@@ -21,8 +32,22 @@ concurrency:
 
 jobs:
   test:
-    runs-on: parity-int-ubuntu-xl
     if: github.event.action != 'closed'
+    name: ${{ matrix.kind.label }}
+    runs-on: parity-int-ubuntu-xl
+    strategy:
+      # Each matrix kind runs on its own runner so neither has to hold the
+      # other's peak memory. Don't fail-fast: surfacing both shards' results
+      # is more useful than aborting the slower one when the faster one fails.
+      fail-fast: false
+      matrix:
+        kind:
+          - id: unit-fuzz
+            label: Contract Tests (Unit + Fuzz)
+            forge_args: --no-match-contract Invariant
+          - id: invariant
+            label: Contract Tests (Invariant)
+            forge_args: --match-contract Invariant
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,7 +109,7 @@ jobs:
             exit 1
           fi
 
-          forge test -vv --summary 2>&1 | tee test.log
+          forge test -vv --summary ${{ matrix.kind.forge_args }} 2>&1 | tee test.log
           TEST=${PIPESTATUS[0]}
 
           python3 scripts/reports/test-report.py test.log
@@ -97,61 +122,109 @@ jobs:
         if: always()
         run: docker compose down --volumes --remove-orphans
 
-      - name: Set deploy path
-        id: path
-        if: github.event_name == 'pull_request'
+      - name: Stage matrix-kind output for the aggregator
+        if: always()
         run: |
-          OWNER="${{ github.repository_owner }}"
-          REPO_NAME="${{ github.event.repository.name }}"
-          PR_NUM="${{ github.event.pull_request.number }}"
-          echo "target=tests/pr-${PR_NUM}" >> "$GITHUB_OUTPUT"
-          echo "url=https://${OWNER}.github.io/${REPO_NAME}/tests/pr-${PR_NUM}/test-report.html" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy to GitHub Pages
-        if: github.event_name == 'pull_request' && steps.run.outputs.has_details == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir -p /tmp/deploy
-          cp test-report.html /tmp/deploy/
-          bash scripts/shell/deploy-to-gh-pages.sh /tmp/deploy ${{ steps.path.outputs.target }}
+          mkdir -p shard
+          # `result.txt` is the contract between this matrix job and the
+          # report aggregator: one line of `label|result|has_details` so the
+          # aggregator can rebuild the PR-comment table without re-running
+          # `test-report.py` or shelling into the test logs.
+          printf '%s|%s|%s\n' \
+            "${{ matrix.kind.label }}" \
+            "${{ steps.run.outputs.result || 'Failed' }}" \
+            "${{ steps.run.outputs.has_details || 'false' }}" \
+            > shard/result.txt
+          for f in test.log build.log test-details.md test-report.html; do
+            [ -f "$f" ] && cp "$f" "shard/$f"
+          done
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-logs
-          path: |
-            *.log
-            test-details.md
-            test-report.html
+          name: test-shard-${{ matrix.kind.id }}
+          path: shard
           retention-days: 7
 
+      - if: steps.run.outputs.result && contains(steps.run.outputs.result, 'Failed')
+        run: exit 1
+
+  report:
+    name: Report Test Results
+    needs: test
+    if: always() && github.event_name == 'pull_request' && github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: test-artifacts
+          pattern: test-shard-*
+
+      - name: Set deploy paths
+        id: path
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          REPO_NAME="${{ github.event.repository.name }}"
+          PR_NUM="${{ github.event.pull_request.number }}"
+          echo "target_base=tests/pr-${PR_NUM}" >> "$GITHUB_OUTPUT"
+          echo "url_base=https://${OWNER}.github.io/${REPO_NAME}/tests/pr-${PR_NUM}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy per-shard reports to GitHub Pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/deploy
+          # Each shard's `test-report.html` lands under its kind subdir
+          # (e.g. tests/pr-123/unit-fuzz/test-report.html) so the two
+          # parallel uploads cannot stomp each other on gh-pages.
+          for shard_dir in test-artifacts/test-shard-*/; do
+            kind="$(basename "$shard_dir" | sed 's/^test-shard-//')"
+            if [ -f "${shard_dir}test-report.html" ]; then
+              mkdir -p "/tmp/deploy/${kind}"
+              cp "${shard_dir}test-report.html" "/tmp/deploy/${kind}/"
+            fi
+          done
+          if [ -n "$(ls -A /tmp/deploy 2>/dev/null)" ]; then
+            bash scripts/shell/deploy-to-gh-pages.sh /tmp/deploy "${{ steps.path.outputs.target_base }}"
+          fi
+
       - name: Update PR comment
-        if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v7
         env:
-          SECTION: Contract Tests
-          RESULT: ${{ steps.run.outputs.result }}
-          HAS_DETAILS: ${{ steps.run.outputs.has_details }}
           RUN_ID: ${{ github.run_id }}
           REPO: ${{ github.repository }}
-          REPORT_URL: ${{ steps.path.outputs.url }}
+          URL_BASE: ${{ steps.path.outputs.url_base }}
         with:
           script: |
             const fs = require('fs');
+            const path = require('path');
             const marker = "<!-- ci-summary -->";
             const detailsMarker = "<!-- details-section -->";
-            const section = process.env.SECTION;
-            const hasDetails = process.env.HAS_DETAILS === 'true';
-            const rawResult = process.env.RESULT || 'Failed';
-            const reportUrl = process.env.REPORT_URL;
-            const result = hasDetails && reportUrl ? `${rawResult} - [View Report](${reportUrl})` : rawResult;
             const runId = process.env.RUN_ID;
             const repoFull = process.env.REPO;
+            const urlBase = process.env.URL_BASE;
 
-            let details = '';
-            try { details = fs.readFileSync('test-details.md', 'utf8').trim(); } catch {}
+            // Read every shard's `result.txt` into a list of sections.
+            // Each entry = { id, label, result, hasDetails, details, reportUrl }
+            const artifactsRoot = 'test-artifacts';
+            const shardEntries = [];
+            for (const dirent of fs.readdirSync(artifactsRoot, { withFileTypes: true })) {
+              if (!dirent.isDirectory() || !dirent.name.startsWith('test-shard-')) continue;
+              const id = dirent.name.replace(/^test-shard-/, '');
+              const shardPath = path.join(artifactsRoot, dirent.name);
+              const resultLine = fs.readFileSync(path.join(shardPath, 'result.txt'), 'utf8').trim();
+              const [label, result, hasDetailsRaw] = resultLine.split('|');
+              const hasDetails = hasDetailsRaw === 'true';
+              let details = '';
+              try { details = fs.readFileSync(path.join(shardPath, 'test-details.md'), 'utf8').trim(); } catch {}
+              const reportUrl = hasDetails ? `${urlBase}/${id}/test-report.html` : null;
+              shardEntries.push({ id, label, result, hasDetails, details, reportUrl });
+            }
 
+            // Read existing comment, parse rows + details, then overwrite
+            // every row this workflow owns. Other workflows' rows survive.
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
             const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
@@ -169,18 +242,23 @@ jobs:
               let m; while ((m = re.exec(existing.body)) !== null) existingDetails[m[1].trim()] = m[0];
             }
 
-            rows[section] = result;
-            if (hasDetails && details) {
-              const reportLink = reportUrl ? `[View full report](${reportUrl}) | ` : '';
-              existingDetails[section] = `<details>\n<summary><strong>${section}</strong></summary>\n\n${details}\n\n${reportLink}[View logs](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`;
-            } else { delete existingDetails[section]; }
+            for (const entry of shardEntries) {
+              const result = entry.hasDetails && entry.reportUrl ? `${entry.result} - [View Report](${entry.reportUrl})` : entry.result;
+              rows[entry.label] = result;
+              if (entry.hasDetails && entry.details) {
+                const reportLink = entry.reportUrl ? `[View full report](${entry.reportUrl}) | ` : '';
+                existingDetails[entry.label] = `<details>\n<summary><strong>${entry.label}</strong></summary>\n\n${entry.details}\n\n${reportLink}[View logs](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`;
+              } else {
+                delete existingDetails[entry.label];
+              }
+            }
 
-            const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Gas Report', 'Coverage', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
+            const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests (Unit + Fuzz)', 'Contract Tests (Invariant)', 'Gas Report', 'Coverage', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
             const sortedKeys = Object.keys(rows).sort((a, b) => (order.indexOf(a) === -1 ? 999 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 999 : order.indexOf(b)));
             let table = `| Check | Result |\n|:------|:-------|\n`;
             for (const key of sortedKeys) table += `| ${key} | ${rows[key]} |\n`;
 
-            const detailsOrder = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Gas Report', 'Coverage'];
+            const detailsOrder = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests (Unit + Fuzz)', 'Contract Tests (Invariant)', 'Gas Report', 'Coverage'];
             const sortedDetails = Object.keys(existingDetails).sort((a, b) => (detailsOrder.indexOf(a) === -1 ? 999 : detailsOrder.indexOf(a)) - (detailsOrder.indexOf(b) === -1 ? 999 : detailsOrder.indexOf(b)));
             let body = `${marker}\n## CI Summary\n\n${table}`;
             if (sortedDetails.length > 0) body += `\n${detailsMarker}\n\n---\n\n${sortedDetails.map(k => existingDetails[k]).join('\n\n')}`;
@@ -195,9 +273,6 @@ jobs:
 
             if (existing) await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
             else await github.rest.issues.createComment({ owner, repo, issue_number, body });
-
-      - if: steps.run.outputs.result && contains(steps.run.outputs.result, 'Failed')
-        run: exit 1
 
   cleanup:
     runs-on: ubuntu-latest

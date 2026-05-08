@@ -13,6 +13,7 @@ import {
 } from "../../../contracts/registrars/DotnsRegistrarController.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
+import {IPersonhood} from "../../../contracts/external/IPersonhood.sol";
 
 // @title Registry Handler for Invariant Testing
 // @notice Executes bounded random actions on the registry: register base domains,
@@ -64,9 +65,25 @@ contract RegistryHandler is Test {
         actors.push(actor);
         actorStatus[actor] = status;
         if (status != IPopRules.PopStatus.NoStatus) {
-            stdstorage.target(address(popRules)).sig("userPopStatus(address)").with_key(actor)
-                .checked_write(uint256(status));
+            _mockPersonhoodTier(actor, status);
         }
+    }
+
+    // @notice Mocks the personhood precompile so it reports `tier` for `account`.
+    function _mockPersonhoodTier(address account, IPopRules.PopStatus tier) internal {
+        uint8 statusByte;
+        if (tier == IPopRules.PopStatus.PopFull) statusByte = 2;
+        else if (tier == IPopRules.PopStatus.PopLite) statusByte = 1;
+
+        bytes32 contextAlias =
+            statusByte == 0 ? bytes32(0) : keccak256(abi.encode(account, statusByte));
+        vm.mockCall(
+            DotnsConstants.PERSONHOOD,
+            abi.encodeWithSelector(
+                IPersonhood.personhoodStatus.selector, account, DotnsConstants.PERSONHOOD_CONTEXT
+            ),
+            abi.encode(IPersonhood.PersonhoodInfo({status: statusByte, contextAlias: contextAlias}))
+        );
     }
 
     // @notice Register a base domain and create a subnode under it.

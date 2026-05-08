@@ -6,6 +6,8 @@ import {IPopRules} from "../../contracts/pop/IPopRules.sol";
 import {IDotnsRegistry} from "../../contracts/registry/IDotnsRegistry.sol";
 import {IDotnsRegistrarController} from "../../contracts/registrars/IDotnsRegistrarController.sol";
 import {ILabelStore} from "../../contracts/store/ILabelStore.sol";
+import {IPersonhood} from "../../contracts/external/IPersonhood.sol";
+import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 
 contract BasicDotnsIntegration is BaseDotns {
     string internal constant NAME_POPFULL = "waytall1";
@@ -84,13 +86,20 @@ contract BasicDotnsIntegration is BaseDotns {
         );
     }
 
+    // @notice Returns true when the personhood precompile reports `account` at
+    //         tier `Lite` (1) or `Full` (2) under the dotns context.
+    // @dev Reads the precompile mock installed by {BaseDotns} so the integration
+    //      flow gates pricing assertions on the same tier the controller sees.
+    function _personhoodTierIsAtLeastLite(address account) internal view returns (bool) {
+        IPersonhood.PersonhoodInfo memory info = IPersonhood(DotnsConstants.PERSONHOOD)
+            .personhoodStatus(account, DotnsConstants.PERSONHOOD_CONTEXT);
+        return info.status >= 1;
+    }
+
     function _flowEndToEnd(FlowParams memory flow) internal {
         uint256 quotedPriceBefore = popRules.priceWithCheck(flow.name, flow.nameOwner).price;
 
-        if (
-            popRules.userPopStatus(flow.nameOwner) == IPopRules.PopStatus.PopFull
-                || popRules.userPopStatus(flow.nameOwner) == IPopRules.PopStatus.PopLite
-        ) {
+        if (_personhoodTierIsAtLeastLite(flow.nameOwner)) {
             assertEq(quotedPriceBefore, 0);
         }
 
@@ -168,10 +177,7 @@ contract BasicDotnsIntegration is BaseDotns {
         uint256 transferRecipientQuotedPrice =
             popRules.priceWithCheck(flow.transferRecipientNewName, flow.transferTo).price;
 
-        if (
-            popRules.userPopStatus(flow.transferTo) == IPopRules.PopStatus.PopFull
-                || popRules.userPopStatus(flow.transferTo) == IPopRules.PopStatus.PopLite
-        ) {
+        if (_personhoodTierIsAtLeastLite(flow.transferTo)) {
             assertEq(transferRecipientQuotedPrice, 0);
         }
 

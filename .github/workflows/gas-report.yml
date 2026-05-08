@@ -1,5 +1,19 @@
 name: Gas Report
 
+# SECURITY ATTENTION
+# This workflow uses `pull_request_target` for the on-close cleanup job
+# only. `pull_request_target` runs in the BASE branch's workflow context
+# with repository secrets and a write-scoped GITHUB_TOKEN. The cleanup
+# job is gated on `github.event.action == 'closed'` and does NOT check
+# out PR-head code, so no untrusted code executes under that context.
+#
+# The matrix `generate` shard that pulls the PR head's `patches/` runs
+# under the `pull_request` trigger (not `pull_request_target`), so its
+# checkout of PR-head code does not see repository secrets.
+#
+# Adding other `pull_request_target` event types or any step that
+# checks out PR-head code under that trigger would let a malicious PR
+# exfiltrate repo secrets. Re-review carefully if widened.
 on:
   pull_request:
     branches: [main]
@@ -17,12 +31,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  gas-report:
-    runs-on: parity-int-ubuntu-xl
+  generate:
+    name: Gas Report (${{ matrix.target.label }})
     if: github.event.action != 'closed'
+    runs-on: parity-int-ubuntu-xl
+    strategy:
+      # Each target runs on its own runner so the PR-branch and main-branch
+      # gas reports do not have to share one machine's memory budget. The
+      # aggregator job downloads both artifacts to compute the diff.
+      fail-fast: false
+      matrix:
+        target:
+          - id: pr
+            label: PR branch
+            ref: ""
+          - id: main
+            label: main branch
+            ref: main
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ matrix.target.ref }}
           submodules: recursive
 
       - uses: foundry-rs/foundry-toolchain@v1
@@ -48,6 +77,33 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Sidecar checkout of the PR head's `patches/` and apply script. The
+      # main-branch matrix shard is checked out at `main`, which does not yet
+      # carry the OZ payable patches needed for the registrar transferFrom
+      # overrides. Sourcing them from the PR head keeps the two shards
+      # building against the same vendored OZ tree. Removed once the patches
+      # land on main.
+      - name: Sidecar checkout for OZ patches
+        if: matrix.target.id == 'main'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr-head-sidecar
+          sparse-checkout: |
+            patches
+            scripts/shell/apply-oz-patches.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Apply OZ patches (main shard only)
+        if: matrix.target.id == 'main'
+        run: |
+          rm -rf patches
+          cp -R pr-head-sidecar/patches ./patches
+          mkdir -p scripts/shell
+          cp pr-head-sidecar/scripts/shell/apply-oz-patches.sh scripts/shell/apply-oz-patches.sh
+          chmod +x scripts/shell/apply-oz-patches.sh
+          bash scripts/shell/apply-oz-patches.sh
+
       - run: bun install
 
       - name: Start revive-eth-rpc (paseo_local fork target)
@@ -55,7 +111,7 @@ jobs:
           docker compose up -d --build
           bash scripts/shell/wait-for-eth-rpc.sh
 
-      - name: Generate gas report (PR branch)
+      - name: Generate gas report
         env:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
           FOUNDRY_PROFILE: "gas"
@@ -68,44 +124,75 @@ jobs:
           # while preserving the solc compilation cache under `cache/`.
           rm -rf out/build-info
           forge build
-          forge test --gas-report --no-match-path 'test/fork/**' 2>&1 | tee pr-gas-report.txt
-
-      - name: Checkout main branch
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          path: main-branch
-          submodules: recursive
-
-      - name: Generate gas report (main branch)
-        env:
-          FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
-          FOUNDRY_PROFILE: "gas"
-        working-directory: main-branch
-        run: |
-          bun install
-          # Until the OZ payable patches land on main, the main checkout
-          # produces vanilla OZ via setup.bash and the payable transferFrom
-          # overrides on `DotnsRegistrar`/`IDotnsRegistrar` fail to compile.
-          # Copy the patches and the apply script from the PR-branch checkout
-          # and re-apply against main's freshly cloned `lib/`. Once main merges
-          # the patches this becomes an idempotent overwrite.
-          rm -rf patches
-          cp -R ../patches ./patches
-          mkdir -p scripts/shell
-          cp ../scripts/shell/apply-oz-patches.sh scripts/shell/apply-oz-patches.sh
-          chmod +x scripts/shell/apply-oz-patches.sh
-          bash scripts/shell/apply-oz-patches.sh
-          rm -rf out/build-info
-          forge build
-          forge test --gas-report --no-match-path 'test/fork/**' 2>&1 | tee ../main-gas-report.txt
+          # Skip invariant tests in the gas report: invariant runs dominate
+          # the wall-clock for ~20% of the gas signal (most invariants exercise
+          # the same paths the unit/fuzz suites already cost). Keep the
+          # `test/fork/**` exclusion since fork tests price RPC-replayed paths
+          # rather than function-level gas.
+          forge test --gas-report \
+            --no-match-contract Invariant \
+            --no-match-path 'test/fork/**' \
+            2>&1 | tee gas-report.txt
 
       - name: Tear down revive-eth-rpc
         if: always()
         run: docker compose down --volumes --remove-orphans
 
+      - name: Stage shard output
+        if: always()
+        run: |
+          mkdir -p shard
+          [ -f gas-report.txt ] && cp gas-report.txt "shard/${{ matrix.target.id }}-gas-report.txt"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gas-shard-${{ matrix.target.id }}
+          path: shard
+          retention-days: 7
+
+  report:
+    name: Gas Report Diff
+    needs: generate
+    if: always() && github.event_name == 'pull_request' && github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: gas-artifacts
+          pattern: gas-shard-*
+
+      - name: Collect shard reports
+        id: collect
+        run: |
+          # Surface a clear failure when either shard's gas report is missing
+          # so the aggregator can mark the section "Failed - shard missing"
+          # rather than crashing inside `gas-report.py` with a stat() error.
+          PR_REPORT="gas-artifacts/gas-shard-pr/pr-gas-report.txt"
+          MAIN_REPORT="gas-artifacts/gas-shard-main/main-gas-report.txt"
+          MISSING=""
+          [ -f "$PR_REPORT" ] || MISSING="${MISSING} pr"
+          [ -f "$MAIN_REPORT" ] || MISSING="${MISSING} main"
+          if [ -n "$MISSING" ]; then
+            echo "missing=${MISSING}" >> "$GITHUB_OUTPUT"
+            echo "success=false" >> "$GITHUB_OUTPUT"
+            echo "result=Failed - missing shard:${MISSING}" >> "$GITHUB_OUTPUT"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cp "$PR_REPORT" pr-gas-report.txt
+          cp "$MAIN_REPORT" main-gas-report.txt
+          echo "missing=" >> "$GITHUB_OUTPUT"
+
       - name: Generate HTML and markdown reports
         id: diff
+        if: steps.collect.outputs.missing == ''
         run: |
           if python3 scripts/reports/gas-report.py main-gas-report.txt pr-gas-report.txt; then
             echo "success=true" >> "$GITHUB_OUTPUT"
@@ -125,6 +212,7 @@ jobs:
           echo "url=https://${OWNER}.github.io/${REPO_NAME}/gas/pr-${PR_NUM}/gas-report.html" >> "$GITHUB_OUTPUT"
 
       - name: Prepare deploy directory
+        if: steps.diff.outputs.success == 'true'
         run: |
           mkdir -p gas-output
           cp gas-report.html gas-output/
@@ -155,7 +243,7 @@ jobs:
         uses: actions/github-script@v7
         env:
           SECTION: Gas Report
-          RESULT: ${{ steps.diff.outputs.result }}
+          RESULT: ${{ steps.diff.outputs.result || steps.collect.outputs.result }}
           SUCCESS: ${{ steps.diff.outputs.success }}
           HAS_DETAILS: ${{ steps.diff.outputs.has_changes }}
           RUN_ID: ${{ github.run_id }}
@@ -222,7 +310,7 @@ jobs:
               delete existingDetails[section];
             }
 
-            const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Gas Report', 'Coverage', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
+            const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests (Unit + Fuzz)', 'Contract Tests (Invariant)', 'Gas Report', 'Coverage', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
             const sortedKeys = Object.keys(rows).sort((a, b) => {
               const ai = order.indexOf(a), bi = order.indexOf(b);
               return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
@@ -233,7 +321,7 @@ jobs:
               table += `| ${key} | ${rows[key]} |\n`;
             }
 
-            const detailsOrder = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Gas Report', 'Coverage'];
+            const detailsOrder = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests (Unit + Fuzz)', 'Contract Tests (Invariant)', 'Gas Report', 'Coverage'];
             const sortedDetails = Object.keys(existingDetails).sort((a, b) => {
               const ai = detailsOrder.indexOf(a), bi = detailsOrder.indexOf(b);
               return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
@@ -244,7 +332,6 @@ jobs:
             if (sortedDetails.length > 0) {
               body += `\n${detailsMarker}\n\n---\n\n${sortedDetails.map(k => existingDetails[k]).join('\n\n')}`;
             }
-
 
             // GitHub issue/PR comments are capped at 65536 characters. As the CI
             // summary accumulates `<details>` blocks from every workflow, the body

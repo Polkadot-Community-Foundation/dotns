@@ -26,6 +26,18 @@ library DotnsConstants {
     ///      `ISystem.callerIsRoot()`.
     address internal constant REVIVE_SYSTEM = address(0x0900);
 
+    /// @notice Address of the Proof-of-Personhood precompile backed by the
+    ///         alias-accounts pallet on Asset Hub.
+    /// @dev Consumed by `PopRules` to read each account's personhood tier
+    ///      (`None` / `Lite` / `Full`) and the dotns-scoped `contextAlias`.
+    address internal constant PERSONHOOD = address(0x000000000000000000000000000000000a010000);
+
+    /// @notice Application identifier passed to {IPersonhood.personhoodStatus}.
+    /// @dev Fixed per project so the same person receives a stable, dotns-only
+    ///      `contextAlias` and no cross-application linkability is exposed.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant PERSONHOOD_CONTEXT = bytes32("dotns");
+
     /// @notice Default deploy-time NoStatus rent price passed into
     ///         `PopRules.initialize` as `_startingPrice`.
     /// @dev 10 DOT under revive's 18-decimal Asset Hub convention. Single

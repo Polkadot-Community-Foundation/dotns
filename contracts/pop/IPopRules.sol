@@ -31,9 +31,6 @@ interface IPopRules {
     /// @param expires UNIX timestamp when the reservation expires.
     event BaseNameReserved(string indexed baseName, address indexed owner, uint64 expires);
 
-    /// @notice Emitted when a user updates their PoP status via {setUserPopStatus}.
-    event UserPopStatusSet(address indexed user, PopStatus status);
-
     /// @notice Emitted when the spam-deterrent NoStatus starting price is rotated.
     /// @dev Owner-only setter {updateStartingPrice}; the new value is consumed
     ///      by `_priceValidatedName` on the next pricing read.
@@ -82,10 +79,6 @@ interface IPopRules {
         external
         pure
         returns (PopStatus requirement, string memory message);
-
-    /// @notice Sets the caller's PoP tier in the rules contract.
-    /// @custom:emits UserPopStatusSet
-    function setUserPopStatus(PopStatus status) external;
 
     /// @notice Updates the spam-deterrent starting price for NoStatus pricing.
     /// @dev Owner-only. The new value flows into `_priceValidatedName` on the next

@@ -14,6 +14,7 @@ import {IStoreFactory} from "../../../contracts/store/IStoreFactory.sol";
 import {LabelUtils} from "../../../contracts/utils/LabelUtils.sol";
 import {DotnsRegistrar} from "../../../contracts/registrars/DotnsRegistrar.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
+import {IPersonhood} from "../../../contracts/external/IPersonhood.sol";
 
 // @title Registrar Controller Handler
 // @notice Handler contract that executes bounded random actions against the controller.
@@ -126,9 +127,28 @@ contract RegistrarControllerHandler is Test {
         actorStatus[actor] = status;
 
         if (status != IPopRules.PopStatus.NoStatus) {
-            stdstorage.target(address(popRules)).sig("userPopStatus(address)").with_key(actor)
-                .checked_write(uint256(status));
+            _mockPersonhoodTier(actor, status);
         }
+    }
+
+    // @notice Mocks the personhood precompile so it reports `tier` for `account`.
+    // @dev Mirrors the `BaseDotns._setUserPopStatus` mapping (PopFull = 2,
+    //      PopLite = 1, anything else = 0) so the handler stays consistent with
+    //      the test base.
+    function _mockPersonhoodTier(address account, IPopRules.PopStatus tier) internal {
+        uint8 statusByte;
+        if (tier == IPopRules.PopStatus.PopFull) statusByte = 2;
+        else if (tier == IPopRules.PopStatus.PopLite) statusByte = 1;
+
+        bytes32 contextAlias =
+            statusByte == 0 ? bytes32(0) : keccak256(abi.encode(account, statusByte));
+        vm.mockCall(
+            DotnsConstants.PERSONHOOD,
+            abi.encodeWithSelector(
+                IPersonhood.personhoodStatus.selector, account, DotnsConstants.PERSONHOOD_CONTEXT
+            ),
+            abi.encode(IPersonhood.PersonhoodInfo({status: statusByte, contextAlias: contextAlias}))
+        );
     }
 
     // @notice Performs a complete commit-reveal registration flow.

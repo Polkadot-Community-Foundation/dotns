@@ -15,6 +15,7 @@ import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {IDotnsController} from "../registrars/IDotnsController.sol";
 import {DotnsRegistrar} from "../registrars/DotnsRegistrar.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
+import {IPersonhood} from "../external/IPersonhood.sol";
 
 /// @title PopRules
 /// @notice Implements DotNS pricing with PoP-tier validation and base-name reservations.
@@ -30,9 +31,6 @@ contract PopRules is
 
     /// @notice Wei price for names with 9 characters and up.
     uint256 public startingPrice;
-
-    /// @notice Tracks PoP status per user profile.
-    mapping(address => PopStatus) public userPopStatus;
 
     /// @notice Active reservations keyed by digit-stripped base name.
     mapping(string baseName => Reservation reservation) public reservations;
@@ -69,7 +67,7 @@ contract PopRules is
     {
         __Ownable_init(msg.sender);
         __ERC165_init();
-        startingPrice = _startingPrice;
+        updateStartingPrice(_startingPrice);
         protocolRegistry = registry;
     }
 
@@ -88,13 +86,7 @@ contract PopRules is
     }
 
     /// @inheritdoc IPopRules
-    function setUserPopStatus(PopStatus status) external override {
-        userPopStatus[msg.sender] = status;
-        emit UserPopStatusSet(msg.sender, status);
-    }
-
-    /// @inheritdoc IPopRules
-    function updateStartingPrice(uint256 newStartingPrice) external override onlyOwner {
+    function updateStartingPrice(uint256 newStartingPrice) public override onlyOwner {
         require(newStartingPrice > 0, PopError("Price must be greater than 0"));
         emit StartingPriceUpdated(startingPrice, newStartingPrice);
         startingPrice = newStartingPrice;
@@ -189,7 +181,7 @@ contract PopRules is
         _enforceReservationRules(name, userAddress);
 
         (PopStatus requiredStatus, string memory classification) = _classifyValidatedName(name);
-        PopStatus userStatus = userPopStatus[userAddress];
+        PopStatus userStatus = _personhoodTier(userAddress);
 
         metadata.price =
             userStatus == PopStatus.NoStatus ? _priceValidatedName(bytes(name).length) : 0;
@@ -227,7 +219,7 @@ contract PopRules is
         _requireCanonicalLabel(name);
 
         (PopStatus requiredStatus, string memory classification) = _classifyValidatedName(name);
-        PopStatus userStatus = userPopStatus[userAddress];
+        PopStatus userStatus = _personhoodTier(userAddress);
 
         metadata.price =
             userStatus == PopStatus.NoStatus ? _priceValidatedName(bytes(name).length) : 0;
@@ -264,10 +256,25 @@ contract PopRules is
     {
         _requireCanonicalLabel(name);
         (PopStatus required,) = _classifyValidatedName(name);
-        if (_meetsReach(required, userPopStatus[account])) {
+        if (_meetsReach(required, _personhoodTier(account))) {
             return 0;
         }
         return _priceValidatedName(bytes(name).length);
+    }
+
+    /// @notice Reads `account`'s dotns-scoped personhood tier from the alias-accounts
+    ///         precompile and translates it into a `PopStatus`.
+    /// @dev Single source of truth so callers cannot read the precompile directly and
+    ///      drift on the status mapping. Tiers are defined incrementally on the
+    ///      precompile side: 0=None, 1=Lite, 2=Full. Anything outside that range
+    ///      collapses to `NoStatus` so a future tier addition fails closed instead of
+    ///      silently being treated as a higher level than it actually is.
+    function _personhoodTier(address account) private view returns (PopStatus) {
+        IPersonhood.PersonhoodInfo memory info = IPersonhood(DotnsConstants.PERSONHOOD)
+            .personhoodStatus(account, DotnsConstants.PERSONHOOD_CONTEXT);
+        if (info.status == 2) return PopStatus.PopFull;
+        if (info.status == 1) return PopStatus.PopLite;
+        return PopStatus.NoStatus;
     }
 
     /// @notice Single canonical "is `userStatus` at reach for `required`?" predicate.

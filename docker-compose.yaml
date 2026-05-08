@@ -15,12 +15,17 @@ services:
       - "8545:8545"
     command:
       - "--node-rpc-url"
-      - "wss://asset-hub-paseo.dotters.network"
+      - "wss://previewnet.substrate.dev/asset-hub"
       - "--rpc-port"
       - "8545"
       - "--rpc-external"
+      # Container is bound to host loopback only (`8545:8545` publishes on
+      # 127.0.0.1 by default with the `host.docker.internal` network mode).
+      # Restrict CORS to local origins so a browser tab on a non-loopback
+      # host cannot drive the local RPC. `forge` / `bun` / `cast` invoke
+      # the RPC server-side and don't need CORS.
       - "--rpc-cors"
-      - "all"
+      - "http://localhost,http://127.0.0.1"
       - "--eth-pruning"
       - "1"
       - "--rpc-max-connections"

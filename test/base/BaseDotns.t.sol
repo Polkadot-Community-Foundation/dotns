@@ -2,7 +2,6 @@
 pragma solidity ^0.8.30;
 
 import {Test} from "forge-std/Test.sol";
-import {stdStorage, StdStorage} from "forge-std/StdStorage.sol";
 
 import {PopRules, IPopRules} from "../../contracts/pop/PopRules.sol";
 import {DotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
@@ -29,6 +28,7 @@ import {DotnsNameEscrow} from "../../contracts/escrow/DotnsNameEscrow.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 import {LabelUtils} from "../../contracts/utils/LabelUtils.sol";
 import {ISystem} from "../../contracts/external/revive/ISystem.sol";
+import {IPersonhood} from "../../contracts/external/IPersonhood.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 // @title BaseDotns
@@ -42,11 +42,6 @@ import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 //      - PopRules: PoP rules and spam-pricing oracle
 //      - DotnsRegistrarController: commit–reveal controller orchestrating registration flow
 abstract contract BaseDotns is Test {
-    using stdStorage for StdStorage;
-
-    // @notice Forge storage helper used to poke `userPopStatus` directly.
-    StdStorage internal stdstorage;
-
     // @notice Test user account: ed.
     address public ed;
 
@@ -267,6 +262,15 @@ abstract contract BaseDotns is Test {
         // Root so existing PoP-flow tests exercise business logic without
         // per-test auth boilerplate; negative-auth tests flip it to false.
         _mockCallerIsRoot(true);
+
+        // Default every account to `None` (NoStatus) on the personhood
+        // precompile. Per-account `_grantPopFull`/`_grantPopLite` calls install
+        // more specific mocks that override this selector-only stub.
+        vm.mockCall(
+            DotnsConstants.PERSONHOOD,
+            abi.encodeWithSelector(IPersonhood.personhoodStatus.selector),
+            abi.encode(IPersonhood.PersonhoodInfo({status: 0, contextAlias: bytes32(0)}))
+        );
     }
 
     // @notice Mocks revive's System precompile callerIsRoot result.
@@ -316,25 +320,40 @@ abstract contract BaseDotns is Test {
         }
     }
 
-    // @notice Writes a PoP tier for `who` directly into the `userPopStatus` mapping.
-    // @dev Pokes storage because production tier assignment will come from a
-    //      pallet precompile, not a user-callable write.
-    function _setUserPopStatus(address who, IPopRules.PopStatus status) internal {
-        stdstorage.target(address(popRules)).sig("userPopStatus(address)").with_key(who)
-            .checked_write(uint256(status));
+    // @notice Mocks the personhood precompile so it returns `tier` for `who`
+    //         under the dotns context.
+    // @dev Single source of truth for tier mocking. Tier numbering matches
+    //      {IPersonhood}: 0=None, 1=Lite, 2=Full. `contextAlias` is non-zero
+    //      whenever `tier != 0` so callers that read it (cross-context
+    //      identity tests) still see a deterministic value.
+    function _setUserPopStatus(address who, IPopRules.PopStatus tier) internal {
+        uint8 status;
+        if (tier == IPopRules.PopStatus.PopFull) status = 2;
+        else if (tier == IPopRules.PopStatus.PopLite) status = 1;
+        // PopStatus.Reserved is a label classification, never a user tier; map
+        // anything else to None.
+
+        bytes32 contextAlias = status == 0 ? bytes32(0) : keccak256(abi.encode(who, status));
+        vm.mockCall(
+            DotnsConstants.PERSONHOOD,
+            abi.encodeWithSelector(
+                IPersonhood.personhoodStatus.selector, who, DotnsConstants.PERSONHOOD_CONTEXT
+            ),
+            abi.encode(IPersonhood.PersonhoodInfo({status: status, contextAlias: contextAlias}))
+        );
     }
 
-    // @notice Grants PopFull status to `who` on the PoP rules oracle.
+    // @notice Grants PopFull status to `who` via the personhood precompile mock.
     function _grantPopFull(address who) internal {
         _setUserPopStatus(who, IPopRules.PopStatus.PopFull);
     }
 
-    // @notice Grants PopLite status to `who` on the PoP rules oracle.
+    // @notice Grants PopLite status to `who` via the personhood precompile mock.
     function _grantPopLite(address who) internal {
         _setUserPopStatus(who, IPopRules.PopStatus.PopLite);
     }
 
-    // @notice Grants NoStatus (default) to `who` on the PoP rules oracle.
+    // @notice Resets `who` back to `None` on the personhood precompile mock.
     function _grantNoStatus(address who) internal {
         _setUserPopStatus(who, IPopRules.PopStatus.NoStatus);
     }

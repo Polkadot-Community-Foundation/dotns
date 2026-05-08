@@ -9,6 +9,8 @@ import {
 import {DotnsRegistrar} from "../../../contracts/registrars/DotnsRegistrar.sol";
 import {DotnsNameEscrow, IDotnsNameEscrow} from "../../../contracts/escrow/DotnsNameEscrow.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
+import {IPersonhood} from "../../../contracts/external/IPersonhood.sol";
+import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 
 /// @title Escrow Handler
 /// @notice Handler contract that executes bounded random actions against the escrow.
@@ -122,8 +124,7 @@ contract EscrowHandler is Test {
         address actor = actors[actorSeed % actors.length];
         string memory label = _generateUniqueLabel();
 
-        vm.prank(actor);
-        popRules.setUserPopStatus(IPopRules.PopStatus.NoStatus);
+        _mockPersonhoodTier(actor, IPopRules.PopStatus.NoStatus);
 
         bytes32 secret = keccak256(abi.encodePacked(label, actor, block.timestamp, labelNonce));
 
@@ -187,25 +188,17 @@ contract EscrowHandler is Test {
         // 2 = elevate owner to PopLite, 3 = elevate both (no fee differential).
         uint256 mode = bound(statusSeed, 0, 3);
         if (mode == 0) {
-            vm.prank(payer);
-            popRules.setUserPopStatus(IPopRules.PopStatus.NoStatus);
-            vm.prank(ownerAddr);
-            popRules.setUserPopStatus(IPopRules.PopStatus.NoStatus);
+            _mockPersonhoodTier(payer, IPopRules.PopStatus.NoStatus);
+            _mockPersonhoodTier(ownerAddr, IPopRules.PopStatus.NoStatus);
         } else if (mode == 1) {
-            vm.prank(payer);
-            popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
-            vm.prank(ownerAddr);
-            popRules.setUserPopStatus(IPopRules.PopStatus.NoStatus);
+            _mockPersonhoodTier(payer, IPopRules.PopStatus.PopFull);
+            _mockPersonhoodTier(ownerAddr, IPopRules.PopStatus.NoStatus);
         } else if (mode == 2) {
-            vm.prank(payer);
-            popRules.setUserPopStatus(IPopRules.PopStatus.NoStatus);
-            vm.prank(ownerAddr);
-            popRules.setUserPopStatus(IPopRules.PopStatus.PopLite);
+            _mockPersonhoodTier(payer, IPopRules.PopStatus.NoStatus);
+            _mockPersonhoodTier(ownerAddr, IPopRules.PopStatus.PopLite);
         } else if (mode == 3) {
-            vm.prank(payer);
-            popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
-            vm.prank(ownerAddr);
-            popRules.setUserPopStatus(IPopRules.PopStatus.PopFull);
+            _mockPersonhoodTier(payer, IPopRules.PopStatus.PopFull);
+            _mockPersonhoodTier(ownerAddr, IPopRules.PopStatus.PopFull);
         }
 
         string memory label = _generateUniqueLabel();
@@ -392,8 +385,24 @@ contract EscrowHandler is Test {
         address actor = actors[actorSeed % actors.length];
         uint256 status = bound(statusSeed, 0, 2);
 
-        vm.prank(actor);
-        popRules.setUserPopStatus(IPopRules.PopStatus(status));
+        _mockPersonhoodTier(actor, IPopRules.PopStatus(status));
+    }
+
+    // @notice Mocks the personhood precompile so it reports `tier` for `account`.
+    function _mockPersonhoodTier(address account, IPopRules.PopStatus tier) internal {
+        uint8 statusByte;
+        if (tier == IPopRules.PopStatus.PopFull) statusByte = 2;
+        else if (tier == IPopRules.PopStatus.PopLite) statusByte = 1;
+
+        bytes32 contextAlias =
+            statusByte == 0 ? bytes32(0) : keccak256(abi.encode(account, statusByte));
+        vm.mockCall(
+            DotnsConstants.PERSONHOOD,
+            abi.encodeWithSelector(
+                IPersonhood.personhoodStatus.selector, account, DotnsConstants.PERSONHOOD_CONTEXT
+            ),
+            abi.encode(IPersonhood.PersonhoodInfo({status: statusByte, contextAlias: contextAlias}))
+        );
     }
 
     /// @notice Re-registers a withdrawn (reclaim-ready) name with a (possibly different) actor.

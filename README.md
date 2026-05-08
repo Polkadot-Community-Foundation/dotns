@@ -90,6 +90,8 @@ Subnames are created by the base-name owner. A subname carries its own `(owner, 
 
 PoP-aware name classification and pricing. Classifies a label into one of four tiers: `NoStatus` (long labels with trailing digits, open to anyone), `PopLite` (short labels with trailing digits, requires lite-person verification), `PopFull` (labels without trailing digits, requires full-person verification), and `Reserved` (short labels governed by the protocol). The classification determines the price and the eligibility gate the commit-reveal controller enforces.
 
+Tier assignment is read on every pricing call, not stored: `PopRules` queries the alias-accounts personhood precompile at `DotnsConstants.PERSONHOOD` with the dotns context (`bytes32("dotns")`), and translates the returned `status` byte into a `PopStatus` (0=NoStatus, 1=PopLite, 2=PopFull). Unknown tier bytes collapse to `NoStatus`, so a future precompile addition fails closed rather than silently being treated as a higher tier. There is no on-chain self-attestation; users obtain personhood off-chain through the People-chain ring proof and the alias-accounts pallet propagates the result via XCM.
+
 PopRules also holds the cross-flow reservation table for base names. Two write paths share one mapping keyed by the bare stem. The first, `reserveBaseName`, is called by the commit-reveal controller during a lite registration: it classifies the incoming label, strips the trailing digits, and writes the bare stem. The second, `reserveBaseNameForPop`, is called by the PoP controller on every reservation-queue head transition: it takes a bare stem directly and reverts when the slot is held by a different user, so the caller's local queue bookkeeping never silently diverges from the PopRules state.
 
 Two read paths, `priceWithCheck` and `priceWithoutCheck`, are what the public flow consults. Both strip trailing digits before looking up the reservation, so any live entry on a bare stem blocks registrations of any variant under that stem for the reservation window (12 weeks by default).
@@ -130,19 +132,19 @@ Stores are the per-user storage layer. They exist because two query paths the re
 
 ### Deployments
 
-Paseo Asset Hub (chainId `420420417`):
+Paseo Asset Hub (chainId `x`):
 
 | Contract                 | Address                                    |
 | ------------------------ | ------------------------------------------ |
-| DotnsProtocolRegistry    | 0xF8531342444fAC0A75719130eECcf45314584EFe |
-| StoreFactory             | 0x030296782F4d3046B080BcB017f01837561D9702 |
-| DotnsRegistrar           | 0x329aAA5b6bEa94E750b2dacBa74Bf41291E6c2BD |
-| DotnsReverseResolver     | 0x95D57363B491CF743970c640fe419541386ac8BF |
-| DotnsRegistry            | 0x4Da0d37aBe96C06ab19963F31ca2DC0412057a6f |
-| DotnsContentResolver     | 0x7756DF72CBc7f062e7403cD59e45fBc78bed1cD7 |
-| DotnsResolver            | 0x95645C7fD0fF38790647FE13F87Eb11c1DCc8514 |
-| PopRules                 | 0x4e8920B1E69d0cEA9b23CBFC87A17Ee6fE02d2d3 |
-| DotnsRegistrarController | 0xd09e0F1c1E6CE8Cf40df929ef4FC778629573651 |
+| DotnsProtocolRegistry    | x |
+| StoreFactory             | x |
+| DotnsRegistrar           | x |
+| DotnsReverseResolver     | x |
+| DotnsRegistry            | x |
+| DotnsContentResolver     | x |
+| DotnsResolver            | x |
+| PopRules                 | x |
+| DotnsRegistrarController | x |
 
 ### Mental model for new features
 

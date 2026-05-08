@@ -1,5 +1,15 @@
 name: 4naly3er Analysis
 
+# SECURITY ATTENTION
+# This workflow uses `pull_request_target` for the on-close cleanup job
+# only. `pull_request_target` runs in the BASE branch's workflow context
+# with repository secrets and a write-scoped GITHUB_TOKEN. The cleanup
+# job is gated on `github.event.action == 'closed'` and does NOT check
+# out PR-head code, so no untrusted code executes under that context.
+#
+# Adding other `pull_request_target` event types or any step that
+# checks out PR-head code under that trigger would let a malicious PR
+# exfiltrate repo secrets. Re-review carefully if widened.
 on:
   pull_request:
     branches: [main, develop]
@@ -155,12 +165,12 @@ jobs:
               existingDetails[section] = `<details>\n<summary><strong>${section}</strong></summary>\n\n${details}\n\n[View full report](${reportUrl}) | [View logs](https://github.com/${repoFull}/actions/runs/${runId})\n\n</details>`;
             } else { delete existingDetails[section]; }
 
-            const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Gas Report', 'Coverage', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
+            const order = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests (Unit + Fuzz)', 'Contract Tests (Invariant)', 'Gas Report', 'Coverage', 'Documentation', 'Format & Lint', 'Deploy Contracts', 'PR Title', 'Labels'];
             const sortedKeys = Object.keys(rows).sort((a, b) => (order.indexOf(a) === -1 ? 999 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 999 : order.indexOf(b)));
             let table = `| Check | Result |\n|:------|:-------|\n`;
             for (const key of sortedKeys) table += `| ${key} | ${rows[key]} |\n`;
 
-            const detailsOrder = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests', 'Gas Report', 'Coverage'];
+            const detailsOrder = ['4naly3er Analysis', 'Slither Analysis', 'Contract Tests (Unit + Fuzz)', 'Contract Tests (Invariant)', 'Gas Report', 'Coverage'];
             const sortedDetails = Object.keys(existingDetails).sort((a, b) => (detailsOrder.indexOf(a) === -1 ? 999 : detailsOrder.indexOf(a)) - (detailsOrder.indexOf(b) === -1 ? 999 : detailsOrder.indexOf(b)));
             let body = `${marker}\n## CI Summary\n\n${table}`;
             if (sortedDetails.length > 0) body += `\n${detailsMarker}\n\n---\n\n${sortedDetails.map(k => existingDetails[k]).join('\n\n')}`;
