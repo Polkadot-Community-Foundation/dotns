@@ -143,7 +143,7 @@ Stores are the per-user storage layer. They exist because two query paths the re
 
 ### Deployments
 
-Paseo Asset Hub (chainId `420420417`). Source of truth: [`deployments/paseo-assethub/420420417.json`](deployments/paseo-assethub/420420417.json).
+Paseo Asset Hub Previewnet
 
 | Contract                 | Address                                      |
 | ------------------------ | -------------------------------------------- |
@@ -161,6 +161,26 @@ Paseo Asset Hub (chainId `420420417`). Source of truth: [`deployments/paseo-asse
 | StoreFactory             | `0x9C38DFec452391696a8f0D3daFE71F7Eb29e08f8` |
 | LabelStoreBeacon         | `0x6B609A89Fec9898B441E17f1618670bdD08c437e` |
 | UserStoreBeacon          | `0xbeb79e8BB2bC610822e8748e5439B9D890d88FF5` |
+
+
+Paseo Asset Hub Next V2
+
+| Contract                 | Address                                      |
+| ------------------------ | -------------------------------------------- |
+| DotnsProtocolRegistry    | `0xA8988eA083174ea94Ed1D686f0F073a10f65598D` |
+| DotnsRegistrar           | `0xE67B22B285912FFfaE23BdfAc8C80c779d99B3e0` |
+| DotnsRegistry            | `0xDeFE1AAE21eC2455bd04b213a51C16d4b426c7ef` |
+| DotnsRegistrarController | `0x8403e49Ec12F4EA5788f7bc0C0c2F649205774cC` |
+| DotnsPopController       | `0x2E46D6912c12D7FBE6e41cB5c5c8B33A370E4fbC` |
+| PopRules                 | `0xd3F059FA65dA566B294b5d755a06054d4bE7ce7C` |
+| DotnsResolver            | `0xB436A271Beff1DBa6abDf2dbCc7E6d723d505EE6` |
+| DotnsReverseResolver     | `0x4Ca32Dd0233D8c1B1709e20D9E4edBF2a77D21c3` |
+| DotnsContentResolver     | `0xBcFa907Ff85dFc62a21b41d48F23D7A73aC42914` |
+| DotnsPopResolver         | `0x1d160244A1C1dEc11369c52A0497f2dcDa4B27A1` |
+| DotnsNameEscrow          | `0xD8D2aDC9cF9Ac67D1D5ab2870701DB7a5b1a5234` |
+| StoreFactory             | `0x4f1885fB6e0b154dCf9C2A8661e578B94aD50775` |
+| LabelStoreBeacon         | `0xF927646CEdE13e0a374596726bCf7e1054958935` |
+| UserStoreBeacon          | `0x7A4aBD9A9923c4d42993360620108E5775EF1d73` |
 
 ### Mental model for new features
 

@@ -91,6 +91,9 @@ common=(
   --password "$WALLET_PASSWORD"
   --sender "$SENDER"
   --broadcast
+  --slow
+  --legacy
+  --gas-estimate-multiplier 10000
   -vvvvv
 )
 
