@@ -3,12 +3,7 @@ pragma solidity ^0.8.30;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {
-    OwnableUpgradeable
-} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import {
-    ERC165Upgradeable
-} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
+import {DotnsRoleManager} from "../access/DotnsRoleManager.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
@@ -39,8 +34,7 @@ import {StoreUtils} from "../utils/StoreUtils.sol";
 contract DotnsRegistrarController is
     Initializable,
     UUPSUpgradeable,
-    OwnableUpgradeable,
-    ERC165Upgradeable,
+    DotnsRoleManager,
     ReentrancyGuardTransient,
     IDotnsRegistrarController
 {
@@ -84,6 +78,11 @@ contract DotnsRegistrarController is
         _;
     }
 
+    modifier onlyWhitelistOperatorOrOwner() {
+        _checkRoleOrOwner(DotnsConstants.WHITELIST_OPERATOR_ROLE);
+        _;
+    }
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -104,7 +103,7 @@ contract DotnsRegistrarController is
         initializer
     {
         __Ownable_init(msg.sender);
-        __ERC165_init();
+        _dotnsRoleManagerInit();
 
         require(maxAge > minAge, MaxCommitmentAgeTooLow());
         require(maxAge <= MAX_ALLOWED_COMMITMENT_AGE, MaxCommitmentAgeTooHigh());
@@ -279,7 +278,14 @@ contract DotnsRegistrarController is
     }
 
     /// @inheritdoc IDotnsRegistrarController
-    function whiteListAddress(address who, bool whiteListStatus) external override onlyOwner {
+    function whiteListAddress(
+        address who,
+        bool whiteListStatus
+    )
+        external
+        override
+        onlyWhitelistOperatorOrOwner
+    {
         whiteList[who] = whiteListStatus;
         emit WhiteListed(who, whiteListStatus);
     }
@@ -297,11 +303,11 @@ contract DotnsRegistrarController is
         _completeRegistration(registration, labelhash, node, 0, true, false);
     }
 
-    /// @inheritdoc ERC165Upgradeable
+    /// @inheritdoc IERC165
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(ERC165Upgradeable, IERC165)
+        override(DotnsRoleManager, IERC165)
         returns (bool)
     {
         return interfaceId == type(IDotnsRegistrarController).interfaceId
@@ -427,6 +433,10 @@ contract DotnsRegistrarController is
     function _onlyRegistry() internal view {
         address registry = protocolRegistry.get(DotnsConstants.REGISTRY);
         require(msg.sender == registry, NotRegistry());
+    }
+
+    function _isSupportedRole(bytes32 role) internal view override returns (bool supported) {
+        return role == DotnsConstants.WHITELIST_OPERATOR_ROLE;
     }
 
     /// @inheritdoc UUPSUpgradeable

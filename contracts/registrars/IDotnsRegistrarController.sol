@@ -146,7 +146,8 @@ interface IDotnsRegistrarController is IDotnsController {
     function isWhiteListed(address who) external view returns (bool isWhiteListed);
 
     /// @notice Adds or removes an address from the whitelist for `registerReserved`.
-    /// @custom:reverts OwnableUnauthorizedAccount
+    /// @dev Callable by the owner or an account holding `DotnsConstants.WHITELIST_OPERATOR_ROLE`.
+    /// @custom:contract IDotnsRoleManager.NotRoleOrOwner
     /// @custom:emits WhiteListed
     function whiteListAddress(address who, bool whiteListStatus) external;
 }

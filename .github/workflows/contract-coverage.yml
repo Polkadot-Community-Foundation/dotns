@@ -58,6 +58,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
       - run: bun install
 
       - name: Build contracts

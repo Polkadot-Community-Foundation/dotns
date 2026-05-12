@@ -44,10 +44,10 @@ jobs:
         kind:
           - id: unit-fuzz
             label: Contract Tests (Unit + Fuzz)
-            forge_args: --no-match-contract Invariant
+            forge_args: --no-match-contract Invariant --no-match-path 'test/fork/**'
           - id: invariant
             label: Contract Tests (Invariant)
-            forge_args: --match-contract Invariant
+            forge_args: --match-contract Invariant --no-match-path 'test/fork/**'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -75,6 +75,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
 
       - run: bun install
 

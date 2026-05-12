@@ -47,6 +47,11 @@ library DotnsConstants {
     ///      against a new constant.
     uint256 internal constant RENT_PRICE = 10 ether;
 
+    /// @notice Operational role allowed to manage the public controller whitelist.
+    /// @dev Holders can grant or revoke whitelist entries, but cannot upgrade contracts
+    ///      or change protocol configuration.
+    bytes32 internal constant WHITELIST_OPERATOR_ROLE = keccak256("DOTNS_WHITELIST_OPERATOR_ROLE");
+
     /// @notice Well-known key for the ERC721 registrar backing name ownership.
     /// @dev Role: token-of-record for `.dot` names. Mints, burns, and tracks the
     ///      `tokenId => label` mapping consumed by the forward registry on

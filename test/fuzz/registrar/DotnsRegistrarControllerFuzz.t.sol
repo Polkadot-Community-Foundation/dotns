@@ -3,8 +3,40 @@ pragma solidity ^0.8.30;
 
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
+import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
+import {
+    OwnableUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 contract DotnsRegistrarControllerFuzzTest is BaseDotns {
+    function testFuzz_owner_setrole_matches_hasrole(address account, bool enabled) public {
+        vm.assume(account != address(0));
+
+        vm.prank(owner);
+        dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, enabled);
+
+        assertEq(
+            dotnsRegistrarController.hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account),
+            enabled
+        );
+    }
+
+    function testFuzz_non_owner_cannot_setrole(
+        address caller,
+        address account,
+        bool enabled
+    )
+        public
+    {
+        vm.assume(caller != owner);
+
+        vm.prank(caller);
+        vm.expectRevert(
+            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, caller)
+        );
+        dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, enabled);
+    }
+
     function testFuzz_register_refunds_overpayment(uint256 extra, uint256 salt) public {
         address registrant = ed;
         string memory nameLabel = _labelNoStatusPriced(bound(salt, 0, 64));

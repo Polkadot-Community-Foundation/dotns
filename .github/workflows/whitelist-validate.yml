@@ -2,7 +2,7 @@ name: Validate Whitelist Request
 
 on:
   issues:
-    types: [opened]
+    types: [opened, edited]
 
 permissions:
   contents: read
@@ -14,32 +14,64 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SUBSTRATE_RPC_URL: "wss://asset-hub-paseo-rpc.n.dwellir.com"
+      MAX_INVALID_WHITELIST_ATTEMPTS: "3"
 
     steps:
-      - name: Extract address from issue body
+      - name: Load CODEOWNERS reviewers
+        id: codeowners
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { data } = await github.rest.repos.getContent({
+              owner,
+              repo,
+              path: ".github/CODEOWNERS",
+              ref: context.payload.repository.default_branch,
+            });
+            const content = Buffer.from(data.content, data.encoding || "base64").toString("utf8");
+            const mentions = [...new Set(content.match(/@[A-Za-z0-9-]+(?:\/[A-Za-z0-9_.-]+)?/g) || [])];
+            core.setOutput("mentions", mentions.join(" "));
+
+      - name: Extract request fields
         id: extract
         uses: actions/github-script@v7
         with:
           script: |
             const body = context.payload.issue.body || "";
-            const addressMatch = body.match(/### Address\s*\n\s*(.+)/);
-            const typeMatch = body.match(/### Address Type\s*\n\s*(.+)/);
 
-            if (!addressMatch) {
-              core.setFailed("Could not extract address from issue body");
-              return;
+            function field(name) {
+              const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const match = body.match(new RegExp(`### ${escaped}\\s*\\n([\\s\\S]*?)(?=\\n### |$)`));
+              return match ? match[1].trim() : "";
             }
 
-            const address = addressMatch[1].trim();
-            const addressType = typeMatch ? typeMatch[1].trim() : "";
+            const address = field("Address").split("\n")[0].trim();
+            const addressType = field("Address Type").split("\n")[0].trim();
+            const description = field("Description").trim();
+            const missing = [];
+
+            if (!address) missing.push("Address");
+            if (!["EVM (H160)", "Substrate (SS58)"].includes(addressType)) {
+              missing.push("Address Type");
+            }
+            if (description.length < 30) {
+              missing.push("Description (at least 30 characters explaining why the bypass is needed)");
+            }
+
             core.setOutput("address", address);
             core.setOutput("address_type", addressType);
+            core.setOutput("description", description);
+            core.setOutput("fields_ok", missing.length === 0 ? "true" : "false");
+            core.setOutput("missing_fields", missing.join(", "));
 
       - name: Install dotns CLI
+        if: steps.extract.outputs.fields_ok == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: |
+      - if: steps.extract.outputs.fields_ok == 'true'
+        run: |
           TAG=$(gh release list --repo paritytech/dotns-sdk --limit 1 --json tagName --jq '.[0].tagName')
           gh release download "$TAG" --repo paritytech/dotns-sdk --pattern '*.tgz' --dir /tmp/dotns-cli
           npm install -g /tmp/dotns-cli/*.tgz
@@ -47,6 +79,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - name: Check account mapped
+        if: steps.extract.outputs.fields_ok == 'true'
         id: validate
         env:
           ADDRESS: ${{ steps.extract.outputs.address }}
@@ -77,6 +110,8 @@ jobs:
         env:
           ADDRESS: ${{ steps.extract.outputs.address }}
           ADDRESS_TYPE: ${{ steps.extract.outputs.address_type }}
+          FIELDS_OK: ${{ steps.extract.outputs.fields_ok }}
+          MISSING_FIELDS: ${{ steps.extract.outputs.missing_fields }}
           VALID: ${{ steps.validate.outputs.valid }}
           ADDR_TYPE: ${{ steps.validate.outputs.type }}
           IS_MAPPED: ${{ steps.validate.outputs.is_mapped }}
@@ -86,14 +121,18 @@ jobs:
           script: |
             const address = process.env.ADDRESS;
             const selectedType = process.env.ADDRESS_TYPE;
-            const valid = process.env.VALID === "true";
+            const fieldsOk = process.env.FIELDS_OK === "true";
+            const valid = fieldsOk && process.env.VALID === "true";
             const type = process.env.ADDR_TYPE;
             const isMapped = process.env.IS_MAPPED === "true";
             const evmMapped = process.env.EVM_MAPPED || "";
+            const missingFields = process.env.MISSING_FIELDS || "";
 
             let message = "";
 
-            if (!valid) {
+            if (!fieldsOk) {
+              message = `This whitelist request is incomplete or unclear.\n\n**Needs:** ${missingFields}`;
+            } else if (!valid) {
               message = `\`${address}\` is not a valid EVM or Substrate address.`;
             } else if (type === "evm") {
               if (selectedType && selectedType.includes("SS58")) {
@@ -123,19 +162,32 @@ jobs:
           MESSAGE: ${{ steps.message.outputs.message }}
           ADDR_TYPE: ${{ steps.validate.outputs.type }}
           IS_MAPPED: ${{ steps.validate.outputs.is_mapped }}
+          MAX_ATTEMPTS: ${{ env.MAX_INVALID_WHITELIST_ATTEMPTS }}
+          REVIEWERS: ${{ steps.codeowners.outputs.mentions }}
         with:
           script: |
             const marker = "<!-- dotns-whitelist-bot -->";
+            const invalidMarker = "<!-- dotns-whitelist-invalid-attempt -->";
             const valid = process.env.VALID === "true";
             const message = process.env.MESSAGE.replace(/%0A/g, "\n");
             const type = process.env.ADDR_TYPE;
             const isMapped = process.env.IS_MAPPED === "true";
             const author = context.payload.issue.user.login;
+            const maxAttempts = Number(process.env.MAX_ATTEMPTS || "3");
+            const reviewers = process.env.REVIEWERS;
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.issue.number;
+            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const previousInvalidAttempts = comments.filter(c => c.body && c.body.includes(invalidMarker)).length;
+            const invalidAttempts = valid ? previousInvalidAttempts : previousInvalidAttempts + 1;
+            const closeIssue = !valid && invalidAttempts >= maxAttempts;
 
             const status = valid ? "Valid" : "Invalid";
 
             const lines = [
               marker,
+              valid ? "" : invalidMarker,
               `### Address Validation — ${status}`,
               "",
               message,
@@ -157,6 +209,16 @@ jobs:
 
             if (valid) {
               lines.push("This address is ready for whitelisting. A maintainer will review and apply the `whitelist-approved` label to proceed.");
+            } else {
+              lines.push(`Attempt ${invalidAttempts} of ${maxAttempts}.`);
+              lines.push("");
+              lines.push("Please update the issue body with a valid EVM or Substrate address, the matching address type, and a clear description of why the PoP bypass is needed.");
+            }
+
+            if (closeIssue) {
+              lines.push("");
+              lines.push(`This request has reached ${maxAttempts} invalid attempts, so it is being closed for review.`);
+              lines.push(`cc ${reviewers}`);
             }
 
             lines.push("");
@@ -169,11 +231,10 @@ jobs:
 
             const body = lines.join("\n");
 
-            const { owner, repo } = context.repo;
             await github.rest.issues.createComment({
               owner,
               repo,
-              issue_number: context.payload.issue.number,
+              issue_number,
               body,
             });
 
@@ -181,7 +242,17 @@ jobs:
               await github.rest.issues.addLabels({
                 owner,
                 repo,
-                issue_number: context.payload.issue.number,
-                labels: ["needs-info"],
+                issue_number,
+                labels: closeIssue ? ["needs-info", "needs-review"] : ["needs-info"],
               });
+            } else {
+              try {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number, name: "needs-info" });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+            }
+
+            if (closeIssue) {
+              await github.rest.issues.update({ owner, repo, issue_number, state: "closed" });
             }

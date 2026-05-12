@@ -5,6 +5,8 @@ import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
+import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
+import {IDotnsRoleManager} from "../../../contracts/access/IDotnsRoleManager.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {
     OwnableUpgradeable
@@ -211,12 +213,80 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         dotnsRegistrarController.registerReserved(registration);
     }
 
-    function test_whitelistaddress_reverts_non_owner() public {
+    function test_whitelistaddress_reverts_without_owner_or_operator() public {
+        vm.prank(ed);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IDotnsRoleManager.NotRoleOrOwner.selector,
+                ed,
+                DotnsConstants.WHITELIST_OPERATOR_ROLE
+            )
+        );
+        dotnsRegistrarController.whiteListAddress(ed, true);
+    }
+
+    function test_owner_can_grant_and_revoke_whitelist_operator() public {
+        vm.startPrank(owner);
+        dotnsRegistrarController.grantRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, leonardo);
+        assertTrue(
+            dotnsRegistrarController.hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, leonardo)
+        );
+
+        dotnsRegistrarController.revokeRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, leonardo);
+        vm.stopPrank();
+
+        assertFalse(
+            dotnsRegistrarController.hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, leonardo)
+        );
+    }
+
+    function test_whitelist_operator_can_whitelist_address() public {
+        _grantWhitelistOperator(leonardo);
+
+        vm.prank(leonardo);
+        dotnsRegistrarController.whiteListAddress(ed, true);
+
+        assertTrue(dotnsRegistrarController.isWhiteListed(ed));
+    }
+
+    function test_setrole_reverts_for_zero_address() public {
+        vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsRoleManager.InvalidRoleAccount.selector, address(0))
+        );
+        dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, address(0), true);
+    }
+
+    function test_setrole_reverts_for_unsupported_role() public {
+        bytes32 unsupportedRole = keccak256("DOTNS_UNSUPPORTED_ROLE");
+
+        vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsRoleManager.UnsupportedRole.selector, unsupportedRole)
+        );
+        dotnsRegistrarController.setRole(unsupportedRole, leonardo, true);
+    }
+
+    function test_non_owner_cannot_grant_role() public {
         vm.prank(ed);
         vm.expectRevert(
             abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, ed)
         );
-        dotnsRegistrarController.whiteListAddress(ed, true);
+        dotnsRegistrarController.grantRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, leonardo);
+    }
+
+    function test_non_owner_cannot_revoke_role() public {
+        _grantWhitelistOperator(leonardo);
+
+        vm.prank(ed);
+        vm.expectRevert(
+            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, ed)
+        );
+        dotnsRegistrarController.revokeRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, leonardo);
+    }
+
+    function test_supports_idotnsrolemanager_interface() public view {
+        assertTrue(dotnsRegistrarController.supportsInterface(type(IDotnsRoleManager).interfaceId));
     }
 
     function test_whitelisted_can_register_reserved() public {

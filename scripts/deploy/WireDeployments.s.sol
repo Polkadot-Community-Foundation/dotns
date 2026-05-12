@@ -31,6 +31,10 @@ import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 ///      registry key, and controller authorisation for each proxy.
 /// @custom:security-contact admin@parity.io
 contract WireDeployments is BaseDeployer {
+    /// @notice Environment variable containing the address that receives
+    ///         `WHITELIST_OPERATOR_ROLE` during deployment wire-up.
+    string internal constant WHITELIST_OPERATOR_ENV = "WHITELIST_OPERATOR";
+
     struct Addresses {
         address storeFactory;
         address registrar;
@@ -49,6 +53,8 @@ contract WireDeployments is BaseDeployer {
     function run() external {
         address owner = msg.sender;
         vm.label(owner, "OWNER");
+        address whitelistOperator = vm.envAddress(WHITELIST_OPERATOR_ENV);
+        vm.label(whitelistOperator, "WHITELIST_OPERATOR");
 
         initDeployment(DeploymentNetwork.folder(block.chainid), vm.toString(block.chainid));
 
@@ -56,7 +62,8 @@ contract WireDeployments is BaseDeployer {
 
         _authoriseControllers(owner, addr);
         _wireProtocolRegistryKeys(owner, addr);
-        _verifyDeployment(addr, owner);
+        _bootstrapWhitelistOperator(owner, addr, whitelistOperator);
+        _verifyDeployment(addr, owner, whitelistOperator);
 
         saveDeployments();
 
@@ -105,7 +112,28 @@ contract WireDeployments is BaseDeployer {
         console.log("Protocol registry keys set");
     }
 
-    function _verifyDeployment(Addresses memory addr, address expectedOwner) internal view {
+    function _bootstrapWhitelistOperator(
+        address owner,
+        Addresses memory addr,
+        address whitelistOperator
+    )
+        internal
+    {
+        vm.startBroadcast(owner);
+        DotnsRegistrarController(addr.registrarController)
+            .setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator, true);
+        vm.stopBroadcast();
+        console.log("Whitelist operator role granted to", whitelistOperator);
+    }
+
+    function _verifyDeployment(
+        Addresses memory addr,
+        address expectedOwner,
+        address whitelistOperator
+    )
+        internal
+        view
+    {
         require(DotnsRegistrar(addr.registrar).owner() == expectedOwner, "Registrar: wrong owner");
         require(
             DotnsRegistrarController(addr.registrarController).owner() == expectedOwner,
@@ -170,6 +198,11 @@ contract WireDeployments is BaseDeployer {
         require(
             DotnsRegistrar(addr.registrar).controllers(IDotnsController(addr.popController)),
             "PopController: not authorised"
+        );
+        require(
+            DotnsRegistrarController(addr.registrarController)
+                .hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator),
+            "WhitelistOperator: role not granted"
         );
 
         console.log("=== Deployment verification complete ===");

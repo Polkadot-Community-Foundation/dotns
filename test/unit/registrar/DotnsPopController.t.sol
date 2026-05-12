@@ -33,7 +33,9 @@ contract DotnsPopControllerTests is BaseDotns {
 
     function test_reserveBaseName_reverts_when_origin_is_not_root() public {
         _mockCallerIsRoot(false);
-        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(0)));
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(this))
+        );
         dotnsPopController.reserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
@@ -181,7 +183,9 @@ contract DotnsPopControllerTests is BaseDotns {
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xaa));
 
         _mockCallerIsRoot(false);
-        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(0)));
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(this))
+        );
         dotnsPopController.registerBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_A, user: ed, link: link})
         );
@@ -754,7 +758,11 @@ contract DotnsPopControllerTests is BaseDotns {
         // Even from that origin, the Root-gate must reject the call.
         _mockCallerIsRoot(false);
         vm.prank(address(dotnsRegistrarController));
-        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(0)));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IDotnsPopController.NotGateway.selector, address(dotnsRegistrarController)
+            )
+        );
         dotnsPopController.reserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
@@ -1002,7 +1010,9 @@ contract DotnsPopControllerTests is BaseDotns {
     // controllers on the registrar.
     function test_reserveLiteName_reverts_when_origin_is_not_root() public {
         _mockCallerIsRoot(false);
-        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(0)));
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(this))
+        );
         dotnsPopController.reserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
@@ -1117,7 +1127,9 @@ contract DotnsPopControllerTests is BaseDotns {
         which = uint8(bound(uint256(which), 0, 2));
 
         _mockCallerIsRoot(false);
-        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(0)));
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(this))
+        );
 
         if (which == 0) {
             dotnsPopController.reserveLiteName(

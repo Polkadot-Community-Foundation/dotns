@@ -24,15 +24,32 @@ DotNS is a naming system for Polkadot. An account can register a `.dot` name, re
 
 ## Deployment note
 
+## Local commit checks
+
+The repository ships a pre-commit hook under `.githooks/pre-commit`. `setup.bash`
+installs it by setting `core.hooksPath=.githooks`.
+
+The hook runs `forge fmt` first. If formatting changes any tracked project file, the
+commit stops so the formatted files can be reviewed and staged. It then runs
+`forge build` and fails on compiler warnings from project code. Warnings from
+external dependencies under `lib/` and `node_modules/` are ignored.
+
+To install the hook manually:
+
+```bash
+git config core.hooksPath .githooks
+```
+
 To deploy on Paseo, and to run fork tests, you need a local ETH-RPC adapter.
 
 A `docker-compose` file is provided. It starts the ETH-RPC adapter pointed at the live Paseo Asset Hub endpoint. We route through the adapter rather than the public RPC directly because the adapter is more stable under the traffic pattern a deploy or fork test produces; the public endpoint rate-limits and occasionally stalls, which drops mid-flight transactions and invalidates fork-test state. Anvil is not in the picture here: `forge test` spins up its own in-process EVM for unit, fuzz, and invariant tests, and fork tests run against the adapter, not against a local Anvil chain.
 
-Start the adapter, then prepare a `.env` and run one of the deployment scripts from `package.json`. The deploy script imports the configured `PRIVATE_KEY` into an ephemeral Foundry keystore wallet, runs the multi-stage pipeline against that wallet, and deletes both the wallet and `.env` on exit so no key material persists on disk.
+Start the adapter, then prepare a one-off `.env` and run one of the deployment scripts from `package.json`. The `.env` file is bootstrap input, not long-lived deployment state. The deploy script imports the configured `PRIVATE_KEY` into a Foundry keystore account when that account does not already exist, then runs the multi-stage pipeline with `--account` and `--password`. If the pipeline completes successfully, the script deletes `.env` automatically. If a stage fails, `.env` is left in place so you can correct it and retry.
 
 ```bash
 cp .env.example .env
-# edit .env: set PRIVATE_KEY (and optionally RPC_URL)
+# edit .env: set ACCOUNT_NAME, ACCOUNT_PASSWORD, PRIVATE_KEY,
+# WHITELIST_OPERATOR, and optionally RPC_URL
 ```
 
 ```bash
@@ -45,10 +62,10 @@ bun run deploy:anvil
 bun run deploy:testnet
 ```
 
-For one-off non-interactive runs you can skip `.env` and pass the key inline:
+For later non-interactive runs, reuse the imported Foundry wallet and skip `PRIVATE_KEY`:
 
 ```bash
-PRIVATE_KEY=0x… RPC_URL=paseo bun run deploy
+ACCOUNT_NAME=dotns-deploy ACCOUNT_PASSWORD=... WHITELIST_OPERATOR=0xd908e5a6c88e9263f8fd0756bd0b77916008bb72 RPC_URL=xxxxx bun run deploy:testnet
 ```
 
 The fresh-deploy pipeline is split across five scripts under `scripts/deploy/`, each a separate `forge script` invocation:
@@ -102,6 +119,10 @@ Subnames are created by the base-name owner. A subname carries its own `(owner, 
 PoP-aware name classification and pricing. Classifies a label into one of four tiers: `NoStatus` (long labels with trailing digits, open to anyone), `PopLite` (short labels with trailing digits, requires lite-person verification), `PopFull` (labels without trailing digits, requires full-person verification), and `Reserved` (short labels governed by the protocol). The classification determines the price and the eligibility gate the commit-reveal controller enforces.
 
 Tier assignment is read on every pricing call, not stored: `PopRules` queries the alias-accounts personhood precompile at `DotnsConstants.PERSONHOOD` with the dotns context (`bytes32("dotns")`), and translates the returned `status` byte into a `PopStatus` (0=NoStatus, 1=PopLite, 2=PopFull). Unknown tier bytes collapse to `NoStatus`, so a future precompile addition fails closed rather than silently being treated as a higher tier. There is no on-chain self-attestation; users obtain personhood off-chain through the People-chain ring proof and the alias-accounts pallet propagates the result via XCM.
+
+Whitelisting is the exception path for users or organisations that need to register without satisfying the live PoP tier check. DotNS still does not accept self-attestation: the contracts only consume PoP status from the personhood precompile, and a user cannot set or prove their own status inside DotNS. Instead, the public registrar controller has an owner-managed whitelist for `registerReserved`, which bypasses the PoP pricing gate for approved addresses while still using the normal commit-reveal and availability checks.
+
+To request a whitelist entry, open a `Whitelist Request` issue in this repository. The issue is labelled `whitelist-request` by the template and must include the address, address type, and a clear description of why the PoP bypass is needed. A maintainer can approve the request by applying `whitelist-approved`, after which the workflow checks account mapping and executes the on-chain whitelist transaction. Whitelisting does not register a name, reserve a label, or bypass ownership rules; it only allows the approved address to use the reserved registration path without a PoP status.
 
 PopRules also holds the cross-flow reservation table for base names. Two write paths share one mapping keyed by the bare stem. The first, `reserveBaseName`, is called by the commit-reveal controller during a lite registration: it classifies the incoming label, strips the trailing digits, and writes the bare stem. The second, `reserveBaseNameForPop`, is called by the PoP controller on every reservation-queue head transition: it takes a bare stem directly and reverts when the slot is held by a different user, so the caller's local queue bookkeeping never silently diverges from the PopRules state.
 
@@ -167,20 +188,20 @@ Paseo Asset Hub Next V2
 
 | Contract                 | Address                                      |
 | ------------------------ | -------------------------------------------- |
-| DotnsProtocolRegistry    | `0x805E9FC998E3437e3880555f265B7821D68320fc` |
-| DotnsRegistrar           | `0xAE374b07c7e6f473CBa21d57e36AC15C631Abc51` |
-| DotnsRegistry            | `0x86B83CA91f8BC2293E304EA7e026C0914c68C793` |
-| DotnsRegistrarController | `0xE9BFC10dccd34A7F2563236EA150dd580F339B9C` |
-| DotnsPopController       | `0x5E339f217A4bc68aa9E05fc315f09c0B6b948Ef2` |
-| PopRules                 | `0x26153466b9188a63E24A0bd0C6423E0Aa7DE9bE4` |
-| DotnsResolver            | `0x33575240105e9E5fD623516A1a6bA8A8Ba6937BB` |
-| DotnsReverseResolver     | `0xcD4F9d6F3Fe864DD0a049eAd3d0e80Ad1add8ddE` |
-| DotnsContentResolver     | `0x8eb27f68c2193f8B75673180cE4D3A471707DAC4` |
-| DotnsPopResolver         | `0x2E77DB7b368E5856Af6a4D2930E60d9038e1ae8B` |
-| DotnsNameEscrow          | `0x77839A2Aa737ba2ad8d01b6196F516Ba6971a347` |
-| StoreFactory             | `0x41dD18f9F646dA9B8BADA37D2fc1D6e5160A4Da3` |
-| LabelStoreBeacon         | `0xb1c47De92b2BA48734c61b34318b166FfA2Ba05f` |
-| UserStoreBeacon          | `0x8B75c427De3Db6748960DFf35729E33e166A13e7` |
+| DotnsProtocolRegistry    | `0xf4351Da2b6EEccE747de200B6B4AB4384E924f6b` |
+| DotnsRegistrar           | `0xeD3BC8Abae983b0A22ff6881a9Aa1B83E5Ed3146` |
+| DotnsRegistry            | `0xE81a05fD8294A54C3ef88E30581dD1605B48F1E7` |
+| DotnsRegistrarController | `0xaCa0c0AdB95bFf7F19492aE92a340836252F7daF` |
+| DotnsPopController       | `0x67D1AEe8C9b5cA1e1F04C4175602B31f4747458F` |
+| PopRules                 | `0xac77cf188E5D8d284b1dD3883157bF385228D318` |
+| DotnsResolver            | `0xa3BB5164854704A952b511746DbC30e996d1ef1D` |
+| DotnsReverseResolver     | `0xca96DF0A817e0E410F48Bc9C3240e5cEB2Fc882f` |
+| DotnsContentResolver     | `0x4A320fA9b81f0EE448d6E459e7Cac8DFC6e19862` |
+| DotnsPopResolver         | `0x8d6D30589766A154773Cb507DA173A7E11261A2C` |
+| DotnsNameEscrow          | `0x01c8F1134b4210D0a9CBaF94fC2b9Ebd1f65bA75` |
+| StoreFactory             | `0xdE2a069Aa36d8db00C4F64c3D5f1A1c3a2053EAb` |
+| LabelStoreBeacon         | `0x24E0f5042f2947788A4103B1dbCd6b95e5441919` |
+| UserStoreBeacon          | `0x7254d2Ec682952049947BFd4619B05C6e74664a2` |
 
 ### Mental model for new features
 

@@ -102,7 +102,17 @@ check_missing_files(){
   fi
 }
 
+install_git_hooks(){
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "Installing git hooks..."
+    git config core.hooksPath .githooks
+    chmod +x .githooks/pre-commit scripts/shell/pre-commit.sh
+    echo "  ✓ core.hooksPath=.githooks"
+  fi
+}
+
 init_submodules
 apply_dependency_patches
 check_missing_files
+install_git_hooks
 echo "Setup complete!"

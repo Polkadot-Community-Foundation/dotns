@@ -1,25 +1,35 @@
 #!/usr/bin/env bash
 #
-# Runs the multi-stage DotNS deploy pipeline against an ephemeral
-# Foundry keystore wallet built from `.env`, then deletes both the
-# wallet and `.env` on exit so no key material persists on disk.
+# Runs the multi-stage DotNS deploy pipeline against a Foundry keystore
+# wallet. `.env` is a one-off bootstrap file: it can provide PRIVATE_KEY
+# once to import the wallet; later runs use the saved ACCOUNT_NAME and
+# ACCOUNT_PASSWORD. A successful run deletes `.env`; a failed run leaves it
+# in place for correction and retry.
 #
 # Local usage:
 #   1. cp .env.example .env
-#   2. set PRIVATE_KEY (and optionally RPC_URL) in .env
+#   2. set PRIVATE_KEY, ACCOUNT_NAME, ACCOUNT_PASSWORD, and WHITELIST_OPERATOR
+#      in .env
 #   3. bun run deploy   (or ./scripts/deploy/run.sh)
+#   4. on success, the script deletes .env automatically
 #
 # CI / scripted usage (no `.env`):
-#   PRIVATE_KEY=0x... ./scripts/deploy/run.sh '--slow'
+#   PRIVATE_KEY=0x... ACCOUNT_NAME=dotns-deploy ACCOUNT_PASSWORD=... ./scripts/deploy/run.sh '--slow'
 #
 # Each stage runs as its own `forge script` invocation (therefore its
 # own EVM simulation), so OpenZeppelin's upgrade-safety validator's
 # cumulative memory gas cannot spill across stages.
 #
 # Required env (from `.env` or shell):
-#   PRIVATE_KEY    Hex-encoded deployer private key, with or without 0x.
+#   ACCOUNT_NAME   Foundry keystore account passed to forge as --account.
+#   ACCOUNT_PASSWORD
+#                  Password passed to cast/forge as --password.
+#   WHITELIST_OPERATOR
+#                  Address granted whitelist management permission.
 #
 # Optional env:
+#   PRIVATE_KEY    Hex-encoded deployer private key, with or without 0x.
+#                  Required only when ACCOUNT_NAME has not yet been imported.
 #   RPC_URL        Foundry rpc alias (see [rpc_endpoints] in foundry.toml)
 #                  or full https/wss URL. Defaults to `paseo_local`.
 #   ENV_FILE       Path to env file. Defaults to `.env`.
@@ -38,8 +48,20 @@ if [ -f "$ENV_FILE" ]; then
   set +a
 fi
 
-if [ -z "${PRIVATE_KEY:-}" ]; then
-  echo "PRIVATE_KEY is required (set in $ENV_FILE or as env var)" >&2
+if [ -z "${ACCOUNT_NAME:-}" ]; then
+  echo "ACCOUNT_NAME is required (set in $ENV_FILE or as env var)" >&2
+  echo "see .env.example for the expected shape" >&2
+  exit 1
+fi
+
+if [ -z "${ACCOUNT_PASSWORD:-}" ]; then
+  echo "ACCOUNT_PASSWORD is required (set in $ENV_FILE or as env var)" >&2
+  echo "see .env.example for the expected shape" >&2
+  exit 1
+fi
+
+if [ -z "${WHITELIST_OPERATOR:-}" ]; then
+  echo "WHITELIST_OPERATOR is required (set in $ENV_FILE or as env var)" >&2
   echo "see .env.example for the expected shape" >&2
   exit 1
 fi
@@ -47,48 +69,33 @@ fi
 RPC_URL="${RPC_URL:-paseo_local}"
 extra="${1:-}"
 
-# Ephemeral keystore wallet. Name embeds the shell PID so concurrent
-# runs cannot collide on the same keystore file. Password is a 32-char
-# random string generated below; it lives only in this process's
-# memory and the encrypted keystore on disk for the duration of the
-# run.
-WALLET_NAME="dotns-deploy-$$"
-WALLET_PASSWORD=$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)
 KEYSTORE_DIR="${FOUNDRY_KEYSTORES_DIR:-$HOME/.foundry/keystores}"
-KEYSTORE_PATH="$KEYSTORE_DIR/$WALLET_NAME"
+KEYSTORE_PATH="$KEYSTORE_DIR/$ACCOUNT_NAME"
 
-cleanup() {
-  # Always run, success or fail. Removes both the .env (if present) and
-  # the ephemeral keystore so a deploy run leaves no key material on
-  # disk. CI flows that pass PRIVATE_KEY via shell env (no .env) skip
-  # the .env unlink because the conditional below short-circuits.
-  if [ -f "$ENV_FILE" ]; then
-    rm -f "$ENV_FILE"
+if [ ! -f "$KEYSTORE_PATH" ]; then
+  if [ -z "${PRIVATE_KEY:-}" ]; then
+    echo "PRIVATE_KEY is required once to import missing account '$ACCOUNT_NAME'" >&2
+    echo "after import, remove PRIVATE_KEY from $ENV_FILE and rerun with ACCOUNT_NAME/ACCOUNT_PASSWORD" >&2
+    exit 1
   fi
-  if [ -f "$KEYSTORE_PATH" ]; then
-    rm -f "$KEYSTORE_PATH"
-  fi
-}
-trap cleanup EXIT INT TERM
 
-# Strip 0x prefix if present (cast accepts both, normalise to one shape).
-PK="${PRIVATE_KEY#0x}"
+  # Strip 0x prefix if present. `cast wallet import` accepts both, but one
+  # normalised shell value keeps the command shape predictable.
+  PK="${PRIVATE_KEY#0x}"
 
-cast wallet import "$WALLET_NAME" \
-  --private-key "$PK" \
-  --unsafe-password "$WALLET_PASSWORD" >/dev/null
+  cast wallet import "$ACCOUNT_NAME" \
+    --private-key "$PK" \
+    --unsafe-password "$ACCOUNT_PASSWORD" >/dev/null
 
-SENDER=$(cast wallet address --account "$WALLET_NAME" --password "$WALLET_PASSWORD")
+  unset PK PRIVATE_KEY
+fi
 
-# Wipe the plaintext PK from this shell so a later `set | grep` or stack
-# trace cannot surface it. The keystore is the canonical store now until
-# cleanup deletes it.
-unset PK PRIVATE_KEY
+SENDER=$(cast wallet address --account "$ACCOUNT_NAME" --password "$ACCOUNT_PASSWORD")
 
 common=(
   --rpc-url "$RPC_URL"
-  --account "$WALLET_NAME"
-  --password "$WALLET_PASSWORD"
+  --account "$ACCOUNT_NAME"
+  --password "$ACCOUNT_PASSWORD"
   --sender "$SENDER"
   --broadcast
   --slow
@@ -112,3 +119,8 @@ for stage in "${stages[@]}"; do
 done
 
 echo "=== Pipeline complete ==="
+
+if [ -f "$ENV_FILE" ]; then
+  rm -f "$ENV_FILE"
+  echo "Deleted one-off env file: $ENV_FILE"
+fi

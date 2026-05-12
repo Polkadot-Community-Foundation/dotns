@@ -358,6 +358,20 @@ abstract contract BaseDotns is Test {
         _setUserPopStatus(who, IPopRules.PopStatus.NoStatus);
     }
 
+    // @notice Owner-prank shortcut that grants `WHITELIST_OPERATOR_ROLE` on the
+    //         registrar controller. Centralises the prank-and-setRole boilerplate
+    //         used by unit, fuzz, and integration suites.
+    function _grantWhitelistOperator(address account) internal {
+        vm.prank(owner);
+        dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, true);
+    }
+
+    // @notice Owner-prank shortcut that revokes `WHITELIST_OPERATOR_ROLE`.
+    function _revokeWhitelistOperator(address account) internal {
+        vm.prank(owner);
+        dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, false);
+    }
+
     // @notice Drives `DotnsPopController.reserveBaseName` through the simulated Root origin.
     // @dev Single canonical helper for PoP-gateway reservations across unit and fuzz
     //      test suites. The default {_mockCallerIsRoot} setup satisfies `onlyGateway`.

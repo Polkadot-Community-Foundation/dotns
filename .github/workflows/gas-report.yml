@@ -16,7 +16,7 @@ name: Gas Report
 # exfiltrate repo secrets. Re-review carefully if widened.
 on:
   pull_request:
-    branches: [main]
+    branches: [master]
     paths: ["contracts/**", "test/**", "**.sol"]
   pull_request_target:
     types: [closed]
@@ -36,7 +36,7 @@ jobs:
     if: github.event.action != 'closed'
     runs-on: parity-int-ubuntu-xl
     strategy:
-      # Each target runs on its own runner so the PR-branch and main-branch
+      # Each target runs on its own runner so the PR-branch and master-branch
       # gas reports do not have to share one machine's memory budget. The
       # aggregator job downloads both artifacts to compute the diff.
       fail-fast: false
@@ -45,9 +45,9 @@ jobs:
           - id: pr
             label: PR branch
             ref: ""
-          - id: main
-            label: main branch
-            ref: main
+          - id: master
+            label: master branch
+            ref: master
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,13 +78,13 @@ jobs:
           python-version: "3.12"
 
       # Sidecar checkout of the PR head's `patches/` and apply script. The
-      # main-branch matrix shard is checked out at `main`, which does not yet
+      # master-branch matrix shard is checked out at `master`, which does not yet
       # carry the OZ payable patches needed for the registrar transferFrom
       # overrides. Sourcing them from the PR head keeps the two shards
       # building against the same vendored OZ tree. Removed once the patches
-      # land on main.
+      # land on master.
       - name: Sidecar checkout for OZ patches
-        if: matrix.target.id == 'main'
+        if: matrix.target.id == 'master'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
@@ -94,8 +94,8 @@ jobs:
             scripts/shell/apply-oz-patches.sh
           sparse-checkout-cone-mode: false
 
-      - name: Apply OZ patches (main shard only)
-        if: matrix.target.id == 'main'
+      - name: Apply OZ patches (master shard only)
+        if: matrix.target.id == 'master'
         run: |
           rm -rf patches
           cp -R pr-head-sidecar/patches ./patches
@@ -175,10 +175,10 @@ jobs:
           # so the aggregator can mark the section "Failed - shard missing"
           # rather than crashing inside `gas-report.py` with a stat() error.
           PR_REPORT="gas-artifacts/gas-shard-pr/pr-gas-report.txt"
-          MAIN_REPORT="gas-artifacts/gas-shard-main/main-gas-report.txt"
+          MAIN_REPORT="gas-artifacts/gas-shard-master/master-gas-report.txt"
           MISSING=""
           [ -f "$PR_REPORT" ] || MISSING="${MISSING} pr"
-          [ -f "$MAIN_REPORT" ] || MISSING="${MISSING} main"
+          [ -f "$MAIN_REPORT" ] || MISSING="${MISSING} master"
           if [ -n "$MISSING" ]; then
             echo "missing=${MISSING}" >> "$GITHUB_OUTPUT"
             echo "success=false" >> "$GITHUB_OUTPUT"
@@ -187,14 +187,14 @@ jobs:
             exit 0
           fi
           cp "$PR_REPORT" pr-gas-report.txt
-          cp "$MAIN_REPORT" main-gas-report.txt
+          cp "$MAIN_REPORT" master-gas-report.txt
           echo "missing=" >> "$GITHUB_OUTPUT"
 
       - name: Generate HTML and markdown reports
         id: diff
         if: steps.collect.outputs.missing == ''
         run: |
-          if python3 scripts/reports/gas-report.py main-gas-report.txt pr-gas-report.txt; then
+          if python3 scripts/reports/gas-report.py master-gas-report.txt pr-gas-report.txt; then
             echo "success=true" >> "$GITHUB_OUTPUT"
           else
             echo "success=false" >> "$GITHUB_OUTPUT"
@@ -233,7 +233,7 @@ jobs:
           name: gas-reports
           path: |
             pr-gas-report.txt
-            main-gas-report.txt
+            master-gas-report.txt
             gas-report.md
             gas-report.html
           retention-days: 7
