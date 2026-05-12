@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.30;
+pragma solidity ^0.8.34;
 
 /// @title Dotns Reverse Resolver
 /// @notice Interface for writing and reading reverse name records for addresses.

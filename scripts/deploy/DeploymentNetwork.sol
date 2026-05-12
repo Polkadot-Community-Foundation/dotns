@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.30;
+pragma solidity ^0.8.34;
 
 /// @title DeploymentNetwork
 /// @notice Maps the current chain ID to the subdirectory under

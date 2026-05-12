@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.30;
+pragma solidity ^0.8.34;
 
 /// @title Dotns Content Resolver
 /// @notice Defines storage and retrieval for content hash, text records, and operator approvals for

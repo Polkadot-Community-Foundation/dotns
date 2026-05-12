@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity ^0.8.30;
+pragma solidity ^0.8.34;
 
 /// @title ISystem
 /// @notice Minimal subset of revive's System precompile, vendored from

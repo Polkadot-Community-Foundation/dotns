@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.30;
+pragma solidity ^0.8.34;
 
 /// @title IDotnsPopResolver
 /// @notice Resolver for per-name records produced by the PoP username flow.
