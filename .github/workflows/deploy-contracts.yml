@@ -2,10 +2,10 @@ name: Deploy Contracts and Verify artifacts
 
 on:
   pull_request:
-    branches: [main]
+    branches: [master]
     paths: ["contracts/**", "scripts/**", "**.sol", "package.json", "bun.lock"]
   push:
-    branches: [main]
+    branches: [master]
     paths: ["contracts/**", "scripts/**", "**.sol", "package.json", "bun.lock"]
 
 permissions:

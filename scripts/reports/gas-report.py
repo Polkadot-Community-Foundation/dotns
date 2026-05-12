@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate an HTML gas report comparing contract function gas usage between the current branch and main.
+"""Generate an HTML gas report comparing contract function gas usage between the current branch and master.
 
 Uses `forge test --gas-report` to measure gas per contract function call (not per test).
 Outputs gas-report.html in the repo root.
@@ -124,10 +124,10 @@ def parse_gas_report(raw_output):
     return contracts
 
 
-def generate_html(main_contracts, current_contracts):
-    """Generate the HTML gas report comparing main vs current branch."""
+def generate_html(master_contracts, current_contracts):
+    """Generate the HTML gas report comparing master vs current branch."""
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    all_contract_names = sorted(set(list(main_contracts.keys()) + list(current_contracts.keys())))
+    all_contract_names = sorted(set(list(master_contracts.keys()) + list(current_contracts.keys())))
 
     empty_contract = {"deployment_cost": 0, "deployment_size": 0, "functions": {}}
     empty_function = {"min": 0, "avg": 0, "median": 0, "max": 0, "calls": 0}
@@ -148,17 +148,17 @@ def generate_html(main_contracts, current_contracts):
     lines.append("</div>")
 
     for contract_name in all_contract_names:
-        main_contract = main_contracts.get(contract_name, empty_contract)
+        master_contract = master_contracts.get(contract_name, empty_contract)
         current_contract = current_contracts.get(contract_name, empty_contract)
 
-        main_deploy_cost = main_contract["deployment_cost"]
+        master_deploy_cost = master_contract["deployment_cost"]
         current_deploy_cost = current_contract["deployment_cost"]
-        deploy_diff = current_deploy_cost - main_deploy_cost
+        deploy_diff = current_deploy_cost - master_deploy_cost
         deploy_sign = "+" if deploy_diff > 0 else ""
         deploy_color = color_class(deploy_diff)
 
         all_function_names = sorted(
-            set(list(main_contract["functions"].keys()) + list(current_contract["functions"].keys()))
+            set(list(master_contract["functions"].keys()) + list(current_contract["functions"].keys()))
         )
 
         lines.append('<div class="mb-6 bg-gray-900 border border-gray-800 rounded-lg">')
@@ -171,7 +171,7 @@ def generate_html(main_contracts, current_contracts):
             lines.append('<div class="overflow-x-auto"><table class="w-full text-sm">')
             lines.append('<thead><tr class="border-b border-gray-800">')
             lines.append('<th class="py-2 px-3 text-left font-semibold text-gray-400">Function</th>')
-            lines.append('<th class="py-2 px-3 text-right font-semibold text-gray-400">Main (avg)</th>')
+            lines.append('<th class="py-2 px-3 text-right font-semibold text-gray-400">Master (avg)</th>')
             lines.append('<th class="py-2 px-3 text-right font-semibold text-gray-400">Current (avg)</th>')
             lines.append('<th class="py-2 px-3 text-right font-semibold text-gray-400">Diff</th>')
             lines.append('<th class="py-2 px-3 text-right font-semibold text-gray-400">Min</th>')
@@ -180,18 +180,18 @@ def generate_html(main_contracts, current_contracts):
             lines.append("</tr></thead><tbody>")
 
             for function_name in all_function_names:
-                main_function = main_contract["functions"].get(function_name, empty_function)
+                master_function = master_contract["functions"].get(function_name, empty_function)
                 current_function = current_contract["functions"].get(function_name, empty_function)
 
-                main_avg = main_function["avg"]
+                master_avg = master_function["avg"]
                 current_avg = current_function["avg"]
-                avg_diff = current_avg - main_avg
+                avg_diff = current_avg - master_avg
                 diff_sign = "+" if avg_diff > 0 else ""
                 diff_color = color_class(avg_diff)
 
                 lines.append('<tr class="border-b border-gray-800/50 hover:bg-gray-800/30">')
                 lines.append(f'<td class="py-2 px-3 font-mono text-gray-200">{function_name}</td>')
-                lines.append(f'<td class="py-2 px-3 font-mono text-right">{main_avg:,}</td>')
+                lines.append(f'<td class="py-2 px-3 font-mono text-right">{master_avg:,}</td>')
                 lines.append(f'<td class="py-2 px-3 font-mono text-right">{current_avg:,}</td>')
                 lines.append(f'<td class="py-2 px-3 font-mono text-right {diff_color}">{diff_sign}{avg_diff:,}</td>')
                 lines.append(f'<td class="py-2 px-3 font-mono text-right text-gray-500">{current_function["min"]:,}</td>')
@@ -218,9 +218,9 @@ def color_class(diff_value):
     return "text-gray-500"
 
 
-def generate_markdown_summary(main_contracts, current_contracts):
+def generate_markdown_summary(master_contracts, current_contracts):
     """Generate a markdown summary of gas changes for PR comments."""
-    all_contract_names = sorted(set(list(main_contracts.keys()) + list(current_contracts.keys())))
+    all_contract_names = sorted(set(list(master_contracts.keys()) + list(current_contracts.keys())))
     empty_contract = {"deployment_cost": 0, "deployment_size": 0, "functions": {}}
     empty_function = {"min": 0, "avg": 0, "median": 0, "max": 0, "calls": 0}
 
@@ -228,27 +228,27 @@ def generate_markdown_summary(main_contracts, current_contracts):
     has_changes = False
 
     for contract_name in all_contract_names:
-        main_contract = main_contracts.get(contract_name, empty_contract)
+        master_contract = master_contracts.get(contract_name, empty_contract)
         current_contract = current_contracts.get(contract_name, empty_contract)
         all_functions = sorted(
-            set(list(main_contract["functions"].keys()) + list(current_contract["functions"].keys()))
+            set(list(master_contract["functions"].keys()) + list(current_contract["functions"].keys()))
         )
 
         changed_functions = []
         for function_name in all_functions:
-            main_avg = main_contract["functions"].get(function_name, empty_function)["avg"]
+            master_avg = master_contract["functions"].get(function_name, empty_function)["avg"]
             current_avg = current_contract["functions"].get(function_name, empty_function)["avg"]
-            if main_avg != current_avg:
-                changed_functions.append((function_name, main_avg, current_avg, current_avg - main_avg))
+            if master_avg != current_avg:
+                changed_functions.append((function_name, master_avg, current_avg, current_avg - master_avg))
 
         if changed_functions:
             has_changes = True
             markdown_lines.append(f"**{contract_name}**\n")
-            markdown_lines.append("| Function | Main | Current | Diff |")
+            markdown_lines.append("| Function | Master | Current | Diff |")
             markdown_lines.append("|:---------|-----:|--------:|-----:|")
-            for function_name, main_avg, current_avg, diff in sorted(changed_functions, key=lambda x: abs(x[3]), reverse=True):
+            for function_name, master_avg, current_avg, diff in sorted(changed_functions, key=lambda x: abs(x[3]), reverse=True):
                 sign = "+" if diff > 0 else ""
-                markdown_lines.append(f"| `{function_name}` | {main_avg:,} | {current_avg:,} | {sign}{diff:,} |")
+                markdown_lines.append(f"| `{function_name}` | {master_avg:,} | {current_avg:,} | {sign}{diff:,} |")
             markdown_lines.append("")
 
     if not has_changes:
@@ -257,25 +257,25 @@ def generate_markdown_summary(main_contracts, current_contracts):
     return "\n".join(markdown_lines), has_changes
 
 
-def run_ci_mode(main_report_path, current_report_path):
+def run_ci_mode(master_report_path, current_report_path):
     """CI mode: read pre-generated gas report files and produce HTML + markdown outputs.
 
     Used by the GitHub Actions workflow to avoid duplicating parsing/rendering logic.
     """
-    with open(main_report_path) as file:
-        main_raw = file.read()
+    with open(master_report_path) as file:
+        master_raw = file.read()
     with open(current_report_path) as file:
         current_raw = file.read()
 
-    main_contracts = parse_gas_report(main_raw)
+    master_contracts = parse_gas_report(master_raw)
     current_contracts = parse_gas_report(current_raw)
 
-    print(f"Parsed {len(main_contracts)} contracts from main, {len(current_contracts)} from PR")
+    print(f"Parsed {len(master_contracts)} contracts from master, {len(current_contracts)} from PR")
 
-    html_content = generate_html(main_contracts, current_contracts)
+    html_content = generate_html(master_contracts, current_contracts)
     Path("gas-report.html").write_text(html_content)
 
-    markdown_content, has_changes = generate_markdown_summary(main_contracts, current_contracts)
+    markdown_content, has_changes = generate_markdown_summary(master_contracts, current_contracts)
     Path("gas-report.md").write_text(markdown_content)
 
     github_output = os.environ.get("GITHUB_OUTPUT")
@@ -299,22 +299,22 @@ def run_local_mode():
     current_contracts = parse_gas_report(current_raw_output)
     print(f"  Parsed {len(current_contracts)} contracts from current branch")
 
-    print("Checking out main branch and generating gas report...")
+    print("Checking out master branch and generating gas report...")
     branch_stdout, _, _ = run_shell("git rev-parse --abbrev-ref HEAD")
     current_branch_name = branch_stdout.strip()
 
     stash_stdout, _, _ = run_shell("git stash --include-untracked")
     has_stashed_changes = "No local changes" not in stash_stdout
 
-    run_shell("git checkout main")
+    run_shell("git checkout master")
     run_shell("forge clean && forge build --force")
 
-    main_stdout, main_stderr, _ = run_shell(
+    master_stdout, master_stderr, _ = run_shell(
         "forge test --gas-report"
     )
-    main_raw_output = main_stdout + main_stderr
-    main_contracts = parse_gas_report(main_raw_output)
-    print(f"  Parsed {len(main_contracts)} contracts from main branch")
+    master_raw_output = master_stdout + master_stderr
+    master_contracts = parse_gas_report(master_raw_output)
+    print(f"  Parsed {len(master_contracts)} contracts from master branch")
 
     run_shell(f"git checkout {current_branch_name}")
     if has_stashed_changes:
@@ -322,13 +322,13 @@ def run_local_mode():
     run_shell("forge clean && forge build --force")
 
     print("Generating HTML report...")
-    html_content = generate_html(main_contracts, current_contracts)
+    html_content = generate_html(master_contracts, current_contracts)
 
     output_path = REPO_ROOT / "gas-report.html"
     output_path.write_text(html_content)
 
     (REPO_ROOT / "gas-report-current.txt").write_text(current_raw_output)
-    (REPO_ROOT / "gas-report-main.txt").write_text(main_raw_output)
+    (REPO_ROOT / "gas-report-master.txt").write_text(master_raw_output)
 
     print(f"Report: {output_path}")
     print(f"Open:   file://{output_path}")

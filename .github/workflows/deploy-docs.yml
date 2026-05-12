@@ -12,10 +12,10 @@ name: Documentation
 # exfiltrate repo secrets. Re-review carefully if widened.
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths: ["src/**", "contracts/**", "**.sol", "foundry.toml"]
   pull_request:
-    branches: [main]
+    branches: [master]
     paths: ["src/**", "contracts/**", "**.sol", "foundry.toml"]
   pull_request_target:
     types: [closed]

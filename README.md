@@ -24,22 +24,6 @@ DotNS is a naming system for Polkadot. An account can register a `.dot` name, re
 
 ## Deployment note
 
-## Local commit checks
-
-The repository ships a pre-commit hook under `.githooks/pre-commit`. `setup.bash`
-installs it by setting `core.hooksPath=.githooks`.
-
-The hook runs `forge fmt` first. If formatting changes any tracked project file, the
-commit stops so the formatted files can be reviewed and staged. It then runs
-`forge build` and fails on compiler warnings from project code. Warnings from
-external dependencies under `lib/` and `node_modules/` are ignored.
-
-To install the hook manually:
-
-```bash
-git config core.hooksPath .githooks
-```
-
 To deploy on Paseo, and to run fork tests, you need a local ETH-RPC adapter.
 
 A `docker-compose` file is provided. It starts the ETH-RPC adapter pointed at the live Paseo Asset Hub endpoint. We route through the adapter rather than the public RPC directly because the adapter is more stable under the traffic pattern a deploy or fork test produces; the public endpoint rate-limits and occasionally stalls, which drops mid-flight transactions and invalidates fork-test state. Anvil is not in the picture here: `forge test` spins up its own in-process EVM for unit, fuzz, and invariant tests, and fork tests run against the adapter, not against a local Anvil chain.
@@ -76,15 +60,12 @@ The fresh-deploy pipeline is split across five scripts under `scripts/deploy/`, 
 - `DeployPopSystem.s.sol`: Proof-of-Personhood resolver and controller.
 - `WireDeployments.s.sol`: authorisation and registry wire-up plus end-to-end verification. No proxy deploys.
 
-Each stage writes the addresses it produces to a shared JSON manifest at `deployments/<network>/<chainid>.json`; the next stage reads prior addresses back through the same file. A single monolithic deploy script would accumulate quadratic EVM memory gas across every OpenZeppelin upgrade-safety validation the pipeline runs (the validator shells out to a Node CLI via `vm.ffi` and parses a multi-megabyte build-info JSON per proxy) and blow past the block gas limit around the eighth proxy. Running each stage as its own `forge script` process gives each OZ validation a fresh EVM simulation and keeps every check intact. `scripts/deploy/run.sh` chains the stages; `package.json` calls into it. Upgrade scripts for individual subsystems (for example `scripts/deploy/SomeName.s.sol`) live alongside and share the same shape.
-
-**Storage-collision checks are non-negotiable.** On every upgrade path the OpenZeppelin validator diffs the new implementation's storage layout against a pinned reference contract and fails the build if a slot moves, shrinks, or changes type; a misaligned slot after an upgrade silently corrupts live state. The validator accepts the predecessor either as a compilable artefact in the same project (for example a `FooOld.sol` sibling) or as a stored `referenceBuildInfoDir`. We have chosen the source-file route deliberately: the snapshot is versioned alongside the implementation, reviewable in a diff, and available to `forge build` without any out-of-band fetch. A stored build-info directory would drift out of lockstep with the code reviewers read.
-
-The `Old.sol` convention has a fixed shape. For a contract `Foo.sol` declaring `contract Foo is ...`, the snapshot file is `FooOld.sol` in the same directory, declaring `contract FooOld is ...` with the pre-upgrade storage layout, imports, inheritance list, and public surface copied verbatim at the moment the upgrade PR is opened. The only mechanical difference is the `Old` suffix on the file name, the contract name, and any sibling interface the snapshot depends on (for example `IFoo.sol` becomes `IFooOld.sol`). Upgrade scripts reference the snapshot through `Options({referenceContract: "FooOld.sol:FooOld"})` on the matching `Upgrades.upgradeProxy` call.
-
-**`Old.sol` snapshots are PR-scoped and must never land on `main`.** They exist only for the upgrade PR that introduces them, so CI and local `forge build` can diff the new layout against the pre-upgrade layout. **Before the PR merges, every `Old.sol` (and every matching `I*Old.sol`) must be deleted, along with the `referenceContract` wiring in the upgrade script.** Once the upgrade is live, the "old" layout is the on-chain deployment, not a file in the repository; keeping the snapshot around after merge would create a phantom contract that future diffs would treat as real code. Reviewers should refuse any PR that ships `Old.sol` files to `main`.
-
-Fresh deploys have no prior layout to collide with, but we still run the same validator end-to-end because it also catches unsafe-upgrade-incompatible patterns (constructors, state-variable assignments and immutables in the implementation, `selfdestruct`, raw `delegatecall`, external library linking, missing initialisers, and so on) that would only surface as a bug the first time a future upgrade is attempted. **No deploy or upgrade script in this repository passes `unsafeSkipAllChecks` or any `unsafeAllow` override, and adding one is not on the table. If validation fails, fix the contract, not the script.**
+Each stage writes the addresses it produces to a shared JSON manifest at
+`deployments/<network>/<chainid>.json`; the next stage reads prior addresses
+back through the same file. `scripts/deploy/run.sh` chains the stages, and
+`package.json` calls into it. The split keeps each `forge script` process small
+enough for OpenZeppelin's upgrade-safety validation to run without exhausting
+the simulated EVM.
 
 ## Contracts
 
@@ -202,63 +183,6 @@ Paseo Asset Hub Next V2
 | StoreFactory             | `0xdE2a069Aa36d8db00C4F64c3D5f1A1c3a2053EAb` |
 | LabelStoreBeacon         | `0x24E0f5042f2947788A4103B1dbCd6b95e5441919` |
 | UserStoreBeacon          | `0x7254d2Ec682952049947BFd4619B05C6e74664a2` |
-
-### Mental model for new features
-
-Treat the chain as the database. Assume no servers and no indexers. If a feature needs an offchain service to be usable, it is not a DotNS feature.
-
-This has a practical implication: every feature must come with an explicit query path. A client should be able to start from a small set of known contracts and find everything it needs with a bounded number of calls. Every getter is `external view`; controllers and resolvers check authorisation on writes, never on reads; governance key rotation does not break existing read paths because consumers re-resolve their siblings through the protocol registry on every call.
-
-Rules of thumb:
-
-- State is the source of truth. Events are for observability.
-- Discovery must be deterministic. If something is created, store where to find it.
-- Avoid "scan and reconstruct". Do not require replaying logs from genesis to recover user state.
-- Prefer simple keys. `node`, `labelhash`, `owner`, `commitment` should be enough to locate related data.
-- If you need lists, make them enumerable onchain with pagination. Do not assume an indexer will build the list.
-- If a rule matters for funds or correctness, enforce it onchain. Offchain checks are optional UX.
-- If a new record belongs to a single name, it goes on a dedicated resolver, not on the Store. The Store stays labels only.
-- A new cross-contract handshake must be expressible as a bounded sequence of view calls, and every step must be tested at the level where it lives: unit for a single-contract behaviour, fuzz for property coverage over random inputs, invariant for properties that must hold across random call sequences, and fork for live-state behaviour.
-
-A quick checklist for a PR adding a feature:
-
-- Where is the canonical state stored?
-- From which known contract can a client discover it?
-- What are the exact view functions needed to read it without scanning?
-- How does a client list relevant items (if listing is required), and how is it paginated?
-
-#### When to add a new controller
-
-A controller is the policy layer that mints names and orchestrates the side effects of a registration. Add one when the issuance policy genuinely differs from every existing controller. Different authorisation (a gateway origin rather than a commit-reveal commitment), a different pricing or eligibility rule, a different set of records to write, or a different cross-contract coordination requirement all count. Do not add one when the difference is a flag on an existing flow; a flag means the existing controller grows a second reason to change, which is what the split is meant to prevent.
-
-A new controller lives behind its own UUPS proxy with its own storage, and is registered on the registrar through `addController`. It must not import any other controller. Cross-flow collisions between controllers are arbitrated at the layers beneath them: ERC721 uniqueness on the registrar, and shared authority contracts like PopRules that both flows read through. Extending this means the new controller needs to think about which cross-flow authorities it writes to and how it keeps its local state in lockstep with them (the PoP controller's reservation queue mirrors its head into PopRules on every head transition for exactly this reason).
-
-#### When to add a new resolver
-
-A resolver is the storage layer for per-name records. Add one when a new record category exists that is semantically unrelated to what existing resolvers hold and that has its own authorisation model. An ECDH chat key is a different category from a contenthash, which is a different category from a forward address record; each lives on its own resolver because each has its own writer policy and its own read consumers.
-
-Do not add a resolver for a record that already fits one of the existing categories; extend the existing resolver instead. And do not put user records on the Store: the Store is labels only, by invariant, and every other per-name category goes to a dedicated resolver. A resolver must not hold registration records, and the Store must not hold anything but registration records. Keeping that boundary sharp is what makes the system legible.
-
-Every resolver must spell out its writer policy on its interface and its read surface. Writes are gated; reads are always open. Two gate patterns exist in the system today and picking the right one matters. When the record is owned by the end user (forward address records, content hashes, text records), gate on node ownership: the resolver calls back into `DotnsRegistry.owner(node)` on every write, so transferring the name transfers write permission automatically with no resolver upgrade. When the record is owned by a protocol-level writer (reverse records, PoP-flow records), gate on the writer address fetched from the protocol registry on every call: the resolver reads something like `POP_CONTROLLER` or `CONTROLLER` off the registry per write, so rotating the writer is a single `protocolRegistry.set` call with no resolver upgrade. Do not store the writer address on the resolver itself.
-
-#### When to extend something existing instead
-
-Most features fit an existing contract and extending it is the right move. A new text record goes on the content resolver. A new view function on an existing registry adds to that registry. A new validation rule on registration modifies the commit-reveal controller. Adding a new controller or resolver solves a different problem: a responsibility that does not yet have a home. If you cannot cite the new responsibility in a sentence, you are extending, not adding.
-
-Example query paths. Each row starts from a small set of known contracts; every hop is a public view call, so any node can resolve the path without special access.
-
-| Lookup | Path |
-| --- | --- |
-| Lite labelhash => full-person node | Protocol registry => PoP resolver => `fullClaim(liteLabelhash)` |
-| Full-person node => lite labelhash | Protocol registry => PoP resolver => `liteLink(fullNode)` |
-| Node => chat key | Protocol registry => PoP resolver => `chatKey(node)` |
-| Node or tokenId => registered label | Protocol registry => registrar => `labelOf(uint256(node))` |
-| Base stem => gateway-reservation state | Protocol registry => PoP controller => `isReservedForClaim(baseLabel)` |
-| Base stem => cross-flow reservation state | Protocol registry => PopRules => `isBaseNameReserved(baseLabel)` |
-| Node => ERC721 owner | Protocol registry => registrar => `ownerOf(uint256(node))` |
-| Subnode => forward-registry owner | Protocol registry => registry => `owner(subnode)` |
-| Node => forward address record | Protocol registry => forward resolver => address record |
-| Address => primary name | Protocol registry => reverse resolver => primary name |
 
 ### Build
 

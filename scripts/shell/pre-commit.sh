@@ -4,15 +4,109 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-echo "pre-commit: running forge fmt"
 format_before="$(mktemp)"
 format_after="$(mktemp)"
 build_log="$(mktemp)"
 project_warnings="$(mktemp)"
+validation_errors="$(mktemp)"
+validation_detail="$(mktemp)"
 cleanup() {
-  rm -f "$format_before" "$format_after" "$build_log" "$project_warnings"
+  rm -f "$format_before" "$format_after" "$build_log" "$project_warnings" "$validation_errors" "$validation_detail"
 }
 trap cleanup EXIT
+
+record_validation_failure() {
+  local file="$1"
+  local check="$2"
+
+  {
+    echo "$file: failed $check"
+    sed 's/^/  /' "$validation_detail"
+  } >>"$validation_errors"
+}
+
+run_validation() {
+  local file="$1"
+  local check="$2"
+  shift 2
+
+  : >"$validation_detail"
+  if ! "$@" > /dev/null 2>"$validation_detail"; then
+    record_validation_failure "$file" "$check"
+  fi
+}
+
+validate_toml() {
+  local file="$1"
+
+  run_validation "$file" "TOML validation" python3 -c 'import pathlib, sys, tomllib; tomllib.loads(pathlib.Path(sys.argv[1]).read_text())' "$file"
+}
+
+validate_env_file() {
+  local file="$1"
+
+  run_validation "$file" "environment-file validation" ruby -e '
+    file = ARGV.fetch(0)
+    ARGF.each_line.with_index(1) do |line, number|
+      next if line.match?(/\A\s*(#.*)?\s*\z/)
+      next if line.match?(/\A[A-Za-z_][A-Za-z0-9_]*=.*\s*\z/)
+      raise "#{file}:#{number}: expected KEY=value, blank line, or comment"
+    end
+  ' "$file"
+}
+
+validate_git_config_file() {
+  local file="$1"
+
+  run_validation "$file" "git-config validation" git config --file "$file" --list
+}
+
+echo "pre-commit: validating repository files"
+while IFS= read -r -d '' file; do
+  [ -f "$file" ] || continue
+
+  case "$file" in
+    lib/*|node_modules/*)
+      continue
+      ;;
+    *.bash|*.sh|setup.bash|.githooks/*)
+      run_validation "$file" "shell validation" bash -n "$file"
+      ;;
+    *.cjs|*.js|*.mjs)
+      run_validation "$file" "JavaScript validation" node --check "$file"
+      ;;
+    *.json)
+      run_validation "$file" "JSON validation" jq -e . "$file"
+      ;;
+    *.py)
+      run_validation "$file" "Python validation" python3 -c 'import ast, pathlib, sys; ast.parse(pathlib.Path(sys.argv[1]).read_text(), filename=sys.argv[1])' "$file"
+      ;;
+    *.toml)
+      validate_toml "$file"
+      ;;
+    *.yaml|*.yml)
+      run_validation "$file" "YAML validation" ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$file"
+      ;;
+    .env.example)
+      validate_env_file "$file"
+      ;;
+    .gitmodules)
+      validate_git_config_file "$file"
+      ;;
+  esac
+done < <(git ls-files -z)
+
+if command -v actionlint > /dev/null 2>&1; then
+  run_validation ".github/workflows" "GitHub Actions validation" actionlint
+fi
+
+if [ -s "$validation_errors" ]; then
+  echo "pre-commit: repository file validation failed:" >&2
+  cat "$validation_errors" >&2
+  exit 1
+fi
+
+echo "pre-commit: running forge fmt"
 
 git diff --binary -- . ':!lib/**' ':!node_modules/**' >"$format_before"
 

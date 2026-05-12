@@ -13,10 +13,10 @@ name: Run Solidity Tests
 # repo secrets. Re-review carefully if this trigger surface widens.
 on:
   pull_request:
-    branches: [main]
+    branches: [master]
     paths: ["contracts/**", "test/**", "**.sol"]
   push:
-    branches: [main]
+    branches: [master]
     paths: ["contracts/**", "test/**", "**.sol"]
   pull_request_target:
     types: [closed]
