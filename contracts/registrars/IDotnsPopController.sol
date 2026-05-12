@@ -136,15 +136,15 @@ interface IDotnsPopController is IDotnsController {
         string indexed label, bytes32 indexed labelhash, address indexed owner, address store
     );
 
-    /// @notice Thrown when the call's substrate origin is not `Root`.
-    /// @dev The implementation gates entrypoints on revive's
-    ///      `ISystem.callerIsRoot()` precompile rather than on `msg.sender`,
-    ///      because under `RuntimeOrigin::root()` the PVM `caller` syscall
-    ///      traps. The `caller` field is therefore always `address(0)` and is
-    ///      reserved for forward compatibility; indexers must not rely on it
-    ///      to identify a spoofing actor.
-    /// @param caller Reserved; always `address(0)` under the Root-origin auth
-    ///        model.
+    /// @notice Thrown when a gated entrypoint is reached from an address that
+    ///         is not the gateway registered on the protocol registry under
+    ///         the PoP gateway key.
+    /// @dev The controller delegates substrate Root-authority verification to
+    ///      the registered gateway, which is the Root gateway dispatcher, and
+    ///      authorises calls solely against the address resolved from the
+    ///      protocol registry. The caller parameter carries the immediate EVM
+    ///      caller observed by this contract for off-chain diagnostics.
+    /// @param caller Immediate EVM caller observed by this contract.
     error NotGateway(address caller);
 
     /// @notice Thrown when a supplied lite-person label does not match `NAMEXX`.
@@ -166,16 +166,18 @@ interface IDotnsPopController is IDotnsController {
     /// holds the live head-of-queue reservation.
     error NotHolder(address user, bytes32 labelhash);
 
-    /// @notice Registers a lite-person username on behalf of `params.user` and optionally enqueues
-    /// a reservation for a base name they intend to claim as a full person later. @dev Callable
-    /// only when the substrate origin is `Root`, verified via revive's
-    /// `ISystem.callerIsRoot()` precompile. The base-name leg only runs when
-    /// `params.reservedBaseLabel` is non-empty, and runs PopRules `priceWithCheck`
-    /// BEFORE any queue mutation so a mis-tiered reservation never even touches the
-    /// queue. The user is removed from any prior queue position before being enqueued,
-    /// so a single user holds at most one live reservation across all labels.
-    /// Cross-chain callers pass the ABI-encoded {BaseReservation} tuple directly as
-    /// the call's payload; Solidity decodes it from `msg.data` into `params`.
+    /// @notice Registers a lite-person username on behalf of the supplied user
+    /// and optionally enqueues a reservation for a base name they intend to
+    /// claim as a full person later.
+    /// @dev Callable only via the registered PoP gateway; the gateway is
+    /// responsible for asserting substrate Root authority before forwarding
+    /// here. The base-name leg only runs when the reserved base label is
+    /// non-empty, and PopRules price-with-check runs before any queue
+    /// mutation so a mis-tiered reservation never even touches the queue.
+    /// The user is removed from any prior queue position before being
+    /// enqueued, so a single user holds at most one live reservation across
+    /// all labels. Cross-chain callers pass the ABI-encoded reservation
+    /// tuple as the call's payload, which Solidity decodes directly.
     /// @param params Reservation request; see {BaseReservation}.
     /// @custom:emits LiteNameReserved
     /// @custom:emits NameRegistered
@@ -207,12 +209,12 @@ interface IDotnsPopController is IDotnsController {
     /// @custom:reverts QueueFull
     function reserveBaseName(bytes calldata payload) external;
 
-    /// @notice Registers a lite-person username on behalf of `params.user` without touching the
-    /// base-name reservation queue. @dev Callable only when the substrate origin is `Root`,
-    /// verified via revive's
-    /// `ISystem.callerIsRoot()` precompile. Cross-chain callers pass the ABI-encoded
-    /// {LiteRegistration} tuple directly as the call's payload; Solidity decodes it
-    /// from `msg.data` into `params`.
+    /// @notice Registers a lite-person username on behalf of the supplied
+    /// user without touching the base-name reservation queue.
+    /// @dev Callable only via the registered PoP gateway; the gateway is
+    /// responsible for asserting substrate Root authority before forwarding
+    /// here. Cross-chain callers pass the ABI-encoded lite-registration
+    /// tuple as the call's payload, which Solidity decodes directly.
     /// @param params Registration request; see {LiteRegistration}.
     /// @custom:emits LiteNameReserved
     /// @custom:emits NameRegistered
@@ -238,18 +240,20 @@ interface IDotnsPopController is IDotnsController {
     /// @custom:reverts NotGateway
     function reserveLiteName(bytes calldata payload) external;
 
-    /// @notice Registers a full-person username on behalf of `params.user`.
-    /// @dev Callable only when the substrate origin is `Root`, verified via revive's
-    /// `ISystem.callerIsRoot()` precompile. Two orthogonal axes drive the state machine:
-    /// (1) Reservation axis: `params.user` is "claiming" iff they hold the live head-of-queue
-    /// reservation on `params.label`. A claim wipes the entire queue (`_clearQueue`) and releases
-    /// the PopRules slot; a non-claim silently relinquishes any pending entry the user holds
-    /// and reverts via `NotHolder` if another live head blocks the mint.
-    /// (2) Chat-key axis: `params.link.kind` decides whether a fresh key is persisted on the
-    /// resolver (`None`) or the new entry inherits the key from a prior lite-person username
-    /// (`LiteUsername`). The two axes are independent so any combination is reachable.
-    /// Cross-chain callers pass the ABI-encoded {FullRegistration} tuple directly as the call's
-    /// payload; Solidity decodes it from `msg.data` into `params`.
+    /// @notice Registers a full-person username on behalf of the supplied user.
+    /// @dev Callable only via the registered PoP gateway; the gateway is
+    /// responsible for asserting substrate Root authority before forwarding
+    /// here. Two orthogonal axes drive the state machine. The reservation
+    /// axis treats the user as claiming if and only if they hold the live
+    /// head-of-queue reservation on the base label: a claim wipes the entire
+    /// queue and releases the PopRules slot, while a non-claim silently
+    /// relinquishes any pending entry the user holds and reverts via
+    /// NotHolder if another live head blocks the mint. The chat-key axis
+    /// selects whether a fresh key is persisted on the resolver or the new
+    /// entry inherits its key from a prior lite-person username. The two
+    /// axes are independent, so any combination is reachable. Cross-chain
+    /// callers pass the ABI-encoded full-registration tuple as the call's
+    /// payload, which Solidity decodes directly.
     /// @param params Registration request; see {FullRegistration}.
     /// @custom:emits BaseNameClaimed
     /// @custom:emits LiteToFullLinked

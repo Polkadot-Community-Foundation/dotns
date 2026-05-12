@@ -120,4 +120,16 @@ library DotnsConstants {
     ///      that drives the name release lifecycle.
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant NAME_ESCROW = bytes32("nameEscrow");
+
+    /// @notice Well-known key for the address authorised to invoke the PoP
+    ///         controller's gated entrypoints.
+    /// @dev Role: substrate Root-origin shim. Resolves to the Root gateway
+    ///      dispatcher deployed against the PoP controller. The dispatcher
+    ///      verifies Root authority through the revive System precompile in
+    ///      its own frame and forwards calldata to the controller via a
+    ///      regular message call; the controller authorises against this
+    ///      registry key, so rotating the dispatcher is a single write on
+    ///      the protocol registry.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant POP_GATEWAY = bytes32("popGateway");
 }

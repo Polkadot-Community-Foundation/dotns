@@ -7,6 +7,7 @@ import {DeploymentNetwork} from "./DeploymentNetwork.sol";
 
 import {DotnsPopResolver} from "../../contracts/resolvers/DotnsPopResolver.sol";
 import {DotnsPopController} from "../../contracts/registrars/DotnsPopController.sol";
+import {RootGatewayDispatcher} from "../../contracts/registrars/RootGatewayDispatcher.sol";
 import {IDotnsProtocolRegistry} from "../../contracts/registry/IDotnsProtocolRegistry.sol";
 
 /// @title DeployPopSystem
@@ -30,7 +31,8 @@ contract DeployPopSystem is BaseDeployer {
         address protocolRegistry = _readAddress("DotnsProtocolRegistry");
 
         _deployPopResolver(owner, protocolRegistry);
-        _deployPopController(owner, protocolRegistry);
+        address popController = _deployPopController(owner, protocolRegistry);
+        _deployGatewayDispatcher(owner, popController);
 
         saveDeployments();
 
@@ -68,5 +70,31 @@ contract DeployPopSystem is BaseDeployer {
             ),
             "DotnsPopController"
         );
+    }
+
+    /// @notice Deploys the Root gateway dispatcher bound to the PoP
+    ///         controller proxy and records it on the manifest for the
+    ///         wire-up stage to register on the protocol registry.
+    /// @dev The dispatcher's target is immutable and must be set to the
+    ///      controller proxy at construction. Registry registration is the
+    ///      wire-up stage's job, following the same pattern as every other
+    ///      protocol address, so this script only deploys and logs.
+    /// @param owner Broadcasting account.
+    /// @param popController Address of the controller proxy from the previous
+    ///        deploy step.
+    /// @return dispatcher Address of the deployed Root gateway dispatcher.
+    function _deployGatewayDispatcher(
+        address owner,
+        address popController
+    )
+        internal
+        returns (address dispatcher)
+    {
+        vm.startBroadcast(owner);
+        dispatcher = address(new RootGatewayDispatcher(popController));
+        vm.stopBroadcast();
+
+        vm.label(dispatcher, "RootGatewayDispatcher");
+        logDeployment("RootGatewayDispatcher", dispatcher);
     }
 }

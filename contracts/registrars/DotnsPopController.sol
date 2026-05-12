@@ -19,7 +19,6 @@ import {LabelUtils} from "../utils/LabelUtils.sol";
 import {RegistrationUtils} from "../utils/RegistrationUtils.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
-import {ISystem} from "../external/revive/ISystem.sol";
 
 /// @title DotnsPopController
 /// @notice Dedicated PoP controller orchestrating lite-person and full-person username
@@ -122,15 +121,15 @@ contract DotnsPopController is
     /// @dev Reserved storage space to allow for layout changes in the future.
     uint256[50] private __gap;
 
-    /// @notice Restricts calls to invocations whose substrate origin is `Root`.
-    /// @dev Verified through revive's System precompile (`callerIsRoot`) at
-    ///      {DotnsConstants.REVIVE_SYSTEM}. `msg.sender` is intentionally not consulted: under
-    ///      `RuntimeOrigin::root()` the PVM `caller` syscall traps with
-    ///      `RootNotAllowed`, so any expression that reads `msg.sender` in the
-    ///      outermost frame would revert before the gate could run. The trust
-    ///      boundary therefore moves entirely to the runtime: anything that can
-    ///      construct `RuntimeOrigin::root()` and reach `pallet_revive::bare_call`
-    ///      is accepted as the gateway.
+    /// @notice Restricts calls to the address registered as the PoP gateway
+    ///         on the protocol registry.
+    /// @dev Authority is delegated wholly to the registered gateway, which is
+    ///      the Root gateway dispatcher. Any caller other than the registered
+    ///      gateway is rejected with NotGateway. The Root-authority check
+    ///      itself lives in the dispatcher because the revive System
+    ///      precompile is only meaningful in the frame that is the direct
+    ///      callee of Root, which is the dispatcher and never this UUPS
+    ///      implementation.
     modifier onlyGateway() {
         _onlyGateway();
         _;
@@ -611,15 +610,16 @@ contract DotnsPopController is
         delete _reservedBaseLabel[labelhash];
     }
 
-    /// @notice Internal check enforcing PoP-gateway-only access through the
-    ///         revive System precompile.
-    /// @dev Calls `ISystem(DotnsConstants.REVIVE_SYSTEM).callerIsRoot()` and reverts with
-    ///      `NotGateway(msg.sender)` when the substrate origin is not `Root`.
-    ///      The revert payload is diagnostic only: authorization is determined
-    ///      exclusively by the revive System precompile, while `msg.sender`
-    ///      identifies the immediate EVM caller observed by this contract.
+    /// @notice Internal check enforcing PoP-gateway-only access.
+    /// @dev Authorises a call when the caller matches the address registered
+    ///      as the PoP gateway on the protocol registry. The dispatcher
+    ///      registered there is responsible for proving substrate Root
+    ///      authority via the revive System precompile; this contract trusts
+    ///      that forwarded calls already carry that authority. Reverts with
+    ///      NotGateway on failure, including when the registry key is unset.
     function _onlyGateway() internal view {
-        require(ISystem(DotnsConstants.REVIVE_SYSTEM).callerIsRoot(), NotGateway(msg.sender));
+        address gw = protocolRegistry.get(DotnsConstants.POP_GATEWAY);
+        require(gw != address(0) && msg.sender == gw, NotGateway(msg.sender));
     }
 
     /// @notice Routes a raw cross-chain payload to the typed entrypoint identified by `selector`.

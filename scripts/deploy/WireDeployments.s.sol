@@ -48,6 +48,7 @@ contract WireDeployments is BaseDeployer {
         address nameEscrow;
         address popResolver;
         address popController;
+        address rootGatewayDispatcher;
     }
 
     function run() external {
@@ -83,6 +84,7 @@ contract WireDeployments is BaseDeployer {
         addr.nameEscrow = _readAddress("DotnsNameEscrow");
         addr.popResolver = _readAddress("DotnsPopResolver");
         addr.popController = _readAddress("DotnsPopController");
+        addr.rootGatewayDispatcher = _readAddress("RootGatewayDispatcher");
     }
 
     function _authoriseControllers(address owner, Addresses memory addr) internal {
@@ -108,6 +110,7 @@ contract WireDeployments is BaseDeployer {
         registry.set(DotnsConstants.NAME_ESCROW, addr.nameEscrow);
         registry.set(DotnsConstants.POP_CONTROLLER, addr.popController);
         registry.set(DotnsConstants.POP_RESOLVER, addr.popResolver);
+        registry.set(DotnsConstants.POP_GATEWAY, addr.rootGatewayDispatcher);
         vm.stopBroadcast();
         console.log("Protocol registry keys set");
     }
@@ -190,6 +193,10 @@ contract WireDeployments is BaseDeployer {
             registry.get(DotnsConstants.POP_CONTROLLER) == addr.popController, "Key: popController"
         );
         require(registry.get(DotnsConstants.POP_RESOLVER) == addr.popResolver, "Key: popResolver");
+        require(
+            registry.get(DotnsConstants.POP_GATEWAY) == addr.rootGatewayDispatcher,
+            "Key: popGateway"
+        );
 
         require(
             DotnsRegistrar(addr.registrar).controllers(IDotnsController(addr.registrarController)),

@@ -84,10 +84,11 @@ abstract contract BaseDotns is Test {
     // @notice Deployed PoP controller instance (gateway-driven lite/full issuance).
     DotnsPopController public dotnsPopController;
 
-    // @notice Test actor used by legacy `prank`-based PoP call sites.
-    // @dev Auth is enforced via {_mockCallerIsRoot}; this address has no
-    //      privileged role. Retained so existing prank boilerplate compiles
-    //      while the test surface migrates.
+    // @notice Test stand-in for the Root gateway dispatcher.
+    // @dev Registered on the protocol registry under the PoP gateway key
+    //      during setUp. Tests that exercise gated PoP entrypoints prank as
+    //      this address, mirroring how the dispatcher's forwarded call
+    //      appears to the controller in production.
     address public popGateway;
 
     // @notice Default reservation duration used by the PoP controller.
@@ -254,14 +255,12 @@ abstract contract BaseDotns is Test {
         protocolRegistry.set(DotnsConstants.POP_RESOLVER, dotnsPopResolverAddress);
         protocolRegistry.set(DotnsConstants.POP_CONTROLLER, dotnsPopControllerAddress);
         protocolRegistry.set(DotnsConstants.NAME_ESCROW, dotnsNameEscrowAddress);
+        // Stand-in for the Root gateway dispatcher. Dedicated dispatcher
+        // coverage lives in test/unit/registrar/RootGatewayDispatcher.t.sol.
+        protocolRegistry.set(DotnsConstants.POP_GATEWAY, popGateway);
 
         vm.stopPrank();
         vm.warp(block.timestamp + 365 days);
-
-        // Foundry does not provide revive's System precompile. Default it to
-        // Root so existing PoP-flow tests exercise business logic without
-        // per-test auth boilerplate; negative-auth tests flip it to false.
-        _mockCallerIsRoot(true);
 
         // Default every account to `None` (NoStatus) on the personhood
         // precompile. Per-account `_grantPopFull`/`_grantPopLite` calls install
@@ -372,9 +371,11 @@ abstract contract BaseDotns is Test {
         dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, false);
     }
 
-    // @notice Drives `DotnsPopController.reserveBaseName` through the simulated Root origin.
-    // @dev Single canonical helper for PoP-gateway reservations across unit and fuzz
-    //      test suites. The default {_mockCallerIsRoot} setup satisfies `onlyGateway`.
+    // @notice Drives a PoP reservation from the registered gateway address.
+    // @dev Single canonical helper for PoP-gateway reservations across unit
+    //      and fuzz test suites. Pranks from the gateway stand-in installed
+    //      during setUp, which mirrors how the Root gateway dispatcher
+    //      appears to the controller in production.
     function _reservePop(
         address user,
         string memory liteLabel,
@@ -383,6 +384,7 @@ abstract contract BaseDotns is Test {
     )
         internal
     {
+        vm.prank(popGateway);
         dotnsPopController.reserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({

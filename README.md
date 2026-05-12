@@ -77,13 +77,19 @@ Commit-reveal controller for the public registration path. A caller first submit
 
 ### `DotnsPopController`
 
-Dedicated controller for the Proof-of-Personhood gateway flow. Lives behind its own UUPS proxy with its own storage and is registered on the registrar via `addController` alongside the commit-reveal controller. Two entry points, both restricted to calls where revive's System precompile reports `callerIsRoot()`.
+Dedicated controller for the Proof-of-Personhood gateway flow. Lives behind its own UUPS proxy with its own storage and is registered on the registrar via `addController` alongside the commit-reveal controller. Its gated entry points are callable only from the address resolved through the protocol registry under the `POP_GATEWAY` key, which is the `RootGatewayDispatcher` deployed against this controller; the dispatcher is the contract that actually proves substrate Root authority before forwarding here.
 
 The first, `reserveBaseName`, mints a lite-person username to a user. Lite labels are DNS labels with at least two trailing digits (for example `alice42`); the gateway strips any separator the pallet uses before calling so that the on-chain label is flat. The call also persists the user's chat key on the PoP resolver and optionally enqueues a reservation for a full-person base name the user intends to claim later.
 
 The second, `registerBaseName`, mints a full-person username. Whether the call is a claim against a prior lite reservation or a fresh standalone registration is derived from on-chain reservation state; the caller does not choose. The link argument selects the chat-key source: inherit from a prior lite label, or accept a fresh one in the payload. When inheriting, the call also writes the `liteLink` (full => lite) and `fullClaim` (lite => full) records on the PoP resolver in the same transaction so downstream consumers can resolve either direction without scanning events.
 
 Each base label carries a head/tail-indexed reservation queue with a capacity of `MAX_RESERVATION_QUEUE` and a governance-configurable `reservationDuration`. The queue head is mirrored into PopRules on every head transition (enqueue-from-empty, expiry-driven promotion, non-expiry head removal, claim-wipes-queue), so the public commit-reveal flow sees the same cross-flow lock through its existing PopRules price check. Expiry advancement is permissionless: anyone can call `expireReservation` to garbage-collect a stale head, which is what the pallet does on its own cadence.
+
+### `RootGatewayDispatcher`
+
+Non-upgradeable shim that translates a substrate Root-origin dispatch into an EVM-observable authority on the PoP controller. The dispatcher is the direct callee of the Root runtime origin, asks the revive System precompile whether its caller is Root, and forwards the calldata to the controller via a regular message call only when that check passes. The forwarded call lands on the controller proxy with the dispatcher as the immediate caller, which the controller authorises against the address registered on the protocol registry under `POP_GATEWAY`.
+
+Hosting the Root check in a separate, non-proxy contract is what makes it work at all. The revive System precompile is only meaningful in the frame that is the direct callee of Root, and a UUPS implementation runs inside the proxy's delegatecall, so the controller cannot ask the precompile from its own frame. The dispatcher's target is immutable, set at construction to the controller proxy it serves, and the dispatcher holds no storage of its own and never delegatecalls, so it cannot be repurposed as an arbitrary-target proxy. Rotating the dispatcher is a single `set` call on the protocol registry; the controller picks up the new gateway on its next call without an upgrade.
 
 ### `DotnsRegistrar`
 
@@ -133,7 +139,7 @@ On-chain lookup table mapping well-known `bytes32` keys (declared in `DotnsConst
 
 Without it, each contract would store direct addresses to every contract it calls. An upgrade that changes one address would require calling `updateX()` on every contract that references it. With N contracts and M cross-references, that is M separate owner transactions per address change. The protocol registry reduces this to one: update the key in the registry, and every caller picks up the new address on its next call. The indirection also means a governance-driven rotation of, say, the PoP controller does not break any consumer that has already been deployed.
 
-The registered keys include `REGISTRAR`, `CONTROLLER`, `REGISTRY`, `REVERSE_RESOLVER`, `RESOLVER`, `CONTENT_RESOLVER`, `POP_RULES`, `STORE_FACTORY`, `POP_CONTROLLER`, and `POP_RESOLVER`.
+The registered keys include `REGISTRAR`, `CONTROLLER`, `REGISTRY`, `REVERSE_RESOLVER`, `RESOLVER`, `CONTENT_RESOLVER`, `POP_RULES`, `STORE_FACTORY`, `POP_CONTROLLER`, `POP_RESOLVER`, `NAME_ESCROW`, and `POP_GATEWAY`.
 
 ### `StoreFactory`, `LabelStore`, and `UserStore`
 

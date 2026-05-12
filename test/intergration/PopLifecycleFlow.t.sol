@@ -110,6 +110,7 @@ contract PopLifecycleFlow is BaseDotns {
         // PopFull superset) and the full-person claim.
         _grantPopFull(user);
         _reservePop(user, LITE_LABEL, CHAT_KEY, FULL_LABEL);
+        vm.prank(popGateway);
         dotnsPopController.registerBaseName(
             IDotnsPopController.FullRegistration({
                 label: FULL_LABEL, user: user, link: _linkWithLite(LITE_LABEL)
