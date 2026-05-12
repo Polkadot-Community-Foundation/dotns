@@ -109,7 +109,7 @@ Tier assignment is read on every pricing call, not stored: `PopRules` queries th
 
 Whitelisting is the exception path for users or organisations that need to register without satisfying the live PoP tier check. DotNS still does not accept self-attestation: the contracts only consume PoP status from the personhood precompile, and a user cannot set or prove their own status inside DotNS. Instead, the public registrar controller has an owner-managed whitelist for `registerReserved`, which bypasses the PoP pricing gate for approved addresses while still using the normal commit-reveal and availability checks.
 
-To request a whitelist entry, open a `Whitelist Request` issue in this repository. The issue is labelled `whitelist-request` by the template and must include the address, address type, and a clear description of why the PoP bypass is needed. A maintainer can approve the request by applying `whitelist-approved`, after which the workflow checks account mapping and executes the on-chain whitelist transaction. Whitelisting does not register a name, reserve a label, or bypass ownership rules; it only allows the approved address to use the reserved registration path without a PoP status.
+To request a whitelist entry, open a `Whitelist Request` issue in this repository. The issue is labelled `whitelist-request` by the template and must include the address, address type, target network (`Paseo V2` or `Paseo Review`), and a clear description of why the PoP bypass is needed. A maintainer can approve the request by applying `whitelist-approved`, after which the workflow checks account mapping on the selected network and executes the on-chain whitelist transaction. Whitelisting does not register a name, reserve a label, or bypass ownership rules; it only allows the approved address to use the reserved registration path without a PoP status.
 
 PopRules also holds the cross-flow reservation table for base names. Two write paths share one mapping keyed by the bare stem. The first, `reserveBaseName`, is called by the commit-reveal controller during a lite registration: it classifies the incoming label, strips the trailing digits, and writes the bare stem. The second, `reserveBaseNameForPop`, is called by the PoP controller on every reservation-queue head transition: it takes a bare stem directly and reverts when the slot is held by a different user, so the caller's local queue bookkeeping never silently diverges from the PopRules state.
 
@@ -175,20 +175,21 @@ Paseo Asset Hub Next V2
 
 | Contract                 | Address                                      |
 | ------------------------ | -------------------------------------------- |
-| DotnsProtocolRegistry    | `0xf4351Da2b6EEccE747de200B6B4AB4384E924f6b` |
-| DotnsRegistrar           | `0xeD3BC8Abae983b0A22ff6881a9Aa1B83E5Ed3146` |
-| DotnsRegistry            | `0xE81a05fD8294A54C3ef88E30581dD1605B48F1E7` |
-| DotnsRegistrarController | `0xaCa0c0AdB95bFf7F19492aE92a340836252F7daF` |
-| DotnsPopController       | `0x67D1AEe8C9b5cA1e1F04C4175602B31f4747458F` |
-| PopRules                 | `0xac77cf188E5D8d284b1dD3883157bF385228D318` |
-| DotnsResolver            | `0xa3BB5164854704A952b511746DbC30e996d1ef1D` |
-| DotnsReverseResolver     | `0xca96DF0A817e0E410F48Bc9C3240e5cEB2Fc882f` |
-| DotnsContentResolver     | `0x4A320fA9b81f0EE448d6E459e7Cac8DFC6e19862` |
-| DotnsPopResolver         | `0x8d6D30589766A154773Cb507DA173A7E11261A2C` |
-| DotnsNameEscrow          | `0x01c8F1134b4210D0a9CBaF94fC2b9Ebd1f65bA75` |
-| StoreFactory             | `0xdE2a069Aa36d8db00C4F64c3D5f1A1c3a2053EAb` |
-| LabelStoreBeacon         | `0x24E0f5042f2947788A4103B1dbCd6b95e5441919` |
-| UserStoreBeacon          | `0x7254d2Ec682952049947BFd4619B05C6e74664a2` |
+| DotnsProtocolRegistry    | `0x5Caef84563fc980178e28417414aa65bA32f6B4e` |
+| DotnsRegistrar           | `0x885b8085bA92A31c4ef52076f77379E647ECC399` |
+| DotnsRegistry            | `0x8877344A885682523B4613779C95688ed7037BfD` |
+| DotnsRegistrarController | `0x320b72c6e70D5a631d835FfD95915B288b26E6Be` |
+| DotnsPopController       | `0xaC8A28b60832E6E22bC19bD9Ee273C008576Bde4` |
+| RootGatewayDispatcher    | `0xF470Dd693ED557b33f8775476776532D99Fb60d9` |
+| PopRules                 | `0x2002C1c15b88632Ad01c7770f6EbE1Ca05c8472E` |
+| DotnsResolver            | `0x0cCdfea1a5E62DE116BF6cA79D397798d49e351E` |
+| DotnsReverseResolver     | `0x025D5c4b10bD9723DeA2F4518aeD5B761DE08CDc` |
+| DotnsContentResolver     | `0x2c9FF5D9136DBE5814C7B4FDbeDC15273a776663` |
+| DotnsPopResolver         | `0xB992e74cBeaf1Fd71310f85D1944d3A0c15C4c73` |
+| DotnsNameEscrow          | `0x6F7068c04487a90BFB42b128B84231c252b3017a` |
+| StoreFactory             | `0x0DE5De70d61cc6b44B45d6595afDe8dB9b55bc31` |
+| LabelStoreBeacon         | `0xD033F7Ada687E8BC776928AB239505F9f0479Ce7` |
+| UserStoreBeacon          | `0x7eD9b7D137Fa535965048F93b3B0248fEd2fcd32` |
 
 ### Build
 

@@ -1,38 +1,45 @@
 #!/usr/bin/env bash
 #
 # Runs the multi-stage DotNS deploy pipeline against a Foundry keystore
-# wallet. `.env` is a one-off bootstrap file: it can provide PRIVATE_KEY
-# once to import the wallet; later runs use the saved ACCOUNT_NAME and
-# ACCOUNT_PASSWORD. A successful run deletes `.env`; a failed run leaves it
-# in place for correction and retry.
+# wallet. `.env` is a one-off bootstrap file: it carries PRIVATE_KEY and
+# ACCOUNT_PASSWORD only long enough to import the wallet into the
+# Foundry keystore on the first run, after which the file is deleted so
+# no plaintext secrets persist on disk. Subsequent runs prompt for the
+# keystore password interactively and rely on sensible defaults for
+# everything else; nothing sensitive ever sits in a file between
+# deploys. A failed run leaves `.env` exactly as it was for correction
+# and retry.
 #
 # Local usage:
 #   1. cp .env.example .env
-#   2. set PRIVATE_KEY, ACCOUNT_NAME, ACCOUNT_PASSWORD, and WHITELIST_OPERATOR
-#      in .env
+#   2. set PRIVATE_KEY and ACCOUNT_PASSWORD in .env (and adjust
+#      ACCOUNT_NAME, WHITELIST_OPERATOR, or RPC_URL if the defaults are
+#      not what you want)
 #   3. bun run deploy   (or ./scripts/deploy/run.sh)
 #   4. on success, the script deletes .env automatically
+#   5. for every subsequent run, just `bun run deploy`; you will be
+#      prompted for the keystore password
 #
 # CI / scripted usage (no `.env`):
-#   PRIVATE_KEY=0x... ACCOUNT_NAME=dotns-deploy ACCOUNT_PASSWORD=... ./scripts/deploy/run.sh '--slow'
+#   PRIVATE_KEY=0x... ACCOUNT_PASSWORD=... ./scripts/deploy/run.sh '--slow'
 #
 # Each stage runs as its own `forge script` invocation (therefore its
 # own EVM simulation), so OpenZeppelin's upgrade-safety validator's
 # cumulative memory gas cannot spill across stages.
 #
-# Required env (from `.env` or shell):
-#   ACCOUNT_NAME   Foundry keystore account passed to forge as --account.
-#   ACCOUNT_PASSWORD
-#                  Password passed to cast/forge as --password.
-#   WHITELIST_OPERATOR
-#                  Address granted whitelist management permission.
-#
-# Optional env:
-#   PRIVATE_KEY    Hex-encoded deployer private key, with or without 0x.
-#                  Required only when ACCOUNT_NAME has not yet been imported.
-#   RPC_URL        Foundry rpc alias (see [rpc_endpoints] in foundry.toml)
-#                  or full https/wss URL. Defaults to `paseo_local`.
-#   ENV_FILE       Path to env file. Defaults to `.env`.
+# Env vars (read from `.env` if present, otherwise from the shell):
+#   ACCOUNT_NAME       Foundry keystore account passed to forge as --account.
+#                      Defaults to `dotns-deploy`.
+#   ACCOUNT_PASSWORD   Password passed to cast/forge as --password. Prompted
+#                      interactively when not set.
+#   WHITELIST_OPERATOR Address granted whitelist management permission.
+#                      Defaults to the team-wide operator in .env.example.
+#   PRIVATE_KEY        Hex-encoded deployer private key, with or without 0x.
+#                      Required only when ACCOUNT_NAME has not yet been
+#                      imported into the Foundry keystore.
+#   RPC_URL            Foundry rpc alias (see [rpc_endpoints] in foundry.toml)
+#                      or full https/wss URL. Defaults to `paseo_local`.
+#   ENV_FILE           Path to env file. Defaults to `.env`.
 #
 # Extra forge flags are forwarded verbatim to every stage, e.g.
 #   ./scripts/deploy/run.sh '--slow --timeout 1000'
@@ -48,25 +55,27 @@ if [ -f "$ENV_FILE" ]; then
   set +a
 fi
 
-if [ -z "${ACCOUNT_NAME:-}" ]; then
-  echo "ACCOUNT_NAME is required (set in $ENV_FILE or as env var)" >&2
-  echo "see .env.example for the expected shape" >&2
-  exit 1
-fi
+# Defaults for the values that do not need to be re-entered between
+# deploys. Override either via .env (during bootstrap) or via the shell
+# environment.
+: "${ACCOUNT_NAME:=dotns-deploy}"
+: "${WHITELIST_OPERATOR:=0xd908e5a6c88e9263f8fd0756bd0b77916008bb72}"
+: "${RPC_URL:=paseo_local}"
+export ACCOUNT_NAME WHITELIST_OPERATOR
 
+# Prompt for the keystore password when it has not been supplied by
+# .env or the shell. Reading once into a bash variable keeps the prompt
+# to a single keystroke per deploy even though every stage receives
+# --password on its forge invocation.
 if [ -z "${ACCOUNT_PASSWORD:-}" ]; then
-  echo "ACCOUNT_PASSWORD is required (set in $ENV_FILE or as env var)" >&2
-  echo "see .env.example for the expected shape" >&2
-  exit 1
+  if [ ! -t 0 ]; then
+    echo "ACCOUNT_PASSWORD is required (set in $ENV_FILE or as env var, or run from a terminal that can prompt)" >&2
+    exit 1
+  fi
+  read -rsp "Password for Foundry keystore '$ACCOUNT_NAME': " ACCOUNT_PASSWORD
+  echo
 fi
 
-if [ -z "${WHITELIST_OPERATOR:-}" ]; then
-  echo "WHITELIST_OPERATOR is required (set in $ENV_FILE or as env var)" >&2
-  echo "see .env.example for the expected shape" >&2
-  exit 1
-fi
-
-RPC_URL="${RPC_URL:-paseo_local}"
 extra="${1:-}"
 
 KEYSTORE_DIR="${FOUNDRY_KEYSTORES_DIR:-$HOME/.foundry/keystores}"
@@ -75,7 +84,7 @@ KEYSTORE_PATH="$KEYSTORE_DIR/$ACCOUNT_NAME"
 if [ ! -f "$KEYSTORE_PATH" ]; then
   if [ -z "${PRIVATE_KEY:-}" ]; then
     echo "PRIVATE_KEY is required once to import missing account '$ACCOUNT_NAME'" >&2
-    echo "after import, remove PRIVATE_KEY from $ENV_FILE and rerun with ACCOUNT_NAME/ACCOUNT_PASSWORD" >&2
+    echo "see .env.example for the expected shape" >&2
     exit 1
   fi
 
@@ -100,7 +109,7 @@ common=(
   --broadcast
   --slow
   --legacy
-  --gas-estimate-multiplier 10000
+  --gas-limit 1000000000
   -vvvvv
 )
 
@@ -120,6 +129,9 @@ done
 
 echo "=== Pipeline complete ==="
 
+# Delete the bootstrap env file so plaintext secrets do not persist
+# between deploys. Subsequent runs prompt for the password interactively
+# and rely on the defaults declared above for everything else.
 if [ -f "$ENV_FILE" ]; then
   rm -f "$ENV_FILE"
   echo "Deleted one-off env file: $ENV_FILE"

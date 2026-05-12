@@ -23,6 +23,17 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: network
+    attributes:
+      label: Network
+      description: Select the network where this address should be whitelisted.
+      options:
+        - Paseo V2
+        - Paseo Review
+    validations:
+      required: true
+
   - type: textarea
     id: description
     attributes:

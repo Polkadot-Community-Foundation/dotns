@@ -44,7 +44,7 @@ jobs:
               "",
               process.env.REVIEWERS,
               "",
-              `New whitelist request from @${opener}. Review the address and apply \`whitelist-approved\` to proceed.`,
+              `New whitelist request from @${opener}. Review the address and selected network, then apply \`whitelist-approved\` to proceed.`,
             ].join("\n");
 
             await github.rest.issues.createComment({ owner, repo, issue_number, body });

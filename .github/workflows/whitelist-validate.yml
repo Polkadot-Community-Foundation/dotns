@@ -13,7 +13,6 @@ jobs:
     if: contains(github.event.issue.labels.*.name, 'whitelist-request')
     runs-on: ubuntu-latest
     env:
-      SUBSTRATE_RPC_URL: "wss://asset-hub-paseo-rpc.n.dwellir.com"
       MAX_INVALID_WHITELIST_ATTEMPTS: "3"
 
     steps:
@@ -48,6 +47,7 @@ jobs:
 
             const address = field("Address").split("\n")[0].trim();
             const addressType = field("Address Type").split("\n")[0].trim();
+            const network = field("Network").split("\n")[0].trim();
             const description = field("Description").trim();
             const missing = [];
 
@@ -55,15 +55,48 @@ jobs:
             if (!["EVM (H160)", "Substrate (SS58)"].includes(addressType)) {
               missing.push("Address Type");
             }
+            if (!["Paseo V2", "Paseo Review"].includes(network)) {
+              missing.push("Network");
+            }
             if (description.length < 30) {
               missing.push("Description (at least 30 characters explaining why the bypass is needed)");
             }
 
             core.setOutput("address", address);
             core.setOutput("address_type", addressType);
+            core.setOutput("network", network);
             core.setOutput("description", description);
             core.setOutput("fields_ok", missing.length === 0 ? "true" : "false");
             core.setOutput("missing_fields", missing.join(", "));
+
+      - name: Resolve network config
+        id: network
+        if: steps.extract.outputs.fields_ok == 'true'
+        uses: actions/github-script@v7
+        env:
+          NETWORK: ${{ steps.extract.outputs.network }}
+        with:
+          script: |
+            const configs = {
+              "Paseo V2": {
+                rpc: "wss://asset-hub-paseo-rpc.n.dwellir.com",
+                explorer: "https://blockscout-testnet.polkadot.io",
+              },
+              "Paseo Review": {
+                rpc: "wss://services.polkadothub-rpc.com/testnet",
+                explorer: "https://blockscout-testnet.polkadot.io",
+              },
+            };
+
+            const network = process.env.NETWORK;
+            const config = configs[network];
+            if (!config) {
+              core.setFailed(`Unsupported whitelist network: ${network}`);
+              return;
+            }
+
+            core.setOutput("rpc", config.rpc);
+            core.setOutput("explorer", config.explorer);
 
       - name: Install dotns CLI
         if: steps.extract.outputs.fields_ok == 'true'
@@ -84,6 +117,7 @@ jobs:
         env:
           ADDRESS: ${{ steps.extract.outputs.address }}
           ADDRESS_TYPE: ${{ steps.extract.outputs.address_type }}
+          SUBSTRATE_RPC_URL: ${{ steps.network.outputs.rpc }}
         run: |
           RESULT=$(dotns account is-mapped "$ADDRESS" --rpc "$SUBSTRATE_RPC_URL" --json -k //Alice 2>&1) || true
 
@@ -110,6 +144,8 @@ jobs:
         env:
           ADDRESS: ${{ steps.extract.outputs.address }}
           ADDRESS_TYPE: ${{ steps.extract.outputs.address_type }}
+          NETWORK: ${{ steps.extract.outputs.network }}
+          SUBSTRATE_RPC_URL: ${{ steps.network.outputs.rpc }}
           FIELDS_OK: ${{ steps.extract.outputs.fields_ok }}
           MISSING_FIELDS: ${{ steps.extract.outputs.missing_fields }}
           VALID: ${{ steps.validate.outputs.valid }}
@@ -121,6 +157,8 @@ jobs:
           script: |
             const address = process.env.ADDRESS;
             const selectedType = process.env.ADDRESS_TYPE;
+            const network = process.env.NETWORK;
+            const rpc = process.env.SUBSTRATE_RPC_URL;
             const fieldsOk = process.env.FIELDS_OK === "true";
             const valid = fieldsOk && process.env.VALID === "true";
             const type = process.env.ADDR_TYPE;
@@ -153,6 +191,10 @@ jobs:
               }
             }
 
+            if (fieldsOk) {
+              message += `\n\n**Selected network:** ${network}\n**RPC:** \`${rpc}\``;
+            }
+
             core.setOutput("message", message.replace(/\n/g, "%0A"));
 
       - name: Comment validation result
@@ -162,6 +204,7 @@ jobs:
           MESSAGE: ${{ steps.message.outputs.message }}
           ADDR_TYPE: ${{ steps.validate.outputs.type }}
           IS_MAPPED: ${{ steps.validate.outputs.is_mapped }}
+          SUBSTRATE_RPC_URL: ${{ steps.network.outputs.rpc }}
           MAX_ATTEMPTS: ${{ env.MAX_INVALID_WHITELIST_ATTEMPTS }}
           REVIEWERS: ${{ steps.codeowners.outputs.mentions }}
         with:
@@ -200,7 +243,7 @@ jobs:
               lines.push("Install the [DotNS CLI](https://github.com/paritytech/dotns-sdk/releases) and run:");
               lines.push("");
               lines.push("```bash");
-              lines.push("dotns account map --rpc wss://services.polkadothub-rpc.com/testnet -m \"<your mnemonic>\"");
+              lines.push(`dotns account map --rpc ${process.env.SUBSTRATE_RPC_URL} -m "<your mnemonic>"`);
               lines.push("```");
               lines.push("");
               lines.push("Run `dotns account --help` for all authentication options.");
@@ -208,7 +251,7 @@ jobs:
             }
 
             if (valid) {
-              lines.push("This address is ready for whitelisting. A maintainer will review and apply the `whitelist-approved` label to proceed.");
+              lines.push("This address is ready for whitelisting on the selected network. A maintainer will review and apply the `whitelist-approved` label to proceed.");
             } else {
               lines.push(`Attempt ${invalidAttempts} of ${maxAttempts}.`);
               lines.push("");
@@ -227,7 +270,7 @@ jobs:
             lines.push("**Available commands:**");
             lines.push("| Command | Description |");
             lines.push("|---------|-------------|");
-            lines.push("| `/retry` | Re-trigger whitelisting (after mapping or if a previous attempt failed) |");
+            lines.push("| `/retry` | Re-check a request only after mapping is complete or a previous workflow failure asked you to retry. It does not approve or auto-whitelist an account. |");
 
             const body = lines.join("\n");
 

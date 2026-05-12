@@ -16,9 +16,6 @@ jobs:
       (github.event_name == 'issues' && github.event.label.name == 'whitelist-approved' && contains(github.event.issue.labels.*.name, 'whitelist-request')) ||
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '/retry') && contains(github.event.issue.labels.*.name, 'whitelist-approved') && contains(github.event.issue.labels.*.name, 'whitelist-request') && (github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'COLLABORATOR' || github.event.comment.user.login == github.event.issue.user.login))
     runs-on: ubuntu-latest
-    env:
-      SUBSTRATE_RPC_URL: "wss://asset-hub-paseo-rpc.n.dwellir.com"
-      BLOCKSCOUT_URL: "https://blockscout-testnet.polkadot.io"
 
     steps:
       - name: Acknowledge retry
@@ -48,8 +45,73 @@ jobs:
             const mentions = [...new Set(content.match(/@[A-Za-z0-9-]+(?:\/[A-Za-z0-9_.-]+)?/g) || [])];
             core.setOutput("mentions", mentions.join(" "));
 
+      - name: Guard retry command
+        id: retry_guard
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        env:
+          REVIEWERS: ${{ steps.codeowners.outputs.mentions }}
+        with:
+          script: |
+            const marker = "<!-- dotns-whitelist-bot -->";
+            const retryNoopMarker = "<!-- dotns-whitelist-retry-noop -->";
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.issue.number;
+            const author = context.payload.issue.user.login;
+            const commenter = context.payload.comment.user.login;
+            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const botComments = comments.filter(c => c.body && c.body.includes(marker));
+            const retryable = botComments.some(c =>
+              c.body.includes("### Account Not Mapped") ||
+              c.body.includes("### Whitelisting Failed")
+            );
+            const completed = botComments.some(c =>
+              c.body.includes("### Address Whitelisted") ||
+              c.body.includes("### Already Whitelisted")
+            );
+
+            if (retryable && !completed) {
+              core.setOutput("noop", "false");
+              return;
+            }
+
+            const previousNoops = comments.filter(c => c.body && c.body.includes(retryNoopMarker)).length;
+            const lines = [
+              marker,
+              retryNoopMarker,
+              "### Retry Not Needed",
+              "",
+              `@${commenter} \`/retry\` does not approve or whitelist this account. It only re-checks a request after the workflow has asked for a retry, such as after account mapping is completed or after a previous workflow failure.`,
+              "",
+              completed
+                ? `This request already has a completed whitelist result, so this retry is a no-op.`
+                : `There is no retryable whitelist state on this issue right now, so this retry is a no-op.`,
+            ];
+
+            if (previousNoops >= 1) {
+              lines.push("");
+              lines.push("Repeated `/retry` comments will continue to do nothing unless the workflow asks for a retry first. A maintainer can review the issue if you are unsure what is blocking it.");
+              lines.push("");
+              lines.push(`cc ${process.env.REVIEWERS}`);
+            }
+
+            if (author !== commenter) {
+              lines.push("");
+              lines.push(`Original requester: @${author}`);
+            }
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body: lines.join("\n"),
+            });
+
+            core.setOutput("noop", "true");
+
       - name: Extract address from issue body
         id: extract
+        if: steps.retry_guard.outputs.noop != 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -63,6 +125,7 @@ jobs:
 
             const address = field("Address").split("\n")[0].trim();
             const addressType = field("Address Type").split("\n")[0].trim();
+            const network = field("Network").split("\n")[0].trim();
             const description = field("Description").trim();
             const missing = [];
 
@@ -70,19 +133,53 @@ jobs:
             if (!["EVM (H160)", "Substrate (SS58)"].includes(addressType)) {
               missing.push("Address Type");
             }
+            if (!["Paseo V2", "Paseo Review"].includes(network)) {
+              missing.push("Network");
+            }
             if (description.length < 30) {
               missing.push("Description (at least 30 characters explaining why the bypass is needed)");
             }
 
             core.setOutput("address", address);
             core.setOutput("address_type", addressType);
+            core.setOutput("network", network);
             core.setOutput("description", description);
             core.setOutput("fields_ok", missing.length === 0 ? "true" : "false");
             core.setOutput("missing_fields", missing.join(", "));
 
+      - name: Resolve network config
+        id: network
+        if: steps.retry_guard.outputs.noop != 'true' && steps.extract.outputs.fields_ok == 'true'
+        uses: actions/github-script@v7
+        env:
+          NETWORK: ${{ steps.extract.outputs.network }}
+        with:
+          script: |
+            const configs = {
+              "Paseo V2": {
+                rpc: "wss://asset-hub-paseo-rpc.n.dwellir.com",
+                explorer: "https://blockscout-testnet.polkadot.io",
+              },
+              "Paseo Review": {
+                rpc: "wss://services.polkadothub-rpc.com/testnet",
+                explorer: "https://blockscout-testnet.polkadot.io",
+              },
+            };
+
+            const network = process.env.NETWORK;
+            const config = configs[network];
+            if (!config) {
+              core.setFailed(`Unsupported whitelist network: ${network}`);
+              return;
+            }
+
+            core.setOutput("name", network);
+            core.setOutput("rpc", config.rpc);
+            core.setOutput("explorer", config.explorer);
+
       - name: Guard request fields
         id: field_guard
-        if: steps.extract.outputs.fields_ok != 'true'
+        if: steps.retry_guard.outputs.noop != 'true' && steps.extract.outputs.fields_ok != 'true'
         uses: actions/github-script@v7
         env:
           MISSING_FIELDS: ${{ steps.extract.outputs.missing_fields }}
@@ -125,7 +222,7 @@ jobs:
               `Attempt ${attempts} of ${maxAttempts}.`,
               "",
               "The whitelist workflow has stopped and removed `whitelist-approved`.",
-              "Please update the issue body with a valid EVM or Substrate address, the matching address type, and a clear description of why the PoP bypass is needed.",
+              "Please update the issue body with a valid EVM or Substrate address, the matching address type, the network to whitelist against, and a clear description of why the PoP bypass is needed.",
             ];
 
             if (closeIssue) {
@@ -156,6 +253,7 @@ jobs:
 
       - name: Load approved address cache
         id: approval_cache
+        if: steps.retry_guard.outputs.noop != 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -174,21 +272,26 @@ jobs:
             const match = cached.body.match(/<!-- dotns-whitelist-approved-address:([^>]+) -->/);
             const sourceMatch =
               cached.body.match(/<!-- dotns-whitelist-approved-source-address:([^>]+) -->/);
+            const networkMatch =
+              cached.body.match(/<!-- dotns-whitelist-approved-network:([^>]+) -->/);
             core.setOutput("approved_address", match ? match[1].trim() : "");
             core.setOutput("approved_source_address", sourceMatch ? sourceMatch[1].trim() : "");
+            core.setOutput("approved_network", networkMatch ? networkMatch[1].trim() : "");
             core.setOutput("has_cache", match ? "true" : "false");
 
       - name: Cache approved source address
-        if: github.event_name == 'issues'
+        if: github.event_name == 'issues' && steps.retry_guard.outputs.noop != 'true'
         uses: actions/github-script@v7
         env:
           BODY_ADDRESS: ${{ steps.extract.outputs.address }}
+          NETWORK: ${{ steps.extract.outputs.network }}
         with:
           script: |
             const approvalMarker = "<!-- dotns-whitelist-approval-cache -->";
             const { owner, repo } = context.repo;
             const issue_number = context.payload.issue.number;
             const sourceAddress = (process.env.BODY_ADDRESS || "").trim();
+            const network = (process.env.NETWORK || "").trim();
             const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
             const approvalComment = comments.find(c => c.body && c.body.includes(approvalMarker));
 
@@ -196,12 +299,14 @@ jobs:
               approvalMarker,
               "<!-- dotns-whitelist-approved-address: -->",
               `<!-- dotns-whitelist-approved-source-address:${sourceAddress} -->`,
+              `<!-- dotns-whitelist-approved-network:${network} -->`,
               "",
               "### Whitelist Approval Cache",
               "",
               `**Source address:** \`${sourceAddress}\``,
+              `**Network:** ${network}`,
               "",
-              "This comment freezes the submitted EVM or Substrate address approved by maintainers. The resolved EVM address is filled once account mapping is available.",
+              "This comment freezes the submitted EVM or Substrate address and selected network approved by maintainers. The resolved EVM address is filled once account mapping is available.",
             ].join("\n");
 
             if (approvalComment) {
@@ -217,11 +322,13 @@ jobs:
 
       - name: Guard approved source address
         id: source_guard
-        if: github.event_name == 'issue_comment'
+        if: github.event_name == 'issue_comment' && steps.retry_guard.outputs.noop != 'true'
         uses: actions/github-script@v7
         env:
           APPROVED_SOURCE_ADDRESS: ${{ steps.approval_cache.outputs.approved_source_address }}
+          APPROVED_NETWORK: ${{ steps.approval_cache.outputs.approved_network }}
           BODY_ADDRESS: ${{ steps.extract.outputs.address }}
+          NETWORK: ${{ steps.extract.outputs.network }}
           REVIEWERS: ${{ steps.codeowners.outputs.mentions }}
         with:
           script: |
@@ -231,7 +338,9 @@ jobs:
             const { owner, repo } = context.repo;
             const issue_number = context.payload.issue.number;
             const approvedSource = (process.env.APPROVED_SOURCE_ADDRESS || "").trim();
+            const approvedNetwork = (process.env.APPROVED_NETWORK || "").trim();
             const bodyAddress = (process.env.BODY_ADDRESS || "").trim();
+            const network = (process.env.NETWORK || "").trim();
             const reviewers = process.env.REVIEWERS;
 
             function normaliseForCompare(address) {
@@ -310,6 +419,7 @@ jobs:
               await removeApprovalAndWarn("Whitelist Approval Missing Address Cache", [
                 "This issue was approved before the workflow cached the submitted EVM or Substrate address.",
                 `**Current issue address:** \`${bodyAddress}\``,
+                `**Current network:** ${network}`,
               ]);
               core.setFailed("Approved whitelist issue has no cached source address");
               return;
@@ -334,13 +444,25 @@ jobs:
               return;
             }
 
+            if (approvedNetwork && approvedNetwork !== network) {
+              await removeApprovalAndWarn("Whitelist Network Changed After Approval", [
+                "The network in this request changed after `whitelist-approved` was applied.",
+                `**Approved network:** ${approvedNetwork}`,
+                `**Current network:** ${network}`,
+              ]);
+              core.setFailed("Whitelist request network changed after approval");
+              return;
+            }
+
             core.setOutput("blocked", "false");
 
       - name: Install dotns CLI
+        if: steps.retry_guard.outputs.noop != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: |
+      - if: steps.retry_guard.outputs.noop != 'true'
+        run: |
           TAG=$(gh release list --repo paritytech/dotns-sdk --limit 1 --json tagName --jq '.[0].tagName')
           gh release download "$TAG" --repo paritytech/dotns-sdk --pattern '*.tgz' --dir /tmp/dotns-cli
           npm install -g /tmp/dotns-cli/*.tgz
@@ -349,8 +471,10 @@ jobs:
 
       - name: Check account mapped
         id: resolve
+        if: steps.retry_guard.outputs.noop != 'true'
         env:
           ADDRESS: ${{ steps.extract.outputs.address }}
+          SUBSTRATE_RPC_URL: ${{ steps.network.outputs.rpc }}
           DOTNS_MNEMONIC: ${{ secrets.DOTNS_MNEMONIC }}
         run: |
           if ! RESULT=$(dotns account is-mapped "$ADDRESS" --rpc "$SUBSTRATE_RPC_URL" --json -m "$DOTNS_MNEMONIC" 2>&1); then
@@ -374,12 +498,14 @@ jobs:
 
       - name: Freeze approved address
         id: approved_address
-        if: steps.resolve.outputs.is_mapped == 'true'
+        if: steps.retry_guard.outputs.noop != 'true' && steps.resolve.outputs.is_mapped == 'true'
         uses: actions/github-script@v7
         env:
           APPROVED_ADDRESS: ${{ steps.approval_cache.outputs.approved_address }}
           APPROVED_SOURCE_ADDRESS: ${{ steps.approval_cache.outputs.approved_source_address }}
+          APPROVED_NETWORK: ${{ steps.approval_cache.outputs.approved_network }}
           BODY_ADDRESS: ${{ steps.extract.outputs.address }}
+          NETWORK: ${{ steps.extract.outputs.network }}
           CURRENT_EVM_ADDRESS: ${{ steps.resolve.outputs.evm_address }}
           ORIGINAL_ADDRESS: ${{ steps.resolve.outputs.original_address }}
           REVIEWERS: ${{ steps.codeowners.outputs.mentions }}
@@ -394,8 +520,10 @@ jobs:
             const eventName = context.eventName;
             const approved = (process.env.APPROVED_ADDRESS || "").trim();
             const approvedSource = (process.env.APPROVED_SOURCE_ADDRESS || "").trim();
+            const approvedNetwork = (process.env.APPROVED_NETWORK || "").trim();
             const current = (process.env.CURRENT_EVM_ADDRESS || "").trim();
             const bodyAddress = (process.env.BODY_ADDRESS || "").trim();
+            const network = (process.env.NETWORK || "").trim();
             const original = (process.env.ORIGINAL_ADDRESS || "").trim();
             const reviewers = process.env.REVIEWERS;
 
@@ -488,6 +616,7 @@ jobs:
                 await removeApprovalAndWarn("Whitelist Approval Missing Address Cache", [
                   "This issue was approved before the workflow cached the approved source address.",
                   `**Current issue address:** \`${bodyAddress}\``,
+                  `**Current network:** ${network}`,
                   `**Resolved EVM address:** \`${current}\``,
                 ]);
                 core.setFailed("Approved whitelist issue has no cached address");
@@ -497,16 +626,19 @@ jobs:
               const sourceChanged =
                 normaliseForCompare(approvedSource) !== normaliseForCompare(bodyAddress);
               const evmChanged = approved && approved.toLowerCase() !== current.toLowerCase();
+              const networkChanged = approvedNetwork && approvedNetwork !== network;
 
-              if (sourceChanged || evmChanged) {
-                await removeApprovalAndWarn("Whitelist Address Changed After Approval", [
-                  "The address in this request changed after `whitelist-approved` was applied.",
+              if (sourceChanged || evmChanged || networkChanged) {
+                await removeApprovalAndWarn("Whitelist Request Changed After Approval", [
+                  "The address or network in this request changed after `whitelist-approved` was applied.",
                   `**Approved source address:** \`${approvedSource}\``,
                   approved ? `**Approved EVM address:** \`${approved}\`` : "**Approved EVM address:** pending account mapping",
+                  approvedNetwork ? `**Approved network:** ${approvedNetwork}` : "**Approved network:** not cached",
                   `**Current issue address:** \`${bodyAddress}\``,
+                  `**Current network:** ${network}`,
                   `**Current resolved EVM address:** \`${current}\``,
                 ]);
-                core.setFailed("Whitelist request address changed after approval");
+                core.setFailed("Whitelist request changed after approval");
                 return;
               }
             }
@@ -515,14 +647,16 @@ jobs:
               approvalMarker,
               `<!-- dotns-whitelist-approved-address:${current} -->`,
               `<!-- dotns-whitelist-approved-source-address:${bodyAddress} -->`,
+              `<!-- dotns-whitelist-approved-network:${network} -->`,
               "",
               "### Whitelist Approval Cache",
               "",
               `**Approved EVM address:** \`${current}\``,
               `**Source address:** \`${bodyAddress}\``,
               `**Resolved source address:** \`${original}\``,
+              `**Network:** ${network}`,
               "",
-              "This comment freezes the submitted EVM or Substrate address approved by maintainers. Retries use this address and stop if the issue body is later changed.",
+              "This comment freezes the submitted EVM or Substrate address and selected network approved by maintainers. Retries use these values and stop if the issue body is later changed.",
             ].join("\n");
 
             if (approvalComment) {
@@ -539,11 +673,13 @@ jobs:
             core.setOutput("blocked", "false");
 
       - name: Comment if account not mapped
-        if: steps.resolve.outputs.is_mapped == 'false'
+        if: steps.retry_guard.outputs.noop != 'true' && steps.resolve.outputs.is_mapped == 'false'
         uses: actions/github-script@v7
         env:
           ORIGINAL_ADDRESS: ${{ steps.resolve.outputs.original_address }}
           EVM_ADDRESS: ${{ steps.resolve.outputs.evm_address }}
+          NETWORK: ${{ steps.extract.outputs.network }}
+          SUBSTRATE_RPC_URL: ${{ steps.network.outputs.rpc }}
           REVIEWERS: ${{ steps.codeowners.outputs.mentions }}
         with:
           script: |
@@ -553,6 +689,8 @@ jobs:
             const author = context.payload.issue.user.login;
             const original = process.env.ORIGINAL_ADDRESS;
             const evm = process.env.EVM_ADDRESS;
+            const network = process.env.NETWORK;
+            const rpc = process.env.SUBSTRATE_RPC_URL;
 
             const section = [
               "",
@@ -560,17 +698,19 @@ jobs:
               "",
               "### Account Not Mapped",
               "",
+              `**Network:** ${network}`,
+              "",
               `@${author} Your Substrate address \`${original}\` has not been mapped to its EVM address (\`${evm}\`) on-chain yet.`,
               "",
               "Before your address can be whitelisted you need to map your account. Install the [DotNS CLI](https://github.com/paritytech/dotns-sdk/releases) and run:",
               "",
               "```bash",
-              `dotns account map --rpc wss://services.polkadothub-rpc.com/testnet -m "<your mnemonic>"`,
+              `dotns account map --rpc ${rpc} -m "<your mnemonic>"`,
               "```",
               "",
               "Run `dotns account --help` for all authentication options (keystore, key URI, etc.).",
               "",
-              "Once your account is mapped, comment `/retry` on this issue to try again.",
+              "`/retry` does not whitelist the account by itself. Once your account is mapped, comment `/retry` on this issue to re-check mapping and continue the approved workflow.",
               "",
               `cc ${process.env.REVIEWERS}`,
             ].join("\n");
@@ -587,10 +727,11 @@ jobs:
             core.setFailed("Account not mapped on-chain");
 
       - name: Check if already whitelisted
-        if: steps.resolve.outputs.is_mapped == 'true'
+        if: steps.retry_guard.outputs.noop != 'true' && steps.resolve.outputs.is_mapped == 'true'
         id: precheck
         env:
           ADDRESS: ${{ steps.resolve.outputs.evm_address }}
+          SUBSTRATE_RPC_URL: ${{ steps.network.outputs.rpc }}
           DOTNS_MNEMONIC: ${{ secrets.DOTNS_MNEMONIC }}
         run: |
           RESULT=$(dotns account is-whitelisted "$ADDRESS" --rpc "$SUBSTRATE_RPC_URL" --json -m "$DOTNS_MNEMONIC")
@@ -598,12 +739,14 @@ jobs:
           echo "already_whitelisted=$ALREADY" >> "$GITHUB_OUTPUT"
 
       - name: Comment if already whitelisted
-        if: steps.resolve.outputs.is_mapped == 'true' && steps.precheck.outputs.already_whitelisted == 'true'
+        if: steps.retry_guard.outputs.noop != 'true' && steps.resolve.outputs.is_mapped == 'true' && steps.precheck.outputs.already_whitelisted == 'true'
         uses: actions/github-script@v7
         env:
           ADDRESS: ${{ steps.resolve.outputs.evm_address }}
           ORIGINAL_ADDRESS: ${{ steps.resolve.outputs.original_address }}
           WAS_CONVERTED: ${{ steps.resolve.outputs.was_converted }}
+          NETWORK: ${{ steps.extract.outputs.network }}
+          BLOCKSCOUT_URL: ${{ steps.network.outputs.explorer }}
           REVIEWERS: ${{ steps.codeowners.outputs.mentions }}
         with:
           script: |
@@ -614,6 +757,7 @@ jobs:
             const address = process.env.ADDRESS;
             const originalAddress = process.env.ORIGINAL_ADDRESS;
             const wasConverted = process.env.WAS_CONVERTED === "true";
+            const network = process.env.NETWORK;
             const explorerUrl = process.env.BLOCKSCOUT_URL;
 
             const lines = [
@@ -623,6 +767,8 @@ jobs:
               "### Already Whitelisted",
               "",
             ];
+
+            lines.push(`**Network:** ${network}`);
 
             if (wasConverted) {
               lines.push(`**Substrate Address:** \`${originalAddress}\``);
@@ -652,11 +798,12 @@ jobs:
             await github.rest.issues.update({ owner, repo, issue_number, state: "closed" });
 
       - name: Whitelist address on-chain
-        if: steps.resolve.outputs.is_mapped == 'true' && steps.precheck.outputs.already_whitelisted != 'true'
+        if: steps.retry_guard.outputs.noop != 'true' && steps.resolve.outputs.is_mapped == 'true' && steps.precheck.outputs.already_whitelisted != 'true'
         id: execute
         env:
           DOTNS_MNEMONIC: ${{ secrets.DOTNS_MNEMONIC }}
           ADDRESS: ${{ steps.resolve.outputs.evm_address }}
+          SUBSTRATE_RPC_URL: ${{ steps.network.outputs.rpc }}
         run: |
           RESULT=$(dotns account whitelist "$ADDRESS" --rpc "$SUBSTRATE_RPC_URL" --json -m "$DOTNS_MNEMONIC")
 
@@ -667,7 +814,7 @@ jobs:
           echo "whitelisted=$WHITELISTED" >> "$GITHUB_OUTPUT"
 
       - name: Comment and close issue on success
-        if: success() && steps.resolve.outputs.is_mapped == 'true' && steps.precheck.outputs.already_whitelisted != 'true'
+        if: success() && steps.retry_guard.outputs.noop != 'true' && steps.resolve.outputs.is_mapped == 'true' && steps.precheck.outputs.already_whitelisted != 'true'
         uses: actions/github-script@v7
         env:
           TX_HASH: ${{ steps.execute.outputs.tx_hash }}
@@ -675,6 +822,8 @@ jobs:
           ORIGINAL_ADDRESS: ${{ steps.resolve.outputs.original_address }}
           WAS_CONVERTED: ${{ steps.resolve.outputs.was_converted }}
           WHITELISTED: ${{ steps.execute.outputs.whitelisted }}
+          NETWORK: ${{ steps.extract.outputs.network }}
+          BLOCKSCOUT_URL: ${{ steps.network.outputs.explorer }}
           REVIEWERS: ${{ steps.codeowners.outputs.mentions }}
         with:
           script: |
@@ -687,6 +836,7 @@ jobs:
             const originalAddress = process.env.ORIGINAL_ADDRESS;
             const wasConverted = process.env.WAS_CONVERTED === "true";
             const whitelisted = process.env.WHITELISTED;
+            const network = process.env.NETWORK;
             const explorerUrl = process.env.BLOCKSCOUT_URL;
 
             const lines = [
@@ -696,6 +846,8 @@ jobs:
               "### Address Whitelisted",
               "",
             ];
+
+            lines.push(`**Network:** ${network}`);
 
             if (wasConverted) {
               lines.push(`**Substrate Address:** \`${originalAddress}\``);
@@ -727,7 +879,7 @@ jobs:
             await github.rest.issues.update({ owner, repo, issue_number, state: "closed" });
 
       - name: Comment on failure
-        if: failure() && steps.field_guard.outputs.blocked != 'true' && steps.resolve.outputs.is_mapped != 'false' && steps.source_guard.outputs.blocked != 'true' && steps.approved_address.outputs.blocked != 'true'
+        if: failure() && steps.retry_guard.outputs.noop != 'true' && steps.field_guard.outputs.blocked != 'true' && steps.resolve.outputs.is_mapped != 'false' && steps.source_guard.outputs.blocked != 'true' && steps.approved_address.outputs.blocked != 'true'
         uses: actions/github-script@v7
         env:
           REVIEWERS: ${{ steps.codeowners.outputs.mentions }}
@@ -746,7 +898,7 @@ jobs:
               "",
               `@${author} The on-chain transaction failed. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.`,
               "",
-              "Comment `/retry` on this issue to try again.",
+              "Comment `/retry` on this issue to try again after the failure is understood. `/retry` does not approve or whitelist the account by itself.",
               "",
               `cc ${process.env.REVIEWERS}`,
             ].join("\n");

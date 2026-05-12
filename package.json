@@ -6,8 +6,8 @@
   "scripts": {
     "test": "forge test -vvvvv",
     "deploy": "./scripts/deploy/run.sh",
-    "deploy:anvil": "forge clean && forge build && ./scripts/deploy/run.sh '--slow'",
-    "deploy:testnet": "./scripts/deploy/run.sh '--timeout 1000 --gas-estimate-multiplier 300'",
+    "deploy:anvil": "forge clean && forge build && ./scripts/deploy/run.sh",
+    "deploy:testnet": "./scripts/deploy/run.sh '--timeout 1000'",
     "postinstall": "./setup.bash",
     "reset": "forge clean"
   },
