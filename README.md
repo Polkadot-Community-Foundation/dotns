@@ -167,20 +167,20 @@ Paseo Asset Hub Next V2
 
 | Contract                 | Address                                      |
 | ------------------------ | -------------------------------------------- |
-| DotnsProtocolRegistry    | `0xA8988eA083174ea94Ed1D686f0F073a10f65598D` |
-| DotnsRegistrar           | `0xE67B22B285912FFfaE23BdfAc8C80c779d99B3e0` |
-| DotnsRegistry            | `0xDeFE1AAE21eC2455bd04b213a51C16d4b426c7ef` |
-| DotnsRegistrarController | `0x8403e49Ec12F4EA5788f7bc0C0c2F649205774cC` |
-| DotnsPopController       | `0x2E46D6912c12D7FBE6e41cB5c5c8B33A370E4fbC` |
-| PopRules                 | `0xd3F059FA65dA566B294b5d755a06054d4bE7ce7C` |
-| DotnsResolver            | `0xB436A271Beff1DBa6abDf2dbCc7E6d723d505EE6` |
-| DotnsReverseResolver     | `0x4Ca32Dd0233D8c1B1709e20D9E4edBF2a77D21c3` |
-| DotnsContentResolver     | `0xBcFa907Ff85dFc62a21b41d48F23D7A73aC42914` |
-| DotnsPopResolver         | `0x1d160244A1C1dEc11369c52A0497f2dcDa4B27A1` |
-| DotnsNameEscrow          | `0xD8D2aDC9cF9Ac67D1D5ab2870701DB7a5b1a5234` |
-| StoreFactory             | `0x4f1885fB6e0b154dCf9C2A8661e578B94aD50775` |
-| LabelStoreBeacon         | `0xF927646CEdE13e0a374596726bCf7e1054958935` |
-| UserStoreBeacon          | `0x7A4aBD9A9923c4d42993360620108E5775EF1d73` |
+| DotnsProtocolRegistry    | `0x805E9FC998E3437e3880555f265B7821D68320fc` |
+| DotnsRegistrar           | `0xAE374b07c7e6f473CBa21d57e36AC15C631Abc51` |
+| DotnsRegistry            | `0x86B83CA91f8BC2293E304EA7e026C0914c68C793` |
+| DotnsRegistrarController | `0xE9BFC10dccd34A7F2563236EA150dd580F339B9C` |
+| DotnsPopController       | `0x5E339f217A4bc68aa9E05fc315f09c0B6b948Ef2` |
+| PopRules                 | `0x26153466b9188a63E24A0bd0C6423E0Aa7DE9bE4` |
+| DotnsResolver            | `0x33575240105e9E5fD623516A1a6bA8A8Ba6937BB` |
+| DotnsReverseResolver     | `0xcD4F9d6F3Fe864DD0a049eAd3d0e80Ad1add8ddE` |
+| DotnsContentResolver     | `0x8eb27f68c2193f8B75673180cE4D3A471707DAC4` |
+| DotnsPopResolver         | `0x2E77DB7b368E5856Af6a4D2930E60d9038e1ae8B` |
+| DotnsNameEscrow          | `0x77839A2Aa737ba2ad8d01b6196F516Ba6971a347` |
+| StoreFactory             | `0x41dD18f9F646dA9B8BADA37D2fc1D6e5160A4Da3` |
+| LabelStoreBeacon         | `0xb1c47De92b2BA48734c61b34318b166FfA2Ba05f` |
+| UserStoreBeacon          | `0x8B75c427De3Db6748960DFf35729E33e166A13e7` |
 
 ### Mental model for new features
 

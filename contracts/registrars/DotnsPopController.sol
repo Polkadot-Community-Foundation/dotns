@@ -614,13 +614,12 @@ contract DotnsPopController is
     /// @notice Internal check enforcing PoP-gateway-only access through the
     ///         revive System precompile.
     /// @dev Calls `ISystem(DotnsConstants.REVIVE_SYSTEM).callerIsRoot()` and reverts with
-    ///      `NotGateway(address(0))` when the substrate origin is not `Root`.
-    ///      The zero address in the revert payload is deliberate: the contract
-    ///      never reads `msg.sender` in the gate (see the modifier docstring),
-    ///      so there is no spoofable identity to surface. Indexers should treat
-    ///      the field as reserved.
+    ///      `NotGateway(msg.sender)` when the substrate origin is not `Root`.
+    ///      The revert payload is diagnostic only: authorization is determined
+    ///      exclusively by the revive System precompile, while `msg.sender`
+    ///      identifies the immediate EVM caller observed by this contract.
     function _onlyGateway() internal view {
-        require(ISystem(DotnsConstants.REVIVE_SYSTEM).callerIsRoot(), NotGateway(address(0)));
+        require(ISystem(DotnsConstants.REVIVE_SYSTEM).callerIsRoot(), NotGateway(msg.sender));
     }
 
     /// @notice Routes a raw cross-chain payload to the typed entrypoint identified by `selector`.
