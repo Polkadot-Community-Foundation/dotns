@@ -12,8 +12,6 @@ jobs:
   validate:
     if: contains(github.event.issue.labels.*.name, 'whitelist-request')
     runs-on: ubuntu-latest
-    env:
-      MAX_INVALID_WHITELIST_ATTEMPTS: "3"
 
     steps:
       - name: Load CODEOWNERS reviewers
@@ -103,7 +101,7 @@ jobs:
           node-version: "22"
       - if: steps.extract.outputs.fields_ok == 'true'
         run: |
-          TAG=v0.6.3
+          TAG=v0.6.2
           gh release download "$TAG" --repo paritytech/dotns-sdk --pattern '*.tgz' --dir /tmp/dotns-cli
           npm install -g /tmp/dotns-cli/*.tgz
         env:
@@ -203,8 +201,7 @@ jobs:
           ADDR_TYPE: ${{ steps.validate.outputs.type }}
           IS_MAPPED: ${{ steps.validate.outputs.is_mapped }}
           DOTNS_ENV: ${{ steps.network.outputs.env }}
-          MAX_ATTEMPTS: ${{ env.MAX_INVALID_WHITELIST_ATTEMPTS }}
-          REVIEWERS: ${{ steps.codeowners.outputs.mentions }}
+          MISSING_FIELDS: ${{ steps.extract.outputs.missing_fields }}
         with:
           script: |
             const marker = "<!-- dotns-whitelist-bot -->";
@@ -214,26 +211,25 @@ jobs:
             const type = process.env.ADDR_TYPE;
             const isMapped = process.env.IS_MAPPED === "true";
             const author = context.payload.issue.user.login;
-            const maxAttempts = Number(process.env.MAX_ATTEMPTS || "3");
-            const reviewers = process.env.REVIEWERS;
+            const missingFields = (process.env.MISSING_FIELDS || "").trim();
 
             const { owner, repo } = context.repo;
             const issue_number = context.payload.issue.number;
-            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
-            const previousInvalidAttempts = comments.filter(c => c.body && c.body.includes(invalidMarker)).length;
-            const invalidAttempts = valid ? previousInvalidAttempts : previousInvalidAttempts + 1;
-            const closeIssue = !valid && invalidAttempts >= maxAttempts;
 
             const status = valid ? "Valid" : "Invalid";
+            const lines = [marker];
 
-            const lines = [
-              marker,
-              valid ? "" : invalidMarker,
-              `### Address Validation — ${status}`,
-              "",
-              message,
-              "",
-            ];
+            if (!valid) {
+              lines.push(invalidMarker);
+              lines.push("<!-- dotns-whitelist-ping-count:1 -->");
+              lines.push(`<!-- dotns-whitelist-ping-at:${new Date().toISOString()} -->`);
+              lines.push(`<!-- dotns-whitelist-missing:${missingFields} -->`);
+            }
+
+            lines.push(`### Address Validation — ${status}`);
+            lines.push("");
+            lines.push(message);
+            lines.push("");
 
             if (valid && type === "substrate" && !isMapped) {
               lines.push(`@${author} Your account is **not mapped on-chain**. Before your address can be whitelisted you need to map it.`);
@@ -251,15 +247,9 @@ jobs:
             if (valid) {
               lines.push("This address is ready for whitelisting on the selected network. A maintainer will review and apply the `whitelist-approved` label to proceed.");
             } else {
-              lines.push(`Attempt ${invalidAttempts} of ${maxAttempts}.`);
+              lines.push(`@${author} please update the issue body so the form fields are correct.`);
               lines.push("");
-              lines.push("Please update the issue body with a valid EVM or Substrate address, the matching address type, and a clear description of why the PoP bypass is needed.");
-            }
-
-            if (closeIssue) {
-              lines.push("");
-              lines.push(`This request has reached ${maxAttempts} invalid attempts, so it is being closed for review.`);
-              lines.push(`cc ${reviewers}`);
+              lines.push("**Reminder 1 of 3.** Two further reminders will be posted at roughly 10 minute intervals. If the request is still incomplete after the final reminder it will be rejected automatically.");
             }
 
             lines.push("");
@@ -284,7 +274,7 @@ jobs:
                 owner,
                 repo,
                 issue_number,
-                labels: closeIssue ? ["needs-info", "needs-review"] : ["needs-info"],
+                labels: ["needs-info"],
               });
             } else {
               try {
@@ -292,8 +282,4 @@ jobs:
               } catch (error) {
                 if (error.status !== 404) throw error;
               }
-            }
-
-            if (closeIssue) {
-              await github.rest.issues.update({ owner, repo, issue_number, state: "closed" });
             }

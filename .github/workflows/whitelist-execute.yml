@@ -10,6 +10,10 @@ permissions:
   contents: read
   issues: write
 
+concurrency:
+  group: whitelist-execute
+  cancel-in-progress: false
+
 jobs:
   whitelist:
     if: |
@@ -461,7 +465,7 @@ jobs:
           node-version: "22"
       - if: steps.retry_guard.outputs.noop != 'true'
         run: |
-          TAG=v0.6.3
+          TAG=v0.6.2
           gh release download "$TAG" --repo paritytech/dotns-sdk --pattern '*.tgz' --dir /tmp/dotns-cli
           npm install -g /tmp/dotns-cli/*.tgz
         env:
