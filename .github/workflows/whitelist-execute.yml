@@ -712,7 +712,7 @@ jobs:
               "",
               "Run `dotns account --help` for all authentication options (keystore, key URI, etc.).",
               "",
-              "`/retry` does not whitelist the account by itself. Once your account is mapped, comment `/retry` on this issue to re-check mapping and continue the approved workflow.",
+              "This issue has been closed. Once your account is mapped, comment `/retry` on this closed issue to re-check mapping and continue the approved workflow. `/retry` does not whitelist the account by itself.",
               "",
               `cc ${process.env.REVIEWERS}`,
             ].join("\n");
@@ -725,6 +725,8 @@ jobs:
             } else {
               await github.rest.issues.createComment({ owner, repo, issue_number, body: marker + section });
             }
+
+            await github.rest.issues.update({ owner, repo, issue_number, state: "closed" });
 
             core.setFailed("Account not mapped on-chain");
 
@@ -900,7 +902,7 @@ jobs:
               "",
               `@${author} The on-chain transaction failed. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.`,
               "",
-              "Comment `/retry` on this issue to try again after the failure is understood. `/retry` does not approve or whitelist the account by itself.",
+              "This issue has been closed. If the underlying problem is fixed, comment `/retry` on this closed issue to run the workflow again. `/retry` does not approve or whitelist the account by itself.",
               "",
               `cc ${process.env.REVIEWERS}`,
             ].join("\n");
@@ -913,3 +915,5 @@ jobs:
             } else {
               await github.rest.issues.createComment({ owner, repo, issue_number, body: marker + section });
             }
+
+            await github.rest.issues.update({ owner, repo, issue_number, state: "closed" });
