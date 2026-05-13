@@ -30,7 +30,6 @@ body:
       description: Select the network where this address should be whitelisted.
       options:
         - Paseo V2
-        - Paseo Review
     validations:
       required: true
 

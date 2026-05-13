@@ -55,7 +55,7 @@ jobs:
             if (!["EVM (H160)", "Substrate (SS58)"].includes(addressType)) {
               missing.push("Address Type");
             }
-            if (!["Paseo V2", "Paseo Review"].includes(network)) {
+            if (!["Paseo V2"].includes(network)) {
               missing.push("Network");
             }
             if (description.length < 30) {
@@ -79,11 +79,8 @@ jobs:
           script: |
             const configs = {
               "Paseo V2": {
-                rpc: "wss://asset-hub-paseo-rpc.n.dwellir.com",
-                explorer: "https://blockscout-testnet.polkadot.io",
-              },
-              "Paseo Review": {
-                rpc: "wss://services.polkadothub-rpc.com/testnet",
+                env: "paseo-v2",
+                rpc: "wss://paseo-asset-hub-next-rpc.polkadot.io",
                 explorer: "https://blockscout-testnet.polkadot.io",
               },
             };
@@ -95,6 +92,7 @@ jobs:
               return;
             }
 
+            core.setOutput("env", config.env);
             core.setOutput("rpc", config.rpc);
             core.setOutput("explorer", config.explorer);
 
@@ -105,7 +103,7 @@ jobs:
           node-version: "22"
       - if: steps.extract.outputs.fields_ok == 'true'
         run: |
-          TAG=$(gh release list --repo paritytech/dotns-sdk --limit 1 --json tagName --jq '.[0].tagName')
+          TAG=v0.6.3
           gh release download "$TAG" --repo paritytech/dotns-sdk --pattern '*.tgz' --dir /tmp/dotns-cli
           npm install -g /tmp/dotns-cli/*.tgz
         env:
@@ -117,9 +115,9 @@ jobs:
         env:
           ADDRESS: ${{ steps.extract.outputs.address }}
           ADDRESS_TYPE: ${{ steps.extract.outputs.address_type }}
-          SUBSTRATE_RPC_URL: ${{ steps.network.outputs.rpc }}
+          DOTNS_ENV: ${{ steps.network.outputs.env }}
         run: |
-          RESULT=$(dotns account is-mapped "$ADDRESS" --rpc "$SUBSTRATE_RPC_URL" --json -k //Alice 2>&1) || true
+          RESULT=$(dotns account is-mapped "$ADDRESS" --env "$DOTNS_ENV" --json -k //Alice 2>&1) || true
 
           if echo "$RESULT" | jq -e . > /dev/null 2>&1; then
             IS_MAPPED=$(echo "$RESULT" | jq -r '.isMapped')
@@ -204,7 +202,7 @@ jobs:
           MESSAGE: ${{ steps.message.outputs.message }}
           ADDR_TYPE: ${{ steps.validate.outputs.type }}
           IS_MAPPED: ${{ steps.validate.outputs.is_mapped }}
-          SUBSTRATE_RPC_URL: ${{ steps.network.outputs.rpc }}
+          DOTNS_ENV: ${{ steps.network.outputs.env }}
           MAX_ATTEMPTS: ${{ env.MAX_INVALID_WHITELIST_ATTEMPTS }}
           REVIEWERS: ${{ steps.codeowners.outputs.mentions }}
         with:
@@ -243,7 +241,7 @@ jobs:
               lines.push("Install the [DotNS CLI](https://github.com/paritytech/dotns-sdk/releases) and run:");
               lines.push("");
               lines.push("```bash");
-              lines.push(`dotns account map --rpc ${process.env.SUBSTRATE_RPC_URL} -m "<your mnemonic>"`);
+              lines.push(`dotns account map --env ${process.env.DOTNS_ENV} -m "<your mnemonic>"`);
               lines.push("```");
               lines.push("");
               lines.push("Run `dotns account --help` for all authentication options.");
