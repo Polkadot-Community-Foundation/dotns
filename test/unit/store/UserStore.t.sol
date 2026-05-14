@@ -7,10 +7,18 @@ import {UserStore} from "../../../contracts/store/UserStore.sol";
 import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
+/// @title UserStoreTests
+/// @notice Unit tests for the per-user UserStore beacon proxy: initialisation, owner-only writes,
+/// history snapshotting, and pagination.
 contract UserStoreTests is BaseDotns {
+    /// @notice Fixture key used as the primary entry in setValue/history tests.
     bytes32 internal constant KEY_A = keccak256("cid.v1");
+    /// @notice Fixture key used alongside KEY_A to cover multi-key enumeration.
     bytes32 internal constant KEY_B = keccak256("cid.v2");
 
+    /// @notice Claims a brand-new UserStore beacon proxy on behalf of `user`.
+    /// @param user The address that will both call `claimUserStore` and own the resulting store.
+    /// @return store The newly claimed UserStore proxy cast to the IUserStore interface.
     function _freshUserStore(address user) internal returns (IUserStore store) {
         vm.prank(user);
         store = IUserStore(storeFactory.claimUserStore());

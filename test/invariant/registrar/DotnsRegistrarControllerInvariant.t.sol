@@ -6,9 +6,16 @@ import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
 import {RegistrarControllerHandler} from "./RegistrarControllerHandler.t.sol";
 
+/// @title DotnsRegistrarControllerInvariantTest
+/// @notice Invariants asserted over arbitrary sequences of registrar-controller
+///         actions including commit-reveal registration and ownership transfer.
 contract DotnsRegistrarControllerInvariantTest is BaseDotns {
+    /// @notice Bounded random-action handler driving the controller under test.
     RegistrarControllerHandler public handler;
 
+    /// @notice Wires the handler, seeds it with mixed-status actors, funds it
+    ///         for paid registrations, and excludes protocol contracts from
+    ///         direct fuzzer dispatch.
     function setUp() public override {
         super.setUp();
 
@@ -42,6 +49,8 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         excludeContract(address(storeFactory));
     }
 
+    /// @notice Every successfully registered name reports `available == false`
+    ///         on the controller.
     function invariant_registered_names_unavailable() public view {
         string[] memory registeredLabels = handler.getRegisteredLabels();
 
@@ -53,6 +62,8 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         }
     }
 
+    /// @notice Commitments consumed by a successful registration are deleted
+    ///         from the controller's commitment book (no replay).
     function invariant_consumed_commitments_deleted() public view {
         bytes32[] memory consumedCommitments = handler.getConsumedCommitments();
 
@@ -65,6 +76,8 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         }
     }
 
+    /// @notice Every registered name's store entry is locked against
+    ///         mutation by anyone other than the controller.
     function invariant_store_entries_locked() public view {
         string[] memory registeredLabels = handler.getRegisteredLabels();
         address[] memory registeredOwners = handler.getRegisteredOwners();
@@ -81,10 +94,14 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         }
     }
 
+    /// @notice The controller never accumulates a residual balance; refunds
+    ///         and price transfers always net to zero on its side.
     function invariant_no_stuck_funds() public view {
         assertEq(address(dotnsRegistrarController).balance, 0, "Controller must not hold funds");
     }
 
+    /// @notice The ghost registration counter matches the count of recorded
+    ///         labels and the count of live ERC721 tokens at their nodes.
     function invariant_registration_count_consistent() public view {
         uint256 registrationCount = handler.getRegistrationCount();
         string[] memory registeredLabels = handler.getRegisteredLabels();
@@ -114,6 +131,8 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         );
     }
 
+    /// @notice Every reserved registration produces a reverse-resolution entry
+    ///         of the form `<label>.dot` for the reserved owner.
     function invariant_reserved_names_have_reverse_resolution() public view {
         string[] memory reservedLabels = handler.getReservedLabels();
         address[] memory reservedOwners = handler.getReservedOwners();
@@ -126,6 +145,9 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         }
     }
 
+    /// @notice Every transfer recipient ends up with a deployed store
+    ///         containing the transferred label, locked against external
+    ///         mutation.
     function invariant_transfer_recipients_have_store_entries() public view {
         string[] memory transferredLabels = handler.getTransferredLabels();
         address[] memory transferredRecipients = handler.getTransferredRecipients();
@@ -148,6 +170,9 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         }
     }
 
+    /// @notice The current owner of every registered name has a store entry
+    ///         carrying the canonical `<label>.dot` value, irrespective of
+    ///         how many transfer hops the name has gone through.
     function invariant_current_owners_have_label_in_store() public view {
         string[] memory registeredLabels = handler.getRegisteredLabels();
         address[] memory registeredOwners = handler.getRegisteredOwners();
@@ -168,6 +193,8 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         }
     }
 
+    /// @notice The forward registry's `owner(node)` always matches the ERC721
+    ///         `ownerOf(tokenId)` for every registered name.
     function invariant_ownership_consistency() public view {
         string[] memory registeredLabels = handler.getRegisteredLabels();
 

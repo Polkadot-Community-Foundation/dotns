@@ -5,12 +5,17 @@ import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
 import {IUserStore} from "../../../contracts/store/IUserStore.sol";
 
+/// @title StoreStressTest
+/// @notice Stress-level coverage that exercises Store pagination, deep history,
+///         and large-value round-trips for both LabelStore and UserStore.
 contract StoreStressTest is BaseDotns {
+    /// @notice Deploys and returns a fresh LabelStore for `user` via the factory owner.
     function _freshLabelStore(address user) internal returns (ILabelStore store) {
         vm.prank(owner);
         store = ILabelStore(storeFactory.deployLabelStoreFor(user));
     }
 
+    /// @notice Claims and returns a fresh UserStore on behalf of `user`.
     function _freshUserStore(address user) internal returns (IUserStore store) {
         vm.prank(user);
         store = IUserStore(storeFactory.claimUserStore());
@@ -113,6 +118,7 @@ contract StoreStressTest is BaseDotns {
         assertEq(all.length, 1);
     }
 
+    /// @notice Builds a deterministic byte blob of `size` bytes for round-trip tests.
     function _buildBlob(uint256 size) internal pure returns (bytes memory blob) {
         blob = new bytes(size);
         for (uint256 index; index < size; ++index) {
@@ -120,6 +126,9 @@ contract StoreStressTest is BaseDotns {
         }
     }
 
+    /// @notice Converts `value` to its decimal string representation.
+    /// @dev Avoids OpenZeppelin's Strings library so the stress suite stays
+    ///      self-contained.
     function _intString(uint256 value) internal pure returns (string memory decimal) {
         if (value == 0) return "0";
         uint256 length;

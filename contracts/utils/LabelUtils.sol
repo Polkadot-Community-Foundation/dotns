@@ -16,8 +16,8 @@ import {DotnsConstants} from "./DotnsConstants.sol";
 ///        Centralising validation here would require centralising the error types, which
 ///        breaks interface-level error ownership.
 ///      - Lowercase ASCII letters/digits/hyphen rules with hyphen-position constraints
-///        live in {StringUtils.isSingleLabel}; this library treats the input as opaque
-///        bytes once a caller has run its own checks.
+///        live in @custom:function StringUtils.isSingleLabel; this library treats the input as
+/// opaque bytes once a caller has run its own checks.
 /// @custom:security-contact admin@parity.io
 library LabelUtils {
     /// @notice Computes `keccak256(bytes(label))` via memory-safe scratch space.

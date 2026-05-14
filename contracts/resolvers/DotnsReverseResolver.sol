@@ -50,11 +50,11 @@ contract DotnsReverseResolver is
     }
 
     /// @notice Initialises the reverse resolver.
-    /// @dev May only be called once per proxy.
+    /// @dev May only be called once per proxy; a repeat call reverts with
+    ///      @custom:reverts InvalidInitialization. Emits @custom:emits OwnershipTransferred when
+    ///      `msg.sender` is recorded as the initial owner and @custom:emits Initialized once
+    ///      setup completes.
     /// @param registry Protocol-level address registry used to resolve sibling contracts.
-    /// @custom:emits OwnershipTransferred
-    /// @custom:emits Initialized
-    /// @custom:reverts InvalidInitialization
     function initialize(IDotnsProtocolRegistry registry) external initializer {
         __Ownable_init(msg.sender);
         __ERC165_init();

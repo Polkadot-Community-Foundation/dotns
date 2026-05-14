@@ -6,9 +6,16 @@ import {IDotnsRegistry} from "../../../contracts/registry/IDotnsRegistry.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {RegistryHandler} from "./RegistryHandler.t.sol";
 
+/// @title Dotns Registry Invariant Suite
+/// @notice Asserts authorisation, persistence, and parent-reassignment properties of the
+///         hierarchical registry across randomised registration, subnode creation, and
+///         transfer flows.
 contract DotnsRegistryInvariantTest is BaseDotns {
+    /// @notice Handler driving randomised actions against the registry.
     RegistryHandler public handler;
 
+    /// @notice Deploys the registry handler, funds it, registers a mixed-tier actor set
+    ///         (including a freshly created `alice`), and targets the handler exclusively.
     function setUp() public override {
         super.setUp();
 
@@ -33,7 +40,8 @@ contract DotnsRegistryInvariantTest is BaseDotns {
         excludeContract(address(storeFactory));
     }
 
-    // @notice The parent domain owner must always be able to reassign subnodes.
+    /// @notice The parent domain owner must always be able to reassign any of its subnodes
+    ///         to itself, regardless of intervening transfers or reassignments.
     function invariant_parent_can_always_reassign_subnodes() public {
         bytes32[] memory subnodes = handler.getSubnodeHashes();
         bytes32[] memory parents = handler.getSubnodeParents();
@@ -81,7 +89,8 @@ contract DotnsRegistryInvariantTest is BaseDotns {
         }
     }
 
-    // The direct subnode owner must always be authorised for node operations.
+    /// @notice The registry's recorded subnode owner must equal the handler's tracked owner
+    ///         for every subnode created during the run.
     function invariant_subnode_owner_authorized() public view {
         bytes32[] memory subnodes = handler.getSubnodeHashes();
         address[] memory owners = handler.getSubnodeOwners();
@@ -92,7 +101,7 @@ contract DotnsRegistryInvariantTest is BaseDotns {
         }
     }
 
-    // @notice Subnodes must always exist once created.
+    /// @notice Once a subnode has been created it must always report `recordExists() == true`.
     function invariant_subnodes_always_exist() public view {
         bytes32[] memory subnodes = handler.getSubnodeHashes();
 

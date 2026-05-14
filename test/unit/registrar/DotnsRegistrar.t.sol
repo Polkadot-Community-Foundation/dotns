@@ -5,6 +5,9 @@ import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IDotnsController} from "../../../contracts/registrars/IDotnsController.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
+/// @title DotnsRegistrarTests
+/// @notice Unit coverage for the ERC721 registrar's controller authorisation,
+///         availability tracking, registration, and approval surfaces.
 contract DotnsRegistrarTests is BaseDotns {
     function test_add_controller() public {
         address additionalController = makeAddr("additionalController");

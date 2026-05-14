@@ -7,9 +7,14 @@ import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
 import {IUserStore} from "../../../contracts/store/IUserStore.sol";
 import {UpgradeableBeacon} from "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 
+/// @title Store Invariant Suite
+/// @notice Asserts immutability and ownership properties of the LabelStore and UserStore
+///         beacon proxies deployed via `StoreFactory`.
 contract StoreInvariantTest is BaseDotns {
+    /// @notice Handler driving randomised actions against the store factory and its stores.
     StoreInvariantHandler internal handler;
 
+    /// @notice Deploys the store invariant handler and targets it as the sole fuzzed contract.
     function setUp() public override {
         super.setUp();
         handler = new StoreInvariantHandler(
@@ -18,6 +23,7 @@ contract StoreInvariantTest is BaseDotns {
         targetContract(address(handler));
     }
 
+    /// @notice Every labelhash ever written to a label store must remain locked thereafter.
     function invariant_locked_labels_never_unlock() public view {
         uint256 stores = handler.labelStoreCount();
         for (uint256 i; i < stores; ++i) {
@@ -30,6 +36,8 @@ contract StoreInvariantTest is BaseDotns {
         }
     }
 
+    /// @notice The label text stored alongside a locked labelhash must equal the frozen value
+    ///         first observed by the handler at write time.
     function invariant_locked_label_text_never_changes() public view {
         uint256 stores = handler.labelStoreCount();
         for (uint256 i; i < stores; ++i) {
@@ -44,6 +52,8 @@ contract StoreInvariantTest is BaseDotns {
         }
     }
 
+    /// @notice Each user owns at most one label store and at most one user store, and the
+    ///         factory's canonical lookup stays consistent with the handler's ghost arrays.
     function invariant_at_most_one_store_of_each_type_per_user() public view {
         uint256 userCount = handler.userCount();
         for (uint256 i; i < userCount; ++i) {
@@ -63,11 +73,14 @@ contract StoreInvariantTest is BaseDotns {
         }
     }
 
+    /// @notice The store factory must remain the sole owner of both beacons it deployed.
     function invariant_factory_owns_both_beacons() public view {
         assertEq(UpgradeableBeacon(storeFactory.labelStoreBeacon()).owner(), address(storeFactory));
         assertEq(UpgradeableBeacon(storeFactory.userStoreBeacon()).owner(), address(storeFactory));
     }
 
+    /// @notice The factory's enumeration counters must equal the number of stores tracked
+    ///         by the handler.
     function invariant_enumeration_matches_counters() public view {
         assertEq(storeFactory.getLabelStoreCount(), handler.labelStoreCount());
         assertEq(storeFactory.getUserStoreCount(), handler.userStoreCount());

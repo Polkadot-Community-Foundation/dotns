@@ -27,8 +27,8 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 /// @notice ERC721-backed registrar implementing permanent name ownership.
 /// @dev Deliberately policy-free. Transfers are supported to allow ownership changes without
 /// registry hooks, and the registrar itself does not encode pricing, reservations, or PoP
-/// gating; those live in the controllers and {IPopRules}. The fee-on-transfer hook in
-/// `_update` is a thin enforcement layer that consults the escrow.
+/// gating; those live in the controllers and @custom:contract IPopRules. The fee-on-transfer hook
+/// in `_update` is a thin enforcement layer that consults the escrow.
 /// @custom:security-contact admin@parity.io
 contract DotnsRegistrar is
     Initializable,
@@ -40,8 +40,8 @@ contract DotnsRegistrar is
     using StoreUtils for IStoreFactory;
 
     /// @notice Mapping of authorised controllers.
-    /// @dev Controllers may call `register`. Keyed by the shared baseline {IDotnsController}
-    /// interface so the registrar doesn't depend on any specific controller shape.
+    /// @dev Controllers may call `register`. Keyed by the shared baseline @custom:contract
+    /// IDotnsController interface so the registrar doesn't depend on any specific controller shape.
     /// Commit-reveal, PoP, and future controllers coexist here so long as they implement the
     /// baseline interface.
     /// @custom:oz-retyped-from mapping(IDotnsRegistrarController => bool)
@@ -68,9 +68,9 @@ contract DotnsRegistrar is
 
     /// @notice Initialises the registrar.
     /// @dev Uses OpenZeppelin upgradeable initialisers and is callable once through the UUPS
-    /// proxy. `_disableInitializers` on the implementation makes direct calls revert.
-    /// @custom:reverts InvalidInitialization
-    /// @custom:reverts NotInitializing
+    /// proxy; direct calls on the implementation revert with @custom:reverts InvalidInitialization
+    /// because `_disableInitializers` runs in the constructor, and any nested call outside an
+    /// active initialiser scope reverts with @custom:reverts NotInitializing.
     function initialize(
         string calldata name,
         string calldata symbol,

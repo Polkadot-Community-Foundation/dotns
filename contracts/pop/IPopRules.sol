@@ -70,31 +70,34 @@ interface IPopRules {
 
     /// @notice Classifies a name into a required PoP tier per DotNS naming rules.
     /// @dev Pure; inputs are the label bytes only. Callers use the returned tier to decide which
-    ///      pricing and verification branch applies.
+    ///      pricing and verification branch applies. Non-canonical labels (anything other than a
+    ///      single lowercase ASCII DNS label) and labels with more than two trailing digits both
+    ///      trigger @custom:reverts PopError.
     /// @param name The name label being evaluated.
     /// @return requirement Required tier for registration.
     /// @return message Explanation of the classification result.
-    /// @custom:reverts PopError
     function classifyName(string calldata name)
         external
         pure
         returns (PopStatus requirement, string memory message);
 
     /// @notice Updates the spam-deterrent starting price for NoStatus pricing.
-    /// @dev Owner-only. The new value flows into `_priceValidatedName` on the next
-    ///      pricing read; no redeploy. Emits {StartingPriceUpdated}.
+    /// @dev Owner-only; unauthorised callers trigger @custom:reverts
+    ///      OwnableUnauthorizedAccount. `newStartingPrice` must be strictly positive, otherwise
+    ///      @custom:reverts PopError. The new value flows into `_priceValidatedName` on the next
+    ///      pricing read; no redeploy. Emits @custom:emits StartingPriceUpdated with the prior
+    ///      and new values.
     /// @param newStartingPrice New base price in wei.
     function updateStartingPrice(uint256 newStartingPrice) external;
 
     /// @notice Creates a reservation entry for the digit-stripped version of a name.
-    /// @dev Commit-reveal reservation path. Callable only by an authorised controller on the
-    ///      registrar. Reverts unless the label is classified as `PopLite`; no-ops when the slot
-    ///      is already live so concurrent registrations cannot stomp the original reserver.
+    /// @dev Commit-reveal reservation path. Only an authorised controller on the registrar may
+    ///      call this, otherwise @custom:reverts NotRegistry. Non-canonical labels and labels
+    ///      that do not classify as `PopLite` trigger @custom:reverts PopError. No-ops when the
+    ///      slot is already live so concurrent registrations cannot stomp the original reserver;
+    ///      otherwise emits @custom:emits BaseNameReserved.
     /// @param baseName The base label with trailing digits removed.
     /// @param user The address receiving reservation rights.
-    /// @custom:emits BaseNameReserved
-    /// @custom:reverts NotRegistry
-    /// @custom:reverts PopError
     function reserveBaseName(string calldata baseName, address user) external;
 
     /// @notice Emitted when a base-name reservation is cleared.
@@ -102,37 +105,37 @@ interface IPopRules {
     event BaseNameReleased(string indexed baseName);
 
     /// @notice Writes or refreshes a reservation for a bare base-name stem.
-    /// @dev Gateway-driven reservation path used by the PoP controller. Callable by any controller
-    ///      in the registrar's `controllers` set. Does not apply the lite-format classification
-    ///      that `reserveBaseName` enforces; the caller supplies the bare stem directly. Reverts
-    ///      if the slot is already held by another user and still live so the caller's local
-    ///      bookkeeping and PopRules state stay in lockstep. If the slot is already live for the
-    ///      same user, refreshes expiry to `block.timestamp + MAX_RESERVATION_TIME`.
+    /// @dev Gateway-driven reservation path used by the PoP controller. Only a controller in the
+    ///      registrar's `controllers` set may call this, otherwise @custom:reverts NotRegistry.
+    ///      Does not apply the lite-format classification that `reserveBaseName` enforces; the
+    ///      caller supplies the bare stem directly, and a non-canonical label triggers
+    ///      @custom:reverts PopError. If the slot is already live and held by a different user,
+    ///      @custom:reverts PopError so the caller's local bookkeeping and PopRules state stay in
+    ///      lockstep; if it is live for the same user, expiry is refreshed to `block.timestamp +
+    ///      MAX_RESERVATION_TIME`. Emits @custom:emits BaseNameReserved on every successful write.
     /// @param baseName The base label to reserve (no trailing digits).
     /// @param user The address receiving reservation rights.
-    /// @custom:emits BaseNameReserved
-    /// @custom:reverts NotRegistry
-    /// @custom:reverts PopError
     function reserveBaseNameForPop(string calldata baseName, address user) external;
 
     /// @notice Clears a reservation for a base-name stem.
-    /// @dev Callable by controllers in the registrar's `controllers` set. Live reservations may
-    ///      only be cleared by the same controller that wrote them; expired reservations may be
-    ///      cleared by any authorised controller. Used by the PoP controller when a reservation is
-    ///      claimed, relinquished, or a queue head promotion leaves the slot empty.
+    /// @dev Only a controller in the registrar's `controllers` set may call this, otherwise
+    ///      @custom:reverts NotRegistry. Non-canonical labels trigger @custom:reverts PopError.
+    ///      Live reservations may only be cleared by the same controller that wrote them;
+    ///      another authorised controller attempting to clear a live slot triggers
+    ///      @custom:reverts PopError. Expired reservations may be cleared by any authorised
+    ///      controller as garbage collection. Used by the PoP controller when a reservation is
+    ///      claimed, relinquished, or a queue head promotion leaves the slot empty. Emits
+    ///      @custom:emits BaseNameReleased once the slot is cleared.
     /// @param baseName The base label whose reservation should be cleared.
-    /// @custom:emits BaseNameReleased
-    /// @custom:reverts NotRegistry
-    /// @custom:reverts PopError
     function releaseBaseName(string calldata baseName) external;
 
     /// @notice Retrieves reservation information for a base name.
     /// @dev Raw accessor: returns the stored slot regardless of expiry. Use {isBaseNameReserved}
-    ///      when live-window semantics are needed.
+    ///      when live-window semantics are needed. Non-canonical labels trigger
+    ///      @custom:reverts PopError.
     /// @param baseName The base label without trailing digits.
     /// @return owner The address assigned to the reservation.
     /// @return expires UNIX timestamp when the reservation expires.
-    /// @custom:reverts PopError
     function getBaseNameReservation(string calldata baseName)
         external
         view
@@ -140,26 +143,25 @@ interface IPopRules {
 
     /// @notice Indicates whether a base name is currently reserved.
     /// @dev Applies the live-window predicate to the stored slot so an expired reservation reads
-    ///      as free.
+    ///      as free. Non-canonical labels trigger @custom:reverts PopError.
     /// @param baseName The base label without trailing digits.
     /// @return reservedStatus True if a live reservation is active.
     /// @return owner The reservation holder (zero when not reserved).
     /// @return expires UNIX timestamp when the reservation expires.
-    /// @custom:reverts PopError
     function isBaseNameReserved(string calldata baseName)
         external
         view
         returns (bool reservedStatus, address owner, uint64 expires);
 
     /// @notice Calculates price with PoP classification and reservation enforcement.
-    /// @dev Reverting pricing path used by the commit-reveal controller. Rejects
-    /// governance-reserved names and base-name registrations held by another user. Price is a spam
-    /// deterrent and
-    ///      is significant only for NoStatus users; verified users pay zero.
+    /// @dev Reverting pricing path used by the commit-reveal controller. Price is a spam
+    ///      deterrent and is significant only for NoStatus users; verified users pay zero.
+    ///      Non-canonical labels, a base stem held live by another user, a governance-reserved
+    ///      label, or a `userAddress` whose personhood tier does not meet the label's required
+    ///      tier each trigger @custom:reverts PopError.
     /// @param name Domain label.
     /// @param userAddress Registering user for the given label.
     /// @return metadata Price with PoP requirements and classification.
-    /// @custom:reverts PopError
     function priceWithCheck(
         string calldata name,
         address userAddress
@@ -168,17 +170,18 @@ interface IPopRules {
         view
         returns (PriceWithMeta memory metadata);
 
-    /// @notice Calculates price with PoP classification and reservation metadata, without reverting
-    /// on conflicts. @dev Non-reverting counterpart to `priceWithCheck`: surfaces the same fields,
-    /// but reports a
-    ///      `Reserved` status through `metadata` instead of reverting when the base stem is held
-    ///      by another user. Used by front-ends that need to present a price and eligibility
+    /// @notice Calculates price with PoP classification and reservation metadata, without
+    /// reverting on conflicts.
+    /// @dev Non-reverting counterpart to `priceWithCheck`: surfaces the same fields, but reports
+    ///      a `Reserved` status through `metadata` instead of reverting when the base stem is
+    ///      held by another user. Used by front-ends that need to present a price and eligibility
     ///      preview without forcing a transaction attempt. Governance-reserved names are not
-    ///      rejected here either; the caller decides what to do.
+    ///      rejected here either; the caller decides what to do. Non-canonical labels still
+    ///      trigger @custom:reverts PopError because the input is malformed rather than just
+    ///      contested.
     /// @param name Domain label.
     /// @param userAddress Registering user for the given label.
     /// @return metadata Price with PoP requirements and classification.
-    /// @custom:reverts PopError
     function priceWithoutCheck(
         string calldata name,
         address userAddress
@@ -188,27 +191,28 @@ interface IPopRules {
         returns (PriceWithMeta memory metadata);
 
     /// @notice Friction fee owed when `account` reaches into a label tier above its verification
-    /// level. @dev Non-zero only when `account` cannot meet the label's required PoP tier; the
-    /// value is the
-    ///      length-scaled list price. Acts as cross-payer friction at registration time and as the
-    ///      transfer-time floor consumed by `DotnsNameEscrow.chargeTransferFee`.
+    /// level.
+    /// @dev Non-zero only when `account` cannot meet the label's required PoP tier; the value is
+    ///      the length-scaled list price. Acts as cross-payer friction at registration time and
+    ///      as the transfer-time floor consumed by `DotnsNameEscrow.chargeTransferFee`.
+    ///      Non-canonical labels and labels with more than two trailing digits trigger
+    ///      @custom:reverts PopError.
     /// @param name Domain label being acted on.
     /// @param account Account whose verification reach is being measured.
-    /// @custom:reverts PopError
     function reachFee(string calldata name, address account) external view returns (uint256 fee);
 
     /// @notice Returns whether `name` is a base name under PoP rules.
     /// @dev A base name has no trailing digits; lite-person labels always have at least two
-    ///      trailing digits, so the two spaces are disjoint.
+    ///      trailing digits, so the two spaces are disjoint. Non-canonical labels trigger
+    ///      @custom:reverts PopError.
     /// @param name The label to check.
     /// @return isBase True when the label has no trailing digits.
-    /// @custom:reverts PopError
     function isBaseName(string calldata name) external pure returns (bool isBase);
 
     /// @notice Calculates registration cost for a label.
-    /// @dev Pure length-based pricing; ignores PoP status and reservation state.
+    /// @dev Pure length-based pricing; ignores PoP status and reservation state. Non-canonical
+    ///      labels trigger @custom:reverts PopError.
     /// @param name Domain label to price.
     /// @return cost Registration cost in wei.
-    /// @custom:reverts PopError
     function price(string calldata name) external view returns (uint256 cost);
 }

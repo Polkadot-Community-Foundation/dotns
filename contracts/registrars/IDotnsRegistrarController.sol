@@ -89,8 +89,9 @@ interface IDotnsRegistrarController is IDotnsController {
     error NotRegistry();
 
     /// @notice Returns whether a label is available for registration.
-    /// @custom:reverts InvalidLabel
-    /// @custom:reverts NameNotAvailable
+    /// @dev Validates the canonical DNS-label shape (otherwise @custom:reverts InvalidLabel)
+    /// and rejects labels shorter than the minimum length with
+    /// @custom:reverts NameNotAvailable before checking ERC721 availability on the registrar.
     function available(string calldata label) external view returns (bool isAvailable);
 
     /// @notice Computes the commitment hash for a registration.
@@ -100,54 +101,51 @@ interface IDotnsRegistrarController is IDotnsController {
         returns (bytes32 commitment);
 
     /// @notice Submits a commitment for a future registration.
-    /// @dev Idempotent over expiry: re-committing an unexpired hash reverts (front-running guard);
-    /// re-committing a hash whose stored timestamp has passed `maxCommitmentAge` overwrites the
-    /// slot so storage cannot be permanently griefed.
-    /// @custom:emits NameCommitted
-    /// @custom:reverts UnexpiredCommitmentExists
+    /// @dev Idempotent over expiry: re-committing an unexpired hash reverts with
+    /// @custom:reverts UnexpiredCommitmentExists (front-running guard); re-committing a hash
+    /// whose stored timestamp has passed `maxCommitmentAge` overwrites the slot so storage
+    /// cannot be permanently griefed. Emits @custom:emits NameCommitted on success.
     function commit(bytes32 commitment) external;
 
     /// @notice Registers a name after the commitment delay.
-    /// @dev Splits on direct vs cross-payer at `msg.sender == registration.owner`. The direct
-    /// path runs `priceWithCheck` (personhood + reservation gate) and routes the fee to a
-    /// refundable escrow deposit owned by `registration.owner`. The cross-payer path skips
-    /// personhood (a third party may sponsor a verified owner), still enforces base-name
-    /// reservations, applies a length-scaled `reachFee` friction when the sender's own tier
-    /// is below the label's required tier, and routes funds to the insurance branch when the
-    /// payer's tier price differs from the owner's (genuine cross-tier sponsorship) versus the
-    /// refundable branch when the tier prices match (same-tier-different-address).
-    /// @custom:emits NameRegistered
-    /// @custom:emits OverpaymentRefunded
-    /// @custom:reverts CommitmentNotFound
-    /// @custom:reverts CommitmentTooNew
-    /// @custom:reverts CommitmentTooOld
-    /// @custom:reverts EscrowNotConfigured
-    /// @custom:reverts InsufficientValue
-    /// @custom:reverts InvalidLabel
-    /// @custom:reverts NameNotAvailable
-    /// @custom:reverts NameReserved
-    /// @custom:reverts RefundFailed
+    /// @dev Validates the label shape (otherwise @custom:reverts InvalidLabel) and ERC721
+    /// availability (otherwise @custom:reverts NameNotAvailable), then resolves the configured
+    /// escrow address from the protocol registry (otherwise @custom:reverts EscrowNotConfigured)
+    /// and consumes the prior commitment, which fails with @custom:reverts CommitmentNotFound
+    /// when no commitment exists for the supplied registration, @custom:reverts CommitmentTooNew
+    /// before `minCommitmentAge`, and @custom:reverts CommitmentTooOld past `maxCommitmentAge`.
+    /// Splits on direct vs cross-payer at `msg.sender == registration.owner`. The direct path
+    /// runs `priceWithCheck` (personhood + reservation gate) and routes the fee to a refundable
+    /// escrow deposit owned by `registration.owner`. The cross-payer path skips personhood
+    /// (a third party may sponsor a verified owner), still enforces base-name reservations
+    /// (otherwise @custom:reverts NameReserved), applies a length-scaled `reachFee` friction
+    /// when the sender's own tier is below the label's required tier, and routes funds to the
+    /// insurance branch when the payer's tier price differs from the owner's (genuine
+    /// cross-tier sponsorship) versus the refundable branch when the tier prices match
+    /// (same-tier-different-address). The caller must supply at least the priced amount plus
+    /// any friction (otherwise @custom:reverts InsufficientValue), and any overpayment is
+    /// returned to `msg.sender` with @custom:emits OverpaymentRefunded; a failed refund call
+    /// reverts with @custom:reverts RefundFailed. Emits @custom:emits NameRegistered on success.
     function register(Registration calldata registration) external payable;
 
     /// @notice Registers a name after the commitment delay.
     /// @dev Whitelisted issuance path used to seed reserved labels at zero base cost: skips the
     /// PoP price check and the escrow deposit, but reuses the same commit-reveal pipeline so
-    /// the same anti-front-running guarantees apply.
-    /// @custom:emits NameRegistered
-    /// @custom:reverts CommitmentNotFound
-    /// @custom:reverts CommitmentTooNew
-    /// @custom:reverts CommitmentTooOld
-    /// @custom:reverts InvalidLabel
-    /// @custom:reverts NameNotAvailable
-    /// @custom:reverts NotWhiteListedOrOwner
+    /// the same anti-front-running guarantees apply. Restricted to whitelisted callers and the
+    /// owner (otherwise @custom:reverts NotWhiteListedOrOwner). Validates the label shape
+    /// (otherwise @custom:reverts InvalidLabel) and ERC721 availability (otherwise
+    /// @custom:reverts NameNotAvailable), then consumes the prior commitment, which fails with
+    /// @custom:reverts CommitmentNotFound, @custom:reverts CommitmentTooNew, or
+    /// @custom:reverts CommitmentTooOld under the same conditions as {register}. Emits
+    /// @custom:emits NameRegistered on success.
     function registerReserved(Registration calldata registration) external;
 
     /// @notice Checks if the given address is whitelisted to call `registerReserved`.
     function isWhiteListed(address who) external view returns (bool isWhiteListed);
 
     /// @notice Adds or removes an address from the whitelist for `registerReserved`.
-    /// @dev Callable by the owner or an account holding `DotnsConstants.WHITELIST_OPERATOR_ROLE`.
-    /// @custom:contract IDotnsRoleManager.NotRoleOrOwner
-    /// @custom:emits WhiteListed
+    /// @dev Callable by the owner or an account holding `DotnsConstants.WHITELIST_OPERATOR_ROLE`;
+    /// any other caller reverts with @custom:reverts IDotnsRoleManager.NotRoleOrOwner. Emits
+    /// @custom:emits WhiteListed on success.
     function whiteListAddress(address who, bool whiteListStatus) external;
 }

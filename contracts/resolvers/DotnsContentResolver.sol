@@ -51,10 +51,11 @@ contract DotnsContentResolver is
     }
 
     /// @notice Initialises the content resolver.
+    /// @dev Runs once through the UUPS proxy; a repeat call reverts with
+    ///      @custom:reverts InvalidInitialization. Emits @custom:emits OwnershipTransferred when
+    ///      `msg.sender` is recorded as the initial owner and @custom:emits Initialized once
+    ///      setup completes.
     /// @param registry Protocol-level address registry used to resolve sibling contracts.
-    /// @custom:reverts InvalidInitialization
-    /// @custom:emits OwnershipTransferred
-    /// @custom:emits Initialized
     function initialize(IDotnsProtocolRegistry registry) external initializer {
         __Ownable_init(msg.sender);
         __ERC165_init();

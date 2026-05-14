@@ -10,22 +10,25 @@ import {ILabelStore} from "../../contracts/store/ILabelStore.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 import {LabelUtils} from "../../contracts/utils/LabelUtils.sol";
 
-// @title PopLifecycleFlow
-// @notice Integration coverage for a PoP-gateway-minted full username across
-//         its full on-chain lifecycle: reservation, claim, record writes,
-//         subname issuance, transfer, and cross-contract lookup paths a
-//         downstream consumer walks starting from the lite username string.
+/// @title PopLifecycleFlow
+/// @notice Integration coverage for a PoP-gateway-minted full username across
+///         its full on-chain lifecycle: reservation, claim, record writes,
+///         subname issuance, transfer, and cross-contract lookup paths a
+///         downstream consumer walks starting from the lite username string.
 contract PopLifecycleFlow is BaseDotns {
-    // Lite baselength 7 + 2 trailing digits classifies as PopLite.
+    /// @notice Lite label fixture. Baselength 7 with 2 trailing digits classifies as PopLite.
     string internal constant LITE_LABEL = "aliceli01";
-    // Full baselength 9 with no trailing digits classifies as PopFull.
+    /// @notice Full label fixture. Baselength 9 with no trailing digits classifies as PopFull.
     string internal constant FULL_LABEL = "alicefull";
+    /// @notice Subname label used for the subnode portion of the flow.
     string internal constant SUB_LABEL = "app";
-    // 65-byte canonical chat-key payload (secp256k1 uncompressed shape).
+    /// @notice 65-byte canonical chat-key payload (secp256k1 uncompressed shape).
     bytes internal constant CHAT_KEY =
         hex"04cafebabedeadbeefcafebabedeadbeefcafebabedeadbeefcafebabedeadbeefcafebabedeadbeefcafebabedeadbeefcafebabedeadbeefcafebabedeadbeef";
+    /// @notice First content hash used in record-write assertions.
     bytes internal constant CONTENT_HASH_A =
         hex"e30101701220aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    /// @notice Second content hash used to verify record overwrites.
     bytes internal constant CONTENT_HASH_B =
         hex"e30101701220bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
@@ -40,7 +43,6 @@ contract PopLifecycleFlow is BaseDotns {
         assertEq(owner, ed);
         assertEq(dotnsRegistrar.labelOf(uint256(fullNode)), FULL_LABEL);
         assertEq(dotnsPopResolver.chatKey(fullNode), CHAT_KEY);
-
         // Same label mirrored in the owner's Store under the canonical store key.
         ILabelStore ownerStore = ILabelStore(storeFactory.getLabelStore(owner));
         assertEq(ownerStore.getLabel(fullNode), string.concat(FULL_LABEL, DotnsConstants.TLD));
@@ -70,7 +72,6 @@ contract PopLifecycleFlow is BaseDotns {
         uint256 _xferFee = dotnsRegistrar.quoteTransferFee(fullTokenId, tiago);
         vm.prank(ed);
         dotnsRegistrar.transferFrom{value: _xferFee}(ed, tiago, fullTokenId);
-
         // Post-transfer invariants. Only ownership fields change; PoP-layer
         // records are keyed by node and survive intact.
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(fullTokenId), tiago);
@@ -81,7 +82,6 @@ contract PopLifecycleFlow is BaseDotns {
         assertEq(dotnsPopResolver.fullClaim(liteLabelhash), fullNode);
         assertEq(dotnsContentResolver.contenthash(fullNode), CONTENT_HASH_A);
         assertEq(dotnsRegistry.owner(subnode), leonardo);
-
         // The new owner drives node writes and subname reassignments.
         vm.prank(tiago);
         dotnsContentResolver.setContenthash(fullNode, CONTENT_HASH_B);
@@ -90,10 +90,8 @@ contract PopLifecycleFlow is BaseDotns {
         bytes32 reassignedSubnode = _setSubnode(tiago, fullNode, SUB_LABEL, FULL_LABEL, ed);
         assertEq(reassignedSubnode, subnode);
         assertEq(dotnsRegistry.owner(subnode), ed);
-
         // The lite token is not transferred alongside the full token.
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf(LITE_LABEL))), ed);
-
         // Store writes are one-shot-locked at registration time, so the label
         // stays under the original owner's Store even after transfer.
         ILabelStore edStore = ILabelStore(storeFactory.getLabelStore(ed));
@@ -102,6 +100,9 @@ contract PopLifecycleFlow is BaseDotns {
         );
     }
 
+    /// @notice Mints the lite label for `user` then claims the full label against it.
+    /// @dev Grants PopFull up front so both the lite reservation leg and the
+    ///      reservedBaseLabel leg pass `priceWithCheck`.
     function _mintLiteThenClaimFull(address user) internal {
         // The reservedBaseLabel leg of reserveBaseName now runs
         // priceWithCheck on FULL_LABEL too, and FULL_LABEL classifies as
@@ -110,14 +111,20 @@ contract PopLifecycleFlow is BaseDotns {
         // PopFull superset) and the full-person claim.
         _grantPopFull(user);
         _reservePop(user, LITE_LABEL, CHAT_KEY, FULL_LABEL);
-        vm.prank(popGateway);
-        dotnsPopController.registerBaseName(
+        _gatewayRegisterBaseName(
             IDotnsPopController.FullRegistration({
                 label: FULL_LABEL, user: user, link: _linkWithLite(LITE_LABEL)
             })
         );
     }
 
+    /// @notice Creates a subnode under `parentNode` while pranking as `parentOwner`.
+    /// @param parentOwner Account authorised to set the subnode.
+    /// @param parentNode Node hash of the parent record.
+    /// @param subLabel Subname label (without dot suffix).
+    /// @param parentLabel Parent label (without dot suffix).
+    /// @param subOwner Account that should own the new subnode.
+    /// @return subnode Resulting subnode hash.
     function _setSubnode(
         address parentOwner,
         bytes32 parentNode,

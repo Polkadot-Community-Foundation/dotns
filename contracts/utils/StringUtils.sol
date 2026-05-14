@@ -49,25 +49,104 @@ library StringUtils {
     /// @param value Candidate label.
     /// @return isValid True if `value` is a canonical DNS label.
     function isSingleLabel(string calldata value) internal pure returns (bool isValid) {
-        bytes calldata label = bytes(value);
+        bytes memory label = bytes(value);
         return _isDnsLabel(label, 0, label.length);
+    }
+
+    /// @notice Removes dot separators from a dotted label.
+    /// @dev Used by the PoP gateway boundary to normalise user-facing
+    ///      `name.path` input into the flat label expected by pricing and minting.
+    /// @param value Candidate dotted label.
+    /// @return stripped Label with all dots removed.
+    function stripDots(string calldata value) internal pure returns (string memory stripped) {
+        bytes calldata raw = bytes(value);
+        uint256 length = raw.length;
+        uint256 outputLength;
+
+        for (uint256 i = 0; i < length; ++i) {
+            if (raw[i] != bytes1(0x2e)) {
+                ++outputLength;
+            }
+        }
+
+        bytes memory cleaned = new bytes(outputLength);
+        uint256 outputIndex;
+        for (uint256 i = 0; i < length; ++i) {
+            bytes1 char = raw[i];
+            if (char == bytes1(0x2e)) continue;
+            cleaned[outputIndex] = char;
+            ++outputIndex;
+        }
+
+        stripped = string(cleaned);
+    }
+
+    /// @notice Validates the gateway-facing lite input shape: `stem.suffix`.
+    /// @dev Requires exactly one dot separator. The left segment must be a canonical DNS
+    ///      label and the right segment must be digits-only with at least
+    ///      @custom:constant MIN_LITE_SUFFIX_DIGITS characters.
+    /// @param value Candidate dotted lite label.
+    /// @return isValid True when `value` matches the gateway lite input shape.
+    function isSingleDotLiteLabel(string calldata value) internal pure returns (bool isValid) {
+        bytes calldata raw = bytes(value);
+        uint256 length = raw.length;
+        if (length == 0) return false;
+
+        uint256 separator = type(uint256).max;
+        for (uint256 i = 0; i < length; ++i) {
+            if (raw[i] != bytes1(0x2e)) continue;
+            if (separator != type(uint256).max) return false;
+            separator = i;
+        }
+
+        if (separator == type(uint256).max) return false;
+        if (separator == 0 || separator + 1 >= length) return false;
+
+        bytes memory stem = new bytes(separator);
+        for (uint256 i = 0; i < separator; ++i) {
+            stem[i] = raw[i];
+        }
+        if (!_isDnsLabel(stem, 0, separator)) return false;
+
+        uint256 suffixLength = length - separator - 1;
+        if (suffixLength < MIN_LITE_SUFFIX_DIGITS) return false;
+
+        for (uint256 i = separator + 1; i < length; ++i) {
+            bytes1 char = raw[i];
+            if (char < bytes1(0x30) || char > bytes1(0x39)) return false;
+        }
+
+        return true;
     }
 
     /// @notice Validates the lite-person PoP label format: `<stem><digits>`.
     /// @dev A lite-person label is a single DNS label whose trailing characters are
-    ///      digits, with at least {MIN_LITE_SUFFIX_DIGITS} digits at the tail. Mirrors
-    ///      `pallet_resources::MIN_LITE_USERNAME_DIGITS`. Lite and public registrations
+    ///      digits, with at least @custom:constant MIN_LITE_SUFFIX_DIGITS digits at the tail. It
+    /// Mirrors @custom:pallet `pallet_resources::MIN_LITE_USERNAME_DIGITS`. Lite and public
+    /// registrations
     ///      share the same namespace; the gateway strips any separator before calling
     ///      so the on-chain label is a flat DNS label (e.g. `alice42`). First-to-mint
     ///      wins at the ERC721 layer; cross-flow priority on the stripped stem is
-    ///      arbitrated by {IPopRules.reserveBaseNameForPop}. Keeping a single
+    ///      arbitrated by @custom:function IPopRules.reserveBaseNameForPop. Keeping a single
     ///      namespace avoids the ambiguity dotli/dweb would otherwise see between
     ///      `andrew.47` (lite) and `andrew` owning `47` as a subname.
     /// @param value Candidate label.
     /// @return isValid True if the label is a DNS label with at least
-    ///         {MIN_LITE_SUFFIX_DIGITS} trailing digits.
+    ///         @custom:constant MIN_LITE_SUFFIX_DIGITS  trailing digits.
     function isLitePersonLabel(string calldata value) internal pure returns (bool isValid) {
-        bytes calldata raw = bytes(value);
+        return _isLitePersonLabel(bytes(value));
+    }
+
+    /// @notice Validates the lite-person PoP label format: `<stem><digits>`.
+    /// @dev Memory helper used by controller-side normalisation paths.
+    /// @param value Candidate label.
+    /// @return isValid True if the label is a DNS label with at least
+    ///         @custom:constant MIN_LITE_SUFFIX_DIGITS trailing digits.
+    function isLitePersonLabelMemory(string memory value) internal pure returns (bool isValid) {
+        return _isLitePersonLabel(bytes(value));
+    }
+
+    function _isLitePersonLabel(bytes memory raw) private pure returns (bool isValid) {
         uint256 length = raw.length;
         if (length < MIN_LITE_SUFFIX_DIGITS + 1) return false;
 
@@ -93,7 +172,7 @@ library StringUtils {
     /// @param value Candidate name path.
     /// @return isValid True if every dot-separated segment is a canonical DNS label.
     function isNamePath(string calldata value) internal pure returns (bool isValid) {
-        bytes calldata path = bytes(value);
+        bytes memory path = bytes(value);
         uint256 length = path.length;
         if (length == 0) return false;
 
@@ -108,7 +187,7 @@ library StringUtils {
     }
 
     function _isDnsLabel(
-        bytes calldata label,
+        bytes memory label,
         uint256 start,
         uint256 end
     )

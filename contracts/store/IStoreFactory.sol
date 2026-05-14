@@ -63,14 +63,15 @@ interface IStoreFactory {
     function protocolRegistry() external view returns (address registry);
 
     /// @notice Deploys a `LabelStore` beacon-proxy bound to `user`.
-    /// @dev Callable by the factory owner OR any address currently registered in the protocol
-    /// registry. @param user The user the store is bound to forever.
+    /// @dev Callable by the factory owner or any address currently registered in the protocol
+    ///      registry; any other caller @custom:reverts NotAuthorised. `user` must be non-zero,
+    ///      otherwise @custom:reverts InvalidUser. The user must not already have a
+    ///      `LabelStore`, otherwise @custom:reverts AlreadyDeployed. After deployment the
+    ///      freshly initialised proxy must report `user` as its owner, otherwise
+    ///      @custom:reverts ImplementationBindingMismatch. Emits
+    ///      @custom:emits LabelStoreDeployed on success.
+    /// @param user The user the store is bound to forever.
     /// @return store The deployed store address.
-    /// @custom:emits LabelStoreDeployed
-    /// @custom:reverts NotAuthorised
-    /// @custom:reverts InvalidUser
-    /// @custom:reverts AlreadyDeployed
-    /// @custom:reverts ImplementationBindingMismatch
     function deployLabelStoreFor(address user) external returns (address store);
 
     /// @notice Returns the `LabelStore` address bound to `user`, or the zero address if none.
@@ -97,20 +98,25 @@ interface IStoreFactory {
         returns (address[] memory stores);
 
     /// @notice Upgrades the `LabelStore` implementation for every existing and future proxy.
-    /// @dev Callable by the factory owner only. Delegates to `UpgradeableBeacon.upgradeTo`.
+    /// @dev Callable by the factory owner only, otherwise
+    ///      @custom:reverts OwnableUnauthorizedAccount. `newImplementation` must be non-zero,
+    ///      otherwise @custom:reverts InvalidImplementation. The candidate is sentinel-probed by
+    ///      calling `ILabelStore.protocolRegistry` on it before the beacon is rotated; if the
+    ///      address does not implement that selector the probe reverts and the upgrade does not
+    ///      land (deliberate fail-fast guard, no named error). Delegates to
+    ///      `UpgradeableBeacon.upgradeTo` and emits
+    ///      @custom:emits LabelStoreImplementationUpgraded on success.
     /// @param newImplementation The new implementation address.
-    /// @custom:emits LabelStoreImplementationUpgraded
-    /// @custom:reverts InvalidImplementation
-    /// @custom:reverts OwnableUnauthorizedAccount
     function upgradeLabelStoreImplementation(address newImplementation) external;
 
     /// @notice Caller claims their `UserStore` beacon-proxy.
     /// @dev Self-claim only; `_owner` on the resulting store is always `msg.sender`,
-    ///      regardless of who pays gas. One store per caller, forever.
+    ///      regardless of who pays gas. One store per caller, forever: a caller who already
+    ///      has a `UserStore` @custom:reverts AlreadyDeployed. After deployment the freshly
+    ///      initialised proxy must report `msg.sender` as its owner, otherwise
+    ///      @custom:reverts ImplementationBindingMismatch. Emits
+    ///      @custom:emits UserStoreClaimed on success.
     /// @return store The deployed store address.
-    /// @custom:emits UserStoreClaimed
-    /// @custom:reverts AlreadyDeployed
-    /// @custom:reverts ImplementationBindingMismatch
     function claimUserStore() external returns (address store);
 
     /// @notice Returns the `UserStore` address bound to `user`, or the zero address if none.
@@ -137,10 +143,14 @@ interface IStoreFactory {
         returns (address[] memory stores);
 
     /// @notice Upgrades the `UserStore` implementation for every existing and future proxy.
-    /// @dev Callable by the factory owner only. Delegates to `UpgradeableBeacon.upgradeTo`.
+    /// @dev Callable by the factory owner only, otherwise
+    ///      @custom:reverts OwnableUnauthorizedAccount. `newImplementation` must be non-zero,
+    ///      otherwise @custom:reverts InvalidImplementation. The candidate is sentinel-probed by
+    ///      calling `IUserStore.getKeyCount` on it before the beacon is rotated; if the address
+    ///      does not implement that selector the probe reverts and the upgrade does not land
+    ///      (deliberate fail-fast guard, no named error). Delegates to
+    ///      `UpgradeableBeacon.upgradeTo` and emits
+    ///      @custom:emits UserStoreImplementationUpgraded on success.
     /// @param newImplementation The new implementation address.
-    /// @custom:emits UserStoreImplementationUpgraded
-    /// @custom:reverts InvalidImplementation
-    /// @custom:reverts OwnableUnauthorizedAccount
     function upgradeUserStoreImplementation(address newImplementation) external;
 }

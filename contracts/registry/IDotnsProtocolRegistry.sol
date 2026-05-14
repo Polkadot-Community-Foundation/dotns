@@ -21,12 +21,12 @@ interface IDotnsProtocolRegistry {
     function get(bytes32 key) external view returns (address addr);
 
     /// @notice Sets or updates the address for a given key.
-    /// @dev Owner-restricted. Idempotent when the new value matches the stored one. Maintains
-    ///      a per-address refcount so the same contract can occupy multiple keys without losing
-    ///      its registered status until every key is rewired.
-    /// @custom:emits AddressUpdated
-    /// @custom:reverts OwnableUnauthorizedAccount
-    /// @custom:reverts ZeroAddress
+    /// @dev Owner-restricted, otherwise @custom:reverts OwnableUnauthorizedAccount. `addr`
+    ///      must be non-zero, otherwise @custom:reverts ZeroAddress. Idempotent when the new
+    ///      value matches the stored one (no event emitted in that case). Maintains a
+    ///      per-address refcount so the same contract can occupy multiple keys without losing
+    ///      its registered status until every key is rewired. Emits
+    ///      @custom:emits AddressUpdated on each effective change.
     function set(bytes32 key, address addr) external;
 
     /// @notice Returns true iff `addr` is currently registered under at least one well-known key.

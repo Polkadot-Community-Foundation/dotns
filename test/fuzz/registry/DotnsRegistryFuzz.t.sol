@@ -5,6 +5,9 @@ import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IDotnsRegistry} from "../../../contracts/registry/IDotnsRegistry.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 
+/// @title DotnsRegistryFuzzTest
+/// @notice Property-based tests for @custom:contract DotnsRegistry subnode ownership and
+/// authorisation.
 contract DotnsRegistryFuzzTest is BaseDotns {
     function testFuzz_parent_can_reassign_subnode_to_any_owner(address newOwner) public {
         vm.assume(newOwner != address(0));

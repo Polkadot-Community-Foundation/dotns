@@ -14,8 +14,6 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 ///      the reserved registration flow rather than any single unit of behaviour.
 /// @custom:security-contact admin@parity.io
 contract WhitelistOperatorFlow is BaseDotns {
-    /// @notice Owner grants operator => operator whitelists user => user completes a
-    ///         reserved registration, with NFT, registry, and reverse record wired.
     function test_operator_can_seed_whitelist_for_reserved_registration() public {
         address operator = leonardo;
         address user = ed;
@@ -46,9 +44,6 @@ contract WhitelistOperatorFlow is BaseDotns {
         assertEq(dotnsReverseResolver.nameOf(user), string.concat(nameLabel, ".dot"));
     }
 
-    /// @notice Revoking the operator role stops further whitelist writes by the
-    ///         former operator. Prior whitelist entries persist because the role
-    ///         gates the writer, not the data.
     function test_operator_role_revocation_blocks_further_whitelist_writes() public {
         address operator = leonardo;
 

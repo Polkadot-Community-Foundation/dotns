@@ -56,23 +56,24 @@ interface ILabelStore is IDotnsStore {
     error LabelAlreadyExists(bytes32 labelhash);
 
     /// @notice Initialises the store, binding it permanently to `user_` and `protocolRegistry_`.
-    /// @dev Callable exactly once via `Initializable`. Both parameters are immutable post-call.
-    /// @param user_ The user this store is bound to forever.
+    /// @dev Callable exactly once via `Initializable`; both parameters are immutable post-call.
+    ///      `user_` must be non-zero, otherwise @custom:reverts InvalidUser.
+    ///      `protocolRegistry_` must be non-zero, otherwise @custom:reverts
+    /// InvalidProtocolRegistry. @param user_ The user this store is bound to forever.
     /// @param protocolRegistry_ The protocol registry used to authorise writers.
-    /// @custom:reverts InvalidUser
-    /// @custom:reverts InvalidProtocolRegistry
     function initialize(address user_, address protocolRegistry_) external;
 
     /// @notice Records a label under `labelhash` and locks the slot permanently.
-    /// @dev Gated to addresses registered in the protocol registry. Reverts on any re-write.
+    /// @dev Gated to addresses currently registered in the protocol registry, otherwise
+    ///      @custom:reverts NotAuthorised. `labelhash` must be non-zero, otherwise
+    ///      @custom:reverts InvalidLabel. The slot must not already be locked (otherwise
+    ///      @custom:reverts LabelLocked) and must not already hold an entry (otherwise
+    ///      @custom:reverts LabelAlreadyExists); the two are kept distinct so stack traces can
+    ///      disambiguate cross-session from same-session double-writes. Emits
+    ///      @custom:emits LabelStored and @custom:emits LabelLockedPermanently together on the
+    ///      single write that ever happens for `labelhash`.
     /// @param labelhash The labelhash key.
     /// @param label The label string to store.
-    /// @custom:emits LabelStored
-    /// @custom:emits LabelLockedPermanently
-    /// @custom:reverts NotAuthorised
-    /// @custom:reverts InvalidLabel
-    /// @custom:reverts LabelLocked
-    /// @custom:reverts LabelAlreadyExists
     function storeLabel(bytes32 labelhash, string calldata label) external;
 
     /// @notice Returns the protocol registry this store queries for write authorisation.

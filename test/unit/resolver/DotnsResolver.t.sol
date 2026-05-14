@@ -5,6 +5,8 @@ import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IDotnsResolver} from "../../../contracts/resolvers/IDotnsResolver.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 
+/// @title DotnsResolverTests
+/// @notice Unit tests for the address record on @custom:contract DotnsResolver.
 contract DotnsResolverTests is BaseDotns {
     function test_setaddress_emits_event_and_persists() public {
         bytes32 node = _register("longnamehere01", ed, IPopRules.PopStatus.NoStatus);

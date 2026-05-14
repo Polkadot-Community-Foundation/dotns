@@ -28,8 +28,9 @@ interface IDotnsRegistrar is IERC721 {
     event NameRegistered(uint256 indexed id, address indexed owner);
 
     /// @notice Emitted when a controller is added.
-    /// @dev Typed as the shared baseline {IDotnsController} so the commit-reveal controller
-    /// and the PoP controller (and any future controller) all fit the same signature without
+    /// @dev Typed as the shared baseline @custom:contract IDotnsController so the commit-reveal
+    /// controller and the PoP controller (and any future controller) all fit the same signature
+    /// without
     /// the registrar depending on any specific controller interface.
     event ControllerAdded(IDotnsController indexed controller);
 
@@ -45,11 +46,11 @@ interface IDotnsRegistrar is IERC721 {
     /// @notice Registers a name permanently.
     /// @dev Permanence is by construction: there is no `expire`, `renew`, or `release` path on
     /// the registrar. Custody only moves via ERC721 transfers (which the registrar polices via
-    /// the fee-on-transfer hook) or via escrow reclaim.
+    /// the fee-on-transfer hook) or via escrow reclaim. Restricted to authorised controllers
+    /// (otherwise @custom:reverts NotController) and rejects ids that are not available
+    /// (otherwise @custom:reverts NameNotAvailable). Emits @custom:emits NameRegistered on
+    /// success.
     /// @param label The human-readable label string (e.g. "alice").
-    /// @custom:emits NameRegistered
-    /// @custom:reverts NameNotAvailable
-    /// @custom:reverts NotController
     function register(uint256 id, address owner, string calldata label) external;
 
     /// @notice Returns whether a given token id has been minted.
@@ -57,17 +58,17 @@ interface IDotnsRegistrar is IERC721 {
 
     /// @notice Adds an authorised controller.
     /// @dev Typed against the baseline `IDotnsController` (not a concrete subtype) so a single
-    /// authorisation surface accepts every controller flavour (commit-reveal, PoP gateway, future
-    /// variants) without per-flavour setters.
-    /// @custom:reverts OwnableUnauthorizedAccount
-    /// @custom:emits ControllerAdded
+    /// authorisation surface accepts every controller flavour (commit-reveal, PoP gateway,
+    /// future variants) without per-flavour setters. Owner-gated (otherwise
+    /// @custom:reverts OwnableUnauthorizedAccount); emits @custom:emits ControllerAdded on
+    /// success.
     function addController(IDotnsController controller) external;
 
     /// @notice Removes an authorised controller.
     /// @dev Mirrors {addController}'s baseline-typed signature so any registered controller can
-    /// be revoked through the same entry point.
-    /// @custom:reverts OwnableUnauthorizedAccount
-    /// @custom:emits ControllerRemoved
+    /// be revoked through the same entry point. Owner-gated (otherwise
+    /// @custom:reverts OwnableUnauthorizedAccount); emits @custom:emits ControllerRemoved on
+    /// success.
     function removeController(IDotnsController controller) external;
 
     /// @notice Returns the human-readable label a token was registered with.
@@ -77,11 +78,12 @@ interface IDotnsRegistrar is IERC721 {
     function labelOf(uint256 tokenId) external view returns (string memory label);
 
     /// @notice Quotes the additional native fee required to transfer a token to `to`.
-    /// @dev Returns the maximum of (i) the delta between the recipient-tier price and the token's
-    /// running-max paid history and (ii) the length-scaled `reachFee`, so verified-but-below
-    /// recipients still pay the floor even when the running max would otherwise cover the move.
-    /// @custom:reverts ERC721InvalidReceiver
-    /// @custom:reverts EscrowNotConfigured
+    /// @dev Returns the maximum of (i) the delta between the recipient-tier price and the
+    /// token's running-max paid history and (ii) the length-scaled `reachFee`, so
+    /// verified-but-below recipients still pay the floor even when the running max would
+    /// otherwise cover the move. Rejects a zero `to` with @custom:reverts ERC721InvalidReceiver
+    /// and requires the protocol registry to have an escrow configured (otherwise
+    /// @custom:reverts EscrowNotConfigured).
     function quoteTransferFee(
         uint256 tokenId,
         address to
@@ -91,6 +93,11 @@ interface IDotnsRegistrar is IERC721 {
         returns (uint256 requiredFee);
 
     /// @inheritdoc IERC721
+    /// @dev The registrar's `_update` hook compares the recipient's running-max paid history and
+    /// tier price against the configured escrow's quote; if the caller does not forward the
+    /// required delta as `msg.value`, the transfer reverts with
+    /// @custom:reverts TransferFeeRequired. The `payable` modifier on every transfer overload
+    /// exists so the fee can be forwarded in the same call.
     function safeTransferFrom(
         address from,
         address to,
@@ -102,8 +109,14 @@ interface IDotnsRegistrar is IERC721 {
         override;
 
     /// @inheritdoc IERC721
+    /// @dev Subject to the same fee-on-transfer gate as the four-argument overload; reverts with
+    /// @custom:reverts TransferFeeRequired when the recipient owes a non-zero delta and the
+    /// caller has not forwarded it as `msg.value`.
     function safeTransferFrom(address from, address to, uint256 tokenId) external payable override;
 
     /// @inheritdoc IERC721
+    /// @dev Subject to the same fee-on-transfer gate as the safe overloads; reverts with
+    /// @custom:reverts TransferFeeRequired when the recipient owes a non-zero delta and the
+    /// caller has not forwarded it as `msg.value`.
     function transferFrom(address from, address to, uint256 tokenId) external payable override;
 }

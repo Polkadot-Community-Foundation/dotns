@@ -5,6 +5,9 @@ import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IDotnsContentResolver} from "../../../contracts/resolvers/IDotnsContentResolver.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 
+/// @title DotnsContentResolverTests
+/// @notice Unit tests for content-hash, text-record and operator authorisation on
+///         @custom:contract DotnsContentResolver.
 contract DotnsContentResolverTests is BaseDotns {
     function test_set_contenthash() public {
         address nameOwner = ed;

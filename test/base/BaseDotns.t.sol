@@ -13,6 +13,7 @@ import {
     DotnsPopController,
     IDotnsPopController
 } from "../../contracts/registrars/DotnsPopController.sol";
+import {RootGatewayDispatcher} from "../../contracts/registrars/RootGatewayDispatcher.sol";
 import {IDotnsController} from "../../contracts/registrars/IDotnsController.sol";
 import {DotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
 import {DotnsResolver} from "../../contracts/resolvers/DotnsResolver.sol";
@@ -31,117 +32,148 @@ import {ISystem} from "../../contracts/external/revive/ISystem.sol";
 import {IPersonhood} from "../../contracts/external/personhood/IPersonhood.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
-// @title BaseDotns
-// @notice Common Foundry test base for deploying a DotNS stack behind UUPS proxies.
-// @dev Deploys and wires the core DotNS contracts used by test suites:
-//      - StoreFactory: per-user Store instances used for immutable registration writes
-//      - DotnsRegistrar: ERC721-backed registrar used to allocate label ownership
-//      - DotnsRegistry: forward registry used to set subnode ownership under .dot
-//      - DotnsReverseResolver: reverse resolver used to set default reverse records
-//      - DotnsContentResolver: resolver used for content records
-//      - PopRules: PoP rules and spam-pricing oracle
-//      - DotnsRegistrarController: commit–reveal controller orchestrating registration flow
+/// @title BaseDotns
+/// @notice Common Foundry test base for deploying a DotNS stack behind UUPS proxies.
+/// @dev Deploys and wires the core DotNS contracts used by test suites:
+///      - StoreFactory: per-user Store instances used for immutable registration writes
+///      - DotnsRegistrar: ERC721-backed registrar used to allocate label ownership
+///      - DotnsRegistry: forward registry used to set subnode ownership under .dot
+///      - DotnsReverseResolver: reverse resolver used to set default reverse records
+///      - DotnsContentResolver: resolver used for content records
+///      - PopRules: PoP rules and spam-pricing oracle
+///      - DotnsRegistrarController: commit-reveal controller orchestrating registration flow
 abstract contract BaseDotns is Test {
-    // @notice Test user account: ed.
+    /// @notice Test user account: ed.
     address public ed;
 
-    // @notice Test user account: leonardo.
+    /// @notice Test user account: leonardo.
     address public leonardo;
 
-    // @notice Test user account: tiago.
+    /// @notice Test user account: tiago.
     address public tiago;
 
-    // @notice Test user account: owner/admin used to deploy and configure contracts.
+    /// @notice Test user account: owner/admin used to deploy and configure contracts.
     address public owner;
 
-    // @notice Default native balance allocated to test users.
+    /// @notice Default native balance allocated to test users.
     uint256 public constant DEFAULT_BALANCE = 99_999_999_999_999 ether;
 
-    // @notice Deployed PoP oracle instance.
+    /// @notice Deployed PoP oracle instance.
     PopRules public popRules;
 
-    // @notice Deployed DotNS registrar instance.
+    /// @notice Deployed DotNS registrar instance.
     DotnsRegistrar public dotnsRegistrar;
 
-    // @notice Deployed registrar controller instance.
+    /// @notice Deployed registrar controller instance.
     DotnsRegistrarController public dotnsRegistrarController;
 
-    // @notice Deployed forward registry instance.
+    /// @notice Deployed forward registry instance.
     DotnsRegistry public dotnsRegistry;
 
-    // @notice Deployed forward resolver instance.
+    /// @notice Deployed forward resolver instance.
     DotnsResolver public dotnsResolver;
 
-    // @notice Deployed content resolver instance.
+    /// @notice Deployed content resolver instance.
     DotnsContentResolver public dotnsContentResolver;
 
-    // @notice Deployed reverse resolver instance.
+    /// @notice Deployed reverse resolver instance.
     DotnsReverseResolver public dotnsReverseResolver;
 
-    // @notice Deployed PoP resolver instance (chat keys + lite links).
+    /// @notice Deployed PoP resolver instance (chat keys + lite links).
     DotnsPopResolver public dotnsPopResolver;
 
-    // @notice Deployed PoP controller instance (gateway-driven lite/full issuance).
+    /// @notice Deployed PoP controller instance (gateway-driven lite/full issuance).
     DotnsPopController public dotnsPopController;
 
-    // @notice Test stand-in for the Root gateway dispatcher.
-    // @dev Registered on the protocol registry under the PoP gateway key
-    //      during setUp. Tests that exercise gated PoP entrypoints prank as
-    //      this address, mirroring how the dispatcher's forwarded call
-    //      appears to the controller in production.
+    /// @notice Test stand-in for the Root gateway dispatcher.
+    /// @dev Registered on the protocol registry under the PoP gateway key
+    ///      during setUp. Tests that exercise gated PoP entrypoints prank as
+    ///      this address, mirroring how the dispatcher's forwarded call
+    ///      appears to the controller in production.
     address public popGateway;
 
-    // @notice Default reservation duration used by the PoP controller.
+    /// @notice Selector for the typed reserveLiteName entrypoint.
+    bytes4 internal constant SELECTOR_RESERVE_LITE_TYPED =
+        bytes4(keccak256("reserveLiteName((string,address,bytes))"));
+    /// @notice Selector for the bytes-encoded reserveLiteName entrypoint.
+    bytes4 internal constant SELECTOR_RESERVE_LITE_BYTES =
+        bytes4(keccak256("reserveLiteName(bytes)"));
+    /// @notice Selector for the typed reserveBaseName entrypoint.
+    bytes4 internal constant SELECTOR_RESERVE_BASE_TYPED =
+        bytes4(keccak256("reserveBaseName(((string,address,bytes),string))"));
+    /// @notice Selector for the bytes-encoded reserveBaseName entrypoint.
+    bytes4 internal constant SELECTOR_RESERVE_BASE_BYTES =
+        bytes4(keccak256("reserveBaseName(bytes)"));
+    /// @notice Selector for the typed registerBaseName entrypoint.
+    bytes4 internal constant SELECTOR_REGISTER_BASE_TYPED =
+        bytes4(keccak256("registerBaseName((string,address,(uint8,string,bytes)))"));
+    /// @notice Selector for the bytes-encoded registerBaseName entrypoint.
+    bytes4 internal constant SELECTOR_REGISTER_BASE_BYTES =
+        bytes4(keccak256("registerBaseName(bytes)"));
+    /// @notice Default reservation duration used by the PoP controller.
     uint64 public constant DEFAULT_RESERVATION_DURATION = 7 days;
-
-    // @notice Deployed Store factory instance.
+    /// @notice Deployed Store factory instance.
     StoreFactory public storeFactory;
-
-    // @notice Deployed protocol registry instance.
+    /// @notice Deployed protocol registry instance.
     DotnsProtocolRegistry public protocolRegistry;
-
-    // @notice Deployed name escrow instance.
+    /// @notice Deployed name escrow instance.
     DotnsNameEscrow public dotnsNameEscrow;
-
-    // @notice Rent price applied to PoP NoStatus users for spam resistance.
-    // @dev This value is passed into PopRules initialization in this base test.
-    // @dev Aliased to {DotnsConstants.RENT_PRICE} so deploy scripts and the test
-    //      base see the same value; downstream test suites reference `RENT_PRICE`
-    //      directly.
+    /// @notice Rent price applied to PoP NoStatus users for spam resistance.
+    /// @dev This value is passed into PopRules initialisation in this base test.
+    /// @dev Aliased to @custom:constant DotnsConstants.RENT_PRICE so deploy scripts and the test
+    ///      base see the same value; downstream test suites reference `RENT_PRICE`
+    ///      directly.
     uint256 public constant RENT_PRICE = DotnsConstants.RENT_PRICE;
 
-    // @notice Default escrow cooldown used in tests.
+    /// @notice Default escrow cooldown used in tests.
     uint256 public constant ESCROW_COOLDOWN = 7 days;
 
-    // @notice Zero hash constant
+    /// @notice Zero hash constant.
     bytes32 public constant ZERO_HASH = bytes32(0);
 
     // Classification-valid labels for the PoP path (post PopRules enforcement).
     // baselength 7 with 2 trailing digits classifies as PopLite.
+    /// @notice PoP lite classification label fixture A.
     string internal constant LITE_LABEL_A = "aliceli01";
+    /// @notice Dotted form of @custom:constant LITE_LABEL_A used by gateway helpers.
+    string internal constant LITE_LABEL_A_DOTTED = "aliceli.01";
+    /// @notice PoP lite classification label fixture B.
     string internal constant LITE_LABEL_B = "alicoli02";
+    /// @notice PoP lite classification label fixture C.
     string internal constant LITE_LABEL_C = "boblilu03";
+    /// @notice PoP lite classification label fixture D.
     string internal constant LITE_LABEL_D = "carolli04";
+
     // baselength 8 with no trailing digits classifies as PopFull.
+    /// @notice PoP full classification label fixture A.
     string internal constant BASE_LABEL_A = "alicebob";
+    /// @notice PoP full classification label fixture B.
     string internal constant BASE_LABEL_B = "wonderla";
+    /// @notice PoP full classification label fixture C.
     string internal constant BASE_LABEL_C = "carolboy";
+
     // baselength >= 9 with 2 trailing digits classifies as NoStatus.
+    /// @notice NoStatus classification label fixture A.
     string internal constant NOSTATUS_LABEL_A = "nostatususer01";
+    /// @notice NoStatus classification label fixture B.
     string internal constant NOSTATUS_LABEL_B = "anothernostatus02";
 
-    // @notice Label hash for "dot".
-    // @dev Computed during setup as `keccak256(bytes("dot"))`.
+    /// @notice Label hash for "dot".
+    /// @dev Computed during setup as `keccak256(bytes("dot"))`.
     bytes32 public dotLabel;
 
-    // @notice Node hash for the ".dot" TLD.
-    // @dev Computed during setup as `_namehash(ZERO_HASH, dotLabel)`.
+    /// @notice Node hash for the ".dot" TLD.
+    /// @dev Computed during setup as `_namehash(ZERO_HASH, dotLabel)`.
     bytes32 public dotNode;
 
-    // @notice Default node hash for the ".dot" TLD.
-    // @dev Included to cross-check against computed `dotNode` where relevant.
+    /// @notice Default node hash for the ".dot" TLD.
+    /// @dev Included to cross-check against computed `dotNode` where relevant.
     bytes32 private constant DOT_NODE = DotnsConstants.DOT_NODE;
 
+    /// @notice Deploys and wires every protocol contract used by the test suite.
+    /// @dev Provisions UUPS proxies for each module, registers them under their
+    ///      canonical keys on the protocol registry, and installs default
+    ///      personhood mocks so tests begin at the `NoStatus` tier.
     function setUp() public virtual noGasMetering {
         vm.warp(365 days);
 
@@ -149,13 +181,11 @@ abstract contract BaseDotns is Test {
         leonardo = _createUser("leonardo");
         tiago = _createUser("tiago");
         owner = _createUser("owner");
-        popGateway = _createUser("popGateway");
 
         dotLabel = keccak256(bytes("dot"));
         dotNode = _namehash(ZERO_HASH, dotLabel);
 
         vm.startPrank(owner);
-
         // Deploy protocol registry first so every downstream proxy can bind to
         // it at init time. Populate the keys before deploying consumers whose
         // initialisers might otherwise race with the key lookups.
@@ -232,6 +262,9 @@ abstract contract BaseDotns is Test {
         dotnsPopController = DotnsPopController(dotnsPopControllerAddress);
         vm.label(dotnsPopControllerAddress, "DotnsPopController");
 
+        popGateway = address(new RootGatewayDispatcher(dotnsPopControllerAddress));
+        vm.label(popGateway, "RootGatewayDispatcher");
+
         dotnsRegistrar.addController(IDotnsController(dotnsPopControllerAddress));
 
         address dotnsNameEscrowAddress = Upgrades.deployUUPSProxy(
@@ -261,7 +294,6 @@ abstract contract BaseDotns is Test {
 
         vm.stopPrank();
         vm.warp(block.timestamp + 365 days);
-
         // Default every account to `None` (NoStatus) on the personhood
         // precompile. Per-account `_grantPopFull`/`_grantPopLite` calls install
         // more specific mocks that override this selector-only stub.
@@ -272,7 +304,8 @@ abstract contract BaseDotns is Test {
         );
     }
 
-    // @notice Mocks revive's System precompile callerIsRoot result.
+    /// @notice Mocks revive's System precompile callerIsRoot result.
+    /// @param returnValue Value to return from `callerIsRoot`.
     function _mockCallerIsRoot(bool returnValue) internal {
         vm.mockCall(
             DotnsConstants.REVIVE_SYSTEM,
@@ -281,36 +314,37 @@ abstract contract BaseDotns is Test {
         );
     }
 
-    // @notice Computes the namehash of `parent` and `labelhash`.
-    // @dev Thin wrapper around {LabelUtils-namehashUnder} so tests do not
-    //      reimplement the assembly composition.
-    // @param parent The parent node hash.
-    // @param labelhash The labelhash.
-    // @return node The resulting node hash.
+    /// @notice Computes the namehash of `parent` and `labelhash`.
+    /// @dev Thin wrapper around {LabelUtils-namehashUnder} so tests do not
+    ///      reimplement the assembly composition.
+    /// @param parent The parent node hash.
+    /// @param labelhash The labelhash.
+    /// @return node The resulting node hash.
     function _namehash(bytes32 parent, bytes32 labelhash) internal pure returns (bytes32 node) {
         node = LabelUtils.namehashUnder(parent, labelhash);
     }
 
-    // @notice Computes the ERC721 tokenId used by DotnsRegistrar for a given label.
-    // @dev DotnsRegistrar mints tokenId = uint256(node), where node = namehash(DOT_NODE,
-    // labelhash). This helper prevents tests from accidentally using uint256(node) as the tokenId.
-    // @param label The label to compute for (without the `.dot` suffix).
-    // @return tokenId The ERC721 tokenId (uint256(node)).
+    /// @notice Computes the ERC721 tokenId used by DotnsRegistrar for a given label.
+    /// @dev DotnsRegistrar mints tokenId = uint256(node), where node = namehash(DOT_NODE,
+    ///      labelhash). This helper prevents tests from accidentally using uint256(node) as
+    ///      the tokenId.
+    /// @param label The label to compute for (without the `.dot` suffix).
+    /// @return tokenId The ERC721 tokenId (uint256(node)).
     function _tokenIdForLabel(string memory label) internal pure returns (uint256 tokenId) {
         tokenId = uint256(_nodeOf(label));
     }
 
-    // @notice Computes `namehash(DOT_NODE, keccak256(label))` for a flat label.
-    // @dev Shared across test suites that need the node identifier for a .dot label.
-    // @param label Label (without the `.dot` suffix).
-    // @return node The node identifier under the `.dot` TLD.
+    /// @notice Computes `namehash(DOT_NODE, keccak256(label))` for a flat label.
+    /// @dev Shared across test suites that need the node identifier for a .dot label.
+    /// @param label Label (without the `.dot` suffix).
+    /// @return node The node identifier under the `.dot` TLD.
     function _nodeOf(string memory label) internal pure returns (bytes32 node) {
         node = LabelUtils.namehashUnder(DOT_NODE, LabelUtils.labelhashMemory(label));
     }
 
-    // @dev Returns a valid 65-byte chat key seeded with `seed`. Format mimics the
-    //      uncompressed secp256k1 encoding (1 prefix byte + 32 X + 32 Y) so the
-    //      resolver's length guard is satisfied.
+    /// @notice Returns a valid 65-byte chat key seeded with `seed`.
+    /// @dev Format mimics the uncompressed secp256k1 encoding (1 prefix byte + 32 X + 32 Y)
+    ///      so the resolver's length guard is satisfied.
     function _validChatKey(bytes1 seed) internal pure returns (bytes memory key) {
         key = new bytes(65);
         key[0] = 0x04;
@@ -319,19 +353,18 @@ abstract contract BaseDotns is Test {
         }
     }
 
-    // @notice Mocks the personhood precompile so it returns `tier` for `who`
-    //         under the dotns context.
-    // @dev Single source of truth for tier mocking. Tier numbering matches
-    //      {IPersonhood}: 0=None, 1=Lite, 2=Full. `contextAlias` is non-zero
-    //      whenever `tier != 0` so callers that read it (cross-context
-    //      identity tests) still see a deterministic value.
+    /// @notice Mocks the personhood precompile so it returns `tier` for `who`
+    ///         under the dotns context.
+    /// @dev Single source of truth for tier mocking. Tier numbering matches
+    ///      @custom:contract IPersonhood: 0=None, 1=Lite, 2=Full. `contextAlias` is non-zero
+    ///      whenever `tier != 0` so callers that read it (cross-context
+    ///      identity tests) still see a deterministic value.
     function _setUserPopStatus(address who, IPopRules.PopStatus tier) internal {
         uint8 status;
         if (tier == IPopRules.PopStatus.PopFull) status = 2;
         else if (tier == IPopRules.PopStatus.PopLite) status = 1;
         // PopStatus.Reserved is a label classification, never a user tier; map
         // anything else to None.
-
         bytes32 contextAlias = status == 0 ? bytes32(0) : keccak256(abi.encode(who, status));
         vm.mockCall(
             DotnsConstants.PERSONHOOD,
@@ -342,40 +375,41 @@ abstract contract BaseDotns is Test {
         );
     }
 
-    // @notice Grants PopFull status to `who` via the personhood precompile mock.
+    /// @notice Grants PopFull status to `who` via the personhood precompile mock.
     function _grantPopFull(address who) internal {
         _setUserPopStatus(who, IPopRules.PopStatus.PopFull);
     }
 
-    // @notice Grants PopLite status to `who` via the personhood precompile mock.
+    /// @notice Grants PopLite status to `who` via the personhood precompile mock.
     function _grantPopLite(address who) internal {
         _setUserPopStatus(who, IPopRules.PopStatus.PopLite);
     }
 
-    // @notice Resets `who` back to `None` on the personhood precompile mock.
+    /// @notice Resets `who` back to `None` on the personhood precompile mock.
     function _grantNoStatus(address who) internal {
         _setUserPopStatus(who, IPopRules.PopStatus.NoStatus);
     }
 
-    // @notice Owner-prank shortcut that grants `WHITELIST_OPERATOR_ROLE` on the
-    //         registrar controller. Centralises the prank-and-setRole boilerplate
-    //         used by unit, fuzz, and integration suites.
+    /// @notice Owner-prank shortcut that grants `WHITELIST_OPERATOR_ROLE` on the
+    ///         registrar controller.
+    /// @dev Centralises the prank-and-setRole boilerplate used by unit, fuzz, and
+    ///      integration suites.
     function _grantWhitelistOperator(address account) internal {
         vm.prank(owner);
         dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, true);
     }
 
-    // @notice Owner-prank shortcut that revokes `WHITELIST_OPERATOR_ROLE`.
+    /// @notice Owner-prank shortcut that revokes `WHITELIST_OPERATOR_ROLE`.
     function _revokeWhitelistOperator(address account) internal {
         vm.prank(owner);
         dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, false);
     }
 
-    // @notice Drives a PoP reservation from the registered gateway address.
-    // @dev Single canonical helper for PoP-gateway reservations across unit
-    //      and fuzz test suites. Pranks from the gateway stand-in installed
-    //      during setUp, which mirrors how the Root gateway dispatcher
-    //      appears to the controller in production.
+    /// @notice Drives a PoP reservation from the registered gateway address.
+    /// @dev Single canonical helper for PoP-gateway reservations across unit
+    ///      and fuzz test suites. Pranks from the gateway stand-in installed
+    ///      during setUp, which mirrors how the Root gateway dispatcher
+    ///      appears to the controller in production.
     function _reservePop(
         address user,
         string memory liteLabel,
@@ -384,29 +418,109 @@ abstract contract BaseDotns is Test {
     )
         internal
     {
-        vm.prank(popGateway);
-        dotnsPopController.reserveBaseName(
+        _gatewayReserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
-                    liteLabel: liteLabel, user: user, chatKey: chatKey
+                    liteLabel: _toGatewayLiteLabel(liteLabel), user: user, chatKey: chatKey
                 }),
                 reservedBaseLabel: reservedBaseLabel
             })
         );
     }
 
-    // @notice Constructs a `Link` that inherits the chat key from a prior lite label.
+    /// @notice Dispatches the typed `reserveLiteName` call through the gateway stand-in.
+    function _gatewayReserveLiteName(IDotnsPopController.LiteRegistration memory params) internal {
+        params.liteLabel = _toGatewayLiteLabel(params.liteLabel);
+        _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_LITE_TYPED, params));
+    }
+
+    /// @notice Dispatches a pre-encoded `reserveLiteName` payload through the gateway.
+    function _gatewayReserveLiteName(bytes memory payload) internal {
+        _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_LITE_BYTES, payload));
+    }
+
+    /// @notice Dispatches the typed `reserveBaseName` call through the gateway stand-in.
+    function _gatewayReserveBaseName(IDotnsPopController.BaseReservation memory params) internal {
+        params.lite.liteLabel = _toGatewayLiteLabel(params.lite.liteLabel);
+        _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_BASE_TYPED, params));
+    }
+
+    /// @notice Dispatches a pre-encoded `reserveBaseName` payload through the gateway.
+    function _gatewayReserveBaseName(bytes memory payload) internal {
+        _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_BASE_BYTES, payload));
+    }
+
+    /// @notice Dispatches the typed `registerBaseName` call through the gateway stand-in.
+    /// @dev Normalises any LiteUsername link to its dotted form before dispatch.
+    function _gatewayRegisterBaseName(IDotnsPopController.FullRegistration memory params) internal {
+        if (params.link.kind == IDotnsPopController.LinkKind.LiteUsername) {
+            params.link.liteLabel = _toGatewayLiteLabel(params.link.liteLabel);
+        }
+        _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_REGISTER_BASE_TYPED, params));
+    }
+
+    /// @notice Dispatches a pre-encoded `registerBaseName` payload through the gateway.
+    function _gatewayRegisterBaseName(bytes memory payload) internal {
+        _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_REGISTER_BASE_BYTES, payload));
+    }
+
+    /// @notice Forwards `payload` to the gateway stand-in while pretending the call
+    ///         originated from the root account.
+    /// @dev Reverts with the inner error data when the forwarded call fails, so
+    ///      `vm.expectRevert` assertions remain meaningful at the test level.
+    function _dispatchFromRoot(bytes memory payload) internal returns (bytes memory ret) {
+        _mockCallerIsRoot(true);
+
+        (bool ok, bytes memory data) = popGateway.call(payload);
+        if (!ok) {
+            assembly {
+                revert(add(data, 32), mload(data))
+            }
+        }
+
+        return data;
+    }
+
+    /// @notice Constructs a `Link` that inherits the chat key from a prior lite label.
     function _linkWithLite(string memory liteLabel)
         internal
         pure
         returns (IDotnsPopController.Link memory)
     {
         return IDotnsPopController.Link({
-            kind: IDotnsPopController.LinkKind.LiteUsername, liteLabel: liteLabel, chatKey: ""
+            kind: IDotnsPopController.LinkKind.LiteUsername,
+            liteLabel: _toGatewayLiteLabel(liteLabel),
+            chatKey: ""
         });
     }
 
-    // @notice Constructs a `Link` carrying a fresh chat key (no lite inheritance).
+    /// @notice Normalises a lite label into its dotted gateway form.
+    /// @dev Inserts a `.` between the stem and the trailing two characters when
+    ///      `liteLabel` lacks a dot, mirroring how the gateway encodes labels.
+    function _toGatewayLiteLabel(string memory liteLabel) internal pure returns (string memory) {
+        bytes memory raw = bytes(liteLabel);
+        for (uint256 i = 0; i < raw.length; ++i) {
+            if (raw[i] == bytes1(0x2e)) {
+                return liteLabel;
+            }
+        }
+
+        if (raw.length < 3) return liteLabel;
+
+        bytes memory dotted = new bytes(raw.length + 1);
+        uint256 stemLength = raw.length - 2;
+
+        for (uint256 i = 0; i < stemLength; ++i) {
+            dotted[i] = raw[i];
+        }
+        dotted[stemLength] = bytes1(0x2e);
+        dotted[stemLength + 1] = raw[stemLength];
+        dotted[stemLength + 2] = raw[stemLength + 1];
+
+        return string(dotted);
+    }
+
+    /// @notice Constructs a `Link` carrying a fresh chat key (no lite inheritance).
     function _linkFresh(bytes memory chatKey)
         internal
         pure
@@ -417,29 +531,29 @@ abstract contract BaseDotns is Test {
         });
     }
 
-    // @notice Authorises the calling test contract on the registrar's controller set.
-    // @dev PopRules' `_onlyRegistry` trusts `DotnsRegistrar.controllers`, so unit
-    //      tests that exercise `reserveBaseName` / `reserveBaseNameForPop` /
-    //      `releaseBaseName` directly have to be registered. Single helper keeps
-    //      the `vm.prank(owner)` + `addController` boilerplate in one place.
+    /// @notice Authorises the calling test contract on the registrar's controller set.
+    /// @dev PopRules' `_onlyRegistry` trusts `DotnsRegistrar.controllers`, so unit
+    ///      tests that exercise `reserveBaseName` / `reserveBaseNameForPop` /
+    ///      `releaseBaseName` directly have to be registered. Single helper keeps
+    ///      the `vm.prank(owner)` + `addController` boilerplate in one place.
     function _authoriseTestAsController() internal {
         vm.prank(owner);
         dotnsRegistrar.addController(IDotnsController(address(this)));
     }
 
-    // @notice Creates a new test user and funds it with DEFAULT_BALANCE.
-    // @dev Uses Foundry's `makeAddr` to derive a deterministic address and labels it in traces.
-    // @param name Human-readable label used to derive and label the address.
-    // @return user Newly created payable address.
+    /// @notice Creates a new test user and funds it with DEFAULT_BALANCE.
+    /// @dev Uses Foundry's `makeAddr` to derive a deterministic address and labels it in traces.
+    /// @param name Human-readable label used to derive and label the address.
+    /// @return user Newly created payable address.
     function _createUser(string memory name) internal returns (address payable user) {
         user = payable(makeAddr(name));
         vm.deal({account: user, newBalance: DEFAULT_BALANCE});
         vm.label(user, name);
     }
 
-    // @notice Computes the commitment hash for a registration.
-    // @param registration Registration parameters.
-    // @return commitmentHash Commitment hash.
+    /// @notice Computes the commitment hash for a registration.
+    /// @param registration Registration parameters.
+    /// @return commitmentHash Commitment hash.
     function _computeCommitmentHash(IDotnsRegistrarController.Registration memory registration)
         internal
         view
@@ -448,9 +562,9 @@ abstract contract BaseDotns is Test {
         commitmentHash = dotnsRegistrarController.makeCommitment(registration);
     }
 
-    // @notice Submits a commitment for a registration.
-    // @dev Uses `registration.owner` as the committing account.
-    // @param registration Registration parameters.
+    /// @notice Submits a commitment for a registration.
+    /// @dev Uses `registration.owner` as the committing account.
+    /// @param registration Registration parameters.
     function _commitRegistration(IDotnsRegistrarController.Registration memory registration)
         internal
     {
@@ -459,8 +573,8 @@ abstract contract BaseDotns is Test {
         dotnsRegistrarController.commit(commitmentHash);
     }
 
-    // @notice Submits a commitment and advances time past the controller minimum commitment age.
-    // @param registration Registration parameters.
+    /// @notice Submits a commitment and advances time past the controller minimum commitment age.
+    /// @param registration Registration parameters.
     function _commitRegistrationAndWaitMinimumAge(
         IDotnsRegistrarController.Registration memory registration
     )
@@ -470,9 +584,10 @@ abstract contract BaseDotns is Test {
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
     }
 
-    // @notice Submits a commitment, waits for the minimum age, then registers with the exact oracle
-    // price. @dev Prices are obtained via `popRules.priceWithCheck(label, owner)`.
-    // @param registration Registration parameters.
+    /// @notice Submits a commitment, waits for the minimum age, then registers with the exact
+    ///         oracle price.
+    /// @dev Prices are obtained via `popRules.priceWithCheck(label, owner)`.
+    /// @param registration Registration parameters.
     function _commitRegistrationAndRegister(
         IDotnsRegistrarController.Registration memory registration
     )
@@ -487,10 +602,10 @@ abstract contract BaseDotns is Test {
         dotnsRegistrarController.register{value: priceMetadata.price}(registration);
     }
 
-    // @notice Minimal commit–reveal helper aligned to IDotnsRegistrarController.
-    // @param label Label to register.
-    // @param nameOwner Address to assign as owner.
-    // @param reserveName Whether the name is reserved.
+    /// @notice Minimal commit-reveal helper aligned to IDotnsRegistrarController.
+    /// @param label Label to register.
+    /// @param nameOwner Address to assign as owner.
+    /// @param reserveName Whether the name is reserved.
     function _commitAndRegister(string memory label, address nameOwner, bool reserveName) internal {
         bytes32 secret = keccak256(abi.encodePacked(label, nameOwner, block.timestamp));
 
@@ -513,13 +628,14 @@ abstract contract BaseDotns is Test {
         dotnsRegistrarController.register{value: requiredPayment}(registration);
     }
 
-    // @notice Registers `label` for `labelOwner` under the requested PoP status and returns its
-    // node @dev For NoStatus, no status is set on the oracle.
-    //      For PopLite/PopFull, status is set for `(labelOwner, label)` before commit–reveal.
-    // @param label The label to register (without the `.dot` suffix)
-    // @param labelOwner The address that will own the registered label
-    // @param status The PoP status to set for this label (NoStatus skips setting)
-    // @return node The node identifier for `<label>.dot`
+    /// @notice Registers `label` for `labelOwner` under the requested PoP status and
+    ///         returns its node.
+    /// @dev For NoStatus, no status is set on the oracle. For PopLite/PopFull, status is set
+    ///      for `(labelOwner, label)` before commit-reveal.
+    /// @param label The label to register (without the `.dot` suffix).
+    /// @param labelOwner The address that will own the registered label.
+    /// @param status The PoP status to set for this label (NoStatus skips setting).
+    /// @return node The node identifier for `<label>.dot`.
     function _register(
         string memory label,
         address labelOwner,
@@ -537,11 +653,11 @@ abstract contract BaseDotns is Test {
         node = _nodeOf(label);
     }
 
-    // @notice Checks whether a string array contains a given string.
-    // @dev Compares by keccak256(bytes(string)) to avoid costly byte-by-byte comparisons.
-    // @param array The array to search.
-    // @param needle The string to find.
-    // @return found True if `needle` is present in `arr`.
+    /// @notice Checks whether a string array contains a given string.
+    /// @dev Compares by keccak256(bytes(string)) to avoid costly byte-by-byte comparisons.
+    /// @param array The array to search.
+    /// @param needle The string to find.
+    /// @return found True if `needle` is present in `array`.
     function _contains(
         string[] memory array,
         string memory needle

@@ -4,7 +4,11 @@ pragma solidity ^0.8.34;
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
 
+/// @title LabelStoreFuzzTest
+/// @notice Property-based tests for @custom:contract LabelStore writes, pagination and label
+/// accounting.
 contract LabelStoreFuzzTest is BaseDotns {
+    /// @notice Deploy a fresh @custom:contract LabelStore owned by `user` via the store factory.
     function _freshLabelStore(address user) internal returns (ILabelStore store) {
         vm.prank(owner);
         store = ILabelStore(storeFactory.deployLabelStoreFor(user));
@@ -37,7 +41,8 @@ contract LabelStoreFuzzTest is BaseDotns {
     )
         public
     {
-        uint256 count = uint256(rawCount) % 10 + 1; // 1..10
+        // 1..10
+        uint256 count = uint256(rawCount) % 10 + 1;
         ILabelStore store = _freshLabelStore(ed);
 
         vm.startPrank(address(dotnsRegistrarController));
@@ -66,6 +71,7 @@ contract LabelStoreFuzzTest is BaseDotns {
         }
     }
 
+    /// @notice Render `value` as its base-10 decimal string.
     function _intString(uint256 value) internal pure returns (string memory decimal) {
         if (value == 0) return "0";
         uint256 length;

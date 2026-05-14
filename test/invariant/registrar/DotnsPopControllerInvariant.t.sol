@@ -5,11 +5,13 @@ import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {PopControllerHandler} from "./PopControllerHandler.t.sol";
 import {IDotnsPopController} from "../../../contracts/registrars/IDotnsPopController.sol";
 
-// @title DotnsPopControllerInvariant
-// @notice Invariants asserted over arbitrary sequences of PoP-controller actions.
+/// @title DotnsPopControllerInvariant
+/// @notice Invariants asserted over arbitrary sequences of PoP controller actions.
 contract DotnsPopControllerInvariant is BaseDotns {
+    /// @notice Bounded random-action handler driving the controller under test.
     PopControllerHandler internal handler;
 
+    /// @notice Wires the handler and constrains the fuzzer to its action selectors.
     function setUp() public override {
         super.setUp();
 
@@ -36,8 +38,8 @@ contract DotnsPopControllerInvariant is BaseDotns {
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
     }
 
+    /// @notice Every tracked reservation queue stays bounded by MAX_RESERVATION_QUEUE.
     function invariant_queue_length_bounded() public view {
-        // Every tracked queue stays bounded by MAX_RESERVATION_QUEUE.
         uint256 n = handler.reservedLabelsSeenCount();
         for (uint256 i = 0; i < n; i++) {
             bytes32 labelhash = handler.reservedLabelsSeen(i);
@@ -46,11 +48,11 @@ contract DotnsPopControllerInvariant is BaseDotns {
         }
     }
 
+    /// @notice PopRules' base-name reservation for every touched label equals the
+    ///         controller's live head-of-queue owner, or zero when the queue is
+    ///         empty or fully expired. Exercises reserveBaseNameForPop and
+    ///         releaseBaseName on every head transition.
     function invariant_popRules_head_matches_queue_head_or_zero() public view {
-        // Cross-contract sync: PopRules' reservation for every base label the
-        // controller has ever touched matches the controller's live
-        // head-of-queue owner, or zero when empty / fully expired. Exercises
-        // reserveBaseNameForPop / releaseBaseName on every head transition.
         uint256 n = handler.baseLabelCount();
         for (uint256 i = 0; i < n; i++) {
             string memory baseLabel = handler.baseLabelAt(i);
@@ -77,10 +79,11 @@ contract DotnsPopControllerInvariant is BaseDotns {
         }
     }
 
+    /// @notice The per-user reservation pointer is consistent with the queue
+    ///         entry it points to: when userReservation(u).labelhash is
+    ///         non-zero, the entry at userReservation(u).index is owned by u
+    ///         and sits within the live head/tail range.
     function invariant_one_reservation_per_account_consistent() public view {
-        // Per-user reservation pointer is consistent with the queue entry it
-        // points to: when userReservation(u).labelhash is non-zero, the entry
-        // at userReservation(u).index is owned by u and sits in the live range.
         uint256 count = handler.actorsCount();
         for (uint256 i = 0; i < count; i++) {
             address actor = handler.actors(i);
@@ -100,12 +103,10 @@ contract DotnsPopControllerInvariant is BaseDotns {
         }
     }
 
+    /// @notice Every token the handler minted (lite or full) carries a
+    ///         non-empty `labelOf`, proving the canonical string->tokenId
+    ///         recovery path was populated by registrar.register on every mint.
     function invariant_every_minted_tokenId_has_nonempty_label() public view {
-        // The registrar's labelOf is the canonical string->tokenId recovery
-        // path for downstream consumers. Every token the handler minted
-        // (lite or full) must carry a non-empty label. Empty labelOf would
-        // mean a mint bypassed registrar.register, which is the one place the
-        // string is stored.
         uint256 n = handler.mintedLiteTokenCount();
         for (uint256 i = 0; i < n; i++) {
             uint256 tokenId = handler.mintedLiteTokenIds(i);
@@ -113,14 +114,12 @@ contract DotnsPopControllerInvariant is BaseDotns {
         }
     }
 
+    /// @notice For every historic (liteLabelhash, fullNode) pair the resolver's
+    ///         forward and reverse indexes either still round-trip to each
+    ///         other or have both been cleared by a later overwrite. A partial
+    ///         overwrite, where one side still points at a stale partner, is
+    ///         the M-03 corruption signature.
     function invariant_fullClaim_liteLink_are_inverse() public view {
-        // For every (liteLabelhash, fullNode) pair the handler has ever
-        // claimed, the resolver's forward and reverse indexes must either
-        // still round-trip to each other OR have been cleared to zero by a
-        // later overwrite. Any intermediate state, where one side still
-        // points at the stale partner, is the M-03 corruption signature.
-        // Walking all pairs (not just the latest) is what lets the fuzzer
-        // catch overwrite-induced drift between historic pairs.
         uint256 n = handler.claimedCount();
         for (uint256 i = 0; i < n; i++) {
             bytes32 liteLabelhash = handler.claimedLiteLabelhashes(i);
@@ -141,12 +140,11 @@ contract DotnsPopControllerInvariant is BaseDotns {
         }
     }
 
+    /// @notice No stale `liteLink`: for every touched fullNode, a non-zero
+    ///         liteLink value round-trips through `fullClaim` back to the same
+    ///         fullNode. A drifting liteLink is the exact footprint of the
+    ///         M-03 overwrite corruption.
     function invariant_no_stale_liteLink() public view {
-        // For every fullNode the handler has touched, a non-zero liteLink
-        // must round-trip through fullClaim back to the same fullNode. A
-        // liteLink value that points at a liteLabelhash whose fullClaim now
-        // points elsewhere is a stale index, which is the exact footprint of
-        // the M-03 overwrite corruption.
         uint256 n = handler.claimedCount();
         for (uint256 i = 0; i < n; i++) {
             bytes32 fullNode = handler.claimedFullNodes(i);
@@ -156,10 +154,10 @@ contract DotnsPopControllerInvariant is BaseDotns {
         }
     }
 
+    /// @notice No stale `fullClaim`: symmetric to `invariant_no_stale_liteLink`,
+    ///         every claimed liteLabelhash with a non-zero fullClaim round-trips
+    ///         through `liteLink` back to the same liteLabelhash.
     function invariant_no_stale_fullClaim() public view {
-        // Symmetric to `invariant_no_stale_liteLink`: for every
-        // liteLabelhash the handler has ever claimed, a non-zero fullClaim
-        // must round-trip back through liteLink to the same liteLabelhash.
         uint256 n = handler.claimedCount();
         for (uint256 i = 0; i < n; i++) {
             bytes32 liteLabelhash = handler.claimedLiteLabelhashes(i);

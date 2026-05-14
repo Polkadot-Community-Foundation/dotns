@@ -6,6 +6,10 @@ import {IDotnsRegistry} from "../../../contracts/registry/IDotnsRegistry.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
 
+/// @title DotnsRegistryTests
+/// @notice Unit coverage for the protocol registry: root record initialisation,
+///         node ownership, resolver wiring, and authoritative subnode creation
+///         and reassignment behaviour.
 contract DotnsRegistryTests is BaseDotns {
     function test_root_record_is_initialized_and_owned_by_owner() public view {
         bytes32 rootNode = bytes32(0);

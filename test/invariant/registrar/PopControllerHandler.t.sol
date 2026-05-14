@@ -2,7 +2,6 @@
 pragma solidity ^0.8.34;
 
 import {Test} from "forge-std/Test.sol";
-import {stdStorage, StdStorage} from "forge-std/StdStorage.sol";
 import {
     DotnsPopController,
     IDotnsPopController
@@ -12,43 +11,57 @@ import {LabelUtils} from "../../../contracts/utils/LabelUtils.sol";
 import {ISystem} from "../../../contracts/external/revive/ISystem.sol";
 import {IPersonhood} from "../../../contracts/external/personhood/IPersonhood.sol";
 
-// @title PopControllerHandler
-// @notice Bounded random-action handler for {DotnsPopController} invariant tests.
-// @dev Cycles through an actor set and a fixed base-label set so the fuzzer
-//      explores combinations deterministically. Tracks every labelhash that has
-//      hosted a reservation, every minted lite token, and every successful
-//      claim so invariants can iterate over just what exists.
+/// @title PopControllerHandler
+/// @notice Bounded random-action handler for @custom:contract DotnsPopController invariant tests.
+/// @dev Cycles through an actor set and a fixed base-label set so the fuzzer
+///      explores combinations deterministically. Tracks every labelhash that has
+///      hosted a reservation, every minted lite token, and every successful
+///      claim so invariants can iterate over just what exists.
 contract PopControllerHandler is Test {
-    using stdStorage for StdStorage;
-
-    StdStorage internal stdstorage;
-
+    /// @notice The PoP controller under test.
     DotnsPopController public immutable CONTROLLER;
+    /// @notice Mirrors the controller's MAX_RESERVATION_QUEUE for queue-bound
+    ///         assertions without re-importing the contract constant.
     uint16 public constant MAX_QUEUE = 64;
 
+    /// @notice Actor pool the handler cycles through for every action.
     address[] public actors;
+    /// @notice Fixed base-label set selected from on every action.
     string[] public baseLabels;
+    /// @notice Every base labelhash that has hosted at least one reservation.
     bytes32[] public reservedLabelsSeen;
+    /// @notice Dedup set for `reservedLabelsSeen` to keep iteration cheap.
     mapping(bytes32 labelhash => bool) internal _tracked;
+    /// @notice Monotonic per-actor counter feeding the lite-label suffix so
+    ///         each generated label is unique inside an actor's namespace.
     mapping(address actor => uint64 suffix) internal _liteSuffix;
 
-    // Lite tokens minted through the handler. Every successful `reserve` push.
-    // Used by the labelOf-non-empty invariant to enumerate the token space
-    // without scanning the full uint256 id range.
+    /// @notice Lite tokens minted through the handler (one push per successful
+    ///         reserve, plus the lite and full nodes pushed on claim and the
+    ///         full node pushed on reLink). Used by the labelOf-non-empty
+    ///         invariant to enumerate the token space without scanning the
+    ///         full uint256 id range.
     uint256[] public mintedLiteTokenIds;
 
-    // Full nodes minted through successful claims, captured alongside the lite
-    // labelhash they were linked against. Used by the fullClaim/liteLink
-    // inverse invariant: for each entry, fullClaim(liteHash) == node.
+    /// @notice Full nodes minted through successful claims, captured alongside
+    ///         the lite labelhash they were linked against. Used by the
+    ///         fullClaim/liteLink inverse invariant: for each entry,
+    ///         fullClaim(liteHash) == node.
     bytes32[] public claimedFullNodes;
+    /// @notice Lite labelhashes paired index-for-index with `claimedFullNodes`.
     bytes32[] public claimedLiteLabelhashes;
 
-    // Prior lite labels reserved by the handler. Used by reLink actions so
-    // the fuzzer can re-use an existing lite label against a fresh base
-    // claim, driving the resolver overwrite paths (M-03). Kept as the raw
-    // string because the controller re-hashes internally on every call.
+    /// @notice Prior lite labels reserved by the handler. Used by reLink
+    ///         actions so the fuzzer can re-use an existing lite label
+    ///         against a fresh base claim, driving the resolver overwrite
+    ///         paths (M-03). Kept as the raw string because the controller
+    ///         re-hashes internally on every call.
     string[] public priorLiteLabels;
 
+    /// @notice Seeds the actor pool, base-label set, and personhood mocks so
+    ///         every action call admits both lite and base classifications.
+    /// @param controller_ The PoP controller under test.
+    /// @param actors_ Pool of accounts the handler cycles through.
     constructor(DotnsPopController controller_, address[] memory actors_) {
         CONTROLLER = controller_;
         actors = actors_;
@@ -69,6 +82,10 @@ contract PopControllerHandler is Test {
         }
     }
 
+    /// @notice Mocks the personhood precompile so `account` reports the given
+    ///         status byte for the protocol's personhood context.
+    /// @dev Status byte mirrors the precompile's wire format: 0 = NoStatus,
+    ///      1 = PopLite, 2 = PopFull. A zero status clears the context alias.
     function _mockPersonhoodTier(address account, uint8 statusByte) internal {
         bytes32 contextAlias =
             statusByte == 0 ? bytes32(0) : keccak256(abi.encode(account, statusByte));
@@ -81,34 +98,49 @@ contract PopControllerHandler is Test {
         );
     }
 
+    /// @notice Length of the actor pool.
     function actorsCount() external view returns (uint256) {
         return actors.length;
     }
 
+    /// @notice Number of distinct base labelhashes ever reserved against.
     function reservedLabelsSeenCount() external view returns (uint256) {
         return reservedLabelsSeen.length;
     }
 
+    /// @notice Number of base labels in the fixed selection set.
     function baseLabelCount() external view returns (uint256) {
         return baseLabels.length;
     }
 
+    /// @notice Base label at `index` in the fixed selection set.
     function baseLabelAt(uint256 index) external view returns (string memory) {
         return baseLabels[index];
     }
 
+    /// @notice Number of token ids the handler has ever recorded as minted.
     function mintedLiteTokenCount() external view returns (uint256) {
         return mintedLiteTokenIds.length;
     }
 
+    /// @notice Number of successful (lite, full) claim pairs the handler has
+    ///         recorded.
     function claimedCount() external view returns (uint256) {
         return claimedFullNodes.length;
     }
 
+    /// @notice Number of prior lite labels available for reLink replay.
     function priorLiteLabelCount() external view returns (uint256) {
         return priorLiteLabels.length;
     }
 
+    /// @notice Reserves a lite label for an actor, optionally enqueueing on a
+    ///         base label.
+    /// @dev Swallows known-good reverts (QueueFull, AlreadyReserved, ERC721
+    ///      collision) so the runner keeps exploring. `useBytes` chooses
+    ///      between the typed and bytes overloads so existing invariants run
+    ///      against mixed dispatch paths. The dispatch path should affect call
+    ///      shape only, never resulting state.
     function reserve(
         uint256 actorIndex,
         uint256 baseIndex,
@@ -117,12 +149,6 @@ contract PopControllerHandler is Test {
     )
         external
     {
-        // Reserves a lite label for an actor, optionally enqueuing on a base
-        // label. Swallows known-good reverts (QueueFull, AlreadyReserved,
-        // ERC721 collision) so the runner keeps exploring. `useBytes` chooses
-        // between the typed and bytes overloads so existing invariants run
-        // against mixed dispatch paths; the only thing the dispatch path
-        // should change is the call shape, not the resulting state.
         address actor = _actor(actorIndex);
         _liteSuffix[actor]++;
         string memory liteLabel = _buildLiteLabel("rsv", actor, _liteSuffix[actor]);
@@ -145,12 +171,13 @@ contract PopControllerHandler is Test {
         }
     }
 
+    /// @notice Drives the claim path end-to-end when the actor holds the live
+    ///         head of the queue for the picked base label.
+    /// @dev Missing preconditions (wrong actor, expired head, empty queue)
+    ///      surface as a revert and are swallowed so the runner keeps
+    ///      exploring. `useBytes` selects the dispatch path for both the lite
+    ///      leg and the full register leg.
     function claim(uint256 actorIndex, uint256 baseIndex, bool useBytes) external {
-        // Drives the claim path end-to-end when the actor happens to hold the
-        // live head of the queue for the picked base label. Missing preconditions
-        // (wrong actor, expired head, empty queue) surface as a revert and are
-        // swallowed so the runner keeps exploring. `useBytes` selects the
-        // dispatch path for both the lite leg and the full register leg.
         address actor = _actor(actorIndex);
         string memory baseLabel = _baseLabel(baseIndex);
 
@@ -189,6 +216,12 @@ contract PopControllerHandler is Test {
         priorLiteLabels.push(liteLabel);
     }
 
+    /// @notice Re-registers an already-used lite label against a fresh
+    ///         base-label claim so the same liteHash maps to a new fullNode.
+    /// @dev Drives the resolver overwrite paths (M-03). When the handler
+    ///      re-uses the same (baseLabel, actor) pair later it also exercises
+    ///      the symmetric case: same fullNode mapped to a new liteHash.
+    ///      `useBytes` selects the dispatch path for the register call.
     function reLink(
         uint256 actorIndex,
         uint256 baseIndex,
@@ -197,13 +230,6 @@ contract PopControllerHandler is Test {
     )
         external
     {
-        // Drives the resolver overwrite paths (M-03). Picks an already-used
-        // lite label and re-registers it against a fresh base-label claim,
-        // so the same liteHash ends up mapped to a new fullNode. When the
-        // handler re-uses the same (baseLabel, actor) pair later, we also
-        // exercise the symmetric case: same fullNode mapped to a new
-        // liteHash. `useBytes` selects the dispatch path for the register
-        // call.
         uint256 liteCount = priorLiteLabels.length;
         if (liteCount == 0) return;
 
@@ -231,22 +257,30 @@ contract PopControllerHandler is Test {
         mintedLiteTokenIds.push(uint256(fullNode));
     }
 
+    /// @notice Caller-sovereign relinquish: drops whichever reservation the
+    ///         picked actor currently holds.
     function relinquish(uint256 actorIndex) external {
-        // Caller-sovereign: drops whichever reservation the actor holds.
         vm.prank(_actor(actorIndex));
         try CONTROLLER.relinquishReservation() {} catch {}
     }
 
+    /// @notice Permissionless expiry: advances the head past expired entries
+    ///         on a single base-label queue.
     function expire(uint256 baseIndex) external {
-        // Permissionless: advances the head past expired entries on one queue.
         try CONTROLLER.expireReservation(_baseLabel(baseIndex)) {} catch {}
     }
 
+    /// @notice Advances `block.timestamp` to exercise expiry paths.
+    /// @dev Bounded to 30 days so state does not drift off a cliff.
     function warp(uint256 secondsForward) external {
-        // Exercises expiry paths. Bounded so state doesn't drift off a cliff.
         vm.warp(block.timestamp + (secondsForward % (30 days)));
     }
 
+    /// @notice Calls `reserveBaseName` through the typed or bytes overload.
+    /// @dev Returns true on success and false on revert so the caller's
+    ///      bookkeeping (ghost arrays) stays consistent with on-chain state
+    ///      regardless of dispatch path.
+    /// @return ok Whether the underlying call succeeded.
     function _callReserveBaseName(
         IDotnsPopController.BaseReservation memory params,
         bool useBytes
@@ -254,9 +288,6 @@ contract PopControllerHandler is Test {
         internal
         returns (bool ok)
     {
-        // Routes through the typed or bytes overload depending on `useBytes`. Returns
-        // true on success, false on revert so the caller's bookkeeping (ghost arrays)
-        // stays consistent with on-chain state regardless of dispatch path.
         _mockCallerIsRoot(true);
         if (useBytes) {
             try CONTROLLER.reserveBaseName(abi.encode(params)) {
@@ -272,6 +303,9 @@ contract PopControllerHandler is Test {
         }
     }
 
+    /// @notice Mirror of `_callReserveBaseName` for the `registerBaseName`
+    ///         overloads.
+    /// @return ok Whether the underlying call succeeded.
     function _callRegisterBaseName(
         IDotnsPopController.FullRegistration memory params,
         bool useBytes
@@ -279,7 +313,6 @@ contract PopControllerHandler is Test {
         internal
         returns (bool ok)
     {
-        // Mirror of `_callReserveBaseName` for the `registerBaseName` overloads.
         _mockCallerIsRoot(true);
         if (useBytes) {
             try CONTROLLER.registerBaseName(abi.encode(params)) {
@@ -295,6 +328,7 @@ contract PopControllerHandler is Test {
         }
     }
 
+    /// @notice Mocks the revive `callerIsRoot()` query to return `returnValue`.
     function _mockCallerIsRoot(bool returnValue) internal {
         vm.mockCall(
             DotnsConstants.REVIVE_SYSTEM,
@@ -303,15 +337,15 @@ contract PopControllerHandler is Test {
         );
     }
 
-    // @notice Builds a classification-valid PoP lite label.
-    // @dev Shape: `<tag><4 letters from actor><2 digits>`. Total baselength
-    //      is 7 with exactly 2 trailing digits, which classifies as PopLite
-    //      under PopRules. Tag disambiguates the reserve vs claim call sites
-    //      so neither collides with the other in the ERC721 namespace. The
-    //      letter block is derived from the actor address via keccak so each
-    //      actor lives in its own lite namespace. Suffix wraps modulo 100 so
-    //      the label stays within the 2-trailing-digit rule; collisions past
-    //      100 reuses are swallowed by the caller's try/catch.
+    /// @notice Builds a classification-valid PoP lite label.
+    /// @dev Shape: `<tag><4 letters from actor><2 digits>`. Total baselength
+    ///      is 7 with exactly 2 trailing digits, which classifies as PopLite
+    ///      under PopRules. Tag disambiguates the reserve vs claim call sites
+    ///      so neither collides with the other in the ERC721 namespace. The
+    ///      letter block is derived from the actor address via keccak so each
+    ///      actor lives in its own lite namespace. Suffix wraps modulo 100 so
+    ///      the label stays within the 2-trailing-digit rule; collisions past
+    ///      100 reuses are swallowed by the caller's try/catch.
     function _buildLiteLabel(
         string memory tag,
         address actor,
@@ -333,14 +367,17 @@ contract PopControllerHandler is Test {
         label = string.concat(tag, string(letters), digits);
     }
 
+    /// @notice Selects an actor from the pool with wrap-around indexing.
     function _actor(uint256 index) internal view returns (address) {
         return actors[index % actors.length];
     }
 
+    /// @notice Selects a base label from the fixed set with wrap-around indexing.
     function _baseLabel(uint256 index) internal view returns (string memory) {
         return baseLabels[index % baseLabels.length];
     }
 
+    /// @notice Records `labelhash` as a seen reservation queue, deduplicated.
     function _track(bytes32 labelhash) internal {
         if (!_tracked[labelhash]) {
             _tracked[labelhash] = true;

@@ -18,10 +18,11 @@ interface IDotnsResolver {
     event AddressSet(bytes32 indexed node, address value);
 
     /// @notice Sets the resolved address for a node.
+    /// @dev The caller must be the current owner of `node` in the forward registry, otherwise
+    ///      @custom:reverts NotAuthorised. Emits @custom:emits AddressSet on every successful
+    ///      write.
     /// @param node The node identifier.
     /// @param value The address to associate with the node.
-    /// @custom:emits AddressSet
-    /// @custom:reverts NotAuthorised
     function setAddress(bytes32 node, address value) external;
 
     /// @notice Returns the resolved address for a node.

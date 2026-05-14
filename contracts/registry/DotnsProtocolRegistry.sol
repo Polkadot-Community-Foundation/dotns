@@ -38,7 +38,8 @@ contract DotnsProtocolRegistry is
     }
 
     /// @notice Initialises the protocol registry.
-    /// @custom:reverts InvalidInitialization
+    /// @dev Callable exactly once via `Initializable`, otherwise
+    ///      @custom:reverts InvalidInitialization. Sets the deployer as owner.
     function initialize() external initializer {
         __Ownable_init(msg.sender);
     }

@@ -28,13 +28,12 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 /// without interfering with each other.
 ///
 /// Enforcement:
-/// PoP entrypoints bypass native-token pricing (PoP tiers pay zero) and the commit-reveal
-/// window, but every mint path routes through `IPopRules.priceWithCheck` before any state
-/// mutation. This keeps classification (length-based "Reserved for Governance" guard) and
-/// tier policy (which PopStatus may register which labels) in lockstep with the public
-/// commit-reveal controller. The returned price is discarded because PoP tiers always
-/// resolve to zero; `priceWithCheck` reverts on classification or tier failure, which is the
-/// effect we are after.
+/// Personhood is attested off-chain by the gateway pallet before the call reaches this
+/// contract, so the on-chain personhood precompile is not re-queried on the gateway path.
+/// Every base-label mint path still calls @custom:function IPopRules.classifyName to reject
+/// governance-reserved labels (@custom:reverts InvalidBaseLabel), and the lite leg's
+/// `isSingleDotLiteLabel` format guard guarantees the stripped lite label cannot classify
+/// as `Reserved`. Native-token pricing is bypassed entirely; the gateway pays no rent.
 ///
 /// Decoupling:
 /// This contract does not import or call `IDotnsRegistrarController`. The public
@@ -49,16 +48,17 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 /// (2) Base-name reservations are synchronised into `IPopRules`. The head of this
 /// controller's reservation queue is written through `IPopRules.reserveBaseNameForPop` on
 /// every head transition; the slot is cleared through `IPopRules.releaseBaseName` when the
-/// queue empties (claim, final relinquish, final expiry). Because the public commit-reveal
-/// controller already routes through `IPopRules.priceWithCheck`, which rejects any
-/// registration targeting a base-name stem reserved for another user, the public flow
-/// respects gateway reservations without ever importing this contract. PopRules is the
-/// single cross-flow authority; the queue here is the intra-PoP ordering layer on top of it.
+/// queue empties (claim, final relinquish, final expiry). The public commit-reveal
+/// controller routes through `IPopRules.priceWithCheck`, which rejects any registration
+/// targeting a base-name stem reserved for another user, so the public flow respects
+/// gateway reservations without ever importing this contract. PopRules is the single
+/// cross-flow authority; the queue here is the intra-PoP ordering layer on top of it.
 ///
-/// Shared primitives: labelhash / namehash via {LabelUtils}; the mint + forward-registry +
-/// store-write triad via {RegistrationUtils}; chat-key and lite-to-full link persistence via
-/// {IDotnsPopResolver}. Keeping per-name records on the resolver preserves the "Store =
-/// labels only" invariant.
+/// Shared primitives: labelhash / namehash via @custom:contract LabelUtils; the mint +
+/// forward-registry + store-write triad via @custom:contract RegistrationUtils; chat-key and
+/// lite-to-full link persistence via
+/// @custom:contract IDotnsPopResolver. Keeping per-name records on the resolver preserves the
+/// "Store = labels only" invariant.
 /// @custom:security-contact admin@parity.io
 contract DotnsPopController is
     Initializable,
@@ -75,7 +75,7 @@ contract DotnsPopController is
 
     /// @notice Selector for the typed {reserveLiteName} overload.
     /// @dev Hard-coded to disambiguate from the `(bytes)` overload at compile time. Must stay
-    /// in sync with the {LiteRegistration} field layout.
+    /// in sync with the @custom:struct LiteRegistration field layout.
     bytes4 private constant SELECTOR_RESERVE_LITE =
         bytes4(keccak256("reserveLiteName((string,address,bytes))"));
 
@@ -142,11 +142,10 @@ contract DotnsPopController is
 
     /// @notice Initialises the PoP controller.
     /// @dev Called once through the UUPS proxy; `_disableInitializers` on the implementation
-    /// makes direct calls revert. Emits `ReservationDurationSet` so indexers observe the
-    /// initial value through the same event the setter uses later.
-    /// @custom:emits ReservationDurationSet
-    /// @custom:reverts InvalidInitialization
-    /// @custom:reverts NotInitializing
+    /// makes direct calls revert with @custom:reverts InvalidInitialization, and any nested
+    /// call outside an active initialiser scope reverts with @custom:reverts NotInitializing.
+    /// Emits @custom:emits ReservationDurationSet so indexers observe the initial value
+    /// through the same event the setter uses later.
     function initialize(
         IDotnsProtocolRegistry registry,
         uint64 reservationDuration_
@@ -176,10 +175,10 @@ contract DotnsPopController is
         _reserveLite(params.lite);
 
         if (bytes(params.reservedBaseLabel).length != 0) {
-            // Classification and tier enforcement for the base-name reservation.
-            // Runs before any queue mutation so a mis-tiered reservation never
-            // even touches the queue.
-            _popRules().priceWithCheck(params.reservedBaseLabel, params.lite.user);
+            // Governance-reserved labels can never be enqueued through the gateway. Runs
+            // before any queue mutation so a Reserved label never touches the queue.
+            (IPopRules.PopStatus required,) = _popRules().classifyName(params.reservedBaseLabel);
+            require(required != IPopRules.PopStatus.Reserved, InvalidBaseLabel());
 
             bytes32 reservedHash = _validateBaseLabelHash(params.reservedBaseLabel);
             _advanceExpiredHead(reservedHash);
@@ -197,25 +196,27 @@ contract DotnsPopController is
     }
 
     /// @notice Lite-only mint shared by {reserveLiteName} and the lite leg of {reserveBaseName}.
-    /// @dev Gated by `priceWithCheck` so the lite label's classification and the user's tier
-    /// are honoured here too. The gateway-only modifier is enforced at the entrypoints that
-    /// call this internal. Takes the {LiteRegistration} struct directly so both call sites
-    /// pass the same payload shape: the typed entrypoint forwards its own `params`, the
+    /// @dev Gateway attestation is the authority for personhood on this path; the on-chain
+    /// precompile is not consulted. The dotted-format check is sufficient to keep
+    /// governance-reserved labels out of the lite leg: `isSingleDotLiteLabel` constrains
+    /// the input to a 6-8 character DNS stem followed by exactly two digits, which
+    /// `IPopRules._classifyValidatedName` cannot map to `Reserved`. Takes the
+    /// @custom:struct LiteRegistration struct directly so both call sites pass the same
+    /// payload shape: the typed entrypoint forwards its own `params`, the
     /// `reserveBaseName` entrypoint forwards `params.lite`.
     function _reserveLite(LiteRegistration calldata params) internal {
-        // Classification and tier enforcement for the lite label. Runs before
-        // any state mutation so a mis-tiered request never touches the registry.
-        _popRules().priceWithCheck(params.liteLabel, params.user);
+        require(params.liteLabel.isSingleDotLiteLabel(), InvalidLiteLabel());
 
-        (bytes32 labelhash, bytes32 node) = _validateLiteLabel(params.liteLabel);
+        string memory liteLabel = params.liteLabel.stripDots();
+        (bytes32 labelhash, bytes32 node) = _validateLiteLabel(liteLabel);
 
         _advanceExpiredHead(labelhash);
 
         _completeGatewayRegistration(
-            params.user, params.liteLabel, labelhash, node, params.chatKey, bytes32(0)
+            params.user, liteLabel, labelhash, node, params.chatKey, bytes32(0)
         );
 
-        emit LiteNameReserved(labelhash, params.user, params.liteLabel);
+        emit LiteNameReserved(labelhash, params.user, liteLabel);
     }
 
     /// @inheritdoc IDotnsPopController
@@ -229,10 +230,10 @@ contract DotnsPopController is
         address user = params.user;
         string calldata label = params.label;
 
-        // Classification and tier enforcement for the full-person label. Runs
-        // ahead of the reservation-axis detection so a mis-tiered request never
-        // even touches the queue.
-        _popRules().priceWithCheck(label, user);
+        // Governance-reserved labels can never be minted through the gateway. Runs ahead of
+        // the reservation-axis detection so a Reserved label never touches the queue.
+        (IPopRules.PopStatus required,) = _popRules().classifyName(label);
+        require(required != IPopRules.PopStatus.Reserved, InvalidBaseLabel());
 
         (bytes32 labelhash, bytes32 node) = _validateBaseLabel(label);
 
@@ -272,7 +273,9 @@ contract DotnsPopController is
         bytes32 liteLabelhash;
         bytes memory chatKeyToPersist;
         if (link.kind == LinkKind.LiteUsername) {
-            liteLabelhash = _validateLiteLabelHash(link.liteLabel);
+            string memory liteLabel = link.liteLabel.stripDots();
+            require(link.liteLabel.isSingleDotLiteLabel(), InvalidLiteLabel());
+            liteLabelhash = _validateLiteLabelHash(liteLabel);
             bytes32 liteNode = LabelUtils.namehash(liteLabelhash);
             chatKeyToPersist = _popResolver().chatKey(liteNode);
         } else {
@@ -386,10 +389,10 @@ contract DotnsPopController is
     /// @dev The mint + forward-registry + store-write triad is delegated to
     /// {RegistrationUtils-registerAndStore} so this flow and the public commit-reveal flow
     /// share exactly one implementation of that sequence. PoP-flow per-name records live on
-    /// {IDotnsPopResolver} rather than on the Store so the Store stays labels-only.
+    /// @custom:contract IDotnsPopResolver rather than on the Store so the Store stays labels-only.
     function _completeGatewayRegistration(
         address user,
-        string calldata label,
+        string memory label,
         bytes32 labelhash,
         bytes32 node,
         bytes memory chatKeyBytes,
@@ -481,10 +484,10 @@ contract DotnsPopController is
 
     /// @notice Advances the queue head past every expired entry at the head of the queue.
     /// @dev Reset semantics matter: when the queue empties (head catches tail), the meta slot
-    /// is deleted AND the PopRules base-name slot is released, so the public commit-reveal flow
-    /// can register the label again. When a new live head emerges, PopRules is re-synced to that
-    /// head so reservations cannot be paid around by another address.
-    /// @custom:emits ReservationExpired
+    /// is deleted AND the PopRules base-name slot is released, so the public commit-reveal
+    /// flow can register the label again. When a new live head emerges, PopRules is re-synced
+    /// to that head so reservations cannot be paid around by another address. Emits
+    /// @custom:emits ReservationExpired once per expired entry reaped from the head.
     function _advanceExpiredHead(bytes32 labelhash) internal {
         ReservationQueueMeta memory meta = _reservationMeta[labelhash];
         uint64 head = meta.head;
@@ -537,25 +540,26 @@ contract DotnsPopController is
     }
 
     /// @notice Validates a lite-person `NAMEXX` label and derives `(labelhash, node)`.
-    function _validateLiteLabel(string calldata liteLabel)
+    function _validateLiteLabel(string memory liteLabel)
         internal
         pure
         returns (bytes32 labelhash, bytes32 node)
     {
-        require(liteLabel.isLitePersonLabel(), InvalidLiteLabel());
-        (labelhash, node) = LabelUtils.deriveNode(liteLabel);
+        require(liteLabel.isLitePersonLabelMemory(), InvalidLiteLabel());
+        labelhash = LabelUtils.labelhashMemory(liteLabel);
+        node = LabelUtils.namehash(labelhash);
     }
 
     /// @notice Validates a lite-person `NAMEXX` label and returns its labelhash.
     /// @dev Node is not needed for every call site; this overload avoids the extra keccak
     /// when only the labelhash is used.
-    function _validateLiteLabelHash(string calldata liteLabel)
+    function _validateLiteLabelHash(string memory liteLabel)
         internal
         pure
         returns (bytes32 labelhash)
     {
-        require(liteLabel.isLitePersonLabel(), InvalidLiteLabel());
-        labelhash = LabelUtils.labelhash(liteLabel);
+        require(liteLabel.isLitePersonLabelMemory(), InvalidLiteLabel());
+        labelhash = LabelUtils.labelhashMemory(liteLabel);
     }
 
     /// @notice Validates a base (full-person) DNS label and derives `(labelhash, node)`.

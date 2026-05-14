@@ -26,17 +26,17 @@ import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 /// @custom:security-contact admin@parity.io
 contract StoreFactory is Ownable, IStoreFactory {
     /// @notice Beacon backing every `LabelStore` proxy.
-    /// @dev Public getter name is interface-constrained by {IStoreFactory}.
+    /// @dev Public getter name is interface-constrained by @custom:contract IStoreFactory.
     // forge-lint: disable-next-line(screaming-snake-case-immutable)
     address public immutable override labelStoreBeacon;
 
     /// @notice Beacon backing every `UserStore` proxy.
-    /// @dev Public getter name is interface-constrained by {IStoreFactory}.
+    /// @dev Public getter name is interface-constrained by @custom:contract IStoreFactory.
     // forge-lint: disable-next-line(screaming-snake-case-immutable)
     address public immutable override userStoreBeacon;
 
     /// @notice Protocol registry used to authorise `deployLabelStoreFor` callers.
-    /// @dev Public getter name is interface-constrained by {IStoreFactory}.
+    /// @dev Public getter name is interface-constrained by @custom:contract IStoreFactory.
     // forge-lint: disable-next-line(screaming-snake-case-immutable)
     address public immutable override protocolRegistry;
 
@@ -64,14 +64,14 @@ contract StoreFactory is Ownable, IStoreFactory {
     ///      - Deploys a fresh `UserStore` implementation.
     ///      - Constructs both `UpgradeableBeacon` instances, owned by `address(this)`
     ///        so `upgrade*Implementation` can delegate to `beacon.upgradeTo`.
-    ///      Keeping the implementation deployments inside the constructor removes a
-    ///      class of operator error: there is no "did I deploy the implementation first?" step
-    ///      and no way to pass the wrong implementation address.
+    ///      Keeping the implementation deployments inside the constructor removes a class of
+    ///      operator error: there is no "did I deploy the implementation first?" step and no
+    ///      way to pass the wrong implementation address. `protocolRegistry_` must be
+    ///      non-zero, otherwise @custom:reverts InvalidProtocolRegistry.
     /// @dev Implementations and beacons are deployed inline so a single factory address fully
     ///      describes the store topology, removing a class of operator error around mismatched
     ///      beacons.
     /// @param protocolRegistry_ The protocol registry for writer auth on label stores.
-    /// @custom:reverts InvalidProtocolRegistry
     constructor(address protocolRegistry_) Ownable(msg.sender) {
         require(protocolRegistry_ != address(0), InvalidProtocolRegistry(protocolRegistry_));
         IDotnsProtocolRegistry(protocolRegistry_).isRegisteredAddress(address(0));

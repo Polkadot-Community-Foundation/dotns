@@ -11,24 +11,20 @@ import {StringUtils} from "../../../contracts/utils/StringUtils.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Vm} from "forge-std/Vm.sol";
 
-// @title DotnsPopControllerFuzz
-// @notice Property-based tests for {DotnsPopController}.
-// @dev Each fuzz replaces a family of near-identical unit tests with a single
-//      property assertion the fuzzer explores across inputs.
+/// @title DotnsPopControllerFuzz
+/// @notice Property-based tests for @custom:contract DotnsPopController.
+/// @dev Each fuzz replaces a family of near-identical unit tests with a single
+///      property assertion the fuzzer explores across inputs.
 contract DotnsPopControllerFuzz is BaseDotns {
-    // Decimal string of `value` padded to exactly two digits when `value < 10`.
-    // Callers bound `value` to `[0, 99]` so the resulting suffix matches the
-    // `NAMEXX` contract used throughout the PoP controller tests; above 99 the
-    // string is still valid (digits-only) but wider than two characters.
+    /// @notice Render `value` as a decimal string padded to at least two digits.
+    /// @dev Callers bound `value` to `[0, 99]` so the resulting suffix matches the
+    ///      `NAMEXX` contract used throughout the PoP controller tests; above 99 the
+    ///      string is still valid (digits-only) but wider than two characters.
     function _twoDigitDecimal(uint256 value) internal pure returns (string memory s) {
         if (value < 10) return string.concat("0", StringUtils.uintToString(value));
         return StringUtils.uintToString(value);
     }
 
-    // Any well-formed `alicex.<NN>` lite label (`NN` exactly 2 digits) mints.
-    // Stem `alicex` (baselength 6) keeps the label classification-valid as
-    // PopLite under the PopRules classification rules. Replaces a family of
-    // hand-picked suffix unit tests.
     function testFuzz_reserveBaseName_accepts_any_two_digit_suffix(uint8 suffix) public {
         suffix = uint8(bound(uint256(suffix), 0, 99));
         string memory label = string.concat("alicex", _twoDigitDecimal(uint256(suffix)));
@@ -42,10 +38,6 @@ contract DotnsPopControllerFuzz is BaseDotns {
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf(label))), ed);
     }
 
-    // Any 65-byte chat-key payload is persisted verbatim on the resolver;
-    // empty payloads skip the resolver write. The resolver enforces a strict
-    // 65-byte length (uncompressed secp256k1 key), so the fuzzer seeds that
-    // payload via `_validChatKey` and only toggles empty-vs-set.
     function testFuzz_reserveBaseName_persists_chat_key_exact_bytes(
         uint8 suffix,
         bytes1 keySeed,
@@ -69,10 +61,6 @@ contract DotnsPopControllerFuzz is BaseDotns {
         }
     }
 
-    // A random stranger's public register succeeds exactly when PopRules
-    // permits: if the stem is reserved for someone else, the register reverts
-    // with the PopRules reservation error; otherwise it succeeds. Drives the
-    // commit-reveal flow inline so the revert (if any) lands on `register`.
     function testFuzz_public_register_respects_popRules_reservation(bool reserveFirst) public {
         string memory stem = "longnamebob";
         string memory fullLabel = "longnamebob01";
@@ -115,16 +103,20 @@ contract DotnsPopControllerFuzz is BaseDotns {
 
     function testFuzz_reserveLiteName_overloads_equivalent(uint8 suffix, bytes1 keySeed) public {
         suffix = uint8(bound(uint256(suffix), 0, 99));
-        string memory liteLabel = string.concat("dualli", _twoDigitDecimal(uint256(suffix)));
+        string memory digits = _twoDigitDecimal(uint256(suffix));
+        // The gateway-facing entry point accepts the dotted `stem.digits` shape; the
+        // on-chain stored label is the dot-stripped flat form.
+        string memory liteLabelDotted = string.concat("dualli.", digits);
+        string memory liteLabelFlat = string.concat("dualli", digits);
         bytes memory chatKey = _validChatKey(keySeed);
 
         _grantPopLite(ed);
 
         IDotnsPopController.LiteRegistration memory params = IDotnsPopController.LiteRegistration({
-            liteLabel: liteLabel, user: ed, chatKey: chatKey
+            liteLabel: liteLabelDotted, user: ed, chatKey: chatKey
         });
 
-        bytes32 node = _nodeOf(liteLabel);
+        bytes32 node = _nodeOf(liteLabelFlat);
         // Snapshot the world once and run both dispatch paths from the same starting
         // state; post-state and full event log must match for the typed and bytes
         // overloads to be observably equivalent.
@@ -157,7 +149,10 @@ contract DotnsPopControllerFuzz is BaseDotns {
         public
     {
         suffix = uint8(bound(uint256(suffix), 0, 99));
-        string memory liteLabel = string.concat("dualbs", _twoDigitDecimal(uint256(suffix)));
+        string memory digits = _twoDigitDecimal(uint256(suffix));
+        // Gateway-facing dotted shape; flat form drives the on-chain node lookup.
+        string memory liteLabelDotted = string.concat("dualbs.", digits);
+        string memory liteLabelFlat = string.concat("dualbs", digits);
         bytes memory chatKey = _validChatKey(keySeed);
         // `useReservation` toggles between the lite-only branch and the lite-plus-
         // reservation branch so both legs of the entrypoint are exercised.
@@ -169,12 +164,12 @@ contract DotnsPopControllerFuzz is BaseDotns {
 
         IDotnsPopController.BaseReservation memory params = IDotnsPopController.BaseReservation({
             lite: IDotnsPopController.LiteRegistration({
-                liteLabel: liteLabel, user: ed, chatKey: chatKey
+                liteLabel: liteLabelDotted, user: ed, chatKey: chatKey
             }),
             reservedBaseLabel: reservedBase
         });
 
-        bytes32 liteNode = _nodeOf(liteLabel);
+        bytes32 liteNode = _nodeOf(liteLabelFlat);
         bytes32 reservedHash = useReservation ? keccak256(bytes(reservedBase)) : bytes32(0);
         uint256 baseline = vm.snapshotState();
 
@@ -236,12 +231,12 @@ contract DotnsPopControllerFuzz is BaseDotns {
             vm.prank(popGateway);
             dotnsPopController.reserveLiteName(
                 IDotnsPopController.LiteRegistration({
-                    liteLabel: LITE_LABEL_A, user: ed, chatKey: chatKey
+                    liteLabel: LITE_LABEL_A_DOTTED, user: ed, chatKey: chatKey
                 })
             );
             link = IDotnsPopController.Link({
                 kind: IDotnsPopController.LinkKind.LiteUsername,
-                liteLabel: LITE_LABEL_A,
+                liteLabel: LITE_LABEL_A_DOTTED,
                 chatKey: ""
             });
         } else {
@@ -280,9 +275,10 @@ contract DotnsPopControllerFuzz is BaseDotns {
         _assertLogsEqual(typedLogs, bytesLogs);
     }
 
+    /// @notice Assert that two recorded log arrays are element-wise identical.
+    /// @dev Compares count, ordering, emitter, topics and unindexed payload; any divergence
+    ///      fails the test.
     function _assertLogsEqual(Vm.Log[] memory a, Vm.Log[] memory b) internal {
-        // Compares two recorded log arrays element-wise so any divergence (count,
-        // ordering, emitter, topics, or unindexed payload) fails the test.
         assertEq(a.length, b.length, "log count mismatch");
         for (uint256 i = 0; i < a.length; ++i) {
             assertEq(a[i].emitter, b[i].emitter, "log emitter mismatch");
@@ -294,8 +290,6 @@ contract DotnsPopControllerFuzz is BaseDotns {
         }
     }
 
-    // `isReservedForClaim` tracks the `joinedAt + duration` boundary for
-    // the queue head across the full duration/elapsed space.
     function testFuzz_isReservedForClaim_tracks_duration_boundary(
         uint64 duration,
         uint64 elapsed

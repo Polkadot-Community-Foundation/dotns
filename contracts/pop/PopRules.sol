@@ -72,9 +72,11 @@ contract PopRules is
     }
 
     /// @notice Initialises the oracle (public entry point).
+    /// @dev Runs once behind the proxy; subsequent calls trigger @custom:reverts
+    ///      InvalidInitialization via the `initializer` modifier. Forwards to {_popRulesInit},
+    ///      which seeds `startingPrice` through {updateStartingPrice}.
     /// @param _startingPrice Base price in wei for NoStatus users.
     /// @param registry Protocol-level address registry used to resolve sibling contracts.
-    /// @custom:reverts InvalidInitialization
     function initialize(
         uint256 _startingPrice,
         IDotnsProtocolRegistry registry

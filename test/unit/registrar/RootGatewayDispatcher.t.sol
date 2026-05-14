@@ -6,31 +6,33 @@ import {IDotnsPopController} from "../../../contracts/registrars/IDotnsPopContro
 import {RootGatewayDispatcher} from "../../../contracts/registrars/RootGatewayDispatcher.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 
-// @title RootGatewayDispatcherTests
-// @notice Unit coverage for the non-upgradeable shim that converts revive
-//         Root-origin dispatches into the immediate-caller predicate the
-//         controller authorises against.
+/// @title RootGatewayDispatcherTests
+/// @notice Unit coverage for the non-upgradeable shim that converts revive
+///         Root-origin dispatches into the immediate-caller predicate the
+///         controller authorises against.
 contract RootGatewayDispatcherTests is BaseDotns {
-    // Selector of the typed `reserveLiteName(LiteRegistration)` overload,
-    // computed explicitly so calldata construction does not collide with the
-    // sibling `(bytes)` overload that the cross-chain payload entrypoint uses.
+    /// @notice Selector of the typed `reserveLiteName(LiteRegistration)`
+    ///         overload, computed explicitly so calldata construction does not
+    ///         collide with the sibling `(bytes)` overload that the cross-chain
+    ///         payload entrypoint uses.
     bytes4 internal constant _RESERVE_LITE_TYPED_SELECTOR =
         bytes4(keccak256("reserveLiteName((string,address,bytes))"));
 
+    /// @notice Dispatcher under test, deployed in `setUp` and bound to the
+    ///         live controller proxy.
     RootGatewayDispatcher internal dispatcher;
 
+    /// @notice Deploys the dispatcher bound to the already-deployed controller
+    ///         proxy and rebinds the protocol registry's gateway slot so the
+    ///         precompile path is exercised end-to-end. Defaults the System
+    ///         precompile to "not Root" so each test opts in explicitly.
     function setUp() public override {
         super.setUp();
 
-        // Deploy the dispatcher bound to the already-deployed controller proxy
-        // and replace the test stand-in gateway from `BaseDotns` on the
-        // protocol registry so the precompile path is exercised end-to-end.
         dispatcher = new RootGatewayDispatcher(address(dotnsPopController));
         vm.prank(owner);
         protocolRegistry.set(DotnsConstants.POP_GATEWAY, address(dispatcher));
 
-        // Default the System precompile to "not Root" so each test opts into
-        // Root authority explicitly.
         _mockCallerIsRoot(false);
     }
 
@@ -73,7 +75,7 @@ contract RootGatewayDispatcherTests is BaseDotns {
         bytes memory payload = abi.encodeWithSelector(
             _RESERVE_LITE_TYPED_SELECTOR,
             IDotnsPopController.LiteRegistration({
-                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x01)
+                liteLabel: LITE_LABEL_A_DOTTED, user: ed, chatKey: _validChatKey(0x01)
             })
         );
 
@@ -86,10 +88,10 @@ contract RootGatewayDispatcherTests is BaseDotns {
 
     function test_dispatcher_bubbles_controller_revert_data() public {
         _mockCallerIsRoot(true);
-        // No PopFull tier granted: the lite reserve path reverts inside the
-        // controller via PopRules' price-with-check guard. The dispatcher
-        // must surface that revert verbatim rather than masking it as
-        // NotRoot.
+        // The flat lite-label `LITE_LABEL_A` does not satisfy the gateway-facing
+        // `stem.digits` shape, so the controller reverts with InvalidLiteLabel.
+        // The dispatcher must surface that revert verbatim rather than masking it
+        // as NotRoot.
         bytes memory payload = abi.encodeWithSelector(
             _RESERVE_LITE_TYPED_SELECTOR,
             IDotnsPopController.LiteRegistration({
@@ -118,7 +120,7 @@ contract RootGatewayDispatcherTests is BaseDotns {
         vm.prank(address(dispatcher));
         dotnsPopController.reserveLiteName(
             IDotnsPopController.LiteRegistration({
-                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x01)
+                liteLabel: LITE_LABEL_A_DOTTED, user: ed, chatKey: _validChatKey(0x01)
             })
         );
 

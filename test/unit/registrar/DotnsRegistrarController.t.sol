@@ -12,6 +12,10 @@ import {
     OwnableUpgradeable
 } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
+/// @title DotnsRegistrarControllerTest
+/// @notice Unit coverage for the public commit-reveal registrar controller:
+///         availability and commitment book-keeping, PoP-aware registration,
+///         whitelisting, role management, and transfer-side store wiring.
 contract DotnsRegistrarControllerTest is BaseDotns {
     function test_available_state_transitions() public {
         assertTrue(dotnsRegistrarController.available("longnamehere01"));

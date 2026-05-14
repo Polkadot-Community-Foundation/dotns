@@ -7,12 +7,22 @@ import {LabelStore} from "../../../contracts/store/LabelStore.sol";
 import {BeaconProxy} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
+/// @title LabelStoreTests
+/// @notice Unit tests for the per-user LabelStore beacon proxy: initialisation, authorisation,
+/// write-once semantics, and pagination.
 contract LabelStoreTests is BaseDotns {
+    /// @notice Fixture labelhash for label "alpha".
     bytes32 internal constant LABELHASH_A = keccak256("alpha");
+    /// @notice Fixture labelhash for label "bravo".
     bytes32 internal constant LABELHASH_B = keccak256("bravo");
+    /// @notice Fixture label string paired with LABELHASH_A.
     string internal constant LABEL_A = "alpha.dot";
+    /// @notice Fixture label string paired with LABELHASH_B.
     string internal constant LABEL_B = "bravo.dot";
 
+    /// @notice Deploys a brand-new LabelStore beacon proxy for `user` via the factory, pranked as
+    /// `owner`. @param user The address that will own the freshly deployed LabelStore.
+    /// @return store The newly deployed LabelStore proxy cast to the ILabelStore interface.
     function _freshLabelStore(address user) internal returns (ILabelStore store) {
         vm.prank(owner);
         store = ILabelStore(storeFactory.deployLabelStoreFor(user));

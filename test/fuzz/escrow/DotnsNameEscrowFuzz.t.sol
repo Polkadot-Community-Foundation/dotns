@@ -4,10 +4,10 @@ pragma solidity ^0.8.34;
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 import {IDotnsNameEscrow} from "../../../contracts/escrow/IDotnsNameEscrow.sol";
 
+/// @title DotnsNameEscrowFuzzTest
+/// @notice Property-based tests for @custom:contract DotnsNameEscrow deposit accounting and
+/// withdrawal timing.
 contract DotnsNameEscrowFuzzTest is BaseDotns {
-    /// @notice Fuzz deposit tracking across multiple registrations with varying label lengths.
-    /// @dev Registers multiple NoStatus names with different lengths (9-20 chars) and verifies
-    ///      each deposit is tracked correctly in both the position and the global reserves.
     function testFuzz_deposit_amount(uint256 seed) public {
         address registrant = ed;
 
@@ -57,11 +57,6 @@ contract DotnsNameEscrowFuzzTest is BaseDotns {
         );
     }
 
-    /// @notice Fuzz withdrawal timing: warp by random amount after release, expect revert or
-    /// success. @dev Registers a NoStatus name, releases it into escrow, then fuzzes the warp
-    /// amount.
-    ///      If warpAmount < ESCROW_COOLDOWN (7 days), expects WithdrawalTooEarly revert.
-    ///      If warpAmount >= ESCROW_COOLDOWN, expects successful withdrawal.
     function testFuzz_withdraw_timing(uint256 warpAmount) public {
         warpAmount = bound(warpAmount, 0, 30 days);
 
@@ -131,6 +126,9 @@ contract DotnsNameEscrowFuzzTest is BaseDotns {
         }
     }
 
+    /// @notice Build, commit and warp past the minimum commitment age for a registration.
+    /// @dev The commitment is sent from `nameOwner`; callers then perform `register` themselves
+    ///      so the revert (if any) lands on the register call.
     function _commitFor(
         string memory nameLabel,
         address nameOwner,

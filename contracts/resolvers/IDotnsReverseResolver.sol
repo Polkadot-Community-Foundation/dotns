@@ -20,11 +20,11 @@ interface IDotnsReverseResolver {
     event ReverseNameSet(address indexed addr, string indexed name);
 
     /// @notice Associates an address with a reverse name record.
-    /// @dev Overwrites any existing reverse record for `addr`.
+    /// @dev Callable only by the configured registrar or its controller, otherwise
+    ///      @custom:reverts NotRegistrarController. Overwrites any existing reverse record for
+    ///      `addr` and emits @custom:emits ReverseNameSet on every successful write.
     /// @param addr The address for which the reverse name is being set.
     /// @param name The human-readable name associated with the address.
-    /// @custom:emits ReverseNameSet
-    /// @custom:reverts NotRegistrarController
     function setReverseName(address addr, string calldata name) external;
 
     /// @notice Returns the reverse name for an address.

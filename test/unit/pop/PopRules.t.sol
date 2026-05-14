@@ -5,6 +5,9 @@ import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {IDotnsController} from "../../../contracts/registrars/IDotnsController.sol";
 
+/// @title PopRulesTests
+/// @notice Unit tests for PopRules name classification, pricing checks, and base-name reservation
+/// authorisation.
 contract PopRulesTests is BaseDotns {
     function test_classify_governance() public view {
         (IPopRules.PopStatus classificationStatus, string memory classificationMessage) =
@@ -105,26 +108,18 @@ contract PopRulesTests is BaseDotns {
         assertEq(priceMetadata.price, popRules.price("lights"));
     }
 
-    // `reserveBaseNameForPop` must be gated by registrar-controller authorisation.
-    // An address that is not registered as a controller cannot write reservations.
     function test_reserveBaseNameForPop_reverts_for_non_controller() public {
         vm.prank(ed);
         vm.expectRevert(IPopRules.NotRegistry.selector);
         popRules.reserveBaseNameForPop("longnamebob", ed);
     }
 
-    // Same gating for `releaseBaseName`.
     function test_releaseBaseName_reverts_for_non_controller() public {
         vm.prank(ed);
         vm.expectRevert(IPopRules.NotRegistry.selector);
         popRules.releaseBaseName("longnamebob");
     }
 
-    // When the slot is already live for user A, a second call for user B from
-    // any authorised controller reverts. Silent no-op would let the caller's
-    // local queue bookkeeping diverge from PopRules; reverting propagates the
-    // collision back to the caller so both sides stay in lockstep. The existing
-    // holder keeps priority either way.
     function test_reserveBaseNameForPop_reverts_when_slot_held_by_other_user() public {
         _authoriseTestAsController();
 
@@ -139,7 +134,6 @@ contract PopRulesTests is BaseDotns {
         assertEq(holder, leonardo);
     }
 
-    // Same-owner re-reservation refreshes the expiry timestamp forward.
     function test_reserveBaseNameForPop_refreshes_expiry_for_same_owner() public {
         _authoriseTestAsController();
 

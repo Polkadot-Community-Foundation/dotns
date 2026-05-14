@@ -9,18 +9,29 @@ import {IUserStore} from "../../contracts/store/IUserStore.sol";
 import {LabelStore} from "../../contracts/store/LabelStore.sol";
 import {UserStore} from "../../contracts/store/UserStore.sol";
 
+/// @title LabelStoreV2Int
+/// @notice Test-only LabelStore implementation that exposes a marker for verifying
+///         beacon upgrades.
 contract LabelStoreV2Int is LabelStore {
+    /// @notice Returns a sentinel string proving the V2 implementation is active.
     function marker() external pure returns (string memory value) {
         value = "label-v2";
     }
 }
 
+/// @title UserStoreV2Int
+/// @notice Test-only UserStore implementation that exposes a marker for verifying
+///         beacon upgrades.
 contract UserStoreV2Int is UserStore {
+    /// @notice Returns a sentinel string proving the V2 implementation is active.
     function marker() external pure returns (string memory value) {
         value = "user-v2";
     }
 }
 
+/// @title StoreIntegrationTest
+/// @notice Integration coverage spanning StoreFactory, LabelStore, UserStore, and
+///         the registrar transfer-sync path.
 contract StoreIntegrationTest is BaseDotns {
     function test_main_controller_registration_writes_label_store() public {
         string memory label = "alicelives01";
@@ -50,8 +61,7 @@ contract StoreIntegrationTest is BaseDotns {
             chatKey[i] = bytes1(uint8(i + 1));
         }
 
-        vm.prank(popGateway);
-        dotnsPopController.registerBaseName(
+        _gatewayRegisterBaseName(
             IDotnsPopController.FullRegistration({label: base, user: ed, link: _linkFresh(chatKey)})
         );
 

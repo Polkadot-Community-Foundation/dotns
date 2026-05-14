@@ -10,12 +10,20 @@ import {IUserStore} from "../../../contracts/store/IUserStore.sol";
 import {UpgradeableBeacon} from "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
+/// @title LabelStoreV2
+/// @notice Test-only LabelStore implementation extended with a version marker, used to verify
+/// beacon upgrades propagate to live proxies.
 contract LabelStoreV2 is LabelStore {
+    /// @notice Returns a constant marker identifying this fixture as the v2 implementation.
+    /// @return marker The literal string "v2".
     function versionMarker() external pure returns (string memory marker) {
         marker = "v2";
     }
 }
 
+/// @title StoreFactoryTests
+/// @notice Unit tests for StoreFactory: beacon wiring, authorisation, deployment and claim flows,
+/// beacon upgrades, and enumeration.
 contract StoreFactoryTests is BaseDotns {
     function test_constructor_reverts_on_zero_registry() public {
         vm.expectRevert(

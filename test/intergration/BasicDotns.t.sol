@@ -8,27 +8,33 @@ import {ILabelStore} from "../../contracts/store/ILabelStore.sol";
 import {IPersonhood} from "../../contracts/external/personhood/IPersonhood.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 
+/// @title BasicDotnsIntegration
+/// @notice End-to-end happy-path integration coverage for registration,
+///         records, subnames, and ERC721 transfers across all PoP tiers.
 contract BasicDotnsIntegration is BaseDotns {
+    /// @notice PopFull-classified label fixture used by the integration flow.
     string internal constant NAME_POPFULL = "waytall1";
+    /// @notice PopLite-classified label fixture used by the integration flow.
     string internal constant NAME_POPLITE = "way2tall01";
+    /// @notice NoStatus-classified label fixture used by the integration flow.
     string internal constant NAME_NOSTATUS = "kitesurfing01";
 
+    /// @notice Sample CIDv1 content hash used as the first record value.
     bytes internal constant CID_A =
         hex"e30101701220aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    /// @notice Sample CIDv1 content hash used as the second record value.
     bytes internal constant CID_B =
         hex"e30101701220bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
+    /// @notice Parameter bag describing a single end-to-end registration flow.
     struct FlowParams {
         address nameOwner;
         string name;
         bool reserved;
-
         string selfSub;
         string otherSub;
         address otherOwner;
-
         address transferTo;
-
         string transferRecipientNewName;
         string transferRecipientSub;
     }
@@ -85,16 +91,21 @@ contract BasicDotnsIntegration is BaseDotns {
         );
     }
 
-    // @notice Returns true when the personhood precompile reports `account` at
-    //         tier `Lite` (1) or `Full` (2) under the dotns context.
-    // @dev Reads the precompile mock installed by {BaseDotns} so the integration
-    //      flow gates pricing assertions on the same tier the controller sees.
+    /// @notice Returns true when the personhood precompile reports `account` at
+    ///         tier `Lite` (1) or `Full` (2) under the dotns context.
+    /// @dev Reads the precompile mock installed by @custom:contract BaseDotns so the integration
+    ///      flow gates pricing assertions on the same tier the controller sees.
     function _personhoodTierIsAtLeastLite(address account) internal view returns (bool) {
         IPersonhood.PersonhoodInfo memory info = IPersonhood(DotnsConstants.PERSONHOOD)
             .personhoodStatus(account, DotnsConstants.PERSONHOOD_CONTEXT);
         return info.status >= 1;
     }
 
+    /// @notice Drives a full end-to-end registration, records, subname, and
+    ///         transfer flow under the configuration described by `flow`.
+    /// @dev Aggregates the assertions that every PoP-tier-specific test case
+    ///      shares so each tier-level test only needs to supply the parameter
+    ///      bag.
     function _flowEndToEnd(FlowParams memory flow) internal {
         uint256 quotedPriceBefore = popRules.priceWithCheck(flow.name, flow.nameOwner).price;
 
@@ -259,6 +270,15 @@ contract BasicDotnsIntegration is BaseDotns {
         assertEq(dotnsReverseResolver.nameOf(victim), "victimname01.dot");
     }
 
+    /// @notice Creates a subnode under `parentNode` while pranking as `parentOwner`.
+    /// @dev Asserts namehash, record existence, and the inherited resolver address
+    ///      so callers can focus on the surrounding behaviour under test.
+    /// @param parentOwner Account authorised to set the subnode.
+    /// @param parentNode Node hash of the parent record.
+    /// @param subLabel Subname label (without dot suffix).
+    /// @param parentLabel Parent label (without dot suffix).
+    /// @param subOwner Account that should own the new subnode.
+    /// @return subnode Resulting subnode hash.
     function _setSubnode(
         address parentOwner,
         bytes32 parentNode,
@@ -284,6 +304,9 @@ contract BasicDotnsIntegration is BaseDotns {
         assertEq(dotnsRegistry.resolver(subnode), address(dotnsReverseResolver));
     }
 
+    /// @notice Asserts that `store` lists `expectedValue` among its labels.
+    /// @dev Walks the store by paginating the full label list, mirroring how a
+    ///      consumer client would discover entries.
     function _assertStoreContainsValue(
         address user,
         ILabelStore store,
@@ -297,6 +320,7 @@ contract BasicDotnsIntegration is BaseDotns {
         require(_contains(values, expectedValue), "Store value missing");
     }
 
+    /// @notice Builds the fully qualified subname string `sub.parent.dot`.
     function _fullSubname(
         string memory subLabel,
         string memory parentLabel

@@ -3,6 +3,9 @@ pragma solidity ^0.8.34;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 
+/// @title DotnsReverseResolverTests
+/// @notice Unit tests for the address-to-name reverse record on @custom:contract
+/// DotnsReverseResolver.
 contract DotnsReverseResolverTests is BaseDotns {
     function test_nameof_returns_empty_when_unset() public view {
         assertEq(bytes(dotnsReverseResolver.nameOf(ed)).length, 0);

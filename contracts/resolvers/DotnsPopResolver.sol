@@ -61,14 +61,13 @@ contract DotnsPopResolver is
     }
 
     /// @notice Initialises the PoP resolver.
-    /// @dev Called once through the UUPS proxy; `_disableInitializers` on the
-    ///      implementation makes direct calls revert. The registry pointer is
-    ///      the only storage this setup needs because the authorised writer
-    ///      is resolved dynamically through `POP_CONTROLLER`.
+    /// @dev Called once through the UUPS proxy; `_disableInitializers` on the implementation
+    ///      makes direct calls revert and any repeat call on the proxy reverts with
+    ///      @custom:reverts InvalidInitialization. The registry pointer is the only storage this
+    ///      setup needs because the authorised writer is resolved dynamically through
+    ///      `POP_CONTROLLER`. Emits @custom:emits OwnershipTransferred when `msg.sender` is
+    ///      recorded as the initial owner and @custom:emits Initialized once setup completes.
     /// @param registry Protocol-level address registry used for writer resolution.
-    /// @custom:emits OwnershipTransferred
-    /// @custom:emits Initialized
-    /// @custom:reverts InvalidInitialization
     function initialize(IDotnsProtocolRegistry registry) external initializer {
         __Ownable_init(msg.sender);
         __ERC165_init();

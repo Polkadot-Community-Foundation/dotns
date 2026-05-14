@@ -58,8 +58,8 @@ contract EscrowHandler is Test {
     mapping(uint256 tokenId => address recipient) public lockedRecipient;
 
     /// @notice Last observed runningMax per tokenId (refreshed after deposit and payable
-    /// transferFrom). @dev Used by the runningMax-monotonicity invariant to confirm the on-chain
-    /// runningMax
+    ///         transferFrom).
+    /// @dev Used by the runningMax-monotonicity invariant to confirm the on-chain runningMax
     ///      only ever climbs between mint and reclaim, then resets to zero on reclaim.
     mapping(uint256 tokenId => uint256 max) public lastObservedRunningMax;
 
@@ -388,7 +388,9 @@ contract EscrowHandler is Test {
         _mockPersonhoodTier(actor, IPopRules.PopStatus(status));
     }
 
-    // @notice Mocks the personhood precompile so it reports `tier` for `account`.
+    /// @notice Mocks the personhood precompile so it reports `tier` for `account`.
+    /// @param account Address whose status is being mocked.
+    /// @param tier Verification tier to report for `account`.
     function _mockPersonhoodTier(address account, IPopRules.PopStatus tier) internal {
         uint8 statusByte;
         if (tier == IPopRules.PopStatus.PopFull) statusByte = 2;

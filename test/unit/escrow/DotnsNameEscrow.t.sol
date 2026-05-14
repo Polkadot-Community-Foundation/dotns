@@ -7,26 +7,36 @@ import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IDotnsNameEscrow} from "../../../contracts/escrow/IDotnsNameEscrow.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 
+/// @title ForceSender
+/// @notice Self-destructing helper that force-credits its constructor balance to `target`,
+///         bypassing the receive/fallback guards on the recipient.
 contract ForceSender {
     constructor(address payable target) payable {
         selfdestruct(target);
     }
 }
 
+/// @title GhostNft
 /// @notice Standalone ERC721 used to verify the escrow refuses tokens not minted by the
 ///         configured registrar.
 contract GhostNft is ERC721 {
     constructor() ERC721("Ghost", "GHST") {}
 
+    /// @notice Mint `tokenId` to `to` for use in foreign-NFT rejection tests.
     function mint(address to, uint256 tokenId) external {
         _safeMint(to, tokenId);
     }
 }
 
+/// @title DotnsNameEscrowTest
+/// @notice Unit tests covering the deposit, release, withdrawal and reclaim lifecycle on
+///         @custom:contract DotnsNameEscrow, plus the pull-payment and solvency guarantees.
 contract DotnsNameEscrowTest is BaseDotns {
+    /// @notice Default label used across most tests.
     /// @dev 14-char label so NoStatus price = startingPrice * (15 - 14) = RENT_PRICE.
     string internal constant LABEL = "longerlabela01";
 
+    /// @notice Register `label` for `nameOwner` under the NoStatus PoP tier and return its tokenId.
     function _registerNoStatus(
         string memory label,
         address nameOwner
@@ -38,6 +48,7 @@ contract DotnsNameEscrowTest is BaseDotns {
         tokenId = _tokenIdForLabel(label);
     }
 
+    /// @notice Approve the escrow for `tokenId` and call `release` as `caller`.
     function _approveAndRelease(uint256 tokenId, address caller) internal {
         vm.startPrank(caller);
         dotnsRegistrar.approve(address(dotnsNameEscrow), tokenId);
@@ -45,6 +56,8 @@ contract DotnsNameEscrowTest is BaseDotns {
         vm.stopPrank();
     }
 
+    /// @notice Drive the full register -> release -> wait-cooldown -> withdraw flow.
+    /// @dev Leaves the position withdrawn but not yet claimed via `claimWithdrawal`.
     function _fullWithdrawFlow(
         string memory label,
         address nameOwner
@@ -169,9 +182,6 @@ contract DotnsNameEscrowTest is BaseDotns {
         );
     }
 
-    /// @notice A foreign ERC721 transferred into escrow must be rejected.
-    /// @dev Without this guard a foreign NFT (or a registrar NFT moved outside the release
-    ///      flow) would become permanently stuck in escrow with no recovery path.
     function test_revert_ghost_nft_transfer_into_escrow() public {
         GhostNft ghost = new GhostNft();
         uint256 ghostId = 42;
@@ -186,8 +196,6 @@ contract DotnsNameEscrowTest is BaseDotns {
         assertEq(ghost.ownerOf(ghostId), ed, "ghost NFT must remain with the original owner");
     }
 
-    /// @notice Pop-verified registrations pay no deposit, so release must always revert.
-    /// @dev Locks the protocol invariant: only NoStatus names can enter the escrow lifecycle.
     function test_revert_pop_full_name_cannot_release() public {
         string memory popLabel = "popfullname";
         bytes32 node = _register(popLabel, ed, IPopRules.PopStatus.PopFull);

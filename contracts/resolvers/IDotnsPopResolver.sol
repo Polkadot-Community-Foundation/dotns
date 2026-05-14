@@ -14,8 +14,8 @@ pragma solidity ^0.8.34;
 ///
 ///      Lives separately from the per-user `LabelStore` so that the store can remain
 ///      a labels-only, protocol-write / user-read surface, and follows the project's
-///      resolver-per-record-category convention used by {IDotnsContentResolver} and
-///      {IDotnsReverseResolver}.
+///      resolver-per-record-category convention used by @custom:contract IDotnsContentResolver and
+///      @custom:contract IDotnsReverseResolver.
 ///
 ///      Write authorisation is delegated to the address registered as
 ///      `DotnsProtocolRegistry.POP_CONTROLLER` at call time, so rotating the PoP
@@ -42,30 +42,27 @@ interface IDotnsPopResolver {
     error InvalidChatKeyLength(uint256 length);
 
     /// @notice Sets the chat key for `node`.
-    /// @dev Callable only by the address registered under
-    ///      `DotnsProtocolRegistry.POP_CONTROLLER`. Overwrites any previous value.
-    ///      The payload must be exactly 65 bytes: the uncompressed secp256k1 public
-    ///      key encoding (1 prefix byte followed by the 32-byte X and 32-byte Y
-    ///      affine coordinates). Any other length reverts with {InvalidChatKeyLength}.
+    /// @dev Callable only by the address registered under `DotnsProtocolRegistry.POP_CONTROLLER`,
+    ///      otherwise @custom:reverts NotPopController. Overwrites any previous value. The payload
+    ///      must be exactly 65 bytes: the uncompressed secp256k1 public key encoding (1 prefix
+    ///      byte followed by the 32-byte X and 32-byte Y affine coordinates); any other length
+    ///      reverts with @custom:reverts InvalidChatKeyLength. Emits @custom:emits ChatKeyUpdated
+    ///      on every successful write.
     /// @param node The node whose chat key is being written.
     /// @param chatKey ECDH public key bytes (pallet-side type is `[u8; 65]`).
-    /// @custom:emits ChatKeyUpdated
-    /// @custom:reverts InvalidChatKeyLength
-    /// @custom:reverts NotPopController
     function setChatKey(bytes32 node, bytes calldata chatKey) external;
 
     /// @notice Sets the lite-person link for a full-person `node`.
-    /// @dev Callable only by the authorised PoP controller. Overwrites any previous
-    ///      link. When overwriting, the stale inverse entry is nulled so both the
-    ///      forward (`liteLink`) and reverse (`fullClaim`) indices remain
-    ///      consistent: re-linking the same `fullNode` to a new `liteLabelhash`
-    ///      clears `fullClaim(oldLite)`, and re-linking the same `liteLabelhash`
+    /// @dev Callable only by the authorised PoP controller, otherwise
+    ///      @custom:reverts NotPopController. Overwrites any previous link. When overwriting, the
+    ///      stale inverse entry is nulled so both the forward (`liteLink`) and reverse
+    ///      (`fullClaim`) indices remain consistent: re-linking the same `fullNode` to a new
+    ///      `liteLabelhash` clears `fullClaim(oldLite)`, and re-linking the same `liteLabelhash`
     ///      to a new `fullNode` clears `liteLink(oldFull)`. The invariant
-    ///      `fullClaim(liteLink(node)) == node` always holds after the call.
+    ///      `fullClaim(liteLink(node)) == node` always holds after the call. Emits
+    ///      @custom:emits LiteLinkUpdated on every successful write.
     /// @param fullNode The full-person node carrying the link.
     /// @param liteLabelhash The labelhash of the linked lite-person username.
-    /// @custom:emits LiteLinkUpdated
-    /// @custom:reverts NotPopController
     function setLiteLink(bytes32 fullNode, bytes32 liteLabelhash) external;
 
     /// @notice Returns the chat key associated with a node.

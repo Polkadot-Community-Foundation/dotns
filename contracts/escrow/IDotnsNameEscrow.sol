@@ -200,9 +200,10 @@ interface IDotnsNameEscrow {
     function releasedTokenCount() external view returns (uint256 count);
 
     /// @notice Returns a bounded paginated slice of released token identifiers.
+    /// @dev `limit` must be non-zero and at most `MAX_RELEASED_PAGE_SIZE`, otherwise
+    ///      @custom:reverts InvalidPageSize.
     /// @param start Start index into the released-token set.
     /// @param limit Maximum number of token identifiers to return.
-    /// @custom:reverts InvalidPageSize
     function releasedTokens(
         uint256 start,
         uint256 limit
@@ -212,28 +213,31 @@ interface IDotnsNameEscrow {
         returns (uint256[] memory tokenIds);
 
     /// @notice Records an asset deposit position for a token.
-    /// @custom:emits NativeDepositRecorded
-    /// @custom:reverts NotController
-    /// @custom:reverts InvalidAmount
-    /// @custom:reverts AssetNotSupported
-    /// @custom:reverts InvalidRecipient
-    /// @custom:reverts PositionAlreadyFunded
-    /// @custom:reverts AlreadyReleased
+    /// @dev Only the configured controller may call this, otherwise @custom:reverts NotController.
+    ///      `params.amount` must be non-zero and equal to `msg.value`, otherwise
+    ///      @custom:reverts InvalidAmount. Only native deposits are accepted today, so a non-zero
+    ///      `params.asset` triggers @custom:reverts AssetNotSupported, and a zero
+    ///      `params.recipient` triggers @custom:reverts InvalidRecipient. The slot for
+    ///      `params.tokenId` must be empty: a previously funded position triggers
+    ///      @custom:reverts PositionAlreadyFunded, and a position already in the released phase
+    ///      triggers @custom:reverts AlreadyReleased. Emits @custom:emits NativeDepositRecorded
+    ///      once the deposit is booked.
     function deposit(DepositParams calldata params) external payable;
 
     /// @notice Records a cross-tier registration fee into the insurance fund.
-    /// @custom:emits CrossTierFeePaid
-    /// @custom:reverts NotController
-    /// @custom:reverts InvalidAmount
+    /// @dev Only the configured controller may call this, otherwise @custom:reverts NotController.
+    ///      `msg.value` must be non-zero, otherwise @custom:reverts InvalidAmount. Emits
+    ///      @custom:emits CrossTierFeePaid with `isRegistration = true` once the fee is booked.
     function depositInsurance(InsuranceDepositParams calldata params) external payable;
 
     /// @notice Charges the cross-tier transfer-fee delta against the running max for a token.
+    /// @dev Only the configured registrar may call this, otherwise @custom:reverts NotRegistrar.
+    ///      When a fee is owed, `msg.value` must cover it or @custom:reverts InsufficientValue.
+    ///      Emits @custom:emits CrossTierFeePaid with `isRegistration = false` when a non-zero
+    ///      fee is credited to insurance, and @custom:emits OverpaymentRefunded when surplus
+    ///      `msg.value` (or the full amount when no fee is owed) is returned to `params.payer`;
+    ///      a failed refund transfer triggers @custom:reverts RefundFailed.
     /// @return charged Amount actually credited to insurance.
-    /// @custom:emits CrossTierFeePaid
-    /// @custom:emits OverpaymentRefunded
-    /// @custom:reverts NotRegistrar
-    /// @custom:reverts InsufficientValue
-    /// @custom:reverts RefundFailed
     function chargeTransferFee(ChargeTransferFeeParams calldata params)
         external
         payable
@@ -252,40 +256,39 @@ interface IDotnsNameEscrow {
     function runningMax(uint256 tokenId) external view returns (uint256 max);
 
     /// @notice Releases a token into escrow and starts the withdrawal cooldown.
-    /// @dev First step of the phased lifecycle. Only the locked refund recipient can trigger this,
-    ///      and the current NFT holder must have approved escrow, enforcing two-party cooperation
-    ///      so a secondary-market buyer cannot release someone else's deposit.
-    /// @custom:emits NameReleased
-    /// @custom:reverts NotTokenOwnerOrApproved
-    /// @custom:reverts DepositNotConfigured
-    /// @custom:reverts AlreadyReleased
-    /// @custom:reverts NotRefundRecipient
-    /// @custom:reverts EscrowNotApproved
+    /// @dev First step of the phased lifecycle. The caller must be the current NFT holder or one
+    ///      of its approved operators, otherwise @custom:reverts NotTokenOwnerOrApproved. The slot
+    ///      for `tokenId` must already hold a funded position (@custom:reverts
+    ///      DepositNotConfigured when empty) that has not yet been released (@custom:reverts
+    ///      AlreadyReleased when re-entered). The caller must also be the locked refund recipient,
+    ///      otherwise @custom:reverts NotRefundRecipient; combined with the escrow approval check
+    ///      (@custom:reverts EscrowNotApproved when escrow may not move the NFT) this enforces
+    ///      two-party cooperation so a secondary-market buyer cannot release someone else's
+    ///      deposit. Emits @custom:emits NameReleased once the NFT is moved into custody.
     function release(uint256 tokenId) external;
 
     /// @notice Credits the refundable deposit for a released token to the recipient's pending
-    /// balance. @dev Second step of the phased lifecycle. Must be called after
-    /// `withdrawAvailableAt` has
-    ///      elapsed; draws from the per-asset `tokenReserved` pool first and falls back to the
-    ///      shared insurance fund on shortfall. Funds are not transferred here, only credited to
-    ///      the pull-payment ledger.
-    /// @custom:emits RefundWithdrawn
-    /// @custom:emits InsuranceDraw
-    /// @custom:reverts NotReleased
-    /// @custom:reverts AlreadyClaimed
-    /// @custom:reverts NotRefundRecipient
-    /// @custom:reverts WithdrawalTooEarly
-    /// @custom:reverts InsufficientFunds
+    /// balance.
+    /// @dev Second step of the phased lifecycle. The position must already be released
+    ///      (@custom:reverts NotReleased otherwise) and not yet claimed (@custom:reverts
+    ///      AlreadyClaimed on re-entry). Only the locked refund recipient may call this,
+    ///      otherwise @custom:reverts NotRefundRecipient, and `block.timestamp` must have reached
+    ///      `withdrawAvailableAt`, otherwise @custom:reverts WithdrawalTooEarly. Draws from the
+    ///      per-asset `tokenReserved` pool first and falls back to the shared insurance fund on
+    ///      shortfall; if even the combined balance is short, @custom:reverts InsufficientFunds.
+    ///      Funds are not transferred here, only credited to the pull-payment ledger. Emits
+    ///      @custom:emits RefundWithdrawn once the credit lands, and @custom:emits InsuranceDraw
+    ///      whenever the insurance fund tops up a shortfall.
     function withdraw(uint256 tokenId) external;
 
     /// @notice Pulls the caller's accumulated pending refund balance.
     /// @dev Final step of the phased lifecycle. Pull-payment isolation: each recipient owns an
     ///      independent ledger entry, so a failing or reentrant receiver cannot block other users'
-    ///      withdrawals.
+    ///      withdrawals. The caller must have a positive pending balance, otherwise
+    ///      @custom:reverts NoPendingWithdrawal; a failing native transfer triggers
+    ///      @custom:reverts RefundFailed. Emits @custom:emits WithdrawalClaimed once the transfer
+    ///      succeeds.
     /// @return amount Native amount transferred to the caller.
-    /// @custom:emits WithdrawalClaimed
-    /// @custom:reverts NoPendingWithdrawal
-    /// @custom:reverts RefundFailed
     function claimWithdrawal() external returns (uint256 amount);
 
     /// @notice Returns the pending refund balance owed to `recipient`.
@@ -296,17 +299,17 @@ interface IDotnsNameEscrow {
     /// @notice Transfers a released-and-claimed token from escrow custody to a new owner.
     /// @dev Hands the NFT back to the controller for re-registration and clears `runningMax` so the
     ///      next registrant starts from a fresh price baseline rather than inheriting the previous
-    ///      owner's transfer-fee high-water mark.
+    ///      owner's transfer-fee high-water mark. Only the configured controller may call this,
+    ///      otherwise @custom:reverts NotController, and the position must be both released and
+    ///      claimed, otherwise @custom:reverts NotReclaimable. Emits @custom:emits NameReclaimed
+    ///      once custody is transferred.
     /// @param newOwner Address of the new registrant taking over the name.
-    /// @custom:emits NameReclaimed
-    /// @custom:reverts NotController
-    /// @custom:reverts NotReclaimable
     function reclaim(uint256 tokenId, address newOwner) external;
 
     /// @notice Updates the cooldown duration for future releases.
-    /// @dev Affects only releases recorded after this call; positions already released keep the
-    ///      `withdrawAvailableAt` snapshot taken at their release time.
-    /// @custom:emits CooldownUpdated
-    /// @custom:reverts InvalidCooldown
+    /// @dev Owner-only. Affects only releases recorded after this call; positions already released
+    ///      keep the `withdrawAvailableAt` snapshot taken at their release time. `newCooldown`
+    ///      must be non-zero, otherwise @custom:reverts InvalidCooldown. Emits
+    ///      @custom:emits CooldownUpdated with the prior and new values.
     function updateCooldown(uint256 newCooldown) external;
 }

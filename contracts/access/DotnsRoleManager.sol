@@ -69,17 +69,20 @@ abstract contract DotnsRoleManager is
     }
 
     /// @notice Reverts unless the caller is the owner or holds `role`.
-    /// @dev Consuming contracts use this for operational paths where the owner keeps
-    ///      super-user access and role holders receive a narrower permission.
-    /// @custom:reverts NotRoleOrOwner
+    /// @dev Consuming contracts use this for operational paths where the owner keeps super-user
+    ///      access and role holders receive a narrower permission; any other caller is rejected
+    ///      with @custom:reverts NotRoleOrOwner.
     function _checkRoleOrOwner(bytes32 role) internal view {
         address caller = _msgSender();
         require(caller == owner() || hasRole(role, caller), NotRoleOrOwner(caller, role));
     }
 
     /// @notice Grants or revokes a supported role for `account`.
-    /// @custom:reverts UnsupportedRole
-    /// @custom:reverts InvalidRoleAccount
+    /// @dev `role` must be recognised by the consuming contract (otherwise
+    ///      @custom:reverts UnsupportedRole) and `account` must be non-zero (otherwise
+    ///      @custom:reverts InvalidRoleAccount). Delegates to OpenZeppelin's `_grantRole` or
+    ///      `_revokeRole`, which emit @custom:emits IAccessControl.RoleGranted on grant and
+    ///      @custom:emits IAccessControl.RoleRevoked on revoke.
     function _setRole(bytes32 role, address account, bool enabled) internal {
         require(_isSupportedRole(role), UnsupportedRole(role));
         require(account != address(0), InvalidRoleAccount(account));

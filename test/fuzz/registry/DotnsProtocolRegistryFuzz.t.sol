@@ -3,6 +3,9 @@ pragma solidity ^0.8.34;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 
+/// @title DotnsProtocolRegistryFuzzTest
+/// @notice Property-based tests for @custom:contract DotnsProtocolRegistry reference-counted
+/// registration.
 contract DotnsProtocolRegistryFuzzTest is BaseDotns {
     function testFuzz_isRegisteredAddress_matches_ground_truth(
         bytes32 k1,
@@ -51,9 +54,12 @@ contract DotnsProtocolRegistryFuzzTest is BaseDotns {
 
         vm.startPrank(owner);
         protocolRegistry.set(key, a);
-        protocolRegistry.set(key, a); // no-op
-        protocolRegistry.set(key, a); // no-op
-        protocolRegistry.set(key, b); // rotate away
+        // no-op
+        protocolRegistry.set(key, a);
+        // no-op
+        protocolRegistry.set(key, a);
+        // rotate away
+        protocolRegistry.set(key, b);
 
         // If set(key, a) had been counted three times, a would still appear registered.
         assertFalse(protocolRegistry.isRegisteredAddress(a));

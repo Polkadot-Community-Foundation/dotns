@@ -5,9 +5,15 @@ import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IDotnsNameEscrow} from "../../../contracts/escrow/IDotnsNameEscrow.sol";
 import {EscrowHandler} from "./EscrowHandler.t.sol";
 
+/// @title Dotns Name Escrow Invariant Suite
+/// @notice Asserts solvency, custody, and recipient-locking properties of the name escrow
+///         across randomised registration, release, withdraw, claim, and transfer flows.
 contract DotnsNameEscrowInvariantTest is BaseDotns {
+    /// @notice Handler driving randomised actions against the escrow.
     EscrowHandler public handler;
 
+    /// @notice Deploys the escrow handler, seeds it with native funds and a NoStatus actor
+    ///         set, and configures the fuzzer to target the handler's action selectors only.
     function setUp() public override {
         super.setUp();
 

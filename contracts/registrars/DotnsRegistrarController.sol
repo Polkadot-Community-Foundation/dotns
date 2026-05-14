@@ -89,11 +89,13 @@ contract DotnsRegistrarController is
     }
 
     /// @notice Initialises the registrar controller.
-    /// @dev Validates commitment window bounds and wires the protocol registry.
-    /// @custom:reverts InvalidInitialization
-    /// @custom:reverts NotInitializing
-    /// @custom:reverts MaxCommitmentAgeTooHigh
-    /// @custom:reverts MaxCommitmentAgeTooLow
+    /// @dev Callable once through the UUPS proxy; direct calls on the implementation revert
+    /// with @custom:reverts InvalidInitialization, and any nested call outside an active
+    /// initialiser scope reverts with @custom:reverts NotInitializing. Validates the
+    /// commitment window bounds: `maxAge` must exceed `minAge` (otherwise
+    /// @custom:reverts MaxCommitmentAgeTooLow) and must stay within
+    /// `MAX_ALLOWED_COMMITMENT_AGE` (otherwise @custom:reverts MaxCommitmentAgeTooHigh) before
+    /// wiring the protocol registry.
     function initialize(
         IDotnsProtocolRegistry registry,
         uint256 minAge,
@@ -315,8 +317,8 @@ contract DotnsRegistrarController is
     }
 
     /// @notice Validates label shape and derives `(labelhash, node)`.
-    /// @dev Delegates hashing to {LabelUtils} so the assembly sequence lives in exactly one
-    /// place across the codebase. Error ownership stays on this interface: short labels
+    /// @dev Delegates hashing to @custom:contract LabelUtils so the assembly sequence lives in
+    /// exactly one place across the codebase. Error ownership stays on this interface: short labels
     /// revert with `NameNotAvailable(label)` (pre-existing semantics); shape violations
     /// revert with `InvalidLabel()`.
     function _validatedLabelNode(string calldata label)

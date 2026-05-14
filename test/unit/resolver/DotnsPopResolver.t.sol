@@ -5,11 +5,11 @@ import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IDotnsPopResolver} from "../../../contracts/resolvers/IDotnsPopResolver.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 
-// @title DotnsPopResolverTests
-// @notice Behavioural unit tests for {DotnsPopResolver}. Coverage of byte-exact
-//         persistence across arbitrary payloads lives in the PoP-controller fuzz
-//         file; here we only assert behaviour that is not a default-value check
-//         or a tautological storage-read.
+/// @title DotnsPopResolverTests
+/// @notice Behavioural unit tests for @custom:contract DotnsPopResolver. Coverage of byte-exact
+///         persistence across arbitrary payloads lives in the PoP-controller fuzz
+///         file; here we only assert behaviour that is not a default-value check
+///         or a tautological storage-read.
 contract DotnsPopResolverTests is BaseDotns {
     function test_setChatKey_writes_and_emits() public {
         bytes32 node = _nodeOf("alice42");
@@ -39,7 +39,6 @@ contract DotnsPopResolverTests is BaseDotns {
         vm.expectEmit(true, true, false, false);
         emit IDotnsPopResolver.LiteLinkUpdated(fullNode, liteLabelhash);
         dotnsPopResolver.setLiteLink(fullNode, liteLabelhash);
-
         // Both directions must be populated by a single write: forward
         // (full => lite) and reverse (lite => full). The reverse index is what
         // downstream consumers (Nova) use to answer "given this lite username,
@@ -60,15 +59,15 @@ contract DotnsPopResolverTests is BaseDotns {
         // zero-node write is for the controller itself to regress. Pin the
         // passthrough semantics so any future validator lands as a diff here.
         bytes memory key = _validChatKey(0x04);
+        // Same passthrough expectation on the two-arg writer. Writing
+        // (0, 0) must not revert and must populate both forward and reverse
+        // indexes at the zero key.
         vm.prank(address(dotnsPopController));
         dotnsPopResolver.setChatKey(bytes32(0), key);
         assertEq(dotnsPopResolver.chatKey(bytes32(0)), key);
     }
 
     function test_setLiteLink_accepts_zero_inputs_as_passthrough() public {
-        // Same passthrough expectation on the two-arg writer. Writing
-        // (0, 0) must not revert and must populate both forward and reverse
-        // indexes at the zero key.
         vm.prank(address(dotnsPopController));
         dotnsPopResolver.setLiteLink(bytes32(0), bytes32(0));
         assertEq(dotnsPopResolver.liteLink(bytes32(0)), bytes32(0));
@@ -184,7 +183,6 @@ contract DotnsPopResolverTests is BaseDotns {
         dotnsPopResolver.setLiteLink(fullA, liteX);
         dotnsPopResolver.setLiteLink(fullA, liteY);
         vm.stopPrank();
-
         // Old reverse must be cleared so downstream consumers stop resolving
         // `liteX` to `fullA`.
         assertEq(dotnsPopResolver.fullClaim(liteX), bytes32(0));
@@ -202,7 +200,6 @@ contract DotnsPopResolverTests is BaseDotns {
         dotnsPopResolver.setLiteLink(fullA, liteX);
         dotnsPopResolver.setLiteLink(fullB, liteX);
         vm.stopPrank();
-
         // Old forward must be cleared so `fullA` no longer claims `liteX`.
         assertEq(dotnsPopResolver.liteLink(fullA), bytes32(0));
         // New pair round-trips.
@@ -218,7 +215,6 @@ contract DotnsPopResolverTests is BaseDotns {
         dotnsPopResolver.setLiteLink(fullA, liteX);
         dotnsPopResolver.setLiteLink(fullA, liteX);
         vm.stopPrank();
-
         // Writing the same pair twice must not accidentally delete either
         // side: the `oldLite == liteLabelhash` and `oldFull == fullNode`
         // guards in the implementation are the things under test here.
@@ -236,7 +232,6 @@ contract DotnsPopResolverTests is BaseDotns {
         dotnsPopResolver.setLiteLink(fullA, liteY);
         dotnsPopResolver.setLiteLink(fullA, liteX);
         vm.stopPrank();
-
         // After A -> X -> Y -> X, only the (A, X) pair survives.
         assertEq(dotnsPopResolver.liteLink(fullA), liteX);
         assertEq(dotnsPopResolver.fullClaim(liteX), fullA);
@@ -252,7 +247,6 @@ contract DotnsPopResolverTests is BaseDotns {
         dotnsPopResolver.setLiteLink(fullA, liteX);
         dotnsPopResolver.setLiteLink(fullB, liteX);
         vm.stopPrank();
-
         // A must no longer appear as a claimant of anything, only B.
         assertEq(dotnsPopResolver.liteLink(fullA), bytes32(0));
         assertEq(dotnsPopResolver.liteLink(fullB), liteX);
@@ -270,7 +264,6 @@ contract DotnsPopResolverTests is BaseDotns {
         dotnsPopResolver.setLiteLink(fullB, liteY);
         dotnsPopResolver.setLiteLink(fullA, liteY);
         vm.stopPrank();
-
         // After (A,X), (B,Y), (A,Y): only (A,Y) remains. B's forward link
         // and X's reverse link must both be cleared.
         assertEq(dotnsPopResolver.liteLink(fullA), liteY);
@@ -281,7 +274,6 @@ contract DotnsPopResolverTests is BaseDotns {
 
     function test_setLiteLink_with_zero_lite_is_passthrough() public {
         bytes32 fullA = _nodeOf("alice");
-
         // Pin current behaviour for the zero-hash edge: the setter does not
         // revert on a zero `liteLabelhash` and writes both indices at the
         // zero key. Any future validator that rejects zero inputs lands
@@ -305,11 +297,9 @@ contract DotnsPopResolverTests is BaseDotns {
         for (uint256 i = 1; i <= 10; i++) {
             bytes32 currentLite = keccak256(abi.encodePacked("alice", i));
             dotnsPopResolver.setLiteLink(fullA, currentLite);
-
             // Current pair round-trips.
             assertEq(dotnsPopResolver.liteLink(fullA), currentLite);
             assertEq(dotnsPopResolver.fullClaim(currentLite), fullA);
-
             // Previous reverse entry was nulled.
             if (previousLite != bytes32(0)) {
                 assertEq(dotnsPopResolver.fullClaim(previousLite), bytes32(0));
@@ -335,6 +325,5 @@ contract DotnsPopResolverTests is BaseDotns {
 
         assertEq(dotnsPopResolver.fullClaim(liteX), bytes32(0));
     }
-
     // 65-byte chat-key helper now lives on BaseDotns as `_validChatKey`.
 }

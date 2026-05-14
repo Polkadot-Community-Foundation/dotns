@@ -20,15 +20,13 @@ interface IDotnsRoleManager is IAccessControl {
     error InvalidRoleAccount(address account);
 
     /// @notice Grants or revokes an operational role.
-    /// @dev Only the owner can manage roles. `role` must be one of the roles recognised by the
-    ///      consuming contract.
+    /// @dev Only the owner can manage roles (otherwise @custom:reverts OwnableUnauthorizedAccount);
+    ///      `role` must be one of the roles recognised by the consuming contract (otherwise
+    ///      @custom:reverts UnsupportedRole); `account` must not be the zero address (otherwise
+    ///      @custom:reverts InvalidRoleAccount). Emits @custom:emits IAccessControl.RoleGranted on
+    ///      grant and @custom:emits IAccessControl.RoleRevoked on revoke.
     /// @param role Role identifier declared in `DotnsConstants`.
     /// @param account Account whose role membership is updated.
     /// @param enabled Whether the role should be granted or revoked.
-    /// @custom:contract IAccessControl.RoleGranted
-    /// @custom:contract IAccessControl.RoleRevoked
-    /// @custom:reverts OwnableUnauthorizedAccount
-    /// @custom:reverts UnsupportedRole
-    /// @custom:reverts InvalidRoleAccount
     function setRole(bytes32 role, address account, bool enabled) external;
 }

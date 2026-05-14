@@ -4,6 +4,9 @@ pragma solidity ^0.8.34;
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 
+/// @title PopRulesFuzzTest
+/// @notice Property-based tests for @custom:contract PopRules classification, reservation and
+/// pricing.
 contract PopRulesFuzzTest is BaseDotns {
     function testFuzz_popfull_user_can_access_poplite(uint256 seed, uint256 length) public {
         length = bound(length, 6, 8);
@@ -123,6 +126,8 @@ contract PopRulesFuzzTest is BaseDotns {
         popRules.priceWithCheck(mixedCaseName, ed);
     }
 
+    /// @notice Generate a lowercase ASCII string of `length` characters deterministically from
+    ///         `seed`.
     function _makeAlpha(uint256 seed, uint256 length) internal pure returns (string memory) {
         bytes memory buffer = new bytes(length);
         for (uint256 i = 0; i < length; i++) {

@@ -90,12 +90,13 @@ contract DotnsNameEscrow is
     }
 
     /// @notice Initialises the name escrow.
+    /// @dev Runs once behind the proxy; subsequent calls trigger @custom:reverts
+    ///      InvalidInitialization via the `initializer` modifier. `registry` must be non-zero,
+    ///      otherwise @custom:reverts InvalidAsset; `cooldownSeconds` is forwarded to
+    ///      {updateCooldown}, which requires a non-zero value (@custom:reverts InvalidCooldown)
+    ///      and emits @custom:emits CooldownUpdated as part of seeding the initial cooldown.
     /// @param registry Protocol registry used to resolve registrar and controller addresses.
     /// @param cooldownSeconds Refund cooldown after release.
-    /// @custom:emits CooldownUpdated
-    /// @custom:reverts InvalidAsset
-    /// @custom:reverts InvalidCooldown
-    /// @custom:reverts InvalidInitialization
     function initialize(
         IDotnsProtocolRegistry registry,
         uint256 cooldownSeconds

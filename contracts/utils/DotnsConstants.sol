@@ -32,7 +32,7 @@ library DotnsConstants {
     ///      (`None` / `Lite` / `Full`) and the dotns-scoped `contextAlias`.
     address internal constant PERSONHOOD = address(0x000000000000000000000000000000000a010000);
 
-    /// @notice Application identifier passed to {IPersonhood.personhoodStatus}.
+    /// @notice Application identifier passed to @custom:function IPersonhood.personhoodStatus.
     /// @dev Fixed per project so the same person receives a stable, dotns-only
     ///      `contextAlias` and no cross-application linkability is exposed.
     /// forge-lint: disable-next-line(unsafe-typecast)

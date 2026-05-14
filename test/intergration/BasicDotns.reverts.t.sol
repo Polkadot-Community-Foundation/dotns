@@ -7,10 +7,14 @@ import {IDotnsRegistry} from "../../contracts/registry/IDotnsRegistry.sol";
 import {IDotnsContentResolver} from "../../contracts/resolvers/IDotnsContentResolver.sol";
 import {IDotnsRegistrarController} from "../../contracts/registrars/IDotnsRegistrarController.sol";
 
+/// @title BasicDotnsIntegrationReverts
+/// @notice Integration coverage for revert paths protecting registration, subnames,
+///         and resolver writes.
 contract BasicDotnsIntegrationReverts is BaseDotns {
+    /// @notice PopFull-classified label fixture exercised by the revert cases.
     string internal constant NAME_POPFULL = "waytall1";
-    string internal constant NAME_POPLITE = "way2tall01";
 
+    /// @notice Sample CIDv1 content hash used as a record value.
     bytes internal constant CID_A =
         hex"e30101701220aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 

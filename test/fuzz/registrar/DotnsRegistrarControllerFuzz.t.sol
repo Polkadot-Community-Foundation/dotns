@@ -8,6 +8,9 @@ import {
     OwnableUpgradeable
 } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
+/// @title DotnsRegistrarControllerFuzzTest
+/// @notice Property-based tests for @custom:contract DotnsRegistrarController role administration,
+///         payment handling and reverse-record behaviour.
 contract DotnsRegistrarControllerFuzzTest is BaseDotns {
     function testFuzz_owner_setrole_matches_hasrole(address account, bool enabled) public {
         vm.assume(account != address(0));
@@ -229,6 +232,8 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         assertEq(dotnsReverseResolver.nameOf(sender), "");
     }
 
+    /// @notice Build, commit and warp past the minimum commitment age, with `nameOwner` as the
+    ///         commitment sender.
     function _commitFor(
         string memory nameLabel,
         address nameOwner,
@@ -240,6 +245,8 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         return _commitFor(nameLabel, nameOwner, reserved, nameOwner);
     }
 
+    /// @notice Build, commit and warp past the minimum commitment age, with an explicit
+    ///         `commitmentSender` distinct from `nameOwner`.
     function _commitFor(
         string memory nameLabel,
         address nameOwner,
@@ -265,18 +272,22 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
     }
 
+    /// @notice Generate a label that classifies as PopFull (no trailing 2-digit suffix).
     function _labelPopfull(uint256 salt) internal pure returns (string memory label) {
         return string(abi.encodePacked("popfull", _uintToAlphaFixed(salt, 2), "9"));
     }
 
+    /// @notice Generate a label that classifies as NoStatus and carries a non-zero price.
     function _labelNoStatusPriced(uint256 salt) internal pure returns (string memory label) {
         return string(abi.encodePacked("nostatus", _uintToAlphaFixed(salt, 2), "01"));
     }
 
+    /// @notice Generate a label that classifies as PopLite and prices to zero.
     function _labelPriceZero(uint256 salt) internal pure returns (string memory label) {
         return string(abi.encodePacked("free", _uintToAlphaFixed(salt, 2), "01"));
     }
 
+    /// @notice Render `value` as a fixed-length lowercase ASCII alphabetic string.
     function _uintToAlphaFixed(
         uint256 value,
         uint256 length

@@ -67,7 +67,7 @@ library RegistrationUtils {
     ///      so this helper deliberately does not call `StoreUtils.writeLabel`.
     ///      Doing it twice would deploy or touch the store on every flow and
     ///      could conflict with the registrar's locked-entry semantics.
-    /// @param context Registration inputs. See {RegistrationContext}.
+    /// @param context Registration inputs. See @custom:struct RegistrationContext.
     /// @return labelStore The resolved or newly deployed `LabelStore` address for `context.user`.
     function registerAndStore(RegistrationContext memory context)
         internal

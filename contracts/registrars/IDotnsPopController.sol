@@ -20,8 +20,8 @@ import {IDotnsController} from "./IDotnsController.sol";
 /// {registerBaseName} and the optional `reservedBaseLabel` of {reserveBaseName}) follow the
 /// DNS-label rules enforced by {StringUtils-isSingleLabel} (e.g. `alice`). Lite and public
 /// registrations share one namespace; first-to-mint wins at the ERC721 layer. Cross-flow
-/// priority on the stripped base stem is arbitrated by {IPopRules.reserveBaseNameForPop}.
-/// @custom:security-contact admin@parity.io
+/// priority on the stripped base stem is arbitrated by @custom:function
+/// IPopRules.reserveBaseNameForPop. @custom:security-contact admin@parity.io
 interface IDotnsPopController is IDotnsController {
     /// @notice Discriminant for the `Link` union supplied to `registerBaseName`.
     /// @dev Selects the chat-key source for the full-person username. Orthogonal to whether
@@ -81,11 +81,11 @@ interface IDotnsPopController is IDotnsController {
     }
 
     /// @notice Lite-person registration combined with an optional base-name reservation.
-    /// @dev `BaseReservation` is a {LiteRegistration} plus a base-label reservation slot,
-    /// expressed as composition rather than duplicated fields so internal helpers can
+    /// @dev `BaseReservation` is a @custom:struct LiteRegistration plus a base-label reservation
+    /// slot, expressed as composition rather than duplicated fields so internal helpers can
     /// consume the lite leg via `params.lite` without unpacking. The lite leg always runs;
     /// the reservation leg only runs when `reservedBaseLabel` is non-empty.
-    /// @param lite Lite-person registration request; see {LiteRegistration}.
+    /// @param lite Lite-person registration request; see LiteRegistration.
     /// @param reservedBaseLabel Base label to enqueue for a later full-person claim. Empty
     /// string skips the reservation leg.
     struct BaseReservation {
@@ -96,7 +96,7 @@ interface IDotnsPopController is IDotnsController {
     /// @notice Full-person registration payload.
     /// @param label Base DNS label being minted.
     /// @param user Beneficiary account on this chain.
-    /// @param link Chat-key source for the new entry; see {Link}.
+    /// @param link Chat-key source for the new entry; see @custom:struct Link.
     struct FullRegistration {
         string label;
         address user;
@@ -169,145 +169,141 @@ interface IDotnsPopController is IDotnsController {
     /// @notice Registers a lite-person username on behalf of the supplied user
     /// and optionally enqueues a reservation for a base name they intend to
     /// claim as a full person later.
-    /// @dev Callable only via the registered PoP gateway; the gateway is
-    /// responsible for asserting substrate Root authority before forwarding
-    /// here. The base-name leg only runs when the reserved base label is
-    /// non-empty, and PopRules price-with-check runs before any queue
-    /// mutation so a mis-tiered reservation never even touches the queue.
-    /// The user is removed from any prior queue position before being
-    /// enqueued, so a single user holds at most one live reservation across
-    /// all labels. Cross-chain callers pass the ABI-encoded reservation
-    /// tuple as the call's payload, which Solidity decodes directly.
-    /// @param params Reservation request; see {BaseReservation}.
-    /// @custom:emits LiteNameReserved
-    /// @custom:emits NameRegistered
-    /// @custom:emits ReservationQueued
-    /// @custom:emits ReservationExpired
-    /// @custom:reverts AlreadyReserved
-    /// @custom:reverts InvalidBaseLabel
-    /// @custom:reverts InvalidLiteLabel
-    /// @custom:reverts NotGateway
-    /// @custom:reverts QueueFull
+    /// @dev Callable only via the registered PoP gateway (otherwise @custom:reverts NotGateway);
+    /// the gateway is responsible for asserting substrate Root authority before forwarding
+    /// here. The lite leg validates the `NAMEXX` shape (otherwise @custom:reverts InvalidLiteLabel)
+    /// and runs PopRules price-with-check before minting, emitting @custom:emits LiteNameReserved
+    /// and @custom:emits NameRegistered on success. The base-name leg only runs when
+    /// `reservedBaseLabel` is non-empty: it validates the DNS-label shape (otherwise
+    /// @custom:reverts InvalidBaseLabel), runs PopRules price-with-check before any queue
+    /// mutation so a mis-tiered reservation never touches the queue, advances the head past
+    /// expired entries (emitting @custom:emits ReservationExpired for each one), removes the
+    /// user from any prior queue position so a single user holds at most one live reservation
+    /// across all labels, and enqueues a fresh entry (emitting @custom:emits ReservationQueued).
+    /// The enqueue rejects with @custom:reverts AlreadyReserved when the user already holds a
+    /// reservation that was not cleared by the prior removal and with @custom:reverts QueueFull
+    /// when the per-label queue has reached `MAX_RESERVATION_QUEUE`. Cross-chain callers pass
+    /// the ABI-encoded reservation tuple as the call's payload, which Solidity decodes directly.
+    /// @param params Reservation request; see @custom:struct BaseReservation.
     function reserveBaseName(BaseReservation calldata params) external;
 
     /// @notice Raw-payload variant of {reserveBaseName} for cross-chain dispatch.
     /// @dev `payload` is `abi.encode(BaseReservation({...}))`, the bare ABI-encoded struct
     /// with NO function-selector prefix and NO leading bytes-length word. The contract
     /// prepends the typed selector and `delegatecall`s itself so the typed entrypoint runs
-    /// in the original call context and remains the single source of truth.
+    /// in the original call context and remains the single source of truth, which means the
+    /// typed overload's full revert surface bubbles up byte-for-byte: gateway-only access
+    /// (otherwise @custom:reverts NotGateway), lite-label shape (otherwise
+    /// @custom:reverts InvalidLiteLabel), base-label shape (otherwise
+    /// @custom:reverts InvalidBaseLabel), duplicate-reservation guard (otherwise
+    /// @custom:reverts AlreadyReserved), and queue capacity (otherwise
+    /// @custom:reverts QueueFull). The success path likewise emits the same events as the
+    /// typed call: @custom:emits LiteNameReserved and @custom:emits NameRegistered on the lite
+    /// leg, plus @custom:emits ReservationQueued and any @custom:emits ReservationExpired
+    /// observed while advancing the queue head when the base-name leg runs.
     /// Note: `abi.decode` ignores trailing bytes past the encoded struct, so off-chain
     /// encoders MUST NOT assume strict length validation.
     /// @param payload `abi.encode(BaseReservation)` produced by the cross-chain caller.
-    /// @custom:emits LiteNameReserved
-    /// @custom:emits NameRegistered
-    /// @custom:emits ReservationQueued
-    /// @custom:emits ReservationExpired
-    /// @custom:reverts AlreadyReserved
-    /// @custom:reverts InvalidBaseLabel
-    /// @custom:reverts InvalidLiteLabel
-    /// @custom:reverts NotGateway
-    /// @custom:reverts QueueFull
     function reserveBaseName(bytes calldata payload) external;
 
     /// @notice Registers a lite-person username on behalf of the supplied
     /// user without touching the base-name reservation queue.
-    /// @dev Callable only via the registered PoP gateway; the gateway is
-    /// responsible for asserting substrate Root authority before forwarding
-    /// here. Cross-chain callers pass the ABI-encoded lite-registration
-    /// tuple as the call's payload, which Solidity decodes directly.
-    /// @param params Registration request; see {LiteRegistration}.
-    /// @custom:emits LiteNameReserved
-    /// @custom:emits NameRegistered
-    /// @custom:reverts InvalidLiteLabel
-    /// @custom:reverts NotGateway
+    /// @dev Callable only via the registered PoP gateway (otherwise @custom:reverts NotGateway);
+    /// the gateway is responsible for asserting substrate Root authority before forwarding
+    /// here. The supplied label must satisfy the `NAMEXX` shape (otherwise
+    /// @custom:reverts InvalidLiteLabel) before PopRules price-with-check, mint, and resolver
+    /// writes run. Emits @custom:emits LiteNameReserved and @custom:emits NameRegistered on
+    /// success. Cross-chain callers pass the ABI-encoded lite-registration tuple as the call's
+    /// payload, which Solidity decodes directly.
+    /// @param params Registration request; see @custom:struct LiteRegistration.
     function reserveLiteName(LiteRegistration calldata params) external;
 
     /// @notice Raw-payload variant of {reserveLiteName} for cross-chain dispatch.
     /// @dev `payload` is `abi.encode(LiteRegistration({...}))`, the bare ABI-encoded struct
     /// with NO function-selector prefix and NO leading bytes-length word. The contract
     /// prepends the typed selector and `delegatecall`s itself so the typed entrypoint runs
-    /// in the original call context and remains the single source of truth.
+    /// in the original call context and remains the single source of truth, so the typed
+    /// overload's revert surface bubbles up byte-for-byte: gateway-only access (otherwise
+    /// @custom:reverts NotGateway) and lite-label shape (otherwise
+    /// @custom:reverts InvalidLiteLabel). The success path emits the same events as the typed
+    /// call: @custom:emits LiteNameReserved and @custom:emits NameRegistered.
     /// Note: `abi.decode` ignores trailing bytes past the encoded struct, so
     /// off-chain encoders MUST NOT assume strict length validation; pad-only
     /// junk past the tail is silently dropped (no state corruption; decoded
     /// values are unchanged).
     /// Worked example off-chain:
     ///   `bytes payload = abi.encode(LiteRegistration({liteLabel: "alice42", user: u, chatKey:
-    /// k}));` @param payload `abi.encode(LiteRegistration)` produced by the cross-chain caller.
-    /// @custom:emits LiteNameReserved
-    /// @custom:emits NameRegistered
-    /// @custom:reverts InvalidLiteLabel
-    /// @custom:reverts NotGateway
+    /// k}));`
+    /// @param payload `abi.encode(LiteRegistration)` produced by the cross-chain caller.
     function reserveLiteName(bytes calldata payload) external;
 
     /// @notice Registers a full-person username on behalf of the supplied user.
-    /// @dev Callable only via the registered PoP gateway; the gateway is
-    /// responsible for asserting substrate Root authority before forwarding
-    /// here. Two orthogonal axes drive the state machine. The reservation
-    /// axis treats the user as claiming if and only if they hold the live
-    /// head-of-queue reservation on the base label: a claim wipes the entire
-    /// queue and releases the PopRules slot, while a non-claim silently
-    /// relinquishes any pending entry the user holds and reverts via
-    /// NotHolder if another live head blocks the mint. The chat-key axis
-    /// selects whether a fresh key is persisted on the resolver or the new
-    /// entry inherits its key from a prior lite-person username. The two
-    /// axes are independent, so any combination is reachable. Cross-chain
-    /// callers pass the ABI-encoded full-registration tuple as the call's
-    /// payload, which Solidity decodes directly.
-    /// @param params Registration request; see {FullRegistration}.
-    /// @custom:emits BaseNameClaimed
-    /// @custom:emits LiteToFullLinked
-    /// @custom:emits NameRegistered
-    /// @custom:emits StandaloneNameRegistered
-    /// @custom:emits ReservationExpired
-    /// @custom:reverts InvalidBaseLabel
-    /// @custom:reverts InvalidLiteLabel
-    /// @custom:reverts NotGateway
-    /// @custom:reverts NotHolder
+    /// @dev Callable only via the registered PoP gateway (otherwise @custom:reverts NotGateway);
+    /// the gateway is responsible for asserting substrate Root authority before forwarding
+    /// here. The base label must satisfy the DNS-label shape (otherwise
+    /// @custom:reverts InvalidBaseLabel) and PopRules price-with-check runs first so a
+    /// mis-tiered request never touches the queue. Two orthogonal axes drive the state
+    /// machine. The reservation axis treats the user as claiming if and only if they hold the
+    /// live head-of-queue reservation on the base label: a claim wipes the entire queue,
+    /// releases the PopRules slot, and emits @custom:emits BaseNameClaimed, while a non-claim
+    /// silently relinquishes any pending entry the user holds and emits
+    /// @custom:emits StandaloneNameRegistered, reverting with @custom:reverts NotHolder when
+    /// another live head blocks the mint. Advancing the queue head past expired entries emits
+    /// @custom:emits ReservationExpired for each one. The chat-key axis selects whether a
+    /// fresh key is persisted on the resolver or the new entry inherits its key from a prior
+    /// lite-person username; the `LiteUsername` branch validates the lite label's `NAMEXX`
+    /// shape (otherwise @custom:reverts InvalidLiteLabel) and emits
+    /// @custom:emits LiteToFullLinked alongside the registration event. Every successful path
+    /// emits @custom:emits NameRegistered. The two axes are independent, so any combination is
+    /// reachable. Cross-chain callers pass the ABI-encoded full-registration tuple as the
+    /// call's payload, which Solidity decodes directly.
+    /// @param params Registration request; see @custom:struct FullRegistration.
     function registerBaseName(FullRegistration calldata params) external;
 
     /// @notice Raw-payload variant of {registerBaseName} for cross-chain dispatch.
     /// @dev `payload` is `abi.encode(FullRegistration({...}))`, the bare ABI-encoded struct
     /// with NO function-selector prefix and NO leading bytes-length word. The contract
     /// prepends the typed selector and `delegatecall`s itself so the typed entrypoint runs
-    /// in the original call context and remains the single source of truth.
+    /// in the original call context and remains the single source of truth, so the typed
+    /// overload's revert surface bubbles up byte-for-byte: gateway-only access (otherwise
+    /// @custom:reverts NotGateway), base-label shape (otherwise @custom:reverts InvalidBaseLabel),
+    /// lite-label shape on the `LiteUsername` branch (otherwise @custom:reverts InvalidLiteLabel),
+    /// and the standalone-mint holder guard (otherwise @custom:reverts NotHolder). The success
+    /// path emits the same events as the typed call: @custom:emits BaseNameClaimed on a claim
+    /// or @custom:emits StandaloneNameRegistered otherwise, @custom:emits LiteToFullLinked on
+    /// the `LiteUsername` branch, @custom:emits ReservationExpired for each entry reaped while
+    /// advancing the queue head, and always @custom:emits NameRegistered.
     /// Note: `abi.decode` ignores trailing bytes past the encoded struct, so off-chain
     /// encoders MUST NOT assume strict length validation.
     /// @param payload `abi.encode(FullRegistration)` produced by the cross-chain caller.
-    /// @custom:emits BaseNameClaimed
-    /// @custom:emits LiteToFullLinked
-    /// @custom:emits NameRegistered
-    /// @custom:emits StandaloneNameRegistered
-    /// @custom:emits ReservationExpired
-    /// @custom:reverts InvalidBaseLabel
-    /// @custom:reverts InvalidLiteLabel
-    /// @custom:reverts NotGateway
-    /// @custom:reverts NotHolder
     function registerBaseName(bytes calldata payload) external;
 
     /// @notice Permissionlessly removes expired entries from the head of a reservation queue.
     /// @dev Permissionless on purpose: anyone (typically a UI or a bot) can poke a stale queue
-    /// so the next live head takes over without waiting for the next gateway call.
-    /// @custom:emits ReservationExpired
-    /// @custom:reverts InvalidBaseLabel
+    /// so the next live head takes over without waiting for the next gateway call. Validates
+    /// the DNS-label shape of `reservedBaseLabel` (otherwise @custom:reverts InvalidBaseLabel)
+    /// and emits @custom:emits ReservationExpired for every expired entry reaped from the head.
     function expireReservation(string calldata reservedBaseLabel) external;
 
     /// @notice Lets the caller voluntarily drop their own active reservation.
-    /// @custom:emits ReservationRelinquished
-    /// @custom:emits ReservationExpired
-    /// @custom:reverts NoActiveReservation
+    /// @dev Reverts with @custom:reverts NoActiveReservation when the caller holds no live
+    /// reservation. On success the caller's entry is removed from its queue and
+    /// @custom:emits ReservationRelinquished is emitted; if the removed entry was the queue
+    /// head, head advancement may additionally emit @custom:emits ReservationExpired for any
+    /// stale entries reaped behind it.
     function relinquishReservation() external;
 
     /// @notice Returns whether a label currently has a live reservation at the queue head.
-    /// @custom:reverts InvalidBaseLabel
+    /// @dev Validates the DNS-label shape of `reservedBaseLabel` (otherwise
+    /// @custom:reverts InvalidBaseLabel) before inspecting the queue.
     function isReservedForClaim(string calldata reservedBaseLabel)
         external
         view
         returns (bool reserved, address holder);
 
     /// @notice Updates the reservation duration used to decide when queue entries expire.
-    /// @custom:emits ReservationDurationSet
-    /// @custom:reverts OwnableUnauthorizedAccount
+    /// @dev Owner-gated (otherwise @custom:reverts OwnableUnauthorizedAccount); emits
+    /// @custom:emits ReservationDurationSet on success.
     function setReservationDuration(uint64 duration) external;
 
     /// @notice Returns the queue metadata (`head`, `tail`) for `labelhash`.
@@ -341,7 +337,7 @@ interface IDotnsPopController is IDotnsController {
     /// @dev A zero `labelhash` on the returned struct means the user holds no reservation;
     /// `index` is meaningful only when `labelhash` is non-zero.
     /// @param user Account whose reservation pointer is being read.
-    /// @return reservation Per-user reservation pointer; see {UserReservation}.
+    /// @return reservation Per-user reservation pointer; see @custom:struct UserReservation.
     function userReservation(address user)
         external
         view

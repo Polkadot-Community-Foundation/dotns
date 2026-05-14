@@ -70,41 +70,42 @@ interface IDotnsRegistry {
     }
 
     /// @notice Creates or reassigns a subnode and assigns its owner.
-    /// @dev Callable only by the current owner of `record.parentNode`. Indexes the subnode
-    ///      under the new owner's `LabelStore` keyed by the namehashed `subnode` so off-chain
-    ///      consumers can enumerate names per address.
-    /// @custom:emits NewOwner
-    /// @custom:reverts InvalidLabel
-    /// @custom:reverts NotAllowed
-    /// @custom:reverts NotAuthorised
-    /// @custom:reverts ParentLabelMismatch
+    /// @dev Callable only by the current owner of `record.parentNode`, otherwise
+    ///      @custom:reverts NotAuthorised. The new owner address must be non-zero, otherwise
+    ///      @custom:reverts NotAllowed. `record.subLabel` must be a single canonical DNS label
+    ///      (otherwise @custom:reverts InvalidLabel) and `record.parentLabel` must be a name
+    ///      path whose namehash matches `record.parentNode` (otherwise
+    ///      @custom:reverts ParentLabelMismatch). Indexes the subnode under the new owner's
+    ///      `LabelStore` keyed by the namehashed `subnode` so off-chain consumers can enumerate
+    ///      names per address. Emits @custom:emits NewOwner on each successful assignment.
     function setSubnodeOwner(SubnodeRecord calldata record) external returns (bytes32 subnode);
 
     /// @notice Sets the resolver for an existing subnode.
-    /// @dev Callable only by the current owner of `record.parentNode`. The subnode owner can
-    ///      still update the resolver directly via `setResolver`.
-    /// @custom:emits NewResolver
-    /// @custom:reverts InvalidLabel
-    /// @custom:reverts NotAuthorised
-    /// @custom:reverts ParentLabelMismatch
+    /// @dev Callable only by the current owner of `record.parentNode`, otherwise
+    ///      @custom:reverts NotAuthorised. The subnode owner can still update the resolver
+    ///      directly via `setResolver`. `record.subLabel` must be a single canonical DNS label
+    ///      (otherwise @custom:reverts InvalidLabel) and `record.parentLabel` must be a name
+    ///      path whose namehash matches `record.parentNode` (otherwise
+    ///      @custom:reverts ParentLabelMismatch). The resulting subnode must already exist,
+    ///      otherwise @custom:reverts NotAuthorised. Emits @custom:emits NewResolver on
+    ///      success.
     function setSubnodeResolver(SubnodeResolverRecord calldata record) external;
 
     /// @notice Creates a node record for a tokenised base registration.
-    /// @dev Restricted to the registrar's controllers. Stores `owner = address(0)` as a
-    ///      sentinel so reads delegate to `IDotnsRegistrar.ownerOf` and ERC-721 transfers
-    ///      remain authoritative.
-    /// @custom:emits NodeTransferred
-    /// @custom:reverts NodeAlreadyOwned
-    /// @custom:reverts NotAllowed
-    /// @custom:reverts NotAuthorised
+    /// @dev Restricted to the registrar's controllers, otherwise @custom:reverts NotAuthorised.
+    ///      `newOwner` must be non-zero (otherwise @custom:reverts NotAllowed) and must match
+    ///      the ERC-721 owner reported by the registrar (otherwise
+    ///      @custom:reverts NotAuthorised). The node must not already have a record, otherwise
+    ///      @custom:reverts NodeAlreadyOwned. Stores `owner = address(0)` as a sentinel so
+    ///      reads delegate to `IDotnsRegistrar.ownerOf` and ERC-721 transfers remain
+    ///      authoritative. Emits @custom:emits NodeTransferred on success.
     function setOwner(bytes32 node, address newOwner, address resolverAddr) external;
 
     /// @notice Sets or clears the resolver for a node.
-    /// @dev Callable only by the current node owner. For tokenised nodes, authorisation falls
-    ///      back to ERC-721 owner / approved / operator-for-all via the registrar.
+    /// @dev Callable only by the current node owner, otherwise @custom:reverts NotAuthorised.
+    ///      For tokenised nodes, authorisation falls back to ERC-721 owner / approved /
+    ///      operator-for-all via the registrar. Emits @custom:emits NewResolver on success.
     /// @param resolverAddr Resolver contract address (zero clears).
-    /// @custom:emits NewResolver
-    /// @custom:reverts NotAuthorised
     function setResolver(bytes32 node, address resolverAddr) external;
 
     /// @notice Returns the owner of a node.

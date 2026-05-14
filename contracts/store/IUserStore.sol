@@ -38,20 +38,19 @@ interface IUserStore is IDotnsStore {
     error InvalidKey();
 
     /// @notice Initialises the store, binding it permanently to `user_`.
-    /// @dev Callable exactly once via `Initializable`.
+    /// @dev Callable exactly once via `Initializable`. `user_` must be non-zero, otherwise
+    ///      @custom:reverts InvalidUser.
     /// @param user_ The user this store is bound to forever.
-    /// @custom:reverts InvalidUser
     function initialize(address user_) external;
 
     /// @notice Sets the current value for `key`.
-    /// @dev If a non-empty prior value existed it is pushed into the per-key history list
-    ///      with `block.timestamp`. Empty prior values produce no history entry. Reverts
-    ///      for any caller other than the bound owner.
+    /// @dev Callable only by the bound owner; any other caller @custom:reverts NotOwner.
+    ///      `key` must be non-zero, otherwise @custom:reverts InvalidKey. If a non-empty
+    ///      prior value existed it is pushed into the per-key history list with
+    ///      `block.timestamp`; empty prior values produce no history entry. Emits
+    ///      @custom:emits ValueSet on every successful write.
     /// @param key The key to write.
     /// @param value The new current value (may be empty).
-    /// @custom:emits ValueSet
-    /// @custom:reverts NotOwner
-    /// @custom:reverts InvalidKey
     function setValue(bytes32 key, bytes calldata value) external;
 
     /// @notice Returns the current value under `key`, or empty bytes if unset.

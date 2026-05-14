@@ -4,7 +4,11 @@ pragma solidity ^0.8.34;
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IUserStore} from "../../../contracts/store/IUserStore.sol";
 
+/// @title UserStoreFuzzTest
+/// @notice Property-based tests for @custom:contract UserStore writes, history accounting and
+/// pagination.
 contract UserStoreFuzzTest is BaseDotns {
+    /// @notice Claim a fresh @custom:contract UserStore for `user` via the store factory.
     function _freshUserStore(address user) internal returns (IUserStore store) {
         vm.prank(user);
         store = IUserStore(storeFactory.claimUserStore());
@@ -23,7 +27,8 @@ contract UserStoreFuzzTest is BaseDotns {
     }
 
     function testFuzz_history_length_equals_prior_nonempty_writes(uint8 rawCount) public {
-        uint256 count = uint256(rawCount) % 8 + 1; // 1..8
+        // 1..8
+        uint256 count = uint256(rawCount) % 8 + 1;
         bytes32 key = keccak256("k");
 
         IUserStore store = _freshUserStore(ed);
@@ -33,7 +38,8 @@ contract UserStoreFuzzTest is BaseDotns {
         for (uint256 i; i < count; ++i) {
             bytes memory value;
             if (i % 3 == 0) {
-                value = ""; // intentionally empty some of the time
+                // intentionally empty some of the time
+                value = "";
             } else {
                 // Safe because `count` is bounded to 1..8, so `i` is always < 8 here.
                 // forge-lint: disable-next-line(unsafe-typecast)
@@ -62,7 +68,8 @@ contract UserStoreFuzzTest is BaseDotns {
         bytes32 key = keccak256("k");
         // rawVersions writes; each call after the first leaves one history entry, so
         // history length == rawVersions - 1 when every value is non-empty.
-        uint256 versions = uint256(rawVersions) % 8 + 2; // 2..9
+        // 2..9
+        uint256 versions = uint256(rawVersions) % 8 + 2;
 
         IUserStore store = _freshUserStore(ed);
 

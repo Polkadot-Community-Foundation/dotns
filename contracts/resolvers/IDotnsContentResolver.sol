@@ -31,13 +31,12 @@ interface IDotnsContentResolver {
     error NotAuthorised(bytes32 node, address caller);
 
     /// @notice Sets the content hash for a node.
-    /// @dev The caller must own the node in the DotNS registry or be an approved
-    ///      operator. Content hashes are opaque bytes (e.g. an IPFS CID); the
-    ///      resolver stores them as-is and never interprets the payload.
+    /// @dev The caller must own the node in the DotNS registry or be an approved operator,
+    ///      otherwise @custom:reverts NotAuthorised. Content hashes are opaque bytes (e.g. an
+    ///      IPFS CID); the resolver stores them as-is and never interprets the payload. Emits
+    ///      @custom:emits ContentHashUpdated on every successful write.
     /// @param node The node whose content hash is being set.
     /// @param hash Opaque content hash bytes.
-    /// @custom:emits ContentHashUpdated
-    /// @custom:reverts NotAuthorised
     function setContenthash(bytes32 node, bytes calldata hash) external;
 
     /// @notice Returns the content hash associated with a node.
@@ -46,14 +45,13 @@ interface IDotnsContentResolver {
     function contenthash(bytes32 node) external view returns (bytes memory hash);
 
     /// @notice Sets a text record for a node.
-    /// @dev The caller must own the node in the DotNS registry or be an approved
-    ///      operator. Text records are arbitrary key/value strings (e.g. `avatar`,
-    ///      `url`, `description`).
+    /// @dev The caller must own the node in the DotNS registry or be an approved operator,
+    ///      otherwise @custom:reverts NotAuthorised. Text records are arbitrary key/value strings
+    ///      (e.g. `avatar`, `url`, `description`). Emits @custom:emits TextUpdated on every
+    ///      successful write.
     /// @param node The node whose text record is being set.
     /// @param key Text record key (e.g., "ipfs", "avatar").
     /// @param value Text record value.
-    /// @custom:emits TextUpdated
-    /// @custom:reverts NotAuthorised
     function setText(bytes32 node, string calldata key, string calldata value) external;
 
     /// @notice Returns a text record for a node.
@@ -63,9 +61,11 @@ interface IDotnsContentResolver {
     function text(bytes32 node, string calldata key) external view returns (string memory value);
 
     /// @notice Enable or disable approval for a third party ("operator") to manage all of
-    /// `msg.sender`'s nodes. @param operator Address to authorise or revoke.
+    /// `msg.sender`'s nodes.
+    /// @dev Emits @custom:emits ApprovalForAll whenever the approval flag is written, including
+    ///      idempotent writes that do not change the stored value.
+    /// @param operator Address to authorise or revoke.
     /// @param approved True to approve, false to revoke.
-    /// @custom:emits ApprovalForAll
     function setApprovalForAll(address operator, bool approved) external;
 
     /// @notice Query if an address is an approved operator for another address.
