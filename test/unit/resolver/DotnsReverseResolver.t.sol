@@ -16,10 +16,11 @@ contract DotnsReverseResolverTests is BaseDotns {
         assertEq(dotnsReverseResolver.nameOf(ed), "reverserecord01.dot");
     }
 
-    function test_register_overwrites_existing_reverse_record() public {
+    function test_register_preserves_existing_reverse_record() public {
+        // Subsequent reserved registrations must not silently overwrite the primary.
         _commitAndRegister("reverseone01", ed, true);
         _commitAndRegister("reversetwo01", ed, true);
-        assertEq(dotnsReverseResolver.nameOf(ed), "reversetwo01.dot");
+        assertEq(dotnsReverseResolver.nameOf(ed), "reverseone01.dot");
     }
 
     function test_protocol_registry_bound_at_init() public view {

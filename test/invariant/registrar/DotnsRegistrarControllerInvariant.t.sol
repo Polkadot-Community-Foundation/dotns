@@ -100,6 +100,28 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         assertEq(address(dotnsRegistrarController).balance, 0, "Controller must not hold funds");
     }
 
+    function invariant_value_conservation() public view {
+        // Escrow balance equals reserves + insurance + pending withdrawals.
+        uint256 reservedAmount = dotnsNameEscrow.reserves(address(0));
+        uint256 insurance = dotnsNameEscrow.insuranceFund();
+
+        uint256 pendingTotal;
+        for (uint256 i; i < 5; ++i) {
+            try handler.actors(i) returns (address actor) {
+                pendingTotal += dotnsNameEscrow.pendingWithdrawal(actor);
+            } catch {
+                break;
+            }
+        }
+
+        uint256 escrowBalance = address(dotnsNameEscrow).balance;
+        assertEq(
+            escrowBalance,
+            reservedAmount + insurance + pendingTotal,
+            "Escrow balance must equal reserves + insurance + pending withdrawals"
+        );
+    }
+
     /// @notice The ghost registration counter matches the count of recorded
     ///         labels and the count of live ERC721 tokens at their nodes.
     function invariant_registration_count_consistent() public view {
