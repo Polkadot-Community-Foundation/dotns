@@ -40,36 +40,38 @@ contract DotnsNameEscrow is
     ///      uncontested window to pull their refund before the controller hands the name out again.
     uint256 public cooldown;
 
-    /// @notice Total amount of a specific asset reserved across all positions. Keyed by asset
-    /// address. @dev Keyed by asset so future ERC20 support can track per-token liabilities
-    /// independently;
+    /// @notice Total amount of a specific asset reserved across all positions.
+    /// @dev Keyed by asset so future ERC20 support can track per-token liabilities independently;
     ///      `address(0)` represents the native token and is the only asset currently accepted.
     mapping(address asset => uint256 amount) public tokenReserved;
 
+    /// @notice Per-token escrow position storing recipient, amount, lifecycle flags and cooldown.
     mapping(uint256 tokenId => ReleasePosition position) private _positions;
 
+    /// @notice Ordered set of tokens currently in escrow custody, used for paginated enumeration.
     uint256[] private _releasedTokens;
 
+    /// @notice Reverse lookup into `_releasedTokens` (one-based) for O(1) remove-by-swap.
     mapping(uint256 tokenId => uint256 indexPlusOne) private _releasedIndexPlusOne;
 
-    /// @notice Cumulative balance of cross-tier fees and registration excess held against
-    /// unreleased shortfalls. @dev Credited by cross-tier registration deposits, reach-floor
-    /// friction, and transfer-fee deltas;
-    ///      debited only when `withdraw` needs to top up a refund that exceeds the asset's reserved
-    /// balance.
+    /// @notice Cumulative balance of cross-tier fees held against unreleased shortfalls.
+    /// @dev Credited by cross-tier registration deposits, reach-floor friction, and transfer-fee
+    ///      deltas; debited only when `withdraw` needs to top up a refund that exceeds the
+    ///      asset's reserved balance.
     uint256 public insuranceFund;
 
-    /// @notice Highest price ever charged for the name identified by tokenId, across registration
-    /// and any transfers. @dev Monotonically increasing per-token watermark; the transfer-fee delta
-    /// is computed against this
-    ///      prior value so each onward sale only pays the incremental tier difference, and it
-    /// resets on `reclaim` only so a fresh registration starts from a clean baseline.
+    /// @notice Highest price ever charged for the name across registration and transfers.
+    /// @dev Monotonically increasing watermark. Each onward sale pays the incremental tier
+    ///      difference against this prior value, and `reclaim` resets it so a fresh registration
+    ///      starts from a clean baseline.
     mapping(uint256 tokenId => uint256 max) public runningMax;
 
-    /// @dev Pull-payment ledger isolating each recipient's refund balance so a failing or reentrant
-    ///      receiver can never block other users' withdrawals.
+    /// @notice Pull-payment ledger storing each recipient's claimable refund balance.
+    /// @dev Per-recipient isolation ensures a failing or reentrant receiver cannot block other
+    ///      users' withdrawals.
     mapping(address recipient => uint256 amount) private _pendingWithdrawals;
 
+    /// @dev Reserved storage space to allow for layout changes in the future.
     uint256[50] private __gap;
 
     /// @notice Restricts calls to the configured registrar controller.
@@ -171,8 +173,7 @@ contract DotnsNameEscrow is
 
     /// @inheritdoc IDotnsNameEscrow
     function deposit(DepositParams calldata params) external payable override onlyController {
-        require(params.amount != 0, InvalidAmount());
-        // We do this incase the user decides to pass differing amounts
+        // Reject mismatched amount/msg.value so callers cannot under-fund a position.
         require(msg.value == params.amount, InvalidAmount());
         // Only native deposits are currently supported; ERC20 support can be added in a
         // future upgrade by relaxing this check and routing transfers via SafeERC20.
@@ -181,7 +182,10 @@ contract DotnsNameEscrow is
 
         ReleasePosition storage position = _positions[params.tokenId];
 
-        require(position.amount == 0, PositionAlreadyFunded(params.tokenId));
+        // Use `recipient` as the "is this slot funded?" sentinel so zero-amount
+        // positions (seeded by free PopFull / PopLite registrations) still count
+        // as funded and cannot be re-seeded with a different recipient.
+        require(position.recipient == address(0), PositionAlreadyFunded(params.tokenId));
         require(!position.released, AlreadyReleased(params.tokenId));
 
         position.asset = params.asset;
@@ -195,6 +199,20 @@ contract DotnsNameEscrow is
         }
 
         emit NativeDepositRecorded(params.tokenId, params.amount);
+    }
+
+    /// @inheritdoc IDotnsNameEscrow
+    function creditOverpayment(address recipient)
+        external
+        payable
+        override
+        onlyController
+        nonReentrant
+    {
+        require(recipient != address(0), InvalidRecipient());
+        require(msg.value != 0, InvalidAmount());
+        _pendingWithdrawals[recipient] += msg.value;
+        emit OverpaymentRefunded(recipient, msg.value);
     }
 
     /// @inheritdoc IDotnsNameEscrow
@@ -291,7 +309,10 @@ contract DotnsNameEscrow is
         require(callerAuthorised, NotTokenOwnerOrApproved(msg.sender, tokenId));
 
         ReleasePosition storage position = _positions[tokenId];
-        require(position.amount != 0, DepositNotConfigured(tokenId));
+        // Recipient is the canonical "is this position funded?" sentinel; zero-
+        // amount positions seeded for free PopFull / PopLite registrations are
+        // still releasable so every minted name has a reachable lifecycle.
+        require(position.recipient != address(0), DepositNotConfigured(tokenId));
         require(!position.released, AlreadyReleased(tokenId));
 
         // Only the locked refund recipient (= original deposit payer) can pull the release

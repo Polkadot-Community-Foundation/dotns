@@ -196,7 +196,7 @@ contract DotnsNameEscrowTest is BaseDotns {
         assertEq(ghost.ownerOf(ghostId), ed, "ghost NFT must remain with the original owner");
     }
 
-    function test_revert_pop_full_name_cannot_release() public {
+    function test_pop_full_name_releases_through_zero_amount_position() public {
         string memory popLabel = "popfullname";
         bytes32 node = _register(popLabel, ed, IPopRules.PopStatus.PopFull);
         uint256 tokenId = uint256(node);
@@ -204,11 +204,15 @@ contract DotnsNameEscrowTest is BaseDotns {
         vm.prank(ed);
         dotnsRegistrar.approve(address(dotnsNameEscrow), tokenId);
 
+        // Zero-priced PopFull mint still seeds a position so release/withdraw stay reachable.
         vm.prank(ed);
-        vm.expectRevert(
-            abi.encodeWithSelector(IDotnsNameEscrow.DepositNotConfigured.selector, tokenId)
-        );
         dotnsNameEscrow.release(tokenId);
+
+        IDotnsNameEscrow.ReleasePosition memory position =
+            dotnsNameEscrow.getReleasePosition(tokenId);
+        assertTrue(position.released, "PopFull mint must be releasable");
+        assertEq(position.amount, 0, "zero-priced mint seeds a zero-amount position");
+        assertEq(position.recipient, ed, "position is bound to the registrant");
     }
 
     function test_revert_release_not_owner_or_approved() public {

@@ -35,8 +35,8 @@ interface IDotnsNameEscrow {
     ///      cross-tier upgrades against the per-token watermark, while `reachFloor` enforces a
     ///      length-scaled friction floor whenever the recipient is below the label's required tier.
     /// @param priceForTo Recipient-tier price quoted from PopRules.
-    /// @param reachFloor Length-scaled friction floor when the recipient is below the required
-    /// tier. @param payer The original `msg.sender` of the registrar transfer entrypoint.
+    /// @param reachFloor Reach-floor friction when the recipient is below the required tier.
+    /// @param payer Original `msg.sender` of the registrar transfer entrypoint.
     /// @param to NFT recipient.
     struct ChargeTransferFeeParams {
         uint256 tokenId;
@@ -214,14 +214,15 @@ interface IDotnsNameEscrow {
 
     /// @notice Records an asset deposit position for a token.
     /// @dev Only the configured controller may call this, otherwise @custom:reverts NotController.
-    ///      `params.amount` must be non-zero and equal to `msg.value`, otherwise
-    ///      @custom:reverts InvalidAmount. Only native deposits are accepted today, so a non-zero
-    ///      `params.asset` triggers @custom:reverts AssetNotSupported, and a zero
-    ///      `params.recipient` triggers @custom:reverts InvalidRecipient. The slot for
-    ///      `params.tokenId` must be empty: a previously funded position triggers
-    ///      @custom:reverts PositionAlreadyFunded, and a position already in the released phase
-    ///      triggers @custom:reverts AlreadyReleased. Emits @custom:emits NativeDepositRecorded
-    ///      once the deposit is booked.
+    ///      `params.amount` must equal `msg.value`, otherwise @custom:reverts InvalidAmount; a
+    ///      zero amount is accepted so cross-payer and free-tier registrations can still seed a
+    ///      position that the release lifecycle can advance. Only native deposits are accepted
+    ///      today, so a non-zero `params.asset` triggers @custom:reverts AssetNotSupported, and
+    ///      a zero `params.recipient` triggers @custom:reverts InvalidRecipient. The slot for
+    ///      `params.tokenId` must be empty (sentinel: `position.recipient == address(0)`):
+    ///      a previously funded position triggers @custom:reverts PositionAlreadyFunded, and a
+    ///      position already in the released phase triggers @custom:reverts AlreadyReleased.
+    ///      Emits @custom:emits NativeDepositRecorded once the deposit is booked.
     function deposit(DepositParams calldata params) external payable;
 
     /// @notice Records a cross-tier registration fee into the insurance fund.
@@ -229,6 +230,16 @@ interface IDotnsNameEscrow {
     ///      `msg.value` must be non-zero, otherwise @custom:reverts InvalidAmount. Emits
     ///      @custom:emits CrossTierFeePaid with `isRegistration = true` once the fee is booked.
     function depositInsurance(InsuranceDepositParams calldata params) external payable;
+
+    /// @notice Credits `msg.value` to `recipient`'s pull-payment ledger so the caller can later
+    ///         pull the balance with @custom:func claimWithdrawal.
+    /// @dev Only the configured controller may call this, otherwise @custom:reverts NotController.
+    ///      `recipient` must be non-zero (@custom:reverts InvalidRecipient) and `msg.value` must
+    ///      be non-zero (@custom:reverts InvalidAmount). Used by the registrar controller to
+    ///      refund overpayment without pushing native value into a potentially reverting
+    ///      contract receiver. Emits @custom:emits OverpaymentRefunded once the credit lands.
+    /// @param recipient Address whose pending balance should grow by `msg.value`.
+    function creditOverpayment(address recipient) external payable;
 
     /// @notice Charges the cross-tier transfer-fee delta against the running max for a token.
     /// @dev Only the configured registrar may call this, otherwise @custom:reverts NotRegistrar.
@@ -247,24 +258,25 @@ interface IDotnsNameEscrow {
     /// @return balance Current insurance fund balance, in wei.
     function insuranceFund() external view returns (uint256 balance);
 
-    /// @notice Returns the highest price ever charged for a token across registration and
-    /// transfers. @dev Monotonically non-decreasing per token while a position is live; only
-    /// `reclaim` resets it
-    ///      so that a fresh registration starts from a clean baseline rather than inheriting the
-    ///      previous owner's high-water mark.
+    /// @notice Returns the highest price ever charged for a token.
+    /// @dev Monotonically non-decreasing across registration and transfers while a position is
+    ///      live; only `reclaim` resets it so a fresh registration starts from a clean baseline
+    ///      rather than inheriting the previous owner's high-water mark.
     /// @return max The current running maximum, in wei.
     function runningMax(uint256 tokenId) external view returns (uint256 max);
 
     /// @notice Releases a token into escrow and starts the withdrawal cooldown.
     /// @dev First step of the phased lifecycle. The caller must be the current NFT holder or one
     ///      of its approved operators, otherwise @custom:reverts NotTokenOwnerOrApproved. The slot
-    ///      for `tokenId` must already hold a funded position (@custom:reverts
-    ///      DepositNotConfigured when empty) that has not yet been released (@custom:reverts
-    ///      AlreadyReleased when re-entered). The caller must also be the locked refund recipient,
-    ///      otherwise @custom:reverts NotRefundRecipient; combined with the escrow approval check
-    ///      (@custom:reverts EscrowNotApproved when escrow may not move the NFT) this enforces
-    ///      two-party cooperation so a secondary-market buyer cannot release someone else's
-    ///      deposit. Emits @custom:emits NameReleased once the NFT is moved into custody.
+    ///      for `tokenId` must already hold a funded position (sentinel:
+    ///      `position.recipient != address(0)`); an unseeded slot triggers @custom:reverts
+    ///      DepositNotConfigured, and a position already in the released phase triggers
+    ///      @custom:reverts AlreadyReleased. Zero-amount positions are still releasable so every
+    ///      minted name has a reachable lifecycle. The caller must also be the locked refund
+    ///      recipient, otherwise @custom:reverts NotRefundRecipient; combined with the escrow
+    ///      approval check (@custom:reverts EscrowNotApproved when escrow may not move the NFT)
+    ///      this enforces two-party cooperation so a secondary-market buyer cannot release someone
+    ///      else's deposit. Emits @custom:emits NameReleased once the NFT is moved into custody.
     function release(uint256 tokenId) external;
 
     /// @notice Credits the refundable deposit for a released token to the recipient's pending

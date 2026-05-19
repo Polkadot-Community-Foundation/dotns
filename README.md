@@ -117,7 +117,7 @@ Two read paths, `priceWithCheck` and `priceWithoutCheck`, are what the public fl
 
 ### `DotnsReverseResolver`
 
-Reverse records mapping an address to its primary name. When a name is registered, the commit-reveal controller calls the reverse resolver to set the registrant's primary name. Writes are restricted to the addresses registered under `CONTROLLER` and `REGISTRAR` on the protocol registry (the commit-reveal controller and the registrar itself); rotating either is a single `protocolRegistry.set` call. Reads are open.
+Reverse records mapping an address to its primary name. When a direct reserved registration lands and the registrant has no existing primary, the commit-reveal controller calls the reverse resolver to seed it; a subsequent reserved registration does not silently overwrite the primary, which keeps the user's chosen identity stable across multiple registrations. Writes are restricted to the addresses registered under `CONTROLLER` and `REGISTRAR` on the protocol registry (the commit-reveal controller and the registrar itself); rotating either is a single `protocolRegistry.set` call. Reads are open.
 
 ### `DotnsContentResolver`
 

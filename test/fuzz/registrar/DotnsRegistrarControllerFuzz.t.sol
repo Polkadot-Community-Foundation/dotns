@@ -40,7 +40,12 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, enabled);
     }
 
-    function testFuzz_register_refunds_overpayment(uint256 extra, uint256 salt) public {
+    function testFuzz_register_credits_overpayment_to_pull_payment_ledger(
+        uint256 extra,
+        uint256 salt
+    )
+        public
+    {
         address registrant = ed;
         string memory nameLabel = _labelNoStatusPriced(bound(salt, 0, 64));
 
@@ -53,14 +58,21 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         assertGt(requiredPrice, 0);
 
         extra = bound(extra, 0, 5 ether);
-        uint256 balanceBefore = registrant.balance;
 
         vm.startPrank(registrant);
         dotnsRegistrarController.register{value: requiredPrice + extra}(registration);
         vm.stopPrank();
 
-        uint256 balanceAfter = registrant.balance;
-        assertEq(balanceBefore - balanceAfter, requiredPrice);
+        // Overpayment routes to the escrow's pending-withdrawal ledger so
+        // contract receivers with reverting `receive` can still register and
+        // pull the refund later. The registrant's wallet balance therefore
+        // decreases by the full `value` sent; the surplus is recoverable via
+        // `claimWithdrawal`.
+        assertEq(
+            dotnsNameEscrow.pendingWithdrawal(registrant),
+            extra,
+            "overpayment must accrue to the payer's pull-payment ledger"
+        );
 
         bytes32 labelhash = keccak256(bytes(nameLabel));
         bytes32 node = _namehash(dotNode, labelhash);
@@ -87,14 +99,18 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         assertEq(requiredPrice, 0);
 
         extra = bound(extra, 0, 5 ether);
-        uint256 balanceBefore = registrant.balance;
 
         vm.startPrank(registrant);
         dotnsRegistrarController.register{value: extra}(registration);
         vm.stopPrank();
 
-        uint256 balanceAfter = registrant.balance;
-        assertEq(balanceBefore, balanceAfter);
+        // Zero-priced mint with overpayment: the full `extra` lands on the
+        // payer's pull-payment ledger.
+        assertEq(
+            dotnsNameEscrow.pendingWithdrawal(registrant),
+            extra,
+            "overpayment must accrue to the payer's pull-payment ledger"
+        );
 
         bytes32 labelhash = keccak256(bytes(nameLabel));
         bytes32 node = _namehash(dotNode, labelhash);
@@ -103,7 +119,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         assertEq(dotnsRegistrar.ownerOf(tokenId), registrant);
     }
 
-    function testFuzz_register_refunds_to_payer_not_owner_when_registering_for_other(
+    function testFuzz_register_credits_overpayment_to_payer_not_owner(
         uint256 extra,
         uint256 salt
     )
@@ -124,18 +140,25 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
 
         extra = bound(extra, 0, 5 ether);
 
-        uint256 payerBalanceBefore = payer.balance;
         uint256 ownerBalanceBefore = nameOwner.balance;
 
         vm.startPrank(payer);
         dotnsRegistrarController.register{value: requiredPrice + extra}(registration);
         vm.stopPrank();
 
-        uint256 payerBalanceAfter = payer.balance;
-        uint256 ownerBalanceAfter = nameOwner.balance;
-
-        assertEq(payerBalanceBefore, payerBalanceAfter);
-        assertEq(ownerBalanceBefore, ownerBalanceAfter);
+        // Refund is keyed by `msg.sender`, so the payer (not the owner) is the
+        // ledger recipient. Owner's wallet stays untouched.
+        assertEq(
+            dotnsNameEscrow.pendingWithdrawal(payer),
+            extra,
+            "payer must be the ledger recipient on cross-payer registrations"
+        );
+        assertEq(
+            dotnsNameEscrow.pendingWithdrawal(nameOwner),
+            0,
+            "owner must not be credited the payer's refund"
+        );
+        assertEq(nameOwner.balance, ownerBalanceBefore, "owner wallet is not touched");
 
         bytes32 labelhash = keccak256(bytes(nameLabel));
         bytes32 node = _namehash(dotNode, labelhash);

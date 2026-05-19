@@ -8,7 +8,6 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
-import {IDotnsRegistry} from "../registry/IDotnsRegistry.sol";
 import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
 import {IPopRules} from "../pop/IPopRules.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
@@ -177,6 +176,22 @@ contract DotnsRegistrarController is
 
         IPopRules rules = IPopRules(protocolRegistry.get(DotnsConstants.POP_RULES));
 
+        uint256 tokenId = uint256(node);
+        bool isReclaim = registrar.exists(tokenId);
+
+        // On reclaim, clear a stale stem reservation only if it belongs to the
+        // prior occupant; otherwise a digit-suffixed reclaim would wipe an
+        // unrelated user's reservation under the same stem.
+        if (isReclaim) {
+            string memory stem = rules.stripDigits(registration.label);
+            (address reservationOwner,) = rules.getBaseNameReservation(stem);
+            address previousOccupant =
+                IDotnsNameEscrow(payable(escrow)).getReleasePosition(tokenId).recipient;
+            if (reservationOwner != address(0) && reservationOwner == previousOccupant) {
+                rules.releaseBaseName(stem);
+            }
+        }
+
         bool isDirect = msg.sender == registration.owner;
         IPopRules.PriceWithMeta memory priced;
         if (isDirect) {
@@ -190,74 +205,35 @@ contract DotnsRegistrarController is
             require(priced.status != IPopRules.PopStatus.Reserved, NameReserved(registration.label));
         }
 
-        // Cross-payer friction: when the sender is registering on behalf of a verified
-        // owner (priced.price == 0) but the sender's own reach is below the label's
-        // required tier, the personhood gate has been skipped and PopRules.reachFee
-        // re-applies it as a length-scaled charge that credits the insurance fund.
-        uint256 friction = 0;
-        if (!isDirect && priced.price == 0) {
-            friction = rules.reachFee(registration.label, msg.sender);
-        }
+        // Cross-payer friction: every payer-not-owner registration pays a reach
+        // floor equal to the length-scaled price for the label's required tier,
+        // regardless of the owner's own quote. This keeps the personhood gate
+        // economically binding even when the owner is verified.
+        uint256 friction = !isDirect ? rules.reachFee(registration.label, msg.sender) : 0;
         uint256 totalCharged = priced.price + friction;
         require(msg.value >= totalCharged, InsufficientValue());
 
-        bool setReverseRecord = registration.reserved && isDirect;
+        // Skip the reverse-record auto-set when the owner already has a primary,
+        // otherwise a second reserved registration would silently overwrite it.
+        IDotnsReverseResolver reverse =
+            IDotnsReverseResolver(protocolRegistry.get(DotnsConstants.REVERSE_RESOLVER));
+        bool setReverseRecord = registration.reserved && isDirect
+            && bytes(reverse.nameOf(registration.owner)).length == 0;
 
-        uint256 tokenId = uint256(node);
-        // Custody handoff: if the token already exists, escrow is holding it from a prior
-        // release (verified by `_requireAvailableLabel` which only returns true for fresh
-        // tokenIds or escrow-custody tokenIds). Transfer custody instead of minting.
-        bool isReclaim = registrar.exists(tokenId);
-        if (isReclaim) {
-            IDotnsNameEscrow(payable(escrow)).reclaim(tokenId, registration.owner);
-        }
-
+        // State writes before custody moves: on reclaim the forward record
+        // already exists and resolves through the registrar dynamically, so
+        // only the store entry and optional reverse record need updating here.
         _completeRegistration(
             registration, labelhash, node, priced.price, setReverseRecord, isReclaim
         );
 
-        if (priced.price != 0) {
-            if (isDirect) {
-                // Direct path: refundable deposit with owner as refund recipient.
-                IDotnsNameEscrow(payable(escrow)).deposit{value: priced.price}(
-                    IDotnsNameEscrow.DepositParams({
-                        tokenId: tokenId,
-                        asset: address(0),
-                        amount: priced.price,
-                        recipient: registration.owner
-                    })
-                );
-            } else {
-                // Cross-payer path: compare payer's tier price for the same label to
-                // distinguish "same-tier-different-address" (refundable to owner)
-                // from a genuine cross-tier payment (insurance fund).
-                uint256 senderPrice = rules.priceWithoutCheck(registration.label, msg.sender).price;
-                if (senderPrice == priced.price) {
-                    IDotnsNameEscrow(payable(escrow)).deposit{value: priced.price}(
-                        IDotnsNameEscrow.DepositParams({
-                            tokenId: tokenId,
-                            asset: address(0),
-                            amount: priced.price,
-                            recipient: registration.owner
-                        })
-                    );
-                } else {
-                    IDotnsNameEscrow(payable(escrow)).depositInsurance{value: priced.price}(
-                        IDotnsNameEscrow.InsuranceDepositParams({
-                            tokenId: tokenId, payer: msg.sender, recipient: registration.owner
-                        })
-                    );
-                }
-            }
+        // Custody handoff after state writes so any `onERC721Received` observer
+        // sees a fully wired registration.
+        if (isReclaim) {
+            IDotnsNameEscrow(payable(escrow)).reclaim(tokenId, registration.owner);
         }
 
-        if (friction != 0) {
-            IDotnsNameEscrow(payable(escrow)).depositInsurance{value: friction}(
-                IDotnsNameEscrow.InsuranceDepositParams({
-                    tokenId: tokenId, payer: msg.sender, recipient: registration.owner
-                })
-            );
-        }
+        _settleEscrow(escrow, tokenId, registration.owner, isDirect, priced.price, friction);
 
         if (
             priced.status == IPopRules.PopStatus.PopLite
@@ -266,11 +242,48 @@ contract DotnsRegistrarController is
             rules.reserveBaseName(registration.label, registration.owner);
         }
 
+        // Overpayment credited to the pull-payment ledger so contract wallets
+        // with a reverting `receive` can still complete the registration.
         if (msg.value > totalCharged) {
             uint256 refund = msg.value - totalCharged;
-            (bool ok,) = payable(msg.sender).call{value: refund}("");
-            require(ok, RefundFailed());
+            IDotnsNameEscrow(payable(escrow)).creditOverpayment{value: refund}(msg.sender);
             emit OverpaymentRefunded(msg.sender, refund);
+        }
+    }
+
+    /// @notice Settles every escrow side-effect of a successful registration.
+    /// @dev Extracted to keep `register` under the stack-depth ceiling.
+    function _settleEscrow(
+        address escrow,
+        uint256 tokenId,
+        address nameOwner,
+        bool isDirect,
+        uint256 ownerPrice,
+        uint256 friction
+    )
+        internal
+    {
+        uint256 depositAmount = isDirect ? ownerPrice : 0;
+        IDotnsNameEscrow(payable(escrow)).deposit{value: depositAmount}(
+            IDotnsNameEscrow.DepositParams({
+                tokenId: tokenId, asset: address(0), amount: depositAmount, recipient: nameOwner
+            })
+        );
+
+        if (!isDirect && ownerPrice != 0) {
+            IDotnsNameEscrow(payable(escrow)).depositInsurance{value: ownerPrice}(
+                IDotnsNameEscrow.InsuranceDepositParams({
+                    tokenId: tokenId, payer: msg.sender, recipient: nameOwner
+                })
+            );
+        }
+
+        if (friction != 0) {
+            IDotnsNameEscrow(payable(escrow)).depositInsurance{value: friction}(
+                IDotnsNameEscrow.InsuranceDepositParams({
+                    tokenId: tokenId, payer: msg.sender, recipient: nameOwner
+                })
+            );
         }
     }
 
@@ -389,14 +402,8 @@ contract DotnsRegistrarController is
                 })
             );
         } else {
-            // Reclaim path: custody has already been transferred by the escrow, so we
-            // skip the mint but still update the forward registry and write the label
-            // store entry using the canonical beacon-Store API.
-            IDotnsRegistry registry = IDotnsRegistry(protocolRegistry.get(DotnsConstants.REGISTRY));
-            IDotnsReverseResolver reverse =
-                IDotnsReverseResolver(protocolRegistry.get(DotnsConstants.REVERSE_RESOLVER));
-            registry.setOwner(node, registration.owner, address(reverse));
-
+            // Reclaim: skip the mint and the forward-registry write (both
+            // already in place) and seed only the new owner's label store entry.
             IStoreFactory factory =
                 IStoreFactory(protocolRegistry.get(DotnsConstants.STORE_FACTORY));
             string memory fullName = string.concat(registration.label, DotnsConstants.TLD);

@@ -455,6 +455,12 @@ contract PopRules is
     }
 
     /// @inheritdoc IPopRules
+    function stripDigits(string calldata name) external pure override returns (string memory stem) {
+        _requireCanonicalLabel(name);
+        return _stripDigits(name);
+    }
+
+    /// @inheritdoc IPopRules
     function releaseBaseName(string calldata baseName) external override onlyRegistry {
         _requireCanonicalLabel(baseName);
         Reservation memory reservation = reservations[baseName];

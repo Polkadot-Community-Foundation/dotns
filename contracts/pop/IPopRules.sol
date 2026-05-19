@@ -3,16 +3,17 @@ pragma solidity ^0.8.34;
 
 /// @title Proof of Personhood Rules for Dotns
 /// @notice Proof of personhood interface defining Dotns price calculation, PoP-tier requirements,
-/// and base-name reservation rules. @dev Classifies labels into the PoP tier required for
-/// registration and exposes reservation metadata.
-///      Length <= 5 is reserved for governance; lengths 6-8 require PopFull unless they carry
-/// exactly two trailing digits (PopLite); lengths >= 9 require PopFull unless they carry exactly
-/// two trailing
-///      digits (NoStatus, open). More than two trailing digits is invalid; internal digits do not
-/// affect classification. Reservations are keyed by the digit-stripped stem so `alice` and
-/// `alice42` share a slot.
-/// @dev Pricing is primarily a spam deterrent for NoStatus users; verified PopLite and PopFull
-/// users pay zero. @custom:security-contact admin@parity.io
+///         and base-name reservation rules.
+/// @dev Classifies labels into the PoP tier required for registration and exposes reservation
+///      metadata. Length <= 5 is reserved for governance; lengths 6-8 require PopFull unless they
+///      carry exactly two trailing digits (PopLite); lengths >= 9 require PopFull unless they
+///      carry exactly two trailing digits (NoStatus, open). More than two trailing digits is
+///      invalid; internal digits do not affect classification. Reservations are keyed by the
+///      digit-stripped stem so `alice` and `alice42` share a slot.
+///
+///      Pricing is primarily a spam deterrent for NoStatus users; verified PopLite and PopFull
+///      users pay zero.
+/// @custom:security-contact admin@parity.io
 interface IPopRules {
     /// @notice Proof-of-Personhood eligibility tier.
     /// @dev `NoStatus` is the default for unverified users; `PopLite` and `PopFull` are the two
@@ -140,6 +141,16 @@ interface IPopRules {
         external
         view
         returns (address owner, uint64 expires);
+
+    /// @notice Returns the bare stem of a label, i.e. the label with any trailing ASCII digits
+    ///         removed.
+    /// @dev Mirrors the normalisation that @custom:func reserveBaseName applies before writing
+    ///      a reservation, so callers can look up or release a reservation by passing the full
+    ///      label without re-implementing the digit-stripping rule. Non-canonical labels
+    ///      trigger @custom:reverts PopError.
+    /// @param name Full label (with or without trailing digits).
+    /// @return stem The label with trailing digits removed.
+    function stripDigits(string calldata name) external pure returns (string memory stem);
 
     /// @notice Indicates whether a base name is currently reserved.
     /// @dev Applies the live-window predicate to the stored slot so an expired reservation reads
