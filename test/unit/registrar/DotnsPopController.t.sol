@@ -9,6 +9,8 @@ import {
 } from "../../../contracts/registrars/IDotnsRegistrarController.sol";
 import {IDotnsRegistry} from "../../../contracts/registry/IDotnsRegistry.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
+import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
+import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Vm} from "forge-std/Vm.sol";
 
@@ -48,10 +50,9 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function test_reserveBaseName_enqueues_when_reserved_label_provided() public {
-        // PopRules.priceWithCheck now forbids a second user queueing behind the
-        // live head on the same base stem, so the queue is effectively
-        // single-user. Kept as a single-reserver claim to assert the claim
-        // event path; multi-user queue coverage lives in the invariant suite.
+        // `PopRules.priceWithCheck` admits only the live reservation holder on
+        // a given base stem, so the queue is single-occupant. Multi-occupant
+        // queue coverage lives in the invariant suite.
         _grantPopFull(ed);
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0xaa), BASE_LABEL_A);
 
@@ -83,11 +84,10 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_registerBaseName_standalone_emits_standalone_event_and_not_claim() public {
         _grantPopFull(tiago);
         _reservePop(tiago, LITE_LABEL_B, _validChatKey(0x01), BASE_LABEL_A);
-        // Under the new priceWithCheck gate, only the reservation holder can
-        // sit in the base queue, so the "wipe entire queue" assertion reduces
-        // to "wipe the single live entry and free the stem". After the claim,
-        // a different user must be free to reserve a fresh stem via the
-        // gateway without seeing any leaked state.
+        // `priceWithCheck` admits only the live reservation holder on a given
+        // base stem, so the standalone mint runs against a separate, free stem
+        // owned by a different user; this asserts neither user sees state leak
+        // from the other.
         _grantPopFull(ed);
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xcf));
 
@@ -118,10 +118,9 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function test_registerBaseName_claim_wipes_entire_queue() public {
-        // priceWithCheck now admits only the current reservation holder on a
-        // live stem, so the queue cannot contain a second waiter. After the
-        // holder relinquishes, the slot is cleared and a fresh user must be
-        // free to reserve the same stem from scratch.
+        // `priceWithCheck` admits only the live reservation holder on a given
+        // base stem, so the queue stays single-occupant; after the holder
+        // claims, the stem is free for a fresh reservation from any user.
         _grantPopFull(ed);
         _grantPopFull(tiago);
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0x01), BASE_LABEL_A);
@@ -588,18 +587,17 @@ contract DotnsPopControllerTests is BaseDotns {
         assertEq(holder, address(0));
     }
 
-    function test_controller_does_not_mutate_reservedBaseLabel_string() public {
+    function test_controller_normalises_reservedBaseLabel_to_stripped_stem() public {
         _grantPopFull(ed);
-        // "longnamebob01" has two trailing digits. PopRules stores it as-is,
-        // but `priceWithCheck` queries reservations keyed by "longnamebob".
+        // The gateway may pass a digit-suffixed `reservedBaseLabel`; the controller
+        // normalises to the stripped stem before writing PopRules so the public
+        // commit-reveal flow (which strips before reading) sees the slot under the
+        // same key.
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0xaa), "longnamebob01");
-        // Slot is written under the raw label.
         (address rawHolder,) = popRules.getBaseNameReservation("longnamebob01");
-        assertEq(rawHolder, ed);
-        // Stripped-stem slot is empty; public flow for "longnamebob01" is
-        // NOT blocked for other users (documented misuse surface).
+        assertEq(rawHolder, address(0), "raw-label slot must not be written");
         (address strippedHolder,) = popRules.getBaseNameReservation("longnamebob");
-        assertEq(strippedHolder, address(0));
+        assertEq(strippedHolder, ed, "stripped-stem slot must hold the reservation");
     }
 
     function test_public_stranger_can_mint_after_claim_clears_reservation() public {
@@ -647,7 +645,7 @@ contract DotnsPopControllerTests is BaseDotns {
         );
     }
 
-    /// @notice Asserts exactly one entry in `logs` matches event signature `sig`.
+    // Asserts exactly one entry in `logs` matches event signature `sig`.
     function _assertEventEmittedOnce(Vm.Log[] memory logs, bytes32 sig) internal pure {
         uint256 count;
         for (uint256 i = 0; i < logs.length; i++) {
@@ -656,7 +654,7 @@ contract DotnsPopControllerTests is BaseDotns {
         require(count == 1, "expected exactly one matching event");
     }
 
-    /// @notice Asserts no entry in `logs` matches event signature `sig`.
+    // Asserts no entry in `logs` matches event signature `sig`.
     function _assertEventNotEmitted(Vm.Log[] memory logs, bytes32 sig) internal pure {
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].topics.length != 0 && logs[i].topics[0] == sig) {
@@ -711,7 +709,7 @@ contract DotnsPopControllerTests is BaseDotns {
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf(BASE_LABEL_A))), ed);
     }
 
-    function test_registerBaseName_claim_still_works_after_guard() public {
+    function test_registerBaseName_claim_path_bypasses_standalone_holder_guard() public {
         _grantPopFull(ed);
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0x01), BASE_LABEL_A);
 
@@ -829,7 +827,7 @@ contract DotnsPopControllerTests is BaseDotns {
         );
     }
 
-    function test_reserveBaseName_compound_happy_path_still_works() public {
+    function test_reserveBaseName_lite_and_base_legs_both_succeed_in_one_call() public {
         _grantPopFull(ed);
 
         _gatewayReserveBaseName(
@@ -873,6 +871,9 @@ contract DotnsPopControllerTests is BaseDotns {
                 reservedBaseLabel: ""
             })
         );
+
+        vm.prank(ed);
+        dotnsPopController.claimLabelStore();
 
         bytes32 node = _nodeOf(LITE_LABEL_A);
         assertEq(dotnsPopResolver.chatKey(node), chatKey);
@@ -936,17 +937,378 @@ contract DotnsPopControllerTests is BaseDotns {
         _gatewayReserveLiteName(truncated);
     }
 
-    function test_setReservationDuration_zero_makes_new_reservations_immediately_expired() public {
-        // `reservationDuration` has no zero-guard. Setting it to 0 means every
-        // freshly enqueued reservation is classified expired by `_isExpired`
-        // on the same block.
+    function test_revert_setReservationDuration_below_minimum() public {
+        // The setter enforces a floor so a single owner call cannot retroactively
+        // expire every live queue and pending-claim entry.
+        uint64 minDuration = dotnsPopController.MIN_RESERVATION_DURATION();
         vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsPopController.ReservationDurationTooLow.selector, 0)
+        );
         dotnsPopController.setReservationDuration(0);
 
-        _grantPopFull(ed);
-        _reservePop(ed, LITE_LABEL_A, _validChatKey(0x01), BASE_LABEL_A);
+        vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IDotnsPopController.ReservationDurationTooLow.selector, minDuration - 1
+            )
+        );
+        dotnsPopController.setReservationDuration(minDuration - 1);
+    }
 
-        (bool reserved,) = dotnsPopController.isReservedForClaim(BASE_LABEL_A);
-        assertFalse(reserved);
+    function test_gatewayReserve_stashes_pending_claim_when_user_has_no_label_store() public {
+        _grantPopFull(ed);
+        bytes memory chatKey = _validChatKey(0x01);
+
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: chatKey
+            })
+        );
+
+        bytes32 node = _nodeOf(LITE_LABEL_A);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(node)), ed);
+        assertEq(storeFactory.getLabelStore(ed), address(0));
+        assertEq(dotnsPopResolver.chatKey(node), bytes(""));
+
+        IDotnsPopController.PendingClaim memory pending = dotnsPopController.pendingClaim(ed);
+        assertEq(pending.label, LITE_LABEL_A);
+        assertEq(pending.chatKey, chatKey);
+        assertGt(pending.mintedAt, 0);
+    }
+
+    function test_claimLabelStore_deploys_store_and_writes_label_and_chat_key() public {
+        _grantPopFull(ed);
+        bytes memory chatKey = _validChatKey(0x07);
+
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: chatKey
+            })
+        );
+
+        vm.prank(ed);
+        dotnsPopController.claimLabelStore();
+
+        address store = storeFactory.getLabelStore(ed);
+        assertTrue(store != address(0));
+
+        bytes32 node = _nodeOf(LITE_LABEL_A);
+        assertEq(ILabelStore(store).getLabel(node), string.concat(LITE_LABEL_A, DotnsConstants.TLD));
+        assertEq(dotnsPopResolver.chatKey(node), chatKey);
+
+        IDotnsPopController.PendingClaim memory pending = dotnsPopController.pendingClaim(ed);
+        assertEq(pending.mintedAt, 0);
+    }
+
+    function test_claimLabelStore_emits_settled_and_name_registered() public {
+        _grantPopFull(ed);
+        bytes memory chatKey = _validChatKey(0x03);
+
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: chatKey
+            })
+        );
+
+        bytes32 labelhash = keccak256(bytes(LITE_LABEL_A));
+        address expectedStore =
+            vm.computeCreateAddress(address(storeFactory), vm.getNonce(address(storeFactory)));
+
+        vm.prank(ed);
+        vm.expectEmit(true, true, false, true, address(dotnsPopController));
+        emit IDotnsPopController.PendingClaimSettled(ed, labelhash, expectedStore);
+        vm.expectEmit(true, true, true, true, address(dotnsPopController));
+        emit IDotnsPopController.NameRegistered(LITE_LABEL_A, labelhash, ed, expectedStore);
+        dotnsPopController.claimLabelStore();
+    }
+
+    function test_revert_claimLabelStore_when_caller_has_no_pending_claim() public {
+        vm.prank(ed);
+        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NoPendingClaim.selector, ed));
+        dotnsPopController.claimLabelStore();
+    }
+
+    function test_revert_claimLabelStore_when_pending_claim_has_lapsed() public {
+        _grantPopFull(ed);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x09)
+            })
+        );
+
+        vm.warp(block.timestamp + DEFAULT_RESERVATION_DURATION + 1);
+
+        vm.prank(ed);
+        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NoPendingClaim.selector, ed));
+        dotnsPopController.claimLabelStore();
+    }
+
+    function test_expirePendingClaim_clears_entry_after_reservation_duration() public {
+        _grantPopFull(ed);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x02)
+            })
+        );
+
+        vm.warp(block.timestamp + DEFAULT_RESERVATION_DURATION + 1);
+
+        bytes32 labelhash = keccak256(bytes(LITE_LABEL_A));
+
+        vm.expectEmit(true, true, false, false, address(dotnsPopController));
+        emit IDotnsPopController.PendingClaimExpired(ed, labelhash);
+        dotnsPopController.expirePendingClaim(ed);
+
+        IDotnsPopController.PendingClaim memory pending = dotnsPopController.pendingClaim(ed);
+        assertEq(pending.mintedAt, 0);
+        assertEq(dotnsPopController.pendingClaimUserCount(), 0);
+    }
+
+    function test_revert_expirePendingClaim_when_user_has_no_pending_claim() public {
+        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NoPendingClaim.selector, ed));
+        dotnsPopController.expirePendingClaim(ed);
+    }
+
+    function test_revert_expirePendingClaim_when_entry_is_still_live() public {
+        _grantPopFull(ed);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x04)
+            })
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsPopController.PendingClaimNotExpired.selector, ed)
+        );
+        dotnsPopController.expirePendingClaim(ed);
+    }
+
+    function test_revert_reserveLiteName_when_caller_already_has_pending_claim() public {
+        _grantPopFull(ed);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x05)
+            })
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.PendingClaimExists.selector, ed));
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_B, user: ed, chatKey: _validChatKey(0x06)
+            })
+        );
+    }
+
+    function test_pendingClaim_returns_zero_struct_for_fresh_user() public view {
+        IDotnsPopController.PendingClaim memory pending = dotnsPopController.pendingClaim(ed);
+        assertEq(pending.mintedAt, 0);
+        assertEq(pending.label, "");
+        assertEq(pending.chatKey, bytes(""));
+    }
+
+    function test_pendingClaimUsers_enumeration_mirrors_stash_and_settle() public {
+        _grantPopFull(ed);
+        _grantPopFull(tiago);
+        _grantPopFull(leonardo);
+
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x01)
+            })
+        );
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_B, user: tiago, chatKey: _validChatKey(0x02)
+            })
+        );
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_C, user: leonardo, chatKey: _validChatKey(0x03)
+            })
+        );
+
+        assertEq(dotnsPopController.pendingClaimUserCount(), 3);
+
+        address[] memory page = dotnsPopController.pendingClaimUsers(0, 10);
+        assertEq(page.length, 3);
+        assertTrue(_containsAddress(page, ed));
+        assertTrue(_containsAddress(page, tiago));
+        assertTrue(_containsAddress(page, leonardo));
+
+        vm.prank(tiago);
+        dotnsPopController.claimLabelStore();
+
+        assertEq(dotnsPopController.pendingClaimUserCount(), 2);
+        address[] memory after_ = dotnsPopController.pendingClaimUsers(0, 10);
+        assertEq(after_.length, 2);
+        assertFalse(_containsAddress(after_, tiago));
+        assertTrue(_containsAddress(after_, ed));
+        assertTrue(_containsAddress(after_, leonardo));
+    }
+
+    function test_pendingClaimUsers_returns_empty_when_offset_past_count() public {
+        _grantPopFull(ed);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x01)
+            })
+        );
+
+        address[] memory empty = dotnsPopController.pendingClaimUsers(5, 10);
+        assertEq(empty.length, 0);
+    }
+
+    function test_revert_claimLabelStore_at_exact_expiry_boundary() public {
+        _grantPopFull(ed);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x11)
+            })
+        );
+
+        uint64 mintedAt = dotnsPopController.pendingClaim(ed).mintedAt;
+        vm.warp(uint256(mintedAt) + uint256(DEFAULT_RESERVATION_DURATION));
+
+        vm.prank(ed);
+        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NoPendingClaim.selector, ed));
+        dotnsPopController.claimLabelStore();
+
+        dotnsPopController.expirePendingClaim(ed);
+        assertEq(dotnsPopController.pendingClaim(ed).mintedAt, 0);
+    }
+
+    function test_claimLabelStore_msg_sender_keyed_other_users_stash_untouched() public {
+        _grantPopFull(ed);
+        bytes memory chatKey = _validChatKey(0x12);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: chatKey
+            })
+        );
+
+        vm.prank(tiago);
+        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NoPendingClaim.selector, tiago));
+        dotnsPopController.claimLabelStore();
+
+        IDotnsPopController.PendingClaim memory pending = dotnsPopController.pendingClaim(ed);
+        assertEq(pending.label, LITE_LABEL_A);
+        assertEq(pending.chatKey, chatKey);
+        assertGt(pending.mintedAt, 0);
+        assertEq(storeFactory.getLabelStore(ed), address(0));
+        assertEq(storeFactory.getLabelStore(tiago), address(0));
+        assertEq(dotnsPopController.pendingClaimUserCount(), 1);
+    }
+
+    function test_pendingClaimUsers_pagination_boundary_cases() public {
+        _grantPopFull(ed);
+        _grantPopFull(tiago);
+        _grantPopFull(leonardo);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x01)
+            })
+        );
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_B, user: tiago, chatKey: _validChatKey(0x02)
+            })
+        );
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_C, user: leonardo, chatKey: _validChatKey(0x03)
+            })
+        );
+
+        uint256 count = dotnsPopController.pendingClaimUserCount();
+        assertEq(count, 3);
+        assertEq(dotnsPopController.pendingClaimUsers(count, 10).length, 0);
+        assertEq(dotnsPopController.pendingClaimUsers(count - 1, 10).length, 1);
+        assertEq(dotnsPopController.pendingClaimUsers(0, 0).length, 0);
+        assertEq(dotnsPopController.pendingClaimUsers(1, 1).length, 1);
+        assertEq(dotnsPopController.pendingClaimUsers(0, 100).length, 3);
+    }
+
+    function test_gatewayReserve_pending_claim_lapses_after_minimum_duration() public {
+        // With the duration floor in place, the smallest configurable expiry window
+        // is MIN_RESERVATION_DURATION; warping past it still drives the claim into
+        // the expired-and-reapable state without requiring a zero duration.
+        uint64 duration = dotnsPopController.MIN_RESERVATION_DURATION();
+        vm.prank(owner);
+        dotnsPopController.setReservationDuration(duration);
+
+        _grantPopFull(ed);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x33)
+            })
+        );
+
+        vm.warp(block.timestamp + uint256(duration) + 1);
+
+        vm.prank(ed);
+        vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NoPendingClaim.selector, ed));
+        dotnsPopController.claimLabelStore();
+
+        dotnsPopController.expirePendingClaim(ed);
+        assertEq(dotnsPopController.pendingClaim(ed).mintedAt, 0);
+        assertEq(storeFactory.getLabelStore(ed), address(0));
+    }
+
+    function test_claimLabelStore_with_empty_chat_key_skips_resolver_write() public {
+        _grantPopFull(ed);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({liteLabel: LITE_LABEL_A, user: ed, chatKey: ""})
+        );
+
+        vm.prank(ed);
+        dotnsPopController.claimLabelStore();
+
+        bytes32 node = _nodeOf(LITE_LABEL_A);
+        address store = storeFactory.getLabelStore(ed);
+        assertTrue(store != address(0));
+        assertEq(ILabelStore(store).getLabel(node), string.concat(LITE_LABEL_A, DotnsConstants.TLD));
+        assertEq(dotnsPopResolver.chatKey(node).length, 0);
+    }
+
+    function test_gatewayReserve_warm_user_after_claim_writes_directly_without_stashing() public {
+        _grantPopFull(ed);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x21)
+            })
+        );
+
+        vm.prank(ed);
+        dotnsPopController.claimLabelStore();
+        address store = storeFactory.getLabelStore(ed);
+        assertTrue(store != address(0));
+
+        bytes memory secondChatKey = _validChatKey(0x22);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_B, user: ed, chatKey: secondChatKey
+            })
+        );
+
+        bytes32 node = _nodeOf(LITE_LABEL_B);
+        assertEq(ILabelStore(store).getLabel(node), string.concat(LITE_LABEL_B, DotnsConstants.TLD));
+        assertEq(dotnsPopResolver.chatKey(node), secondChatKey);
+        assertEq(dotnsPopController.pendingClaim(ed).mintedAt, 0);
+        assertEq(dotnsPopController.pendingClaimUserCount(), 0);
+    }
+
+    function _containsAddress(
+        address[] memory haystack,
+        address needle
+    )
+        internal
+        pure
+        returns (bool)
+    {
+        for (uint256 i; i < haystack.length; ++i) {
+            if (haystack[i] == needle) return true;
+        }
+        return false;
     }
 }

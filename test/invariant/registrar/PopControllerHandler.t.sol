@@ -54,9 +54,17 @@ contract PopControllerHandler is Test {
     /// @notice Prior lite labels reserved by the handler. Used by reLink
     ///         actions so the fuzzer can re-use an existing lite label
     ///         against a fresh base claim, driving the resolver overwrite
-    ///         paths (M-03). Kept as the raw string because the controller
-    ///         re-hashes internally on every call.
+    ///         paths under repeated `(baseLabel, actor)` reuse. Kept as
+    ///         the raw string because the controller re-hashes internally
+    ///         on every call.
     string[] public priorLiteLabels;
+
+    /// @notice Every actor that has ever held a pending claim, deduplicated.
+    /// @dev The mirror invariant iterates this set to assert that any address
+    ///      with a live `mintedAt` appears in `pendingClaimUsers()` and vice
+    ///      versa.
+    address[] public pendingClaimActorsSeen;
+    mapping(address actor => bool) internal _pendingActorTracked;
 
     /// @notice Seeds the actor pool, base-label set, and personhood mocks so
     ///         every action call admits both lite and base classifications.
@@ -134,6 +142,11 @@ contract PopControllerHandler is Test {
         return priorLiteLabels.length;
     }
 
+    /// @notice Number of actors the handler has ever seen with a pending claim.
+    function pendingClaimActorsSeenCount() external view returns (uint256) {
+        return pendingClaimActorsSeen.length;
+    }
+
     /// @notice Reserves a lite label for an actor, optionally enqueueing on a
     ///         base label.
     /// @dev Swallows known-good reverts (QueueFull, AlreadyReserved, ERC721
@@ -168,6 +181,7 @@ contract PopControllerHandler is Test {
             );
             mintedLiteTokenIds.push(uint256(node));
             priorLiteLabels.push(liteLabel);
+            _trackPendingActor(actor);
         }
     }
 
@@ -195,6 +209,13 @@ contract PopControllerHandler is Test {
             reservedBaseLabel: ""
         });
         if (!_callReserveBaseName(liteParams, useBytes)) return;
+        _trackPendingActor(actor);
+
+        // The lite leg stashed a pending claim. Settle it now so the base
+        // registration below takes the warm path; the pending-claim mechanism
+        // forbids a second stash for the same user.
+        vm.prank(actor);
+        try CONTROLLER.claimLabelStore() {} catch {}
 
         IDotnsPopController.Link memory link = IDotnsPopController.Link({
             kind: IDotnsPopController.LinkKind.LiteUsername, liteLabel: liteLabel, chatKey: ""
@@ -218,7 +239,7 @@ contract PopControllerHandler is Test {
 
     /// @notice Re-registers an already-used lite label against a fresh
     ///         base-label claim so the same liteHash maps to a new fullNode.
-    /// @dev Drives the resolver overwrite paths (M-03). When the handler
+    /// @dev Drives the resolver overwrite paths. When the handler
     ///      re-uses the same (baseLabel, actor) pair later it also exercises
     ///      the symmetric case: same fullNode mapped to a new liteHash.
     ///      `useBytes` selects the dispatch path for the register call.
@@ -274,6 +295,24 @@ contract PopControllerHandler is Test {
     /// @dev Bounded to 30 days so state does not drift off a cliff.
     function warp(uint256 secondsForward) external {
         vm.warp(block.timestamp + (secondsForward % (30 days)));
+    }
+
+    /// @notice Settles a pending claim for the picked actor.
+    /// @dev The actor signs the call; `pallet-revive` charges the storage
+    ///      deposit against their balance in production. Swallowed reverts
+    ///      cover the no-pending-claim and lapsed-entry branches.
+    function settlePendingClaim(uint256 actorIndex) external {
+        address actor = _actor(actorIndex);
+        vm.prank(actor);
+        try CONTROLLER.claimLabelStore() {} catch {}
+    }
+
+    /// @notice Permissionlessly sweeps an expired pending claim for the picked actor.
+    /// @dev Caller is the handler itself; the entrypoint is permissionless by
+    ///      design so any address can clear a stale slot.
+    function sweepPendingClaim(uint256 actorIndex) external {
+        address actor = _actor(actorIndex);
+        try CONTROLLER.expirePendingClaim(actor) {} catch {}
     }
 
     /// @notice Calls `reserveBaseName` through the typed or bytes overload.
@@ -382,6 +421,15 @@ contract PopControllerHandler is Test {
         if (!_tracked[labelhash]) {
             _tracked[labelhash] = true;
             reservedLabelsSeen.push(labelhash);
+        }
+    }
+
+    /// @notice Records `actor` as an account the handler has stashed for,
+    ///         deduplicated. Iterated by the pending-claim mirror invariants.
+    function _trackPendingActor(address actor) internal {
+        if (!_pendingActorTracked[actor]) {
+            _pendingActorTracked[actor] = true;
+            pendingClaimActorsSeen.push(actor);
         }
     }
 }

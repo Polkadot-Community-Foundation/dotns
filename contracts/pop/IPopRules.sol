@@ -130,6 +130,21 @@ interface IPopRules {
     /// @param baseName The base label whose reservation should be cleared.
     function releaseBaseName(string calldata baseName) external;
 
+    /// @notice Clears a reservation when the slot owner matches `expectedOwner`, allowing any
+    ///         registrar-authorised controller (not only the stamping one) to release the slot.
+    /// @dev Narrower than @custom:function releaseBaseName: callers must prove they know the
+    ///      slot owner, so cross-controller release is gated on a positive match rather than on
+    ///      caller identity. Intended for the public registrar controller's reclaim path, where
+    ///      a prior occupant has handed the name back to escrow and the new registrant needs
+    ///      the cross-flow guard cleared regardless of which controller originally stamped it.
+    ///      Only a registrar-authorised controller may call this (@custom:reverts NotRegistry).
+    ///      Non-canonical labels trigger @custom:reverts PopError. A live reservation whose
+    ///      owner does not match `expectedOwner` triggers @custom:reverts PopError; expired
+    ///      reservations are cleared regardless. Emits @custom:emits BaseNameReleased.
+    /// @param baseName The base label whose reservation should be cleared.
+    /// @param expectedOwner The address the caller expects to be the current reservation owner.
+    function releaseReservationForReclaim(string calldata baseName, address expectedOwner) external;
+
     /// @notice Retrieves reservation information for a base name.
     /// @dev Raw accessor: returns the stored slot regardless of expiry. Use {isBaseNameReserved}
     ///      when live-window semantics are needed. Non-canonical labels trigger
@@ -144,7 +159,7 @@ interface IPopRules {
 
     /// @notice Returns the bare stem of a label, i.e. the label with any trailing ASCII digits
     ///         removed.
-    /// @dev Mirrors the normalisation that @custom:func reserveBaseName applies before writing
+    /// @dev Mirrors the normalisation that @custom:function reserveBaseName applies before writing
     ///      a reservation, so callers can look up or release a reservation by passing the full
     ///      label without re-implementing the digit-stripping rule. Non-canonical labels
     ///      trigger @custom:reverts PopError.

@@ -95,27 +95,36 @@ abstract contract BaseDotns is Test {
     /// @notice Selector for the typed reserveLiteName entrypoint.
     bytes4 internal constant SELECTOR_RESERVE_LITE_TYPED =
         bytes4(keccak256("reserveLiteName((string,address,bytes))"));
+
     /// @notice Selector for the bytes-encoded reserveLiteName entrypoint.
     bytes4 internal constant SELECTOR_RESERVE_LITE_BYTES =
         bytes4(keccak256("reserveLiteName(bytes)"));
+
     /// @notice Selector for the typed reserveBaseName entrypoint.
     bytes4 internal constant SELECTOR_RESERVE_BASE_TYPED =
         bytes4(keccak256("reserveBaseName(((string,address,bytes),string))"));
+
     /// @notice Selector for the bytes-encoded reserveBaseName entrypoint.
     bytes4 internal constant SELECTOR_RESERVE_BASE_BYTES =
         bytes4(keccak256("reserveBaseName(bytes)"));
+
     /// @notice Selector for the typed registerBaseName entrypoint.
     bytes4 internal constant SELECTOR_REGISTER_BASE_TYPED =
         bytes4(keccak256("registerBaseName((string,address,(uint8,string,bytes)))"));
+
     /// @notice Selector for the bytes-encoded registerBaseName entrypoint.
     bytes4 internal constant SELECTOR_REGISTER_BASE_BYTES =
         bytes4(keccak256("registerBaseName(bytes)"));
+
     /// @notice Default reservation duration used by the PoP controller.
     uint64 public constant DEFAULT_RESERVATION_DURATION = 7 days;
+
     /// @notice Deployed Store factory instance.
     StoreFactory public storeFactory;
+
     /// @notice Deployed protocol registry instance.
     DotnsProtocolRegistry public protocolRegistry;
+
     /// @notice Deployed name escrow instance.
     DotnsNameEscrow public dotnsNameEscrow;
     /// @notice Rent price applied to PoP NoStatus users for spam resistance.
@@ -315,8 +324,8 @@ abstract contract BaseDotns is Test {
     }
 
     /// @notice Computes the namehash of `parent` and `labelhash`.
-    /// @dev Thin wrapper around {LabelUtils-namehashUnder} so tests do not
-    ///      reimplement the assembly composition.
+    /// @dev Thin wrapper around @custom:function LabelUtils.namehashUnder so tests
+    ///      do not reimplement the assembly composition.
     /// @param parent The parent node hash.
     /// @param labelhash The labelhash.
     /// @return node The resulting node hash.
@@ -405,11 +414,17 @@ abstract contract BaseDotns is Test {
         dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, false);
     }
 
-    /// @notice Drives a PoP reservation from the registered gateway address.
-    /// @dev Single canonical helper for PoP-gateway reservations across unit
-    ///      and fuzz test suites. Pranks from the gateway stand-in installed
-    ///      during setUp, which mirrors how the Root gateway dispatcher
-    ///      appears to the controller in production.
+    /// @notice Drives a PoP reservation from the registered gateway address and settles
+    /// the resulting pending claim from the user's signed origin.
+    /// @dev Single canonical helper for PoP-gateway reservations across unit and fuzz
+    /// test suites. Pranks from the gateway stand-in installed during setUp, which
+    /// mirrors how the Root gateway dispatcher appears to the controller in production.
+    /// The auto-settle deploys the user's `LabelStore` and writes the stashed label and
+    /// chat key so subsequent gateway mints for the same user take the warm path and
+    /// assertions against the resolver and store hold. Tests that want to observe
+    /// cold-path semantics (label and chat key stashed, no store deployed) must call
+    /// @custom:function _gatewayReserveBaseName or @custom:function _gatewayReserveLiteName
+    /// directly.
     function _reservePop(
         address user,
         string memory liteLabel,
@@ -426,6 +441,14 @@ abstract contract BaseDotns is Test {
                 reservedBaseLabel: reservedBaseLabel
             })
         );
+        IDotnsPopController.PendingClaim memory pending = dotnsPopController.pendingClaim(user);
+        if (
+            pending.mintedAt != 0
+                && pending.mintedAt + dotnsPopController.reservationDuration() > block.timestamp
+        ) {
+            vm.prank(user);
+            dotnsPopController.claimLabelStore();
+        }
     }
 
     /// @notice Dispatches the typed `reserveLiteName` call through the gateway stand-in.

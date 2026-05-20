@@ -477,4 +477,26 @@ contract PopRules is
         delete reservations[baseName];
         emit BaseNameReleased(baseName);
     }
+
+    /// @inheritdoc IPopRules
+    function releaseReservationForReclaim(
+        string calldata baseName,
+        address expectedOwner
+    )
+        external
+        override
+        onlyRegistry
+    {
+        _requireCanonicalLabel(baseName);
+        string memory stem = _stripDigits(baseName);
+        Reservation memory reservation = reservations[stem];
+        // Cross-controller release is gated on owner match rather than controller match,
+        // so the public registrar controller can clear a PoP-stamped slot during reclaim
+        // when the prior occupant is the reservation owner.
+        if (_isLive(reservation)) {
+            require(reservation.owner == expectedOwner, PopError("Reservation owner mismatch"));
+        }
+        delete reservations[stem];
+        emit BaseNameReleased(stem);
+    }
 }

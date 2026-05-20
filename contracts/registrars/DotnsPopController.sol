@@ -11,10 +11,15 @@ import {
 } from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+
 import {IDotnsPopController} from "./IDotnsPopController.sol";
+import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {IDotnsPopResolver} from "../resolvers/IDotnsPopResolver.sol";
 import {IPopRules} from "../pop/IPopRules.sol";
+import {IStoreFactory} from "../store/IStoreFactory.sol";
+import {ILabelStore} from "../store/ILabelStore.sol";
 import {LabelUtils} from "../utils/LabelUtils.sol";
 import {RegistrationUtils} from "../utils/RegistrationUtils.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
@@ -68,24 +73,37 @@ contract DotnsPopController is
     IDotnsPopController
 {
     using StringUtils for *;
+    using EnumerableSet for EnumerableSet.AddressSet;
 
     /// @notice Upper bound for the number of simultaneously queued reservations per label.
     /// @dev Keeps `expireReservation` gas bounded.
     uint16 public constant MAX_RESERVATION_QUEUE = 64;
 
-    /// @notice Selector for the typed {reserveLiteName} overload.
+    /// @notice Maximum chat-key payload length the controller is willing to stash on the
+    /// pending-claim ledger.
+    /// @dev Uncompressed secp256k1 public keys are 65 bytes (0x04 prefix + X + Y); compressed
+    /// keys are 33 bytes. A 65-byte cap accommodates either and prevents the gateway path
+    /// from being abused to dump arbitrary blobs into per-user storage.
+    uint16 public constant MAX_CHAT_KEY_LENGTH = 65;
+
+    /// @notice Minimum value accepted by @custom:function setReservationDuration.
+    /// @dev Prevents owner misconfiguration from instantly expiring every live queue and
+    /// pending-claim entry. The actual production duration is governance-tuned higher.
+    uint64 public constant MIN_RESERVATION_DURATION = 1 hours;
+
+    /// @notice Selector for the typed @custom:function reserveLiteName overload.
     /// @dev Hard-coded to disambiguate from the `(bytes)` overload at compile time. Must stay
     /// in sync with the @custom:struct LiteRegistration field layout.
     bytes4 private constant SELECTOR_RESERVE_LITE =
         bytes4(keccak256("reserveLiteName((string,address,bytes))"));
 
-    /// @notice Selector for the typed {reserveBaseName} overload.
+    /// @notice Selector for the typed @custom:function reserveBaseName overload.
     /// @dev `BaseReservation` is `(LiteRegistration, string)` and `LiteRegistration` is
     /// `(string,address,bytes)`, hence the nested tuple in the canonical signature.
     bytes4 private constant SELECTOR_RESERVE_BASE =
         bytes4(keccak256("reserveBaseName(((string,address,bytes),string))"));
 
-    /// @notice Selector for the typed {registerBaseName} overload.
+    /// @notice Selector for the typed @custom:function registerBaseName overload.
     /// @dev `Link` is `(uint8,string,bytes)` because `LinkKind` is an enum.
     bytes4 private constant SELECTOR_REGISTER_BASE =
         bytes4(keccak256("registerBaseName((string,address,(uint8,string,bytes)))"));
@@ -118,8 +136,21 @@ contract DotnsPopController is
     /// governance via `setReservationDuration`.
     uint64 public reservationDuration;
 
+    /// @notice Per-user record of a freshly minted name whose `LabelStore` write was
+    /// deferred because the user had no store at mint time.
+    /// @dev Set when the gateway path mints for a user with no `LabelStore`. Cleared
+    /// on settlement via @custom:function claimLabelStore or on expiry via
+    /// @custom:function expirePendingClaim. At most one entry per address; expiry is
+    /// measured from `mintedAt` against `reservationDuration`.
+    mapping(address user => PendingClaim claim) internal _pendingClaims;
+
+    /// @notice Enumeration set of users holding a live pending claim.
+    /// @dev Membership equals the live key set of `_pendingClaims`. Used by
+    /// `pendingClaimUserCount` and `pendingClaimUsers` for paginated enumeration.
+    EnumerableSet.AddressSet private _pendingClaimUsers;
+
     /// @dev Reserved storage space to allow for layout changes in the future.
-    uint256[50] private __gap;
+    uint256[47] private __gap;
 
     /// @notice Restricts calls to the address registered as the PoP gateway
     ///         on the protocol registry.
@@ -153,6 +184,10 @@ contract DotnsPopController is
         external
         initializer
     {
+        require(
+            reservationDuration_ >= MIN_RESERVATION_DURATION,
+            ReservationDurationTooLow(reservationDuration_)
+        );
         __Ownable_init(msg.sender);
         __ERC165_init();
         protocolRegistry = registry;
@@ -195,7 +230,8 @@ contract DotnsPopController is
         _dispatchTyped(SELECTOR_RESERVE_BASE, payload);
     }
 
-    /// @notice Lite-only mint shared by {reserveLiteName} and the lite leg of {reserveBaseName}.
+    /// @notice Lite-only mint shared by @custom:function reserveLiteName and the lite leg
+    /// of @custom:function reserveBaseName.
     /// @dev Gateway attestation is the authority for personhood on this path; the on-chain
     /// precompile is not consulted. The dotted-format check is sufficient to keep
     /// governance-reserved labels out of the lite leg: `isSingleDotLiteLabel` constrains
@@ -277,6 +313,15 @@ contract DotnsPopController is
             require(link.liteLabel.isSingleDotLiteLabel(), InvalidLiteLabel());
             liteLabelhash = _validateLiteLabelHash(liteLabel);
             bytes32 liteNode = LabelUtils.namehash(liteLabelhash);
+            // Bind chat-key inheritance to lite-token ownership: the registrant must
+            // currently hold the lite identity whose chat key they inherit, so a
+            // graduating user's full name copies their own key rather than any
+            // attestor's. The registrar mints tokenId = `uint256(node)`, so the
+            // ownership check goes through the node (namehash), not the bare labelhash.
+            require(
+                _registrar().ownerOf(uint256(liteNode)) == user,
+                LiteLabelNotOwnedByUser(user, liteLabelhash)
+            );
             chatKeyToPersist = _popResolver().chatKey(liteNode);
         } else {
             chatKeyToPersist = link.chatKey;
@@ -309,6 +354,45 @@ contract DotnsPopController is
     }
 
     /// @inheritdoc IDotnsPopController
+    function claimLabelStore() external override {
+        PendingClaim memory claim_ = _pendingClaims[msg.sender];
+        require(claim_.mintedAt != 0 && !_isExpired(claim_.mintedAt), NoPendingClaim(msg.sender));
+
+        bytes32 labelhash = LabelUtils.labelhashMemory(claim_.label);
+        bytes32 node = LabelUtils.namehash(labelhash);
+
+        // Stores are historical, not ownership-bound: if the caller already has a
+        // `LabelStore` from any path (this controller's prior settlement, or the
+        // public registrar controller's mint flow), reuse it. Only deploy when no
+        // store exists, which keeps the settle step idempotent across controllers.
+        IStoreFactory factory = _storeFactory();
+        address store = factory.getLabelStore(msg.sender);
+        if (store == address(0)) {
+            store = factory.deployLabelStoreFor(msg.sender);
+        }
+
+        _writeRecord(store, node, claim_.label, claim_.chatKey);
+
+        _clearPendingClaim(msg.sender);
+
+        emit PendingClaimSettled(msg.sender, labelhash, store);
+        emit NameRegistered(claim_.label, labelhash, msg.sender, store);
+    }
+
+    /// @inheritdoc IDotnsPopController
+    function expirePendingClaim(address user) external override {
+        PendingClaim memory claim_ = _pendingClaims[user];
+        require(claim_.mintedAt != 0, NoPendingClaim(user));
+        require(_isExpired(claim_.mintedAt), PendingClaimNotExpired(user));
+
+        bytes32 labelhash = LabelUtils.labelhashMemory(claim_.label);
+
+        _clearPendingClaim(user);
+
+        emit PendingClaimExpired(user, labelhash);
+    }
+
+    /// @inheritdoc IDotnsPopController
     function isReservedForClaim(string calldata reservedBaseLabel)
         external
         view
@@ -328,6 +412,7 @@ contract DotnsPopController is
 
     /// @inheritdoc IDotnsPopController
     function setReservationDuration(uint64 duration) external override onlyOwner {
+        require(duration >= MIN_RESERVATION_DURATION, ReservationDurationTooLow(duration));
         reservationDuration = duration;
         emit ReservationDurationSet(duration);
     }
@@ -367,6 +452,43 @@ contract DotnsPopController is
         return _userReservations[user];
     }
 
+    /// @inheritdoc IDotnsPopController
+    function pendingClaim(address user)
+        external
+        view
+        override
+        returns (PendingClaim memory claim_)
+    {
+        return _pendingClaims[user];
+    }
+
+    /// @inheritdoc IDotnsPopController
+    function pendingClaimUserCount() external view override returns (uint256 count) {
+        return _pendingClaimUsers.length();
+    }
+
+    /// @inheritdoc IDotnsPopController
+    function pendingClaimUsers(
+        uint256 offset,
+        uint256 limit
+    )
+        external
+        view
+        override
+        returns (address[] memory users)
+    {
+        uint256 total = _pendingClaimUsers.length();
+        if (offset >= total) return new address[](0);
+
+        uint256 available = total - offset;
+        uint256 count = limit < available ? limit : available;
+
+        users = new address[](count);
+        for (uint256 i; i < count; ++i) {
+            users[i] = _pendingClaimUsers.at(offset + i);
+        }
+    }
+
     /// @inheritdoc ERC165Upgradeable
     function supportsInterface(bytes4 interfaceId)
         public
@@ -381,15 +503,23 @@ contract DotnsPopController is
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.0.0";
+        versionString = "1.1.0";
     }
 
-    /// @notice Mints a name, wires forward registry, writes the owner's Store, and persists
-    /// PoP-flow records (chat key, lite link) on the PoP resolver.
-    /// @dev The mint + forward-registry + store-write triad is delegated to
-    /// {RegistrationUtils-registerAndStore} so this flow and the public commit-reveal flow
-    /// share exactly one implementation of that sequence. PoP-flow per-name records live on
-    /// @custom:contract IDotnsPopResolver rather than on the Store so the Store stays labels-only.
+    /// @notice Mints a name, wires forward registry, and persists PoP-flow records (chat
+    /// key, lite link) on the PoP resolver. The owner's Store write is handled by
+    /// `_persistLabel`, which writes directly when the owner already has a `LabelStore`
+    /// and stashes a pending claim otherwise.
+    /// @dev The mint + forward-registry pair is delegated to
+    /// @custom:function RegistrationUtils.registerAndStore so this flow and the public
+    /// commit-reveal flow share exactly one implementation of that sequence. The label is passed
+    /// empty so
+    /// the registrar does not deploy a `LabelStore`; substrate Root cannot run the
+    /// `LabelStore` constructor under `pallet-revive`. PoP-flow per-name records live on
+    /// @custom:contract IDotnsPopResolver rather than on the Store so the Store stays
+    /// labels-only. Emits @custom:emits NameRegistered on the warm path; the cold path
+    /// emits @custom:emits PendingClaimStashed and graduates to NameRegistered when the
+    /// user settles.
     function _completeGatewayRegistration(
         address user,
         string memory label,
@@ -400,27 +530,111 @@ contract DotnsPopController is
     )
         internal
     {
-        address storeAddr = address(
-            RegistrationUtils.registerAndStore(
-                RegistrationUtils.RegistrationContext({
-                    protocolRegistry: protocolRegistry,
-                    user: user,
-                    label: label,
-                    labelhash: labelhash,
-                    node: node
-                })
-            )
+        RegistrationUtils.registerAndStore(
+            RegistrationUtils.RegistrationContext({
+                protocolRegistry: protocolRegistry,
+                user: user,
+                label: "",
+                labelhash: labelhash,
+                node: node
+            })
         );
 
-        IDotnsPopResolver resolver = _popResolver();
-        if (chatKeyBytes.length != 0) {
-            resolver.setChatKey(node, chatKeyBytes);
-        }
+        address store = _persistLabel(user, label, labelhash, node, chatKeyBytes);
+
         if (liteLabelhash != bytes32(0)) {
-            resolver.setLiteLink(node, liteLabelhash);
+            _popResolver().setLiteLink(node, liteLabelhash);
         }
 
-        emit NameRegistered(label, labelhash, user, storeAddr);
+        if (store != address(0)) {
+            emit NameRegistered(label, labelhash, user, store);
+        }
+    }
+
+    /// @notice Writes a freshly minted name's label and chat key, deferring to a
+    /// pending claim when the user has no `LabelStore` yet.
+    /// @dev Warm path: when `factory.getLabelStore(user)` is non-zero the label is written
+    /// directly into the existing store under `node` (matching the registrar's
+    /// `_writeOwnerLabel` key convention) and the chat key (when non-empty) is persisted
+    /// on the PoP resolver. Cold path: the label and chat key are stashed and the call
+    /// returns `address(0)`.
+    /// @param user Owner of the new name.
+    /// @param label Bare DNS label (no TLD) being recorded.
+    /// @param labelhash `keccak256(bytes(label))`.
+    /// @param node `namehash(labelhash)`; the canonical `LabelStore` key for the entry.
+    /// @param chatKey Chat-key bytes; empty bytes skip the resolver write.
+    /// @return store The user's `LabelStore` address on the warm path, zero on the cold
+    /// path.
+    function _persistLabel(
+        address user,
+        string memory label,
+        bytes32 labelhash,
+        bytes32 node,
+        bytes memory chatKey
+    )
+        internal
+        returns (address store)
+    {
+        store = _storeFactory().getLabelStore(user);
+
+        if (store == address(0)) {
+            _stashPendingClaim(user, label, labelhash, chatKey);
+            return store;
+        }
+
+        _writeRecord(store, node, label, chatKey);
+    }
+
+    /// @notice Writes a name's label into `store` and persists its chat key on the
+    /// PoP resolver when non-empty.
+    /// @dev Single canonical persistence step shared by the warm gateway path and the
+    /// user-signed @custom:function claimLabelStore. The store key is `node`, matching
+    /// the registrar's `_writeOwnerLabel` convention. An empty `chatKey` skips the
+    /// resolver write.
+    /// @param store Owner's `LabelStore` proxy.
+    /// @param node `namehash(labelhash)` for the entry.
+    /// @param label Bare DNS label (no TLD); the TLD is appended on write.
+    /// @param chatKey Chat-key bytes; empty bytes skip the resolver write.
+    function _writeRecord(
+        address store,
+        bytes32 node,
+        string memory label,
+        bytes memory chatKey
+    )
+        internal
+    {
+        ILabelStore(store).storeLabel(node, string.concat(label, DotnsConstants.TLD));
+        if (chatKey.length != 0) {
+            _popResolver().setChatKey(node, chatKey);
+        }
+    }
+
+    /// @notice Records a deferred binding for `user` and adds them to the enumeration set.
+    /// @dev Reverts with `PendingClaimExists` when the user already holds an entry, or with
+    /// `ChatKeyTooLong` when the supplied key exceeds `MAX_CHAT_KEY_LENGTH`. Emits
+    /// @custom:emits PendingClaimStashed.
+    function _stashPendingClaim(
+        address user,
+        string memory label,
+        bytes32 labelhash,
+        bytes memory chatKey
+    )
+        internal
+    {
+        require(_pendingClaims[user].mintedAt == 0, PendingClaimExists(user));
+        require(chatKey.length <= MAX_CHAT_KEY_LENGTH, ChatKeyTooLong(chatKey.length));
+
+        _pendingClaims[user] =
+            PendingClaim({label: label, chatKey: chatKey, mintedAt: uint64(block.timestamp)});
+        _pendingClaimUsers.add(user);
+
+        emit PendingClaimStashed(user, labelhash, label);
+    }
+
+    /// @notice Clears a user's pending claim and removes them from the enumeration set.
+    function _clearPendingClaim(address user) internal {
+        delete _pendingClaims[user];
+        _pendingClaimUsers.remove(user);
     }
 
     /// @notice Returns whether a queue entry is expired relative to `block.timestamp`.
@@ -456,8 +670,13 @@ contract DotnsPopController is
         _userReservations[user] = UserReservation({labelhash: labelhash, index: index});
 
         if (becomesHead) {
-            _reservedBaseLabel[labelhash] = baseLabel;
-            _popRules().reserveBaseNameForPop(baseLabel, user);
+            // PopRules keys reservations by the digit-stripped stem; normalise here so
+            // the slot the public commit-reveal flow reads through `priceWithCheck`
+            // and the slot this controller writes are addressed by the same key.
+            IPopRules rules = _popRules();
+            string memory stem = rules.stripDigits(baseLabel);
+            _reservedBaseLabel[labelhash] = stem;
+            rules.reserveBaseNameForPop(stem, user);
         }
 
         emit ReservationQueued(labelhash, user, index - meta.head);
@@ -592,6 +811,16 @@ contract DotnsPopController is
         return IPopRules(protocolRegistry.get(DotnsConstants.POP_RULES));
     }
 
+    /// @notice Resolves the Store factory via the protocol registry.
+    function _storeFactory() internal view returns (IStoreFactory) {
+        return IStoreFactory(protocolRegistry.get(DotnsConstants.STORE_FACTORY));
+    }
+
+    /// @notice Resolves the registrar via the protocol registry.
+    function _registrar() internal view returns (IDotnsRegistrar) {
+        return IDotnsRegistrar(protocolRegistry.get(DotnsConstants.REGISTRAR));
+    }
+
     /// @notice Writes the new head of the queue into PopRules so the public commit-reveal flow
     /// rejects registrations of this base name for anyone other than `newHead`.
     function _syncPopRulesToHead(bytes32 labelhash, address newHead) internal {
@@ -603,6 +832,7 @@ contract DotnsPopController is
         IPopRules rules = _popRules();
         rules.releaseBaseName(baseLabel);
         rules.reserveBaseNameForPop(baseLabel, newHead);
+        emit ReservationHeadAdvanced(labelhash, newHead);
     }
 
     /// @notice Clears the PopRules slot and the local label bookkeeping when the queue empties
@@ -628,24 +858,16 @@ contract DotnsPopController is
 
     /// @notice Routes a raw cross-chain payload to the typed entrypoint identified by `selector`.
     /// @dev Prepends `selector` to `payload` and `delegatecall`s `address(this)` so the typed
-    /// overload runs in the original call context, making the typed path the
-    /// single source of truth. The `bytes` payload from the cross-chain caller is already
-    /// `abi.encode(StructTuple)`, so concatenating `selector with payload` is exactly the
+    /// overload runs in the original call context, making the typed path the single source of
+    /// truth. The `bytes` payload from the cross-chain caller is already
+    /// `abi.encode(StructTuple)`, so concatenating `selector` with `payload` is exactly the
     /// calldata the typed overload expects. Reverts bubble up byte-for-byte so the caller sees
-    /// the same error it would have seen on a direct typed call.
-    ///
-    /// Note: `onlyGateway` runs twice, once on the outer bytes overload and again on the
-    /// inner typed overload that the delegatecall lands on. The second check is a cheap,
-    /// intentional belt-and-braces; both checks read the same registry slot.
-    ///
-    /// Why the OZ unsafe-allow is acceptable here:
-    /// - The destination is hard-coded to `address(this)`, the proxy itself. No external
-    ///   contract ever runs in our storage context.
-    /// - `selector` is one of three module-private constants pointing at our own typed
-    ///   entrypoints. The caller cannot redirect the dispatch elsewhere.
-    /// - The proxy round-trip (proxy => impl => impl.delegatecall(this) => proxy => impl)
-    ///   ends in the same implementation, in the same storage context, that a direct
-    ///   typed call would land in.
+    /// the same error it would have seen on a direct typed call. The delegatecall target is
+    /// hard-coded to `address(this)` and `selector` is one of three module-private constants
+    /// pointing at this contract's own typed entrypoints, so storage context is preserved and
+    /// no external code can run in this contract's frame. @custom:function _onlyGateway runs
+    /// on both the outer bytes overload and the inner typed overload; both checks read the
+    /// same registry slot.
     /// @custom:oz-upgrades-unsafe-allow delegatecall
     function _dispatchTyped(bytes4 selector, bytes calldata payload) private {
         (bool ok, bytes memory ret) = address(this).delegatecall(bytes.concat(selector, payload));

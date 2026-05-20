@@ -180,15 +180,16 @@ contract DotnsRegistrarController is
         bool isReclaim = registrar.exists(tokenId);
 
         // On reclaim, clear a stale stem reservation only if it belongs to the
-        // prior occupant; otherwise a digit-suffixed reclaim would wipe an
-        // unrelated user's reservation under the same stem.
+        // prior occupant. `releaseReservationForReclaim` gates on owner match
+        // rather than caller identity so a slot stamped by the PoP controller
+        // can be cleared from the public-flow side when ownership matches.
         if (isReclaim) {
             string memory stem = rules.stripDigits(registration.label);
             (address reservationOwner,) = rules.getBaseNameReservation(stem);
             address previousOccupant =
                 IDotnsNameEscrow(payable(escrow)).getReleasePosition(tokenId).recipient;
             if (reservationOwner != address(0) && reservationOwner == previousOccupant) {
-                rules.releaseBaseName(stem);
+                rules.releaseReservationForReclaim(registration.label, previousOccupant);
             }
         }
 
@@ -375,8 +376,8 @@ contract DotnsRegistrarController is
     /// wires forward registry, optionally sets the reverse record, and writes the owner's
     /// Store.
     /// @dev On a fresh mint the triad of mint + forward-registry + store-write is delegated
-    /// to {RegistrationUtils-registerAndStore}, the single canonical implementation shared
-    /// across every DotNS registration flow. On a reclaim the mint step is skipped (the
+    /// to @custom:function RegistrationUtils.registerAndStore, the single canonical implementation
+    /// shared across every DotNS registration flow. On a reclaim the mint step is skipped (the
     /// escrow has already moved custody) and only the registry wiring and store write run.
     /// Reverse-record setting and the priced-registration event stay here because they are
     /// commit-reveal-specific policy.

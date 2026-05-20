@@ -7,7 +7,9 @@ import {
 } from "../../../contracts/registrars/IDotnsRegistrarController.sol";
 import {IDotnsPopController} from "../../../contracts/registrars/IDotnsPopController.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
+import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
 import {StringUtils} from "../../../contracts/utils/StringUtils.sol";
+import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Vm} from "forge-std/Vm.sol";
 
@@ -16,10 +18,9 @@ import {Vm} from "forge-std/Vm.sol";
 /// @dev Each fuzz replaces a family of near-identical unit tests with a single
 ///      property assertion the fuzzer explores across inputs.
 contract DotnsPopControllerFuzz is BaseDotns {
-    /// @notice Render `value` as a decimal string padded to at least two digits.
-    /// @dev Callers bound `value` to `[0, 99]` so the resulting suffix matches the
-    ///      `NAMEXX` contract used throughout the PoP controller tests; above 99 the
-    ///      string is still valid (digits-only) but wider than two characters.
+    // Render `value` as a decimal string padded to at least two digits. Callers bound
+    // `value` to `[0, 99]` so the resulting suffix matches the `NAMEXX` contract used
+    // throughout the PoP controller tests.
     function _twoDigitDecimal(uint256 value) internal pure returns (string memory s) {
         if (value < 10) return string.concat("0", StringUtils.uintToString(value));
         return StringUtils.uintToString(value);
@@ -234,6 +235,8 @@ contract DotnsPopControllerFuzz is BaseDotns {
                     liteLabel: LITE_LABEL_A_DOTTED, user: ed, chatKey: chatKey
                 })
             );
+            vm.prank(ed);
+            dotnsPopController.claimLabelStore();
             link = IDotnsPopController.Link({
                 kind: IDotnsPopController.LinkKind.LiteUsername,
                 liteLabel: LITE_LABEL_A_DOTTED,
@@ -296,7 +299,11 @@ contract DotnsPopControllerFuzz is BaseDotns {
     )
         public
     {
-        duration = uint64(bound(uint256(duration), 1, 365 days));
+        duration = uint64(
+            bound(
+                uint256(duration), uint256(dotnsPopController.MIN_RESERVATION_DURATION()), 365 days
+            )
+        );
         elapsed = uint64(bound(uint256(elapsed), 0, 365 days));
 
         vm.prank(owner);
@@ -317,6 +324,97 @@ contract DotnsPopControllerFuzz is BaseDotns {
         } else {
             assertFalse(reserved);
             assertEq(holder, address(0));
+        }
+    }
+
+    function testFuzz_gatewayReserve_cold_user_stashes_label_and_chat_key_exactly(
+        uint8 suffix,
+        bytes1 keySeed
+    )
+        public
+    {
+        suffix = uint8(bound(uint256(suffix), 0, 99));
+        string memory label = string.concat("coldfu", _twoDigitDecimal(uint256(suffix)));
+        bytes memory chatKey = _validChatKey(keySeed);
+
+        _grantPopLite(ed);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({liteLabel: label, user: ed, chatKey: chatKey})
+        );
+
+        IDotnsPopController.PendingClaim memory pending = dotnsPopController.pendingClaim(ed);
+        assertEq(pending.label, label);
+        assertEq(pending.chatKey, chatKey);
+        assertGt(pending.mintedAt, 0);
+        assertEq(storeFactory.getLabelStore(ed), address(0));
+    }
+
+    function testFuzz_claimLabelStore_settles_label_and_chat_key_exactly(
+        uint8 suffix,
+        bytes1 keySeed
+    )
+        public
+    {
+        suffix = uint8(bound(uint256(suffix), 0, 99));
+        string memory label = string.concat("warmfu", _twoDigitDecimal(uint256(suffix)));
+        bytes memory chatKey = _validChatKey(keySeed);
+
+        _grantPopLite(ed);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({liteLabel: label, user: ed, chatKey: chatKey})
+        );
+
+        vm.prank(ed);
+        dotnsPopController.claimLabelStore();
+
+        bytes32 node = _nodeOf(label);
+        address store = storeFactory.getLabelStore(ed);
+        assertTrue(store != address(0));
+        assertEq(ILabelStore(store).getLabel(node), string.concat(label, DotnsConstants.TLD));
+        assertEq(dotnsPopResolver.chatKey(node), chatKey);
+        assertEq(dotnsPopController.pendingClaim(ed).mintedAt, 0);
+    }
+
+    function testFuzz_pendingClaim_expiry_boundary_admits_or_lapses(
+        uint64 duration,
+        uint64 elapsed
+    )
+        public
+    {
+        duration = uint64(
+            bound(
+                uint256(duration), uint256(dotnsPopController.MIN_RESERVATION_DURATION()), 365 days
+            )
+        );
+        elapsed = uint64(bound(uint256(elapsed), 0, 365 days));
+
+        vm.prank(owner);
+        dotnsPopController.setReservationDuration(duration);
+
+        _grantPopLite(ed);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x77)
+            })
+        );
+
+        uint64 mintedAt = dotnsPopController.pendingClaim(ed).mintedAt;
+        vm.warp(uint256(mintedAt) + uint256(elapsed));
+
+        if (elapsed < duration) {
+            vm.expectRevert(
+                abi.encodeWithSelector(IDotnsPopController.PendingClaimNotExpired.selector, ed)
+            );
+            dotnsPopController.expirePendingClaim(ed);
+            vm.prank(ed);
+            dotnsPopController.claimLabelStore();
+            assertTrue(storeFactory.getLabelStore(ed) != address(0));
+        } else {
+            vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NoPendingClaim.selector, ed));
+            vm.prank(ed);
+            dotnsPopController.claimLabelStore();
+            dotnsPopController.expirePendingClaim(ed);
+            assertEq(storeFactory.getLabelStore(ed), address(0));
         }
     }
 }

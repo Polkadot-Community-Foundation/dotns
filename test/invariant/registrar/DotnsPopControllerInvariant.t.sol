@@ -4,6 +4,7 @@ pragma solidity ^0.8.34;
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {PopControllerHandler} from "./PopControllerHandler.t.sol";
 import {IDotnsPopController} from "../../../contracts/registrars/IDotnsPopController.sol";
+import {IStoreFactory} from "../../../contracts/store/IStoreFactory.sol";
 
 /// @title DotnsPopControllerInvariant
 /// @notice Invariants asserted over arbitrary sequences of PoP controller actions.
@@ -28,13 +29,15 @@ contract DotnsPopControllerInvariant is BaseDotns {
         handler = new PopControllerHandler(dotnsPopController, handlerActors);
         targetContract(address(handler));
 
-        bytes4[] memory selectors = new bytes4[](6);
+        bytes4[] memory selectors = new bytes4[](8);
         selectors[0] = handler.reserve.selector;
         selectors[1] = handler.relinquish.selector;
         selectors[2] = handler.expire.selector;
         selectors[3] = handler.warp.selector;
         selectors[4] = handler.claim.selector;
         selectors[5] = handler.reLink.selector;
+        selectors[6] = handler.settlePendingClaim.selector;
+        selectors[7] = handler.sweepPendingClaim.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
     }
 
@@ -118,7 +121,7 @@ contract DotnsPopControllerInvariant is BaseDotns {
     ///         forward and reverse indexes either still round-trip to each
     ///         other or have both been cleared by a later overwrite. A partial
     ///         overwrite, where one side still points at a stale partner, is
-    ///         the M-03 corruption signature.
+    ///         the corruption signature this invariant guards against.
     function invariant_fullClaim_liteLink_are_inverse() public view {
         uint256 n = handler.claimedCount();
         for (uint256 i = 0; i < n; i++) {
@@ -142,8 +145,8 @@ contract DotnsPopControllerInvariant is BaseDotns {
 
     /// @notice No stale `liteLink`: for every touched fullNode, a non-zero
     ///         liteLink value round-trips through `fullClaim` back to the same
-    ///         fullNode. A drifting liteLink is the exact footprint of the
-    ///         M-03 overwrite corruption.
+    ///         fullNode. A drifting liteLink is the corruption footprint this
+    ///         invariant guards against.
     function invariant_no_stale_liteLink() public view {
         uint256 n = handler.claimedCount();
         for (uint256 i = 0; i < n; i++) {
@@ -164,6 +167,84 @@ contract DotnsPopControllerInvariant is BaseDotns {
             bytes32 currentFull = dotnsPopResolver.fullClaim(liteLabelhash);
             if (currentFull == bytes32(0)) continue;
             assertEq(dotnsPopResolver.liteLink(currentFull), liteLabelhash, "stale fullClaim");
+        }
+    }
+
+    /// @notice `pendingClaimUsers()` membership mirrors the live key set of
+    ///         the `_pendingClaims` mapping exactly. Every actor with a
+    ///         non-zero `mintedAt` appears in the enumeration, and every
+    ///         entry in the enumeration has a non-zero `mintedAt` and is one
+    ///         of the actors the handler has stashed for.
+    function invariant_pendingClaimUsers_mirrors_pendingClaims_mapping() public view {
+        uint256 enumCount = dotnsPopController.pendingClaimUserCount();
+        address[] memory enumerated = dotnsPopController.pendingClaimUsers(0, enumCount);
+        assertEq(enumerated.length, enumCount, "pendingClaimUsers length mismatch");
+
+        for (uint256 i = 0; i < enumerated.length; i++) {
+            IDotnsPopController.PendingClaim memory pending =
+                dotnsPopController.pendingClaim(enumerated[i]);
+            assertGt(pending.mintedAt, 0, "enumerated user has no pending claim");
+        }
+
+        uint256 seen = handler.pendingClaimActorsSeenCount();
+        for (uint256 i = 0; i < seen; i++) {
+            address actor = handler.pendingClaimActorsSeen(i);
+            IDotnsPopController.PendingClaim memory pending = dotnsPopController.pendingClaim(actor);
+            if (pending.mintedAt == 0) continue;
+            bool found;
+            for (uint256 j = 0; j < enumerated.length; j++) {
+                if (enumerated[j] == actor) {
+                    found = true;
+                    break;
+                }
+            }
+            assertTrue(found, "actor with mintedAt missing from pendingClaimUsers");
+        }
+    }
+
+    /// @notice A user with a deployed `LabelStore` cannot simultaneously hold a
+    ///         pending claim: settlement deploys the store and clears the
+    ///         entry in the same call, expiry clears without deploying.
+    function invariant_pending_claim_and_label_store_are_mutually_exclusive() public view {
+        IStoreFactory factory = IStoreFactory(address(storeFactory));
+        uint256 seen = handler.pendingClaimActorsSeenCount();
+        for (uint256 i = 0; i < seen; i++) {
+            address actor = handler.pendingClaimActorsSeen(i);
+            if (factory.getLabelStore(actor) == address(0)) continue;
+            IDotnsPopController.PendingClaim memory pending = dotnsPopController.pendingClaim(actor);
+            assertEq(pending.mintedAt, 0, "actor has both store and pending claim");
+        }
+    }
+
+    /// @notice `pendingClaimUserCount()` equals the length of the enumeration
+    ///         slice taken with offset zero and a generous limit. Catches
+    ///         pagination accounting drift.
+    function invariant_pendingClaimUserCount_matches_enumeration_length() public view {
+        uint256 count = dotnsPopController.pendingClaimUserCount();
+        address[] memory page = dotnsPopController.pendingClaimUsers(0, count == 0 ? 1 : count);
+        assertEq(page.length, count, "count != enumeration length");
+    }
+
+    /// @notice An expired pending-claim entry can always be swept. Asserts that
+    ///         for every tracked actor whose `mintedAt` has lapsed past
+    ///         `reservationDuration`, a permissionless `expirePendingClaim`
+    ///         clears the entry without revert.
+    /// @dev Cannot mutate state inside an invariant assertion, so the property
+    ///      is asserted indirectly: if the entry is past its deadline, the
+    ///      handler has had opportunities to sweep it during the run; under a
+    ///      sufficient depth the post-state must show such entries cleared.
+    ///      A stronger formulation would require a depth-bounded sweep
+    ///      guarantee, which is out of scope for view-only invariants.
+    function invariant_no_stuck_lapsed_pending_claims() public view {
+        uint64 duration = dotnsPopController.reservationDuration();
+        if (duration == 0) return;
+        uint256 seen = handler.pendingClaimActorsSeenCount();
+        for (uint256 i = 0; i < seen; i++) {
+            address actor = handler.pendingClaimActorsSeen(i);
+            IDotnsPopController.PendingClaim memory pending = dotnsPopController.pendingClaim(actor);
+            if (pending.mintedAt == 0) continue;
+            uint256 deadline = uint256(pending.mintedAt) + uint256(duration);
+            assertLe(block.timestamp, deadline + uint256(duration), "lapsed entry stuck past grace");
         }
     }
 }

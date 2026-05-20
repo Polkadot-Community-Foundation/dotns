@@ -5,23 +5,25 @@ import {IDotnsController} from "./IDotnsController.sol";
 
 /// @title IDotnsPopController
 /// @notice Interface for the dedicated PoP controller orchestrating lite-person and full-person
-/// username issuance on behalf of the PoP gateway pallet. @dev Deliberately disjoint from
-/// `IDotnsRegistrarController`. The two controllers coexist
-/// on `DotnsRegistrar` via its multi-controller affordance and neither imports the other.
-/// Collision handling reduces to the registrar's ERC721 availability check (first-to-mint
-/// wins). Reservation queuing for `reservedBaseLabel` is an intra-PoP coordination mechanism
-/// only; it does not block public registrations.
+/// username issuance on behalf of the PoP gateway pallet.
+/// @dev Deliberately disjoint from @custom:contract IDotnsRegistrarController. The two
+/// controllers coexist on @custom:contract DotnsRegistrar via its multi-controller affordance
+/// and neither imports the other. Collision handling reduces to the registrar's ERC721
+/// availability check (first-to-mint wins). Reservation queuing for `reservedBaseLabel` is
+/// an intra-PoP coordination mechanism only; it does not block public registrations.
 ///
 /// Label formats:
-/// Lite-person usernames (first argument to {reserveBaseName} and the `liteLabel` of a
-/// `LinkKind.LiteUsername` link) are DNS labels with at least two trailing digits (e.g.
-/// `alice42`) per {StringUtils-isLitePersonLabel}. The gateway strips any separator before
-/// calling so the on-chain label is flat. Full-person usernames (the `label` of
-/// {registerBaseName} and the optional `reservedBaseLabel` of {reserveBaseName}) follow the
-/// DNS-label rules enforced by {StringUtils-isSingleLabel} (e.g. `alice`). Lite and public
-/// registrations share one namespace; first-to-mint wins at the ERC721 layer. Cross-flow
-/// priority on the stripped base stem is arbitrated by @custom:function
-/// IPopRules.reserveBaseNameForPop. @custom:security-contact admin@parity.io
+/// Lite-person usernames (first argument to @custom:function reserveBaseName and the
+/// `liteLabel` of a `LinkKind.LiteUsername` link) are DNS labels with at least two
+/// trailing digits (e.g. `alice42`) per @custom:function StringUtils.isLitePersonLabel.
+/// The gateway strips any separator before calling so the on-chain label is flat.
+/// Full-person usernames (the `label` of @custom:function registerBaseName and the
+/// optional `reservedBaseLabel` of @custom:function reserveBaseName) follow the
+/// DNS-label rules enforced by @custom:function StringUtils.isSingleLabel (e.g.
+/// `alice`). Lite and public registrations share one namespace; first-to-mint wins at
+/// the ERC721 layer. Cross-flow priority on the stripped base stem is arbitrated by
+/// @custom:function IPopRules.reserveBaseNameForPop.
+/// @custom:security-contact admin@parity.io
 interface IDotnsPopController is IDotnsController {
     /// @notice Discriminant for the `Link` union supplied to `registerBaseName`.
     /// @dev Selects the chat-key source for the full-person username. Orthogonal to whether
@@ -65,6 +67,22 @@ interface IDotnsPopController is IDotnsController {
     struct ReservationQueueMeta {
         uint64 head;
         uint64 tail;
+    }
+
+    /// @notice Deferred per-user binding of a freshly minted name to its `LabelStore`.
+    /// @dev Recorded by the gateway path when the user has no `LabelStore`. The user
+    /// later settles the binding via @custom:function claimLabelStore, which deploys
+    /// the store from a signed origin and writes the stashed label and chat key. An
+    /// entry exists iff `mintedAt` is non-zero; the slot is cleared on settlement or
+    /// expiry. Expiry is measured from `mintedAt` against `reservationDuration`.
+    /// @param label Bare DNS label (no TLD); the TLD is appended at settlement time.
+    /// @param chatKey Chat-key bytes persisted on the PoP resolver at settlement; empty
+    /// bytes skip the resolver write.
+    /// @param mintedAt Timestamp of the originating mint.
+    struct PendingClaim {
+        string label;
+        bytes chatKey;
+        uint64 mintedAt;
     }
 
     /// @notice Lite-person registration payload.
@@ -136,6 +154,24 @@ interface IDotnsPopController is IDotnsController {
         string indexed label, bytes32 indexed labelhash, address indexed owner, address store
     );
 
+    /// @notice Emitted when a gateway-path mint defers its `LabelStore` write into the
+    /// pending-claim mapping because the user has no store yet.
+    event PendingClaimStashed(address indexed user, bytes32 indexed labelhash, string label);
+
+    /// @notice Emitted when a user settles a deferred binding by deploying their
+    /// `LabelStore` and backfilling the stashed label and chat key.
+    event PendingClaimSettled(address indexed user, bytes32 indexed labelhash, address store);
+
+    /// @notice Emitted when a deferred binding is reaped because it sat unsettled past
+    /// `reservationDuration`.
+    event PendingClaimExpired(address indexed user, bytes32 indexed labelhash);
+
+    /// @notice Emitted when a reservation queue's head transitions to a new user, either via
+    /// expiry of the prior head or via the explicit relinquish path.
+    /// @param labelhash Base-label hash whose queue head changed.
+    /// @param newHead Address now holding the head slot.
+    event ReservationHeadAdvanced(bytes32 indexed labelhash, address indexed newHead);
+
     /// @notice Thrown when a gated entrypoint is reached from an address that
     ///         is not the gateway registered on the protocol registry under
     ///         the PoP gateway key.
@@ -166,6 +202,38 @@ interface IDotnsPopController is IDotnsController {
     /// holds the live head-of-queue reservation.
     error NotHolder(address user, bytes32 labelhash);
 
+    /// @notice Thrown when @custom:function claimLabelStore is called by a user with no
+    /// recorded pending-claim entry.
+    /// @param user Caller observed by the controller.
+    error NoPendingClaim(address user);
+
+    /// @notice Thrown when the gateway path tries to stash a second pending claim for a
+    /// user who already has one outstanding.
+    /// @param user Address that already holds a pending claim.
+    error PendingClaimExists(address user);
+
+    /// @notice Thrown when @custom:function expirePendingClaim is invoked before the
+    /// entry's `mintedAt + reservationDuration` deadline.
+    /// @param user Address whose entry is being inspected.
+    error PendingClaimNotExpired(address user);
+
+    /// @notice Thrown when a lite-link inheritance does not match the registrar-side owner
+    /// of the lite label.
+    /// @dev Prevents identity hijack by ensuring the registrant on the full-name leg actually
+    /// holds the prior lite identity whose chat key is being inherited.
+    /// @param user Registrant supplied by the gateway.
+    /// @param liteLabelhash Lite label whose ownership did not match.
+    error LiteLabelNotOwnedByUser(address user, bytes32 liteLabelhash);
+
+    /// @notice Thrown when a chat-key payload exceeds the controller's per-entry length cap.
+    /// @param length Caller-supplied length, in bytes.
+    error ChatKeyTooLong(uint256 length);
+
+    /// @notice Thrown when @custom:function setReservationDuration is called with a value below
+    /// the protocol minimum.
+    /// @param duration Caller-supplied duration, in seconds.
+    error ReservationDurationTooLow(uint64 duration);
+
     /// @notice Registers a lite-person username on behalf of the supplied user
     /// and optionally enqueues a reservation for a base name they intend to
     /// claim as a full person later.
@@ -187,7 +255,7 @@ interface IDotnsPopController is IDotnsController {
     /// @param params Reservation request; see @custom:struct BaseReservation.
     function reserveBaseName(BaseReservation calldata params) external;
 
-    /// @notice Raw-payload variant of {reserveBaseName} for cross-chain dispatch.
+    /// @notice Raw-payload variant of @custom:function reserveBaseName for cross-chain dispatch.
     /// @dev `payload` is `abi.encode(BaseReservation({...}))`, the bare ABI-encoded struct
     /// with NO function-selector prefix and NO leading bytes-length word. The contract
     /// prepends the typed selector and `delegatecall`s itself so the typed entrypoint runs
@@ -218,7 +286,7 @@ interface IDotnsPopController is IDotnsController {
     /// @param params Registration request; see @custom:struct LiteRegistration.
     function reserveLiteName(LiteRegistration calldata params) external;
 
-    /// @notice Raw-payload variant of {reserveLiteName} for cross-chain dispatch.
+    /// @notice Raw-payload variant of @custom:function reserveLiteName for cross-chain dispatch.
     /// @dev `payload` is `abi.encode(LiteRegistration({...}))`, the bare ABI-encoded struct
     /// with NO function-selector prefix and NO leading bytes-length word. The contract
     /// prepends the typed selector and `delegatecall`s itself so the typed entrypoint runs
@@ -260,7 +328,7 @@ interface IDotnsPopController is IDotnsController {
     /// @param params Registration request; see @custom:struct FullRegistration.
     function registerBaseName(FullRegistration calldata params) external;
 
-    /// @notice Raw-payload variant of {registerBaseName} for cross-chain dispatch.
+    /// @notice Raw-payload variant of @custom:function registerBaseName for cross-chain dispatch.
     /// @dev `payload` is `abi.encode(FullRegistration({...}))`, the bare ABI-encoded struct
     /// with NO function-selector prefix and NO leading bytes-length word. The contract
     /// prepends the typed selector and `delegatecall`s itself so the typed entrypoint runs
@@ -318,8 +386,8 @@ interface IDotnsPopController is IDotnsController {
 
     /// @notice Returns the queue entry at `index` for `labelhash`.
     /// @dev Sparse storage: a zero `entryOwner` means the slot was relinquished, expired and
-    /// reaped, or never written. Callers pair this with {reservationMeta} to walk the live
-    /// window `[head, tail)`.
+    /// reaped, or never written. Callers pair this with @custom:function reservationMeta to walk
+    /// the live window `[head, tail)`.
     /// @param labelhash Keccak-256 of the base label whose queue is being read.
     /// @param index Queue index to look up.
     /// @return entryOwner Owner of the slot (zero if empty/relinquished).
@@ -342,4 +410,55 @@ interface IDotnsPopController is IDotnsController {
         external
         view
         returns (UserReservation memory reservation);
+
+    /// @notice Settles the caller's deferred binding by deploying their `LabelStore` and
+    /// writing the stashed label and chat key.
+    /// @dev User-signed entrypoint: `pallet-revive` charges the `LabelStore` storage
+    /// deposit against `msg.sender`'s balance through the runtime's configured deposit
+    /// backend. Reverts with @custom:reverts NoPendingClaim when the caller has no
+    /// stashed entry or the entry has lapsed past `reservationDuration`. On success
+    /// deploys the store via the protocol-registered factory, writes the label keyed by
+    /// its labelhash, persists the chat key on the PoP resolver when non-empty, deletes
+    /// the pending-claim entry, and emits @custom:emits PendingClaimSettled and
+    /// @custom:emits NameRegistered.
+    function claimLabelStore() external;
+
+    /// @notice Permissionlessly reaps a deferred binding that sat unsettled past
+    /// `pendingClaimDuration`.
+    /// @dev Permissionless on purpose: anyone (typically a UI or a bot) can poke a
+    /// stale entry so the slot frees up for the next gateway-path mint. Reverts with
+    /// @custom:reverts NoPendingClaim when the user has no stashed entry and with
+    /// @custom:reverts PendingClaimNotExpired when the entry is still live. Emits
+    /// @custom:emits PendingClaimExpired on success.
+    /// @param user Address whose pending claim is being swept.
+    function expirePendingClaim(address user) external;
+
+    /// @notice Returns `user`'s pending-claim entry.
+    /// @dev A zero `mintedAt` on the returned struct means the user has no pending
+    /// claim; the remaining fields are meaningful only when `mintedAt` is non-zero.
+    /// @param user Account whose pending claim is being read.
+    /// @return claim Per-user pending-claim entry; see @custom:struct PendingClaim.
+    function pendingClaim(address user) external view returns (PendingClaim memory claim);
+
+    /// @notice Returns the number of users with a live pending claim.
+    /// @dev Exact live count, not an all-time tally: settled and expired entries are
+    /// removed from the enumeration set so off-chain consumers can page through every
+    /// stalled user without filtering.
+    /// @return count Number of users currently holding a pending claim.
+    function pendingClaimUserCount() external view returns (uint256 count);
+
+    /// @notice Returns a paginated slice of users with a live pending claim.
+    /// @dev Pair with @custom:function pendingClaim to read each user's stashed entry.
+    /// Ordering is not chronological; callers MUST NOT assume `mintedAt` is monotonic
+    /// across the slice. Returns an empty array when `offset` is past the live count.
+    /// @param offset Start index.
+    /// @param limit Maximum entries to return.
+    /// @return users Slice of users currently holding a pending claim.
+    function pendingClaimUsers(
+        uint256 offset,
+        uint256 limit
+    )
+        external
+        view
+        returns (address[] memory users);
 }

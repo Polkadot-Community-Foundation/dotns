@@ -65,6 +65,9 @@ contract StoreIntegrationTest is BaseDotns {
             IDotnsPopController.FullRegistration({label: base, user: ed, link: _linkFresh(chatKey)})
         );
 
+        vm.prank(ed);
+        dotnsPopController.claimLabelStore();
+
         address storeAddr = storeFactory.getLabelStore(ed);
         assertTrue(storeAddr != address(0));
 

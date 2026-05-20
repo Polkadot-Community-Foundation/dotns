@@ -10,13 +10,13 @@ import {IDotnsRegistrarController} from "../../contracts/registrars/IDotnsRegist
 ///         pinned down against the reclaim path's `safeTransferFrom`.
 contract ReentrantOwner is IERC721Receiver {
     /// @notice Controller the receiver re-enters on the callback.
-    IDotnsRegistrarController public immutable controller;
+    IDotnsRegistrarController public immutable CONTROLLER;
     /// @notice Registration payload the receiver replays inside `onERC721Received`.
     IDotnsRegistrarController.Registration public registration;
 
     /// @notice Binds the receiver to the controller it will attempt to re-enter.
-    constructor(IDotnsRegistrarController _controller) {
-        controller = _controller;
+    constructor(IDotnsRegistrarController controller) {
+        CONTROLLER = controller;
     }
 
     /// @notice Stores the registration payload the receiver will replay inside the callback.
@@ -35,7 +35,7 @@ contract ReentrantOwner is IERC721Receiver {
         override
         returns (bytes4)
     {
-        controller.register{value: 0}(registration);
+        CONTROLLER.register{value: 0}(registration);
         return IERC721Receiver.onERC721Received.selector;
     }
 
