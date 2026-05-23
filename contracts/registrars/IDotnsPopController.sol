@@ -72,16 +72,16 @@ interface IDotnsPopController is IDotnsController {
     /// @notice Deferred per-user binding of a freshly minted name to its `LabelStore`.
     /// @dev Recorded by the gateway path when the user has no `LabelStore`. The user
     /// later settles the binding via @custom:function claimLabelStore, which deploys
-    /// the store from a signed origin and writes the stashed label and chat key. An
-    /// entry exists iff `mintedAt` is non-zero; the slot is cleared on settlement or
+    /// the store from a signed origin and writes the stashed label. PoP-resolver records
+    /// (chat key, lite link) are persisted eagerly at mint time on
+    /// @custom:contract IDotnsPopResolver, not at settlement, so the resolver carries
+    /// the full identity record regardless of whether the user has settled their Store.
+    /// An entry exists iff `mintedAt` is non-zero; the slot is cleared on settlement or
     /// expiry. Expiry is measured from `mintedAt` against `reservationDuration`.
     /// @param label Bare DNS label (no TLD); the TLD is appended at settlement time.
-    /// @param chatKey Chat-key bytes persisted on the PoP resolver at settlement; empty
-    /// bytes skip the resolver write.
     /// @param mintedAt Timestamp of the originating mint.
     struct PendingClaim {
         string label;
-        bytes chatKey;
         uint64 mintedAt;
     }
 
@@ -224,10 +224,6 @@ interface IDotnsPopController is IDotnsController {
     /// @param user Registrant supplied by the gateway.
     /// @param liteLabelhash Lite label whose ownership did not match.
     error LiteLabelNotOwnedByUser(address user, bytes32 liteLabelhash);
-
-    /// @notice Thrown when a chat-key payload exceeds the controller's per-entry length cap.
-    /// @param length Caller-supplied length, in bytes.
-    error ChatKeyTooLong(uint256 length);
 
     /// @notice Thrown when @custom:function setReservationDuration is called with a value below
     /// the protocol minimum.
@@ -412,15 +408,16 @@ interface IDotnsPopController is IDotnsController {
         returns (UserReservation memory reservation);
 
     /// @notice Settles the caller's deferred binding by deploying their `LabelStore` and
-    /// writing the stashed label and chat key.
+    /// writing the stashed label.
     /// @dev User-signed entrypoint: `pallet-revive` charges the `LabelStore` storage
     /// deposit against `msg.sender`'s balance through the runtime's configured deposit
     /// backend. Reverts with @custom:reverts NoPendingClaim when the caller has no
     /// stashed entry or the entry has lapsed past `reservationDuration`. On success
     /// deploys the store via the protocol-registered factory, writes the label keyed by
-    /// its labelhash, persists the chat key on the PoP resolver when non-empty, deletes
-    /// the pending-claim entry, and emits @custom:emits PendingClaimSettled and
-    /// @custom:emits NameRegistered.
+    /// its labelhash, deletes the pending-claim entry, and emits
+    /// @custom:emits PendingClaimSettled and @custom:emits NameRegistered. Chat-key and
+    /// lite-link records are not touched here; they are persisted on the PoP resolver at
+    /// mint time, not at settlement.
     function claimLabelStore() external;
 
     /// @notice Permissionlessly reaps a deferred binding that sat unsettled past

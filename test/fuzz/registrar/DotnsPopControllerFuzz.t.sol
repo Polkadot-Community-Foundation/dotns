@@ -344,9 +344,12 @@ contract DotnsPopControllerFuzz is BaseDotns {
 
         IDotnsPopController.PendingClaim memory pending = dotnsPopController.pendingClaim(ed);
         assertEq(pending.label, label);
-        assertEq(pending.chatKey, chatKey);
         assertGt(pending.mintedAt, 0);
         assertEq(storeFactory.getLabelStore(ed), address(0));
+        // Chat key is persisted eagerly on the resolver at reserve time, even though
+        // the LabelStore write is deferred to settlement on the cold path.
+        bytes32 node = _nodeOf(label);
+        assertEq(dotnsPopResolver.chatKey(node), chatKey);
     }
 
     function testFuzz_claimLabelStore_settles_label_and_chat_key_exactly(

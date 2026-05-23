@@ -113,11 +113,12 @@ contract PopLifecycleFlow is BaseDotns {
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(liteNode)), ed);
         assertEq(dotnsRegistry.owner(liteNode), ed);
         assertEq(storeFactory.getLabelStore(ed), address(0));
-        assertEq(dotnsPopResolver.chatKey(liteNode), bytes(""));
+        // Chat key is persisted eagerly on the resolver at reserve time; only the
+        // LabelStore write is deferred for cold-path users.
+        assertEq(dotnsPopResolver.chatKey(liteNode), CHAT_KEY);
 
         IDotnsPopController.PendingClaim memory pending = dotnsPopController.pendingClaim(ed);
         assertEq(pending.label, LITE_LABEL);
-        assertEq(pending.chatKey, CHAT_KEY);
         assertGt(pending.mintedAt, 0);
 
         vm.prank(ed);
@@ -158,7 +159,7 @@ contract PopLifecycleFlow is BaseDotns {
 
         IDotnsPopController.PendingClaim memory second = dotnsPopController.pendingClaim(ed);
         assertEq(second.label, secondLabel);
-        assertEq(second.chatKey, secondKey);
+        assertEq(dotnsPopResolver.chatKey(_nodeOf(secondLabel)), secondKey);
         assertGt(second.mintedAt, firstMintedAt);
         assertEq(dotnsPopController.pendingClaimUserCount(), 1);
     }

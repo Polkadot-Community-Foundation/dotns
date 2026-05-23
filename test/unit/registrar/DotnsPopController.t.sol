@@ -969,11 +969,12 @@ contract DotnsPopControllerTests is BaseDotns {
         bytes32 node = _nodeOf(LITE_LABEL_A);
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(node)), ed);
         assertEq(storeFactory.getLabelStore(ed), address(0));
-        assertEq(dotnsPopResolver.chatKey(node), bytes(""));
+        // Chat key is now persisted eagerly on the resolver at reserve time, even when
+        // the user has no LabelStore yet.
+        assertEq(dotnsPopResolver.chatKey(node), chatKey);
 
         IDotnsPopController.PendingClaim memory pending = dotnsPopController.pendingClaim(ed);
         assertEq(pending.label, LITE_LABEL_A);
-        assertEq(pending.chatKey, chatKey);
         assertGt(pending.mintedAt, 0);
     }
 
@@ -1104,7 +1105,6 @@ contract DotnsPopControllerTests is BaseDotns {
         IDotnsPopController.PendingClaim memory pending = dotnsPopController.pendingClaim(ed);
         assertEq(pending.mintedAt, 0);
         assertEq(pending.label, "");
-        assertEq(pending.chatKey, bytes(""));
     }
 
     function test_pendingClaimUsers_enumeration_mirrors_stash_and_settle() public {
@@ -1193,7 +1193,6 @@ contract DotnsPopControllerTests is BaseDotns {
 
         IDotnsPopController.PendingClaim memory pending = dotnsPopController.pendingClaim(ed);
         assertEq(pending.label, LITE_LABEL_A);
-        assertEq(pending.chatKey, chatKey);
         assertGt(pending.mintedAt, 0);
         assertEq(storeFactory.getLabelStore(ed), address(0));
         assertEq(storeFactory.getLabelStore(tiago), address(0));

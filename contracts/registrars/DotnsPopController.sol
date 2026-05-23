@@ -79,13 +79,6 @@ contract DotnsPopController is
     /// @dev Keeps `expireReservation` gas bounded.
     uint16 public constant MAX_RESERVATION_QUEUE = 64;
 
-    /// @notice Maximum chat-key payload length the controller is willing to stash on the
-    /// pending-claim ledger.
-    /// @dev Uncompressed secp256k1 public keys are 65 bytes (0x04 prefix + X + Y); compressed
-    /// keys are 33 bytes. A 65-byte cap accommodates either and prevents the gateway path
-    /// from being abused to dump arbitrary blobs into per-user storage.
-    uint16 public constant MAX_CHAT_KEY_LENGTH = 65;
-
     /// @notice Minimum value accepted by @custom:function setReservationDuration.
     /// @dev Prevents owner misconfiguration from instantly expiring every live queue and
     /// pending-claim entry. The actual production duration is governance-tuned higher.
@@ -371,7 +364,7 @@ contract DotnsPopController is
             store = factory.deployLabelStoreFor(msg.sender);
         }
 
-        _writeRecord(store, node, claim_.label, claim_.chatKey);
+        _writeRecord(store, node, claim_.label);
 
         _clearPendingClaim(msg.sender);
 
@@ -515,8 +508,10 @@ contract DotnsPopController is
     /// commit-reveal flow share exactly one implementation of that sequence. The label is passed
     /// empty so
     /// the registrar does not deploy a `LabelStore`; substrate Root cannot run the
-    /// `LabelStore` constructor under `pallet-revive`. PoP-flow per-name records live on
-    /// @custom:contract IDotnsPopResolver rather than on the Store so the Store stays
+    /// `LabelStore` constructor under `pallet-revive`. PoP-flow per-name records (chat key,
+    /// lite link) are persisted eagerly on @custom:contract IDotnsPopResolver here, before
+    /// the label is written, so the resolver carries the full identity record from mint time
+    /// regardless of whether the owner already has a `LabelStore`. The Store stays
     /// labels-only. Emits @custom:emits NameRegistered on the warm path; the cold path
     /// emits @custom:emits PendingClaimStashed and graduates to NameRegistered when the
     /// user settles.
@@ -540,37 +535,39 @@ contract DotnsPopController is
             })
         );
 
-        address store = _persistLabel(user, label, labelhash, node, chatKeyBytes);
-
+        if (chatKeyBytes.length != 0) {
+            _popResolver().setChatKey(node, chatKeyBytes);
+        }
         if (liteLabelhash != bytes32(0)) {
             _popResolver().setLiteLink(node, liteLabelhash);
         }
+
+        address store = _persistLabel(user, label, labelhash, node);
 
         if (store != address(0)) {
             emit NameRegistered(label, labelhash, user, store);
         }
     }
 
-    /// @notice Writes a freshly minted name's label and chat key, deferring to a
-    /// pending claim when the user has no `LabelStore` yet.
+    /// @notice Writes a freshly minted name's label, deferring to a pending claim when
+    /// the user has no `LabelStore` yet.
     /// @dev Warm path: when `factory.getLabelStore(user)` is non-zero the label is written
     /// directly into the existing store under `node` (matching the registrar's
-    /// `_writeOwnerLabel` key convention) and the chat key (when non-empty) is persisted
-    /// on the PoP resolver. Cold path: the label and chat key are stashed and the call
-    /// returns `address(0)`.
+    /// `_writeOwnerLabel` key convention). Cold path: the label is stashed and the call
+    /// returns `address(0)`. Chat-key persistence on the PoP resolver happens eagerly in
+    /// @custom:function _completeGatewayRegistration before this function runs, so the
+    /// resolver record is independent of whether the owner already has a `LabelStore`.
     /// @param user Owner of the new name.
     /// @param label Bare DNS label (no TLD) being recorded.
     /// @param labelhash `keccak256(bytes(label))`.
     /// @param node `namehash(labelhash)`; the canonical `LabelStore` key for the entry.
-    /// @param chatKey Chat-key bytes; empty bytes skip the resolver write.
     /// @return store The user's `LabelStore` address on the warm path, zero on the cold
     /// path.
     function _persistLabel(
         address user,
         string memory label,
         bytes32 labelhash,
-        bytes32 node,
-        bytes memory chatKey
+        bytes32 node
     )
         internal
         returns (address store)
@@ -578,54 +575,44 @@ contract DotnsPopController is
         store = _storeFactory().getLabelStore(user);
 
         if (store == address(0)) {
-            _stashPendingClaim(user, label, labelhash, chatKey);
+            _stashPendingClaim(user, label, labelhash);
             return store;
         }
 
-        _writeRecord(store, node, label, chatKey);
+        _writeRecord(store, node, label);
     }
 
-    /// @notice Writes a name's label into `store` and persists its chat key on the
-    /// PoP resolver when non-empty.
+    /// @notice Writes a name's label into `store`.
     /// @dev Single canonical persistence step shared by the warm gateway path and the
     /// user-signed @custom:function claimLabelStore. The store key is `node`, matching
-    /// the registrar's `_writeOwnerLabel` convention. An empty `chatKey` skips the
-    /// resolver write.
+    /// the registrar's `_writeOwnerLabel` convention.
     /// @param store Owner's `LabelStore` proxy.
     /// @param node `namehash(labelhash)` for the entry.
     /// @param label Bare DNS label (no TLD); the TLD is appended on write.
-    /// @param chatKey Chat-key bytes; empty bytes skip the resolver write.
     function _writeRecord(
         address store,
         bytes32 node,
-        string memory label,
-        bytes memory chatKey
+        string memory label
     )
         internal
     {
         ILabelStore(store).storeLabel(node, string.concat(label, DotnsConstants.TLD));
-        if (chatKey.length != 0) {
-            _popResolver().setChatKey(node, chatKey);
-        }
     }
 
     /// @notice Records a deferred binding for `user` and adds them to the enumeration set.
-    /// @dev Reverts with `PendingClaimExists` when the user already holds an entry, or with
-    /// `ChatKeyTooLong` when the supplied key exceeds `MAX_CHAT_KEY_LENGTH`. Emits
+    /// @dev Reverts with `PendingClaimExists` when the user already holds an entry. Emits
     /// @custom:emits PendingClaimStashed.
     function _stashPendingClaim(
         address user,
         string memory label,
-        bytes32 labelhash,
-        bytes memory chatKey
+        bytes32 labelhash
     )
         internal
     {
         require(_pendingClaims[user].mintedAt == 0, PendingClaimExists(user));
-        require(chatKey.length <= MAX_CHAT_KEY_LENGTH, ChatKeyTooLong(chatKey.length));
 
         _pendingClaims[user] =
-            PendingClaim({label: label, chatKey: chatKey, mintedAt: uint64(block.timestamp)});
+            PendingClaim({label: label, mintedAt: uint64(block.timestamp)});
         _pendingClaimUsers.add(user);
 
         emit PendingClaimStashed(user, labelhash, label);

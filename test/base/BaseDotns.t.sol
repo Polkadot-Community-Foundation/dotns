@@ -419,10 +419,11 @@ abstract contract BaseDotns is Test {
     /// @dev Single canonical helper for PoP-gateway reservations across unit and fuzz
     /// test suites. Pranks from the gateway stand-in installed during setUp, which
     /// mirrors how the Root gateway dispatcher appears to the controller in production.
-    /// The auto-settle deploys the user's `LabelStore` and writes the stashed label and
-    /// chat key so subsequent gateway mints for the same user take the warm path and
-    /// assertions against the resolver and store hold. Tests that want to observe
-    /// cold-path semantics (label and chat key stashed, no store deployed) must call
+    /// The auto-settle deploys the user's `LabelStore` and writes the stashed label so
+    /// subsequent gateway mints for the same user take the warm path and assertions
+    /// against the resolver and store hold. Chat keys are persisted eagerly on the PoP
+    /// resolver at reserve time regardless of settlement. Tests that want to observe
+    /// cold-path semantics (label stashed, no store deployed) must call
     /// @custom:function _gatewayReserveBaseName or @custom:function _gatewayReserveLiteName
     /// directly.
     function _reservePop(
