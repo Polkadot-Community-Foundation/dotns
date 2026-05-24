@@ -103,7 +103,7 @@ Subnames are created by the base-name owner. A subname carries its own `(owner, 
 
 ### `PopRules`
 
-PoP-aware name classification and pricing. Classifies a label into one of four tiers: `NoStatus` (long labels with trailing digits, open to anyone), `PopLite` (short labels with trailing digits, requires lite-person verification), `PopFull` (labels without trailing digits, requires full-person verification), and `Reserved` (short labels governed by the protocol). The classification determines the price and the eligibility gate the commit-reveal controller enforces.
+PoP-aware name classification and pricing. Classifies a label into one of four tiers: `NoStatus` (labels of 9+ characters, open to anyone for a flat deposit regardless of trailing digits), `PopLite` (6-8 character labels with exactly two trailing digits, gateway-issued to lite-verified users), `PopFull` (6-8 character labels otherwise, requires full-person verification), and `Reserved` (labels of 5 characters or fewer, governed by the protocol). The classification determines the price and the eligibility gate the commit-reveal controller enforces.
 
 Tier assignment is read on every pricing call, not stored: `PopRules` queries the alias-accounts personhood precompile at `DotnsConstants.PERSONHOOD` with the dotns context (`bytes32("dotns")`), and translates the returned `status` byte into a `PopStatus` (0=NoStatus, 1=PopLite, 2=PopFull). Unknown tier bytes collapse to `NoStatus`, so a future precompile addition fails closed rather than silently being treated as a higher tier. There is no on-chain self-attestation; users obtain personhood off-chain through the People-chain ring proof and the alias-accounts pallet propagates the result via XCM.
 

@@ -94,7 +94,7 @@ contract StoreIntegrationTest is BaseDotns {
     }
 
     function test_double_transfer_back_does_not_revert_on_existing_lock() public {
-        // Base must be >= 9 chars + 2 trailing digits to classify as NoStatus under PopRules.
+        // Base must be >= 9 chars to classify as NoStatus under PopRules.
         string memory label = NOSTATUS_LABEL_A;
         bytes32 node = _register(label, ed, IPopRules.PopStatus.NoStatus);
         uint256 tokenId = uint256(node);

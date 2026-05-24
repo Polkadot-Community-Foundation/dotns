@@ -295,9 +295,9 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
     }
 
-    /// @notice Generate a label that classifies as PopFull (no trailing 2-digit suffix).
+    /// @notice Generate a label that classifies as PopFull (baselength 8, no trailing digits).
     function _labelPopfull(uint256 salt) internal pure returns (string memory label) {
-        return string(abi.encodePacked("popfull", _uintToAlphaFixed(salt, 2), "9"));
+        return string(abi.encodePacked("popful", _uintToAlphaFixed(salt, 2)));
     }
 
     /// @notice Generate a label that classifies as NoStatus and carries a non-zero price.

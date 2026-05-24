@@ -32,8 +32,8 @@ interface IDotnsNameEscrow {
 
     /// @notice Inputs for charging a cross-tier transfer fee.
     /// @dev The fee charged is `max(priceForTo - runningMax, reachFloor)`: the delta captures
-    ///      cross-tier upgrades against the per-token watermark, while `reachFloor` enforces a
-    ///      length-scaled friction floor whenever the recipient is below the label's required tier.
+    ///      cross-tier upgrades against the per-token watermark, while `reachFloor` enforces the
+    ///      flat NoStatus deposit floor whenever the recipient is below the label's required tier.
     /// @param priceForTo Recipient-tier price quoted from PopRules.
     /// @param reachFloor Reach-floor friction when the recipient is below the required tier.
     /// @param payer Original `msg.sender` of the registrar transfer entrypoint.

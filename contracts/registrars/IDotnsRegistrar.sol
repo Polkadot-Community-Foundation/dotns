@@ -79,7 +79,7 @@ interface IDotnsRegistrar is IERC721 {
 
     /// @notice Quotes the additional native fee required to transfer a token to `to`.
     /// @dev Returns the maximum of (i) the delta between the recipient-tier price and the
-    /// token's running-max paid history and (ii) the length-scaled `reachFee`, so
+    /// token's running-max paid history and (ii) the flat NoStatus `reachFee`, so
     /// verified-but-below recipients still pay the floor even when the running max would
     /// otherwise cover the move. Rejects a zero `to` with @custom:reverts ERC721InvalidReceiver
     /// and requires the protocol registry to have an escrow configured (otherwise

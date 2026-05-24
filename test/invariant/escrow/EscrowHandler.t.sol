@@ -517,7 +517,7 @@ contract EscrowHandler is Test {
         // Use the registrar's own quote so the value attached matches whatever the
         // contract actually requires. This includes the reach-floor branch: when
         // the recipient's verification level is below the label's required tier,
-        // the registrar charges the length-scaled NoStatus rate even though the
+        // the registrar charges the flat NoStatus deposit even though the
         // price-delta path returns zero. Using `quoteTransferFee` makes the handler
         // drift-resistant against future fee additions.
         uint256 requiredFee = registrar.quoteTransferFee(tokenId, to);

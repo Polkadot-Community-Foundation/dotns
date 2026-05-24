@@ -41,6 +41,28 @@ contract PopRulesTests is BaseDotns {
         assertEq(classificationMessage, "Available to all");
     }
 
+    function test_classify_nostatus_no_digits() public view {
+        (IPopRules.PopStatus classificationStatus, string memory classificationMessage) =
+            popRules.classifyName("longnamehere");
+
+        assertEq(uint256(classificationStatus), uint256(IPopRules.PopStatus.NoStatus));
+        assertEq(classificationMessage, "Available to all");
+    }
+
+    function test_flat_price_does_not_scale_with_length() public view {
+        // Three NoStatus labels across the previously-tiered length bands (9, 12, 17 chars)
+        // must all price identically under the flat deposit. The prior curve charged
+        // `startingPrice * (15 - length)` for lengths 9-14 and `startingPrice / 2` for >=15,
+        // so any two of these three would have differed.
+        uint256 minLengthPrice = popRules.price("ninechars");
+        uint256 midLengthPrice = popRules.price("longnamehere");
+        uint256 longLengthPrice = popRules.price("thisisaverylongname");
+
+        assertEq(minLengthPrice, midLengthPrice);
+        assertEq(midLengthPrice, longLengthPrice);
+        assertGt(minLengthPrice, 0);
+    }
+
     function test_price_with_check_revert_governance() public {
         vm.expectRevert(
             abi.encodeWithSelector(IPopRules.PopError.selector, "Reserved for Governance")

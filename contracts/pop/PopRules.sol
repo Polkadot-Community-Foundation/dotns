@@ -18,7 +18,12 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 import {IPersonhood} from "../external/personhood/IPersonhood.sol";
 
 /// @title PopRules
-/// @notice Implements DotNS pricing with PoP-tier validation and base-name reservations.
+/// @notice Implements DotNS classification, flat NoStatus pricing, and base-name reservations.
+/// @dev Tier shape: lengths <= 5 are governance-reserved, lengths 6-8 require PopFull (or
+///      PopLite when carrying exactly two trailing digits, for gateway-issued lite names),
+///      lengths >= 9 are open to any caller as NoStatus regardless of trailing digits.
+///      NoStatus users pay a single flat deposit (`startingPrice`) per name; verified users
+///      pay zero.
 /// @custom:security-contact admin@parity.io
 contract PopRules is
     Initializable,
@@ -296,12 +301,7 @@ contract PopRules is
         if (namelength < 9) {
             return 0;
         }
-
-        if (namelength >= 15) {
-            return startingPrice / 2;
-        }
-
-        return startingPrice * (15 - namelength);
+        return startingPrice;
     }
 
     /// @notice Enforces base-name reservation rules.
@@ -388,11 +388,8 @@ contract PopRules is
             return (PopStatus.PopFull, "Requires Full personhood verification");
         }
 
-        if (trailingDigits == 2) {
-            return (PopStatus.NoStatus, "Available to all");
-        }
-
-        return (PopStatus.PopFull, "Requires Full personhood verification");
+        // Baselength >= 9 is open to any caller regardless of trailing digits.
+        return (PopStatus.NoStatus, "Available to all");
     }
 
     function _requireCanonicalLabel(string calldata name) internal pure {

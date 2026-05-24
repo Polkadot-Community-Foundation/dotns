@@ -6,12 +6,12 @@ pragma solidity ^0.8.34;
 ///         and base-name reservation rules.
 /// @dev Classifies labels into the PoP tier required for registration and exposes reservation
 ///      metadata. Length <= 5 is reserved for governance; lengths 6-8 require PopFull unless they
-///      carry exactly two trailing digits (PopLite); lengths >= 9 require PopFull unless they
-///      carry exactly two trailing digits (NoStatus, open). More than two trailing digits is
+///      carry exactly two trailing digits (PopLite, gateway-issued); lengths >= 9 are open to
+///      every caller as NoStatus regardless of trailing digits. More than two trailing digits is
 ///      invalid; internal digits do not affect classification. Reservations are keyed by the
 ///      digit-stripped stem so `alice` and `alice42` share a slot.
 ///
-///      Pricing is primarily a spam deterrent for NoStatus users; verified PopLite and PopFull
+///      Pricing is a flat per-name deposit on the NoStatus tier; verified PopLite and PopFull
 ///      users pay zero.
 /// @custom:security-contact admin@parity.io
 interface IPopRules {
@@ -219,10 +219,9 @@ interface IPopRules {
     /// @notice Friction fee owed when `account` reaches into a label tier above its verification
     /// level.
     /// @dev Non-zero only when `account` cannot meet the label's required PoP tier; the value is
-    ///      the length-scaled list price. Acts as cross-payer friction at registration time and
-    ///      as the transfer-time floor consumed by `DotnsNameEscrow.chargeTransferFee`.
-    ///      Non-canonical labels and labels with more than two trailing digits trigger
-    ///      @custom:reverts PopError.
+    ///      the flat NoStatus deposit. Acts as cross-payer friction at registration time and as
+    ///      the transfer-time floor consumed by `DotnsNameEscrow.chargeTransferFee`. Non-canonical
+    ///      labels and labels with more than two trailing digits trigger @custom:reverts PopError.
     /// @param name Domain label being acted on.
     /// @param account Account whose verification reach is being measured.
     function reachFee(string calldata name, address account) external view returns (uint256 fee);
@@ -236,8 +235,9 @@ interface IPopRules {
     function isBaseName(string calldata name) external pure returns (bool isBase);
 
     /// @notice Calculates registration cost for a label.
-    /// @dev Pure length-based pricing; ignores PoP status and reservation state. Non-canonical
-    ///      labels trigger @custom:reverts PopError.
+    /// @dev Returns zero for any label shorter than 9 characters; lengths >= 9 pay the flat
+    ///      `startingPrice` deposit. Ignores the caller's personhood status and reservation
+    ///      state. Non-canonical labels trigger @custom:reverts PopError.
     /// @param name Domain label to price.
     /// @return cost Registration cost in wei.
     function price(string calldata name) external view returns (uint256 cost);

@@ -33,7 +33,7 @@ contract GhostNft is ERC721 {
 ///         @custom:contract DotnsNameEscrow, plus the pull-payment and solvency guarantees.
 contract DotnsNameEscrowTest is BaseDotns {
     /// @notice Default label used across most tests.
-    /// @dev 14-char label so NoStatus price = startingPrice * (15 - 14) = RENT_PRICE.
+    /// @dev 14-char label that classifies as NoStatus; the flat deposit equals RENT_PRICE.
     string internal constant LABEL = "longerlabela01";
 
     /// @notice Register `label` for `nameOwner` under the NoStatus PoP tier and return its tokenId.

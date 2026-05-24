@@ -118,7 +118,7 @@ interface IDotnsRegistrarController is IDotnsController {
     /// runs `priceWithCheck` (personhood + reservation gate) and routes the fee to a refundable
     /// escrow deposit owned by `registration.owner`. The cross-payer path skips personhood
     /// (a third party may sponsor a verified owner), still enforces base-name reservations
-    /// (otherwise @custom:reverts NameReserved), applies a length-scaled `reachFee` friction
+    /// (otherwise @custom:reverts NameReserved), applies the flat NoStatus `reachFee` friction
     /// when the sender's own tier is below the label's required tier, and routes funds to the
     /// insurance branch when the payer's tier price differs from the owner's (genuine
     /// cross-tier sponsorship) versus the refundable branch when the tier prices match

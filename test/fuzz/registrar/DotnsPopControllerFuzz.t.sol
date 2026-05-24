@@ -67,10 +67,10 @@ contract DotnsPopControllerFuzz is BaseDotns {
         string memory fullLabel = "longnamebob01";
 
         if (reserveFirst) {
-            // The reserved base label `longnamebob` classifies as PopFull
-            // (baselength 11 with no trailing digits); the lite label has to be
-            // PopLite-eligible. Tiago needs PopFull status so both
-            // `priceWithCheck` calls inside `reserveBaseName` succeed.
+            // The reserved base label `longnamebob` classifies as NoStatus
+            // (baselength 11); the lite label has to be PopLite-eligible. Tiago needs
+            // PopFull status so both `priceWithCheck` calls inside `reserveBaseName`
+            // succeed.
             _grantPopFull(tiago);
             _reservePop(tiago, LITE_LABEL_A, "", stem);
         }

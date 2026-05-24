@@ -77,7 +77,7 @@ contract PopControllerHandler is Test {
         baseLabels.push("alicebob");
         // baselength 10, 2 trailing digits: NoStatus classification.
         baseLabels.push("wonderland01");
-        // baselength 10, no trailing digits: PopFull classification.
+        // baselength 10, no trailing digits: NoStatus classification.
         baseLabels.push("carolcarol");
 
         // Every actor needs PopFull status on the personhood precompile so the
