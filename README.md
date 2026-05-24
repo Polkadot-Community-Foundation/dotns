@@ -172,7 +172,13 @@ On-chain lookup table mapping well-known bytes32 keys (declared in DotnsConstant
 
 Without it, each contract would store direct addresses to every contract it calls. An upgrade that changes one address would require a separate owner transaction for every contract that references it. The protocol registry reduces this to one: update the key in the registry, and every caller picks up the new address on its next call. The indirection also means a governance-driven rotation of, say, the PoP controller does not break any consumer that has already been deployed.
 
-The registered keys include REGISTRAR, CONTROLLER, REGISTRY, REVERSE_RESOLVER, RESOLVER, CONTENT_RESOLVER, POP_RULES, STORE_FACTORY, POP_CONTROLLER, POP_RESOLVER, NAME_ESCROW, and POP_GATEWAY.
+The registered keys include REGISTRAR, CONTROLLER, REGISTRY, REVERSE_RESOLVER, RESOLVER, CONTENT_RESOLVER, POP_RULES, STORE_FACTORY, POP_CONTROLLER, POP_RESOLVER, NAME_ESCROW, MULTICALL3, and POP_GATEWAY.
+
+### Multicall3
+
+Generic arbitrary-target batching helper using the standard Multicall3 interface. It is protocol infrastructure rather than a dotNS-specific authorisation surface: anyone can call it, and each target contract still enforces its own permissions.
+
+For read batching, Multicall3 lets clients collect several results from the same block through one call. For write batching, callers must remember that target contracts observe Multicall3 as the caller, not the original externally owned account. That means public owner-gated dotNS writes should not be routed through Multicall3 unless the target flow explicitly supports that caller model.
 
 ### StoreFactory, LabelStore, and UserStore
 

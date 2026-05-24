@@ -11,13 +11,15 @@ import {DotnsReverseResolver} from "../../contracts/resolvers/DotnsReverseResolv
 import {DotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
 import {DotnsProtocolRegistry} from "../../contracts/registry/DotnsProtocolRegistry.sol";
 import {IDotnsProtocolRegistry} from "../../contracts/registry/IDotnsProtocolRegistry.sol";
+import {Multicall3} from "../../contracts/utils/Multicall3.sol";
 
 /// @title DeployCore
 /// @notice First stage of the DotNS fresh-deploy pipeline. Deploys the
 ///         protocol registry first, then the foundational name-ownership
 ///         layer: the Store factory and three UUPS proxies (registrar,
 ///         reverse resolver, forward registry) that all bind to the protocol
-///         registry at init.
+///         registry at init, plus the generic Multicall3 helper for client
+///         and tooling batching.
 /// @dev Runs in its own `forge script` process; the OpenZeppelin validator's
 ///      per-call memory never crosses the process boundary into later stages.
 /// @custom:security-contact admin@parity.io
@@ -29,6 +31,7 @@ contract DeployCore is BaseDeployer {
         initDeployment(DeploymentNetwork.folder(block.chainid), vm.toString(block.chainid));
 
         address protocolRegistry = _deployProtocolRegistry(owner);
+        _deployMulticall3(owner);
         _deployStoreFactory(owner, protocolRegistry);
         _deployRegistrar(owner, protocolRegistry);
         _deployReverseResolver(owner, protocolRegistry);
@@ -58,6 +61,14 @@ contract DeployCore is BaseDeployer {
         logDeployment("StoreFactory", address(factory));
         logDeployment("LabelStoreBeacon", factory.labelStoreBeacon());
         logDeployment("UserStoreBeacon", factory.userStoreBeacon());
+    }
+
+    function _deployMulticall3(address owner) internal {
+        vm.startBroadcast(owner);
+        Multicall3 multicall3 = new Multicall3();
+        vm.stopBroadcast();
+        vm.label(address(multicall3), "Multicall3");
+        logDeployment("Multicall3", address(multicall3));
     }
 
     function _deployRegistrar(

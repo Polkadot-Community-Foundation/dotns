@@ -45,6 +45,7 @@ contract WireDeployments is BaseDeployer {
         address popRules;
         address registrarController;
         address protocolRegistry;
+        address multicall3;
         address nameEscrow;
         address popResolver;
         address popController;
@@ -81,6 +82,7 @@ contract WireDeployments is BaseDeployer {
         addr.popRules = _readAddress("PopRules");
         addr.registrarController = _readAddress("DotnsRegistrarController");
         addr.protocolRegistry = _readAddress("DotnsProtocolRegistry");
+        addr.multicall3 = _readAddress("Multicall3");
         addr.nameEscrow = _readAddress("DotnsNameEscrow");
         addr.popResolver = _readAddress("DotnsPopResolver");
         addr.popController = _readAddress("DotnsPopController");
@@ -108,6 +110,7 @@ contract WireDeployments is BaseDeployer {
         registry.set(DotnsConstants.POP_RULES, addr.popRules);
         registry.set(DotnsConstants.STORE_FACTORY, addr.storeFactory);
         registry.set(DotnsConstants.NAME_ESCROW, addr.nameEscrow);
+        registry.set(DotnsConstants.MULTICALL3, addr.multicall3);
         registry.set(DotnsConstants.POP_CONTROLLER, addr.popController);
         registry.set(DotnsConstants.POP_RESOLVER, addr.popResolver);
         registry.set(DotnsConstants.POP_GATEWAY, addr.rootGatewayDispatcher);
@@ -189,6 +192,7 @@ contract WireDeployments is BaseDeployer {
             registry.get(DotnsConstants.STORE_FACTORY) == addr.storeFactory, "Key: storeFactory"
         );
         require(registry.get(DotnsConstants.NAME_ESCROW) == addr.nameEscrow, "Key: nameEscrow");
+        require(registry.get(DotnsConstants.MULTICALL3) == addr.multicall3, "Key: multicall3");
         require(
             registry.get(DotnsConstants.POP_CONTROLLER) == addr.popController, "Key: popController"
         );

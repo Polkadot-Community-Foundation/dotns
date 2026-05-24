@@ -59,6 +59,12 @@ The Foundry RPC alias used by the deploy script defaults to the local adapter:
 paseo_local
 ```
 
+## Multicall3
+
+Fresh deployments include a generic Multicall3 contract. It is deployed for client, indexer, and tooling batching and is not dotNS-specific. The deployment script records it in the manifest as Multicall3 and the wire-up stage publishes it through the protocol registry under the MULTICALL3 key.
+
+This is an arbitrary-target Multicall3 surface, matching the common mds1/multicall3 interface used by wallet and RPC tooling. It is permissionless: anyone can call it. Target contracts still enforce their own permissions and see Multicall3 as the caller during CALL-based write batching. Use it freely for read aggregation; use write aggregation only for flows where the target contract is meant to accept Multicall3 as msg.sender.
+
 ## One-time deployer bootstrap
 
 Copy the example environment file:
@@ -176,7 +182,7 @@ The fresh-deploy pipeline is split across five stages:
 
 | Stage | Script | Purpose |
 | --- | --- | --- |
-| Deploy core | scripts/deploy/DeployCore.s.sol | Foundational name-ownership layer: store factory, registrar, reverse resolver, and forward registry. |
+| Deploy core | scripts/deploy/DeployCore.s.sol | Foundational name-ownership layer: Multicall3, store factory, registrar, reverse resolver, and forward registry. |
 | Deploy records | scripts/deploy/DeployRecords.s.sol | Per-name record layer: forward resolver, content resolver, and PopRules. |
 | Deploy policy | scripts/deploy/DeployPolicy.s.sol | Commit-reveal controller and protocol registry. |
 | Deploy Pop system | scripts/deploy/DeployPopSystem.s.sol | Proof-of-Personhood resolver and controller. |
@@ -193,6 +199,7 @@ At minimum, confirm:
 - The protocol registry address is present.
 - The registrar address is present.
 - The public registrar controller address is present.
+- The Multicall3 address is present.
 - The Pop controller address is present.
 - PopRules is present.
 - The forward, reverse, content, and Pop resolvers are present.
@@ -247,6 +254,7 @@ If a stage fails after writing partial addresses, inspect the relevant deploymen
 | Contract | Address |
 | --- | --- |
 | DotnsProtocolRegistry | 0xc07A2F24387DA27283CD87b9F24573b74C9e0c9b |
+| Multicall3 | Not deployed in this manifest yet |
 | DotnsRegistrar | 0x6c40817cdb96Ab57A4d9E9fa21D0eEa8307BDDE8 |
 | DotnsRegistry | 0xE6c0fB6D5492666144A8a4a015E25a98ACa604cA |
 | DotnsRegistrarController | 0x732C38082CFAebed505A46e4e2D6414154694580 |
@@ -266,6 +274,7 @@ If a stage fails after writing partial addresses, inspect the relevant deploymen
 | Contract | Address |
 | --- | --- |
 | DotnsProtocolRegistry | 0x5Caef84563fc980178e28417414aa65bA32f6B4e |
+| Multicall3 | Not deployed in this manifest yet |
 | DotnsRegistrar | 0x885b8085bA92A31c4ef52076f77379E647ECC399 |
 | DotnsRegistry | 0x8877344A885682523B4613779C95688ed7037BfD |
 | DotnsRegistrarController | 0x320b72c6e70D5a631d835FfD95915B288b26E6Be |

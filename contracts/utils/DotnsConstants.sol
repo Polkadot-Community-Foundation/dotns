@@ -121,6 +121,13 @@ library DotnsConstants {
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant NAME_ESCROW = bytes32("nameEscrow");
 
+    /// @notice Well-known key for the generic Multicall3 batching helper.
+    /// @dev Role: unauthorised arbitrary-target multicall utility used by
+    ///      clients and tooling. Target contracts still enforce their own
+    ///      permissions and observe Multicall3 as `msg.sender`.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant MULTICALL3 = bytes32("multicall3");
+
     /// @notice Well-known key for the address authorised to invoke the PoP
     ///         controller's gated entrypoints.
     /// @dev Role: substrate Root-origin shim. Resolves to the Root gateway
