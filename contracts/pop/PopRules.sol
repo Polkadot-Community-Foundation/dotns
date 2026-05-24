@@ -266,7 +266,32 @@ contract PopRules is
         if (_meetsReach(required, _personhoodTier(account))) {
             return 0;
         }
-        return _priceValidatedName(bytes(name).length);
+        return startingPrice;
+    }
+
+    /// @inheritdoc IPopRules
+    function transferFloor(
+        string calldata name,
+        address from,
+        address to
+    )
+        external
+        view
+        override
+        returns (uint256 floor)
+    {
+        _requireCanonicalLabel(name);
+        (PopStatus required,) = _classifyValidatedName(name);
+
+        PopStatus toTier = _personhoodTier(to);
+        uint256 reachComponent = _meetsReach(required, toTier) ? 0 : startingPrice;
+
+        PopStatus fromTier = _personhoodTier(from);
+        // `_personhoodTier` never returns Reserved, so users are NoStatus(0)/PopLite(1)/PopFull(2)
+        // and uint8 ordering matches tier ordering.
+        uint256 downgradeComponent = uint8(toTier) < uint8(fromTier) ? startingPrice : 0;
+
+        return reachComponent > downgradeComponent ? reachComponent : downgradeComponent;
     }
 
     /// @notice Reads `account`'s dotns-scoped personhood tier from the alias-accounts

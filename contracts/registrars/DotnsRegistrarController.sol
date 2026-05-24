@@ -206,11 +206,9 @@ contract DotnsRegistrarController is
             require(priced.status != IPopRules.PopStatus.Reserved, NameReserved(registration.label));
         }
 
-        // Cross-payer friction: every payer-not-owner registration pays a reach floor equal
-        // to the flat NoStatus deposit when the label's required tier exceeds the payer's,
-        // regardless of the owner's own quote. This keeps the personhood gate economically
-        // binding even when the owner is verified.
-        uint256 friction = !isDirect ? rules.reachFee(registration.label, msg.sender) : 0;
+        uint256 friction = !isDirect
+            ? rules.transferFloor(registration.label, msg.sender, registration.owner)
+            : 0;
         uint256 totalCharged = priced.price + friction;
         require(msg.value >= totalCharged, InsufficientValue());
 

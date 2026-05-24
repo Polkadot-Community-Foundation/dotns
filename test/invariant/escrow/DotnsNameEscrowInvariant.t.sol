@@ -51,12 +51,21 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
         excludeContract(address(protocolRegistry));
     }
 
-    /// @notice Escrow native balance must always cover the tracked reserves.
+    /// @notice Escrow native balance must always cover the full liability set: tracked
+    /// reserves, the insurance fund, and any unclaimed pull-payment balances. Under Fix C
+    /// transfer-fee accounting these three flows are economically distinct; solvency is
+    /// only meaningful against their sum.
     function invariant_solvency() public view {
         uint256 escrowBalance = address(dotnsNameEscrow).balance;
         uint256 reservedAmount = dotnsNameEscrow.reserves(address(0));
+        uint256 insurance = dotnsNameEscrow.insuranceFund();
+        uint256 pending = handler.totalPendingWithdrawals();
 
-        assertGe(escrowBalance, reservedAmount, "Escrow balance must cover reserves");
+        assertGe(
+            escrowBalance,
+            reservedAmount + insurance + pending,
+            "Escrow balance must cover reserves + insurance + pending withdrawals"
+        );
     }
 
     /// @notice Sum of all active (deposited but not withdrawn) position amounts must equal
@@ -103,30 +112,25 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
         );
     }
 
-    /// @notice Refund recipients remain fixed from deposit through release.
-    function invariant_refund_recipient_locked_until_withdraw() public view {
+    /// @notice The Fix C invariant: whenever an active (non-released) deposit position holds
+    /// a non-zero amount, its recipient must equal the current NFT owner. Released positions
+    /// are exempt because the NFT is owned by escrow during the cooldown window, and the
+    /// recipient is the prior payer by design.
+    function invariant_position_recipient_tracks_nft_owner() public view {
         uint256[] memory deposited = handler.getDepositedTokenIds();
         for (uint256 i; i < deposited.length; ++i) {
             uint256 tokenId = deposited[i];
-            if (handler.depositAmounts(tokenId) == 0) continue;
-
-            address expectedRecipient = handler.lockedRecipient(tokenId);
-            if (expectedRecipient == address(0)) continue;
-
             IDotnsNameEscrow.ReleasePosition memory position =
                 dotnsNameEscrow.getReleasePosition(tokenId);
-            assertEq(position.recipient, expectedRecipient, "deposit recipient must stay locked");
-        }
 
-        uint256[] memory released = handler.getReleasedTokenIds();
-        for (uint256 i; i < released.length; ++i) {
-            uint256 tokenId = released[i];
-            address expectedRecipient = handler.lockedRecipient(tokenId);
-            if (expectedRecipient == address(0)) continue;
+            if (position.amount == 0 || position.released) continue;
 
-            IDotnsNameEscrow.ReleasePosition memory position =
-                dotnsNameEscrow.getReleasePosition(tokenId);
-            assertEq(position.recipient, expectedRecipient, "release recipient must stay locked");
+            address currentOwner = dotnsRegistrar.ownerOf(tokenId);
+            assertEq(
+                position.recipient,
+                currentOwner,
+                "active deposit recipient must equal current NFT owner"
+            );
         }
     }
 

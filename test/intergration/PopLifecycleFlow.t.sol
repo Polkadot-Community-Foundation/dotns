@@ -214,6 +214,27 @@ contract PopLifecycleFlow is BaseDotns {
         assertEq(dotnsPopController.pendingClaimUserCount(), 0);
     }
 
+    function test_lite_via_gateway_then_full_via_public_after_upgrade() public {
+        _grantPopLite(ed);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL, user: ed, chatKey: CHAT_KEY
+            })
+        );
+
+        bytes32 liteNode = _nodeOf(LITE_LABEL);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(liteNode)), ed);
+
+        _grantPopFull(ed);
+
+        string memory popfullLabel = "alicedef";
+        _commitAndRegister(popfullLabel, ed, false);
+
+        bytes32 fullNode = _nodeOf(popfullLabel);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(fullNode)), ed);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(liteNode)), ed);
+    }
+
     /// @notice Mints the lite label for `user` then claims the full label against it.
     /// @dev Grants PopFull up front so both the lite reservation leg and the
     ///      reservedBaseLabel leg pass `priceWithCheck`.

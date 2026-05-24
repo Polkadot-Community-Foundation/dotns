@@ -61,6 +61,21 @@ interface IDotnsNameEscrow {
         bool claimed;
     }
 
+    /// @notice Time-locked refund entry produced when the protocol owes a recipient value
+    ///         outside the registration-overpayment path.
+    /// @dev Every credit creates a fresh entry with its own `availableAt`; later credits do not
+    ///      reset earlier entries' clocks. Recipients claim entries individually or in batches.
+    /// @param recipient Address that may claim this entry once `availableAt` has elapsed.
+    /// @param amount Native value credited.
+    /// @param availableAt Earliest block timestamp at which the recipient may claim.
+    /// @param tokenId Token this entry was produced for, retained for traceability.
+    struct RefundEntry {
+        address recipient;
+        uint256 amount;
+        uint64 availableAt;
+        uint256 tokenId;
+    }
+
     /// @notice Emitted when a native-token deposit is recorded.
     event NativeDepositRecorded(uint256 indexed tokenId, uint256 amount);
 
@@ -84,6 +99,26 @@ interface IDotnsNameEscrow {
 
     /// @notice Emitted when a recipient pulls their accumulated pending refund balance.
     event WithdrawalClaimed(address indexed recipient, uint256 amount);
+
+    /// @notice Emitted when a refund is credited to the time-locked refund ledger.
+    /// @param recipient Address that may claim the entry once `availableAt` has elapsed.
+    /// @param entryId Newly-assigned identifier for the credited entry.
+    /// @param amount Native value credited.
+    /// @param availableAt Earliest block timestamp at which the recipient may claim.
+    /// @param tokenId Token associated with the credit, retained for traceability.
+    event RefundCredited(
+        address indexed recipient,
+        uint256 indexed entryId,
+        uint256 amount,
+        uint64 availableAt,
+        uint256 indexed tokenId
+    );
+
+    /// @notice Emitted when a recipient claims a single refund entry.
+    /// @param recipient Address that pulled the entry.
+    /// @param entryId Identifier of the claimed entry, now deleted.
+    /// @param amount Native value transferred to `recipient`.
+    event RefundClaimed(address indexed recipient, uint256 indexed entryId, uint256 amount);
 
     /// @notice Emitted when a released token is reclaimed by a new owner via registration.
     /// @param previousRecipient Address that received the refund for the prior registration.
@@ -181,6 +216,13 @@ interface IDotnsNameEscrow {
 
     /// @notice Thrown when `claimWithdrawal()` is called but the caller has no pending balance.
     error NoPendingWithdrawal();
+
+    /// @notice Thrown when a refund entry is referenced but does not exist.
+    error NoSuchRefundEntry(uint256 entryId);
+
+    /// @notice Thrown when a refund entry is claimed before its `availableAt` cooldown has
+    ///         elapsed.
+    error RefundLocked(uint256 entryId, uint64 availableAt);
 
     /// @notice Thrown when escrow receives an ERC721 transfer from a non-registrar source.
     error NotAcceptedTransfer(address caller);
@@ -324,4 +366,58 @@ interface IDotnsNameEscrow {
     ///      must be non-zero, otherwise @custom:reverts InvalidCooldown. Emits
     ///      @custom:emits CooldownUpdated with the prior and new values.
     function updateCooldown(uint256 newCooldown) external;
+
+    /// @notice Pulls a single time-locked refund entry.
+    /// @dev Caller must be the entry's recipient (@custom:reverts NotRefundRecipient otherwise),
+    ///      the entry must exist (@custom:reverts NoSuchRefundEntry on a deleted or unknown id),
+    ///      and `block.timestamp` must have reached `availableAt` (@custom:reverts
+    ///      RefundLocked otherwise). The entry is deleted before the transfer; a failing native
+    ///      transfer triggers @custom:reverts RefundFailed. Emits @custom:emits RefundClaimed.
+    /// @param entryId Identifier of the entry to claim.
+    /// @return amount Native amount transferred to the caller.
+    function claimRefund(uint256 entryId) external returns (uint256 amount);
+
+    /// @notice Pulls multiple time-locked refund entries in one call.
+    /// @dev Atomic: any invalid entry in the batch (wrong recipient, missing, or locked) reverts
+    ///      the entire call. The batch size is bounded by `MAX_REFUND_PAGE_SIZE`
+    ///      (@custom:reverts InvalidPageSize otherwise). Aggregates the per-entry amounts and
+    ///      transfers once; on transfer failure @custom:reverts RefundFailed. Emits
+    ///      @custom:emits RefundClaimed once per entry.
+    /// @param entryIds List of entry identifiers to claim.
+    /// @return totalAmount Sum of the credited amounts transferred to the caller.
+    function claimRefundsBatch(uint256[] calldata entryIds)
+        external
+        returns (uint256 totalAmount);
+
+    /// @notice Returns the number of pending refund entries owed to `recipient`.
+    function pendingRefundCount(address recipient) external view returns (uint256 count);
+
+    /// @notice Returns up to `limit` pending refund entry ids for `recipient`, starting at
+    ///         `offset`.
+    /// @dev Limit must be in `(0, MAX_REFUND_PAGE_SIZE]`, otherwise @custom:reverts
+    ///      InvalidPageSize.
+    function pendingRefundIds(
+        address recipient,
+        uint256 offset,
+        uint256 limit
+    )
+        external
+        view
+        returns (uint256[] memory entryIds);
+
+    /// @notice Returns up to `limit` pending refund entries for `recipient`, paired with their
+    ///         entry ids.
+    /// @dev Limit must be in `(0, MAX_REFUND_PAGE_SIZE]`, otherwise @custom:reverts
+    ///      InvalidPageSize.
+    function pendingRefunds(
+        address recipient,
+        uint256 offset,
+        uint256 limit
+    )
+        external
+        view
+        returns (uint256[] memory entryIds, RefundEntry[] memory entries);
+
+    /// @notice Returns a single refund entry by id, or a zero-filled struct if the id is unknown.
+    function refundEntry(uint256 entryId) external view returns (RefundEntry memory entry);
 }

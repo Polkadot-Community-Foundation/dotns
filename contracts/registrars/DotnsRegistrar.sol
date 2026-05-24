@@ -332,12 +332,10 @@ contract DotnsRegistrar is
     }
 
     /// @notice Quotes the recipient-tier price and required delta for a transfer.
-    /// @dev Required fee is `max(deltaFee, reachFloor)`: `deltaFee` covers the gap between
-    /// the per-token running max and the recipient-tier price (so a higher tier always tops up
-    /// to its tier), while `reachFloor` enforces the flat `NoStatus` deposit when the recipient
-    /// cannot meet the label's required tier even when the running max already covers the move.
-    /// Returns `(escrow, 0, 0, 0)` for self-transfers and escrow-touching transfers so
-    /// legitimate custody moves do not pay a fee.
+    /// @dev Required fee is `deltaFee + reachFloor`. `deltaFee` becomes the recipient's
+    /// refundable deposit; `reachFloor` (from `transferFloor`) is a non-refundable
+    /// tier-friction tax routed to the insurance fund. Self-transfers and escrow-touching
+    /// transfers return zero.
     function _quoteTransferFee(
         address from,
         address to,
@@ -365,12 +363,9 @@ contract DotnsRegistrar is
         uint256 prior = IDotnsNameEscrow(payable(escrow)).runningMax(tokenId);
         uint256 deltaFee = priceForTo > prior ? priceForTo - prior : 0;
 
-        // Reach floor: charge the flat `NoStatus` deposit when the recipient cannot meet the
-        // label's required tier, even if the running max would otherwise cover the move.
-        // Catches verified-but-below recipients so PopFull stays the only friction-free tier.
-        reachFloor = popRules.reachFee(label, to);
+        reachFloor = popRules.transferFloor(label, from, to);
 
-        requiredFee = deltaFee > reachFloor ? deltaFee : reachFloor;
+        requiredFee = deltaFee + reachFloor;
     }
 
     /// @inheritdoc UUPSUpgradeable

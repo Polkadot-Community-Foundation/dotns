@@ -31,6 +31,9 @@ contract DotnsNameEscrow is
     /// @notice Maximum page size for releasedTokens pagination.
     uint256 public constant MAX_RELEASED_PAGE_SIZE = 200;
 
+    /// @notice Maximum page size for pendingRefunds pagination and batch claims.
+    uint256 public constant MAX_REFUND_PAGE_SIZE = 200;
+
     /// @notice The protocol registry for resolving sibling contract addresses.
     IDotnsProtocolRegistry public protocolRegistry;
 
@@ -68,8 +71,24 @@ contract DotnsNameEscrow is
 
     /// @notice Pull-payment ledger storing each recipient's claimable refund balance.
     /// @dev Per-recipient isolation ensures a failing or reentrant receiver cannot block other
-    ///      users' withdrawals.
+    ///      users' withdrawals. Used as the fallback path for registration overpayments whose
+    ///      direct push back to `msg.sender` failed (because the caller is a contract that
+    ///      rejects incoming value).
     mapping(address recipient => uint256 amount) private _pendingWithdrawals;
+
+    /// @notice Time-locked refund ledger keyed by entryId.
+    /// @dev Every credit allocates a fresh entryId so per-entry cooldowns are independent and
+    ///      drip-feed credits cannot reset an existing entry's clock.
+    mapping(uint256 entryId => RefundEntry entry) private _refundEntries;
+
+    /// @notice Per-recipient list of pending entryIds for paginated enumeration and batch claim.
+    mapping(address recipient => uint256[] entryIds) private _entriesByRecipient;
+
+    /// @notice Reverse lookup into `_entriesByRecipient` (one-based) for O(1) remove-by-swap.
+    mapping(uint256 entryId => uint256 indexPlusOne) private _entryIndexPlusOne;
+
+    /// @notice Monotonic counter assigning entryIds to new refund credits.
+    uint256 private _nextEntryId;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
     uint256[50] private __gap;
@@ -249,13 +268,17 @@ contract DotnsNameEscrow is
         nonReentrant
         returns (uint256 charged)
     {
-        uint256 prior = runningMax[params.tokenId];
+        ReleasePosition storage position = _positions[params.tokenId];
+        uint256 currentDeposit = position.amount;
+        address priorRecipient = position.recipient;
 
-        uint256 deltaFee = params.priceForTo > prior ? params.priceForTo - prior : 0;
-        uint256 fee = deltaFee > params.reachFloor ? deltaFee : params.reachFloor;
+        uint256 depositDelta =
+            params.priceForTo > currentDeposit ? params.priceForTo - currentDeposit : 0;
+        uint256 depositRefund =
+            currentDeposit > params.priceForTo ? currentDeposit - params.priceForTo : 0;
+        uint256 fee = depositDelta + params.reachFloor;
 
-        // Recipient already covered and not gated by reach: no fee owed.
-        if (fee == 0) {
+        if (fee == 0 && depositRefund == 0 && priorRecipient == params.to) {
             if (msg.value > 0) {
                 (bool ok,) = payable(params.payer).call{value: msg.value}("");
                 require(ok, RefundFailed(params.tokenId));
@@ -266,17 +289,33 @@ contract DotnsNameEscrow is
 
         require(msg.value >= fee, InsufficientValue());
 
-        // Bump the running max to the highest payment ever recorded for this token.
-        // Mirrors the rule in `deposit` and `depositInsurance` so the same invariant
-        // ("`runningMax` is the largest amount ever paid through escrow for this token")
-        // holds across every payment path: refundable deposit, registration insurance,
-        // delta-driven transfer fee, and pure reach-floor friction.
+        if (depositRefund > 0 && priorRecipient != address(0)) {
+            _pendingWithdrawals[priorRecipient] += depositRefund;
+            tokenReserved[address(0)] -= depositRefund;
+            emit OverpaymentRefunded(priorRecipient, depositRefund);
+        }
+
+        // `released` and `withdrawAvailableAt` are not reset here: a released token is held
+        // by escrow and cannot reach this path through a user transferFrom.
+        if (params.priceForTo > 0) {
+            if (depositDelta > 0) {
+                tokenReserved[address(0)] += depositDelta;
+            }
+            position.amount = params.priceForTo;
+            position.recipient = params.to;
+        } else if (priorRecipient != address(0)) {
+            delete _positions[params.tokenId];
+        }
+
+        if (params.reachFloor > 0) {
+            insuranceFund += params.reachFloor;
+        }
+
         uint256 highest =
             params.priceForTo > params.reachFloor ? params.priceForTo : params.reachFloor;
-        if (highest > prior) {
+        if (highest > runningMax[params.tokenId]) {
             runningMax[params.tokenId] = highest;
         }
-        insuranceFund += fee;
         charged = fee;
 
         emit CrossTierFeePaid(
@@ -410,6 +449,188 @@ contract DotnsNameEscrow is
     /// @inheritdoc IDotnsNameEscrow
     function pendingWithdrawal(address recipient) external view override returns (uint256 amount) {
         amount = _pendingWithdrawals[recipient];
+    }
+
+    /// @inheritdoc IDotnsNameEscrow
+    function claimRefund(uint256 entryId)
+        external
+        override
+        nonReentrant
+        returns (uint256 amount)
+    {
+        RefundEntry memory entry = _refundEntries[entryId];
+        require(entry.recipient == msg.sender, NotRefundRecipient(msg.sender, entry.tokenId));
+        require(entry.amount > 0, NoSuchRefundEntry(entryId));
+        require(block.timestamp >= entry.availableAt, RefundLocked(entryId, entry.availableAt));
+
+        amount = entry.amount;
+        _removeRefundEntry(entryId, msg.sender);
+
+        (bool ok,) = payable(msg.sender).call{value: amount}("");
+        require(ok, RefundFailed(entry.tokenId));
+
+        emit RefundClaimed(msg.sender, entryId, amount);
+    }
+
+    /// @inheritdoc IDotnsNameEscrow
+    function claimRefundsBatch(uint256[] calldata entryIds)
+        external
+        override
+        nonReentrant
+        returns (uint256 totalAmount)
+    {
+        uint256 length = entryIds.length;
+        require(length > 0 && length <= MAX_REFUND_PAGE_SIZE, InvalidPageSize(length));
+
+        for (uint256 i; i < length; ++i) {
+            uint256 entryId = entryIds[i];
+            RefundEntry memory entry = _refundEntries[entryId];
+            require(
+                entry.recipient == msg.sender, NotRefundRecipient(msg.sender, entry.tokenId)
+            );
+            require(entry.amount > 0, NoSuchRefundEntry(entryId));
+            require(
+                block.timestamp >= entry.availableAt, RefundLocked(entryId, entry.availableAt)
+            );
+
+            totalAmount += entry.amount;
+            _removeRefundEntry(entryId, msg.sender);
+
+            emit RefundClaimed(msg.sender, entryId, entry.amount);
+        }
+
+        (bool ok,) = payable(msg.sender).call{value: totalAmount}("");
+        require(ok, RefundFailed(0));
+    }
+
+    /// @inheritdoc IDotnsNameEscrow
+    function pendingRefundCount(address recipient) external view override returns (uint256 count) {
+        count = _entriesByRecipient[recipient].length;
+    }
+
+    /// @inheritdoc IDotnsNameEscrow
+    function pendingRefundIds(
+        address recipient,
+        uint256 offset,
+        uint256 limit
+    )
+        external
+        view
+        override
+        returns (uint256[] memory entryIds)
+    {
+        require(limit > 0 && limit <= MAX_REFUND_PAGE_SIZE, InvalidPageSize(limit));
+
+        uint256[] storage all = _entriesByRecipient[recipient];
+        uint256 total = all.length;
+        if (offset >= total) return new uint256[](0);
+
+        uint256 end = offset + limit;
+        if (end > total) end = total;
+
+        entryIds = new uint256[](end - offset);
+        for (uint256 i = 0; i < entryIds.length; ++i) {
+            entryIds[i] = all[offset + i];
+        }
+    }
+
+    /// @inheritdoc IDotnsNameEscrow
+    function pendingRefunds(
+        address recipient,
+        uint256 offset,
+        uint256 limit
+    )
+        external
+        view
+        override
+        returns (uint256[] memory entryIds, RefundEntry[] memory entries)
+    {
+        require(limit > 0 && limit <= MAX_REFUND_PAGE_SIZE, InvalidPageSize(limit));
+
+        uint256[] storage all = _entriesByRecipient[recipient];
+        uint256 total = all.length;
+        if (offset >= total) {
+            return (new uint256[](0), new RefundEntry[](0));
+        }
+
+        uint256 end = offset + limit;
+        if (end > total) end = total;
+
+        uint256 count = end - offset;
+        entryIds = new uint256[](count);
+        entries = new RefundEntry[](count);
+        for (uint256 i = 0; i < count; ++i) {
+            uint256 entryId = all[offset + i];
+            entryIds[i] = entryId;
+            entries[i] = _refundEntries[entryId];
+        }
+    }
+
+    /// @inheritdoc IDotnsNameEscrow
+    function refundEntry(uint256 entryId)
+        external
+        view
+        override
+        returns (RefundEntry memory entry)
+    {
+        entry = _refundEntries[entryId];
+    }
+
+    /// @notice Internal helper: allocate a new entryId and credit a refund to `recipient`.
+    /// @dev Assigns the next monotonic entryId, stores the entry, appends to the recipient's
+    ///      enumeration array, and emits @custom:emits RefundCredited. `cooldownSeconds` may be
+    ///      zero when the cooldown has already been served by another mechanism (for example, the
+    ///      release-and-withdraw path enforces the cooldown on the position before crediting).
+    function _creditRefund(
+        address recipient,
+        uint256 amount,
+        uint256 tokenId,
+        uint64 cooldownSeconds
+    )
+        internal
+        returns (uint256 entryId)
+    {
+        require(recipient != address(0), InvalidRecipient());
+        require(amount > 0, InvalidAmount());
+
+        entryId = ++_nextEntryId;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint64 availableAt = uint64(block.timestamp + cooldownSeconds);
+
+        _refundEntries[entryId] = RefundEntry({
+            recipient: recipient,
+            amount: amount,
+            availableAt: availableAt,
+            tokenId: tokenId
+        });
+
+        uint256[] storage list = _entriesByRecipient[recipient];
+        list.push(entryId);
+        _entryIndexPlusOne[entryId] = list.length;
+
+        emit RefundCredited(recipient, entryId, amount, availableAt, tokenId);
+    }
+
+    /// @notice Internal helper: delete a refund entry and swap-pop its slot in the recipient's
+    ///         enumeration array.
+    function _removeRefundEntry(uint256 entryId, address recipient) internal {
+        uint256 indexPlusOne = _entryIndexPlusOne[entryId];
+        // Caller is expected to have validated existence already; defensive check kept cheap.
+        if (indexPlusOne == 0) return;
+
+        uint256 index = indexPlusOne - 1;
+        uint256[] storage list = _entriesByRecipient[recipient];
+        uint256 lastIndex = list.length - 1;
+
+        if (index != lastIndex) {
+            uint256 movedEntryId = list[lastIndex];
+            list[index] = movedEntryId;
+            _entryIndexPlusOne[movedEntryId] = indexPlusOne;
+        }
+        list.pop();
+
+        delete _entryIndexPlusOne[entryId];
+        delete _refundEntries[entryId];
     }
 
     /// @inheritdoc IDotnsNameEscrow

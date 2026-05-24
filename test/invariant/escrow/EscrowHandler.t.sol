@@ -480,8 +480,11 @@ contract EscrowHandler is Test {
         if (registrar.quoteTransferFee(tokenId, recipient) != 0) return;
 
         vm.prank(currentOwner);
-        try registrar.transferFrom(currentOwner, recipient, tokenId) {}
-        catch {
+        try registrar.transferFrom(currentOwner, recipient, tokenId) {
+            IDotnsNameEscrow.ReleasePosition memory pos = escrow.getReleasePosition(tokenId);
+            depositAmounts[tokenId] = pos.amount;
+            lockedRecipient[tokenId] = pos.recipient;
+        } catch {
             return;
         }
     }
@@ -543,6 +546,10 @@ contract EscrowHandler is Test {
                 lastObservedRunningMax[tokenId] = newMax;
             }
             _accountInsuranceDraws(logs);
+
+            IDotnsNameEscrow.ReleasePosition memory pos = escrow.getReleasePosition(tokenId);
+            depositAmounts[tokenId] = pos.amount;
+            lockedRecipient[tokenId] = pos.recipient;
         } catch {
             return;
         }

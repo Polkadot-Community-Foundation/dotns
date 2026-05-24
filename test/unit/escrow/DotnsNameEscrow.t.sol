@@ -342,6 +342,52 @@ contract DotnsNameEscrowTest is BaseDotns {
         assertEq(dotnsNameEscrow.cooldown(), newCooldown, "cooldown should be updated");
     }
 
+    function test_same_tier_NoStatus_transfer_hands_over_deposit_position() public {
+        uint256 tokenId = _registerNoStatus(LABEL, ed);
+
+        IDotnsNameEscrow.ReleasePosition memory before = dotnsNameEscrow.getReleasePosition(tokenId);
+        assertEq(before.recipient, ed);
+        assertEq(before.amount, RENT_PRICE);
+
+        uint256 quotedFee = dotnsRegistrar.quoteTransferFee(tokenId, leonardo);
+        assertEq(quotedFee, 0, "same-tier NoStatus transfer should be free");
+
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+
+        IDotnsNameEscrow.ReleasePosition memory afterTransfer =
+            dotnsNameEscrow.getReleasePosition(tokenId);
+        assertEq(afterTransfer.recipient, leonardo, "deposit recipient should follow the NFT");
+        assertEq(afterTransfer.amount, RENT_PRICE, "deposit amount unchanged on handover");
+    }
+
+    function test_PopFull_to_PopLite_on_PopLite_tier_name_pays_D() public {
+        string memory liteLabel = "lights01";
+
+        _grantPopFull(ed);
+        _grantPopLite(leonardo);
+
+        _commitAndRegister(liteLabel, ed, false);
+
+        uint256 tokenId = _tokenIdForLabel(liteLabel);
+        uint256 startingPrice = popRules.startingPrice();
+        uint256 quotedFee = dotnsRegistrar.quoteTransferFee(tokenId, leonardo);
+
+        assertEq(quotedFee, startingPrice, "holder-downgrade should fire at D");
+
+        uint256 priorInsurance = dotnsNameEscrow.insuranceFund();
+
+        vm.deal(ed, quotedFee);
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom{value: quotedFee}(ed, leonardo, tokenId);
+
+        assertEq(
+            dotnsNameEscrow.insuranceFund() - priorInsurance,
+            startingPrice,
+            "downgrade friction must settle to insurance"
+        );
+    }
+
     function test_solvency_after_force_sent_funds() public {
         uint256 tokenId = _registerNoStatus(LABEL, ed);
         _approveAndRelease(tokenId, ed);

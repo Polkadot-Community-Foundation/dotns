@@ -219,12 +219,34 @@ interface IPopRules {
     /// @notice Friction fee owed when `account` reaches into a label tier above its verification
     /// level.
     /// @dev Non-zero only when `account` cannot meet the label's required PoP tier; the value is
-    ///      the flat NoStatus deposit. Acts as cross-payer friction at registration time and as
-    ///      the transfer-time floor consumed by `DotnsNameEscrow.chargeTransferFee`. Non-canonical
-    ///      labels and labels with more than two trailing digits trigger @custom:reverts PopError.
+    ///      the flat NoStatus deposit. Acts as cross-payer friction at registration time. Use
+    ///      @custom:function transferFloor for transfer-time friction, which folds in the
+    ///      sender-tier-downgrade component as well. Non-canonical labels and labels with more
+    ///      than two trailing digits trigger @custom:reverts PopError.
     /// @param name Domain label being acted on.
     /// @param account Account whose verification reach is being measured.
     function reachFee(string calldata name, address account) external view returns (uint256 fee);
+
+    /// @notice Transfer-time friction floor: the greater of the recipient-reach component and
+    ///         the sender-tier-downgrade component.
+    /// @dev Returns the flat NoStatus deposit when either (i) the recipient does not meet the
+    ///      label's required tier, or (ii) the recipient's personhood tier is strictly below the
+    ///      sender's. Returns zero when neither condition holds. The two components overlap on
+    ///      pure tier mismatches, so the function takes their maximum rather than their sum to
+    ///      avoid double-charging. Consumed by @custom:function DotnsRegistrar.quoteTransferFee.
+    ///      Non-canonical labels and labels with more than two trailing digits trigger
+    ///      @custom:reverts PopError.
+    /// @param name Domain label being transferred.
+    /// @param from Current holder of the name.
+    /// @param to Incoming holder of the name.
+    function transferFloor(
+        string calldata name,
+        address from,
+        address to
+    )
+        external
+        view
+        returns (uint256 floor);
 
     /// @notice Returns whether `name` is a base name under PoP rules.
     /// @dev A base name has no trailing digits; lite-person labels always have at least two

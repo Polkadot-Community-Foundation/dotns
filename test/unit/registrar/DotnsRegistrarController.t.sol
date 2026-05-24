@@ -473,6 +473,38 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         assertTrue(leonardoStore.isLocked(bytes32(tokenId)));
     }
 
+    function test_cross_payer_sponsoring_unverified_owner_pays_tier_friction() public {
+        string memory popfullLabel = "alicedef";
+        address payer = ed;
+        address ownerAddr = leonardo;
+
+        _grantPopFull(payer);
+
+        bytes32 secret = keccak256(abi.encodePacked(popfullLabel, ownerAddr, block.timestamp));
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: popfullLabel, owner: ownerAddr, secret: secret, reserved: true
+            });
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
+
+        vm.prank(payer);
+        dotnsRegistrarController.commit(commitment);
+
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+
+        uint256 friction = popRules.transferFloor(popfullLabel, payer, ownerAddr);
+        assertGt(friction, 0);
+
+        uint256 priorInsurance = dotnsNameEscrow.insuranceFund();
+
+        vm.deal(payer, friction);
+        vm.prank(payer);
+        dotnsRegistrarController.register{value: friction}(registration);
+
+        assertEq(dotnsRegistrar.ownerOf(_tokenIdForLabel(popfullLabel)), ownerAddr);
+        assertEq(dotnsNameEscrow.insuranceFund() - priorInsurance, friction);
+    }
+
     function test_transfer_via_approved_operator_writes_to_store() public {
         string memory nameLabel = "opxfer01";
 
@@ -483,8 +515,10 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         vm.prank(ed);
         dotnsRegistrar.setApprovalForAll(tiago, true);
 
+        uint256 xferFee = dotnsRegistrar.quoteTransferFee(tokenId, leonardo);
+        vm.deal(tiago, xferFee);
         vm.prank(tiago);
-        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+        dotnsRegistrar.transferFrom{value: xferFee}(ed, leonardo, tokenId);
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), leonardo);
 
