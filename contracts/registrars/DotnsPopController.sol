@@ -143,7 +143,7 @@ contract DotnsPopController is
     EnumerableSet.AddressSet private _pendingClaimUsers;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
-    uint256[47] private __gap;
+    uint256[50] private __gap;
 
     /// @notice Restricts calls to the address registered as the PoP gateway
     ///         on the protocol registry.
@@ -496,7 +496,7 @@ contract DotnsPopController is
     /// @notice Returns implementation version.
     /// @return versionString Current version string.
     function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.1.0";
+        versionString = "1.0.0";
     }
 
     /// @notice Mints a name, wires forward registry, and persists PoP-flow records (chat

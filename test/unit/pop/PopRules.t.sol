@@ -49,6 +49,26 @@ contract PopRulesTests is BaseDotns {
         assertEq(classificationMessage, "Available to all");
     }
 
+    function test_classify_reverts_for_one_digit_suffix() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPopRules.PopError.selector,
+                "Name must have no digit suffix or exactly 2 digit suffix"
+            )
+        );
+        popRules.classifyName("andrew1");
+    }
+
+    function test_classify_reverts_for_three_digit_suffix() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPopRules.PopError.selector,
+                "Name must have no digit suffix or exactly 2 digit suffix"
+            )
+        );
+        popRules.classifyName("andrew123");
+    }
+
     function test_flat_price_does_not_scale_with_length() public view {
         // Three NoStatus labels across the previously-tiered length bands (9, 12, 17 chars)
         // must all price identically under the flat deposit. The prior curve charged

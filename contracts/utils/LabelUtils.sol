@@ -91,4 +91,24 @@ library LabelUtils {
         hash = labelhash(label);
         node = namehash(hash);
     }
+
+    /// @notice Strips the configured `.dot` TLD suffix from a stored full name.
+    /// @dev Returns the empty string when the input does not end in the TLD; callers treat
+    ///      an empty return as a "do not trust this record" signal.
+    function stripDotTld(string memory fullName) internal pure returns (string memory label) {
+        bytes memory full = bytes(fullName);
+        bytes memory tld = bytes(DotnsConstants.TLD);
+        if (full.length <= tld.length) return "";
+
+        uint256 baseLength = full.length - tld.length;
+        for (uint256 i; i < tld.length; ++i) {
+            if (full[baseLength + i] != tld[i]) return "";
+        }
+
+        bytes memory bare = new bytes(baseLength);
+        for (uint256 i; i < baseLength; ++i) {
+            bare[i] = full[i];
+        }
+        return string(bare);
+    }
 }

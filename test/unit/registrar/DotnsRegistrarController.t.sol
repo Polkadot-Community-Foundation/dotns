@@ -7,6 +7,7 @@ import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 import {IDotnsRoleManager} from "../../../contracts/access/IDotnsRoleManager.sol";
+import {IDotnsNameEscrow} from "../../../contracts/escrow/IDotnsNameEscrow.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {
     OwnableUpgradeable
@@ -549,5 +550,98 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         ILabelStore leonardoStore = ILabelStore(storeFactory.getLabelStore(leonardo));
         assertEq(leonardoStore.getLabel(bytes32(tokenId)), "");
+    }
+
+    /// @notice A zero-fee NoStatus to NoStatus transfer must still clear the depositor's
+    ///         deposit and credit a refund entry, because the deposit binds to the
+    ///         original depositor and never follows the NFT.
+    /// @dev Exercises the new `depositClearanceNeeded` path in the registrar: with
+    ///      `transferFloor == 0` (NoStatus to NoStatus), the registrar used to skip
+    ///      the escrow call entirely. Under the new rule it must still invoke
+    ///      `chargeTransferFee` whenever a live position belongs to a recipient other
+    ///      than `to`, so the deposit is refunded to the original depositor.
+    function test_transfer_zero_fee_still_clears_deposit_when_leaving_depositor() public {
+        string memory nameLabel = NOSTATUS_LABEL_A;
+
+        _register(nameLabel, ed, IPopRules.PopStatus.NoStatus);
+        uint256 tokenId = _tokenIdForLabel(nameLabel);
+
+        IDotnsNameEscrow.ReleasePosition memory before = dotnsNameEscrow.getReleasePosition(tokenId);
+        assertEq(before.amount, RENT_PRICE, "NoStatus mint must seed RENT_PRICE deposit");
+        assertEq(before.recipient, ed, "deposit recipient must be original registrant");
+
+        uint256 transferFee = dotnsRegistrar.quoteTransferFee(tokenId, leonardo);
+        assertEq(transferFee, 0, "NoStatus to NoStatus transfer floor is zero");
+
+        uint256 priorReserve = dotnsNameEscrow.reserves(address(0));
+        uint256 priorPendingRefunds = dotnsNameEscrow.pendingRefundCount(ed);
+
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom{value: 0}(ed, leonardo, tokenId);
+
+        IDotnsNameEscrow.ReleasePosition memory after_ = dotnsNameEscrow.getReleasePosition(tokenId);
+        assertEq(after_.amount, 0, "deposit must clear when NFT leaves the depositor");
+        assertEq(
+            after_.recipient, address(0), "position must be deleted, not migrated to the recipient"
+        );
+        assertEq(
+            dotnsNameEscrow.reserves(address(0)),
+            priorReserve - RENT_PRICE,
+            "tokenReserved must drop by the cleared deposit"
+        );
+        assertEq(
+            dotnsNameEscrow.pendingRefundCount(ed),
+            priorPendingRefunds + 1,
+            "depositor must receive one new refund entry"
+        );
+        assertEq(
+            dotnsNameEscrow.pendingWithdrawal(ed),
+            0,
+            "deposit refund routes through the time-locked refund ledger, not pendingWithdrawals"
+        );
+    }
+
+    /// @notice A hand-back to the original depositor must not produce a second refund.
+    ///         The deposit only releases on the leg that moves the NFT away from the
+    ///         depositor; on the return leg the position has already cleared.
+    /// @dev Defensive: confirms the depositor receives exactly one refund entry over
+    ///      a depositor-to-foreign-to-depositor round trip, not two, and the second
+    ///      leg's `to == prior depositor` does not retrigger the clearance branch.
+    function test_transfer_to_original_depositor_does_not_refund() public {
+        string memory nameLabel = NOSTATUS_LABEL_A;
+
+        _register(nameLabel, ed, IPopRules.PopStatus.NoStatus);
+        uint256 tokenId = _tokenIdForLabel(nameLabel);
+
+        // Outbound leg clears the deposit and credits the refund.
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom{value: 0}(ed, leonardo, tokenId);
+
+        uint256 refundsAfterOutbound = dotnsNameEscrow.pendingRefundCount(ed);
+        assertEq(refundsAfterOutbound, 1, "outbound leg credits exactly one refund entry");
+
+        IDotnsNameEscrow.ReleasePosition memory between =
+            dotnsNameEscrow.getReleasePosition(tokenId);
+        assertEq(between.amount, 0, "position must clear after the depositor-leaving transfer");
+
+        // Return leg: leonardo back to ed. The position is empty, so the
+        // registrar's `depositClearanceNeeded` guard is false and escrow is not
+        // touched. ed must not be credited a second refund.
+        vm.prank(leonardo);
+        dotnsRegistrar.transferFrom{value: 0}(leonardo, ed, tokenId);
+
+        assertEq(
+            dotnsNameEscrow.pendingRefundCount(ed),
+            refundsAfterOutbound,
+            "return leg to the original depositor must not credit a second refund"
+        );
+
+        IDotnsNameEscrow.ReleasePosition memory after_ = dotnsNameEscrow.getReleasePosition(tokenId);
+        assertEq(after_.amount, 0, "no fresh deposit may be seeded on a transfer hand-back");
+        assertEq(
+            after_.recipient,
+            address(0),
+            "the depositor recipient slot must remain clear after the return leg"
+        );
     }
 }

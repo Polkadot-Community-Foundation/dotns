@@ -52,19 +52,21 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
     }
 
     /// @notice Escrow native balance must always cover the full liability set: tracked
-    /// reserves, the insurance fund, and any unclaimed pull-payment balances. Under Fix C
-    /// transfer-fee accounting these three flows are economically distinct; solvency is
-    /// only meaningful against their sum.
+    /// reserves, the insurance fund, unclaimed pull-payment balances, and the time-locked
+    /// refund-ledger entries credited by the refund-on-leave path. Under the deposit-binds-
+    /// to-depositor model these four flows are economically distinct; solvency is only
+    /// meaningful against their sum.
     function invariant_solvency() public view {
         uint256 escrowBalance = address(dotnsNameEscrow).balance;
         uint256 reservedAmount = dotnsNameEscrow.reserves(address(0));
         uint256 insurance = dotnsNameEscrow.insuranceFund();
         uint256 pending = handler.totalPendingWithdrawals();
+        uint256 refundEntries = handler.totalPendingRefundEntries();
 
         assertGe(
             escrowBalance,
-            reservedAmount + insurance + pending,
-            "Escrow balance must cover reserves + insurance + pending withdrawals"
+            reservedAmount + insurance + pending + refundEntries,
+            "Escrow balance must cover reserves + insurance + pending withdrawals + refund entries"
         );
     }
 
@@ -112,11 +114,17 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
         );
     }
 
-    /// @notice The Fix C invariant: whenever an active (non-released) deposit position holds
-    /// a non-zero amount, its recipient must equal the current NFT owner. Released positions
-    /// are exempt because the NFT is owned by escrow during the cooldown window, and the
-    /// recipient is the prior payer by design.
-    function invariant_position_recipient_tracks_nft_owner() public view {
+    /// @notice The deposit position is bound to the original depositor and is never
+    ///         re-assigned by NFT custody changes. Whenever an active (non-released)
+    ///         deposit position still holds a non-zero amount, its recipient must
+    ///         match the address that opened it, which the handler captures into
+    ///         @custom:function lockedRecipient at deposit time.
+    /// @dev Released positions are exempt because the position is consumed by the
+    ///      release leg and the recipient is the prior payer by definition. Positions
+    ///      whose amount has been refunded to zero in a downgrade can also have
+    ///      `position.recipient == address(0)` after the slot is deleted, so the
+    ///      `amount == 0` skip covers that case as well.
+    function invariant_position_recipient_is_bound_to_original_depositor() public view {
         uint256[] memory deposited = handler.getDepositedTokenIds();
         for (uint256 i; i < deposited.length; ++i) {
             uint256 tokenId = deposited[i];
@@ -125,11 +133,10 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
 
             if (position.amount == 0 || position.released) continue;
 
-            address currentOwner = dotnsRegistrar.ownerOf(tokenId);
             assertEq(
                 position.recipient,
-                currentOwner,
-                "active deposit recipient must equal current NFT owner"
+                handler.lockedRecipient(tokenId),
+                "active deposit recipient must remain the original depositor"
             );
         }
     }

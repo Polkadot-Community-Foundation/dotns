@@ -219,41 +219,51 @@ contract EscrowHandler is Test {
 
         // Cross-tier path uses priceWithoutCheck for the owner.
         uint256 ownerPrice = popRules.priceWithoutCheck(label, ownerAddr).price;
+        // `payerPrice` is read for documentation continuity even though the A1
+        // max-not-sum charge no longer adds it on top of `ownerPrice`. Bind into
+        // a local so the read is observable in traces and a future branch
+        // expansion can reuse it without re-reading from the oracle.
         uint256 payerPrice = popRules.priceWithoutCheck(label, payer).price;
+        payerPrice;
 
-        // Skip when there is nothing to register: zero owner price with no fee differential
-        // skips the deposit branches entirely and `register()` still mints. Tracking it via
-        // ghost state would falsely inflate reserves.
-        if (ownerPrice == 0) return;
-
-        // The escrow records the call value as a cross-tier insurance deposit if the
-        // payer and owner price tiers differ; otherwise the value backs a refundable
-        // deposit position with the owner as the locked refund recipient.
+        // Under the A1 max-not-sum rule the controller charges
+        // `max(priced.price, friction)` on the cross-payer path and routes the
+        // whole charge into the insurance fund via `depositInsurance`. The
+        // refundable deposit position is seeded at zero amount, so the only
+        // mutation invariant tracking has to mirror here is the insurance leg.
         uint256 priorInsurance = escrow.insuranceFund();
         bytes32 labelhash = keccak256(bytes(label));
         bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
         uint256 tokenId = uint256(node);
 
+        // The handler picks the registrar's required value live so it stays in
+        // sync with whatever the A1 formula returns for the current tier mix.
+        // `priceWithoutCheck` gives the owner-side price and `transferFloor`
+        // returns the payer-to-owner friction; the max collapses both into the
+        // single charge the controller demands.
+        uint256 frictionForCharge = popRules.transferFloor(label, payer, ownerAddr);
+        uint256 charge = ownerPrice > frictionForCharge ? ownerPrice : frictionForCharge;
+
+        // Skip when no value moves: a zero charge produces a free zero-amount
+        // position with no insurance or reserves delta, so adding it to the
+        // ghost-state token set adds noise without exercising any new branch.
+        if (charge == 0) return;
+
         vm.recordLogs();
         vm.prank(payer);
-        try controller.register{value: ownerPrice}(registration) {
+        try controller.register{value: charge}(registration) {
             Vm.Log[] memory logs = vm.getRecordedLogs();
             uint256 newInsurance = escrow.insuranceFund();
 
             _depositedTokenIds.push(tokenId);
             labelByTokenId[tokenId] = label;
-            depositAmounts[tokenId] = ownerPrice;
+            // Cross-payer registrations seed a zero-amount refundable position;
+            // ghost-state mirrors that by leaving `depositAmounts` at zero.
+            depositAmounts[tokenId] = 0;
+            lockedRecipient[tokenId] = address(0);
 
             if (newInsurance > priorInsurance) {
-                // Cross-tier (different prices): funds went into the insurance fund and there
-                // is no refundable position. We must not double-count `ownerPrice` as both
-                // reserves (deposit) and insurance; leave depositAmounts at zero in that case.
-                depositAmounts[tokenId] = 0;
                 ghost_insurancePaidIn += (newInsurance - priorInsurance);
-                lockedRecipient[tokenId] = address(0);
-            } else if (payerPrice == ownerPrice) {
-                // Same-tier-different-address: refundable deposit with owner as recipient.
-                lockedRecipient[tokenId] = ownerAddr;
             }
 
             // Track InsuranceDraw outflows surfaced by this transaction (defensive; the
@@ -481,9 +491,12 @@ contract EscrowHandler is Test {
 
         vm.prank(currentOwner);
         try registrar.transferFrom(currentOwner, recipient, tokenId) {
+            // Sync the amount because position state can shrink under future
+            // downgrade paths, but never the recipient: under the new design
+            // the deposit position is bound to the original depositor and
+            // does not follow NFT custody.
             IDotnsNameEscrow.ReleasePosition memory pos = escrow.getReleasePosition(tokenId);
             depositAmounts[tokenId] = pos.amount;
-            lockedRecipient[tokenId] = pos.recipient;
         } catch {
             return;
         }
@@ -514,9 +527,6 @@ contract EscrowHandler is Test {
         address to = _pickDifferentActor(currentOwner, toSeed);
         if (to == address(0)) return;
 
-        uint256 priceForTo = popRules.priceWithoutCheck(label, to).price;
-        if (priceForTo == 0) return;
-
         // Use the registrar's own quote so the value attached matches whatever the
         // contract actually requires. This includes the reach-floor branch: when
         // the recipient's verification level is below the label's required tier,
@@ -533,10 +543,12 @@ contract EscrowHandler is Test {
         try registrar.transferFrom{value: requiredFee}(currentOwner, to, tokenId) {
             Vm.Log[] memory logs = vm.getRecordedLogs();
 
-            // Read the on-chain insurance delta rather than predicting it. The contract
-            // credits `max(priceForTo - prior, reachFloor)` to insurance; mirroring that
-            // formula in the handler would re-create the very drift this guard is meant
-            // to prevent.
+            // Read the on-chain insurance delta rather than predicting it. The
+            // chargeTransferFee path credits `reachFloor` to insurance and, if
+            // the NFT is leaving its original depositor, simultaneously refunds
+            // the full deposit via the time-locked refund ledger. Mirroring the
+            // formula in the handler would re-create the drift this guard is
+            // meant to prevent.
             uint256 newInsurance = escrow.insuranceFund();
             if (newInsurance > priorInsurance) {
                 ghost_insurancePaidIn += (newInsurance - priorInsurance);
@@ -547,9 +559,12 @@ contract EscrowHandler is Test {
             }
             _accountInsuranceDraws(logs);
 
+            // Sync the amount because the leaving-depositor branch can zero out
+            // the position. Under the new design the deposit is bound to the
+            // original depositor and is refunded in full when the NFT leaves
+            // them, never reassigned to the new owner.
             IDotnsNameEscrow.ReleasePosition memory pos = escrow.getReleasePosition(tokenId);
             depositAmounts[tokenId] = pos.amount;
-            lockedRecipient[tokenId] = pos.recipient;
         } catch {
             return;
         }
@@ -595,6 +610,26 @@ contract EscrowHandler is Test {
         uint256 length = actors.length;
         for (uint256 i; i < length; ++i) {
             total += escrow.pendingWithdrawal(actors[i]);
+        }
+    }
+
+    /// @notice Returns the sum of outstanding time-locked refund entries across all actors.
+    /// @dev Used by the full-solvency invariant to capture the refund-on-leave liability
+    ///      that `chargeTransferFee` credits via `_creditRefund` whenever an active
+    ///      deposit position's NFT moves away from its original depositor. Iterates each
+    ///      actor's entry list and sums each entry's `amount`.
+    /// @return total Aggregate refund-ledger liability owed to the actor set.
+    function totalPendingRefundEntries() external view returns (uint256 total) {
+        uint256 length = actors.length;
+        for (uint256 i; i < length; ++i) {
+            address actor = actors[i];
+            uint256 count = escrow.pendingRefundCount(actor);
+            if (count == 0) continue;
+            (, IDotnsNameEscrow.RefundEntry[] memory entries) =
+                escrow.pendingRefunds(actor, 0, count);
+            for (uint256 j; j < entries.length; ++j) {
+                total += entries[j].amount;
+            }
         }
     }
 

@@ -7,9 +7,10 @@ pragma solidity ^0.8.34;
 /// @dev Classifies labels into the PoP tier required for registration and exposes reservation
 ///      metadata. Length <= 5 is reserved for governance; lengths 6-8 require PopFull unless they
 ///      carry exactly two trailing digits (PopLite, gateway-issued); lengths >= 9 are open to
-///      every caller as NoStatus regardless of trailing digits. More than two trailing digits is
-///      invalid; internal digits do not affect classification. Reservations are keyed by the
-///      digit-stripped stem so `alice` and `alice42` share a slot.
+///      every caller as NoStatus when they carry zero or exactly two trailing digits. Any one-digit
+///      suffix, and any suffix longer than two digits, is invalid; internal digits do not affect
+///      classification. Reservations are keyed by the digit-stripped stem so `alice` and `alice42`
+///      share a slot.
 ///
 ///      Pricing is a flat per-name deposit on the NoStatus tier; verified PopLite and PopFull
 ///      users pay zero.
@@ -72,8 +73,8 @@ interface IPopRules {
     /// @notice Classifies a name into a required PoP tier per DotNS naming rules.
     /// @dev Pure; inputs are the label bytes only. Callers use the returned tier to decide which
     ///      pricing and verification branch applies. Non-canonical labels (anything other than a
-    ///      single lowercase ASCII DNS label) and labels with more than two trailing digits both
-    ///      trigger @custom:reverts PopError.
+    ///      single lowercase ASCII DNS label) and labels with exactly one or more than two
+    ///      trailing digits both trigger @custom:reverts PopError.
     /// @param name The name label being evaluated.
     /// @return requirement Required tier for registration.
     /// @return message Explanation of the classification result.
@@ -221,8 +222,8 @@ interface IPopRules {
     /// @dev Non-zero only when `account` cannot meet the label's required PoP tier; the value is
     ///      the flat NoStatus deposit. Acts as cross-payer friction at registration time. Use
     ///      @custom:function transferFloor for transfer-time friction, which folds in the
-    ///      sender-tier-downgrade component as well. Non-canonical labels and labels with more
-    ///      than two trailing digits trigger @custom:reverts PopError.
+    ///      sender-tier-downgrade component as well. Non-canonical labels and labels with exactly
+    ///      one or more than two trailing digits trigger @custom:reverts PopError.
     /// @param name Domain label being acted on.
     /// @param account Account whose verification reach is being measured.
     function reachFee(string calldata name, address account) external view returns (uint256 fee);
@@ -234,8 +235,8 @@ interface IPopRules {
     ///      sender's. Returns zero when neither condition holds. The two components overlap on
     ///      pure tier mismatches, so the function takes their maximum rather than their sum to
     ///      avoid double-charging. Consumed by @custom:function DotnsRegistrar.quoteTransferFee.
-    ///      Non-canonical labels and labels with more than two trailing digits trigger
-    ///      @custom:reverts PopError.
+    ///      Non-canonical labels and labels with exactly one or more than two trailing digits
+    ///      trigger @custom:reverts PopError.
     /// @param name Domain label being transferred.
     /// @param from Current holder of the name.
     /// @param to Incoming holder of the name.

@@ -206,10 +206,13 @@ contract DotnsRegistrarController is
             require(priced.status != IPopRules.PopStatus.Reserved, NameReserved(registration.label));
         }
 
-        uint256 friction = !isDirect
-            ? rules.transferFloor(registration.label, msg.sender, registration.owner)
-            : 0;
-        uint256 totalCharged = priced.price + friction;
+        // Cross-payer charge is the greater of the owner-side registration price and the
+        // payer-to-owner downward friction, never their sum: both quantities describe the
+        // same privilege gap and the rule forecloses double-charging. On a direct
+        // registration friction is zero, so the max collapses to `priced.price`.
+        uint256 friction =
+            !isDirect ? rules.transferFloor(registration.label, msg.sender, registration.owner) : 0;
+        uint256 totalCharged = priced.price > friction ? priced.price : friction;
         require(msg.value >= totalCharged, InsufficientValue());
 
         // Skip the reverse-record auto-set when the owner already has a primary,
@@ -232,7 +235,7 @@ contract DotnsRegistrarController is
             IDotnsNameEscrow(payable(escrow)).reclaim(tokenId, registration.owner);
         }
 
-        _settleEscrow(escrow, tokenId, registration.owner, isDirect, priced.price, friction);
+        _settleEscrow(escrow, tokenId, registration.owner, isDirect, totalCharged);
 
         if (
             priced.status == IPopRules.PopStatus.PopLite
@@ -242,43 +245,41 @@ contract DotnsRegistrarController is
         }
 
         // Overpayment credited to the pull-payment ledger so contract wallets
-        // with a reverting `receive` can still complete the registration.
+        // Push the overage to msg.sender directly. Contract callers that reject incoming value
+        // fall back to the escrow's pull-payment ledger, claimed later via `claimWithdrawal`.
         if (msg.value > totalCharged) {
             uint256 refund = msg.value - totalCharged;
-            IDotnsNameEscrow(payable(escrow)).creditOverpayment{value: refund}(msg.sender);
+            (bool ok,) = payable(msg.sender).call{value: refund}("");
+            if (!ok) {
+                IDotnsNameEscrow(payable(escrow)).creditOverpayment{value: refund}(msg.sender);
+            }
             emit OverpaymentRefunded(msg.sender, refund);
         }
     }
 
     /// @notice Settles every escrow side-effect of a successful registration.
-    /// @dev Extracted to keep `register` under the stack-depth ceiling.
+    /// @dev Extracted to keep `register` under the stack-depth ceiling. On a direct
+    ///      registration the full `chargeAmount` lands in the refundable deposit position;
+    ///      on a cross-payer registration the same amount routes to the friction reserve
+    ///      and no deposit position is seeded.
     function _settleEscrow(
         address escrow,
         uint256 tokenId,
         address nameOwner,
         bool isDirect,
-        uint256 ownerPrice,
-        uint256 friction
+        uint256 chargeAmount
     )
         internal
     {
-        uint256 depositAmount = isDirect ? ownerPrice : 0;
+        uint256 depositAmount = isDirect ? chargeAmount : 0;
         IDotnsNameEscrow(payable(escrow)).deposit{value: depositAmount}(
             IDotnsNameEscrow.DepositParams({
                 tokenId: tokenId, asset: address(0), amount: depositAmount, recipient: nameOwner
             })
         );
 
-        if (!isDirect && ownerPrice != 0) {
-            IDotnsNameEscrow(payable(escrow)).depositInsurance{value: ownerPrice}(
-                IDotnsNameEscrow.InsuranceDepositParams({
-                    tokenId: tokenId, payer: msg.sender, recipient: nameOwner
-                })
-            );
-        }
-
-        if (friction != 0) {
-            IDotnsNameEscrow(payable(escrow)).depositInsurance{value: friction}(
+        if (!isDirect && chargeAmount > 0) {
+            IDotnsNameEscrow(payable(escrow)).depositInsurance{value: chargeAmount}(
                 IDotnsNameEscrow.InsuranceDepositParams({
                     tokenId: tokenId, payer: msg.sender, recipient: nameOwner
                 })

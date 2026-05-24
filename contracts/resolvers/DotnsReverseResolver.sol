@@ -9,9 +9,11 @@ import {
 import {
     ERC165Upgradeable
 } from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IDotnsReverseResolver} from "./IDotnsReverseResolver.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
+import {LabelUtils} from "../utils/LabelUtils.sol";
 
 /// @title Dotns Reverse Resolver
 /// @notice Resolves an address to its associated .dot name.
@@ -68,8 +70,38 @@ contract DotnsReverseResolver is
     }
 
     /// @inheritdoc IDotnsReverseResolver
+    function claimReverseRecord(string calldata label) external override {
+        bytes32 labelhash = LabelUtils.labelhash(label);
+        uint256 tokenId = uint256(LabelUtils.namehash(labelhash));
+
+        IERC721 registrar = IERC721(protocolRegistry.get(DotnsConstants.REGISTRAR));
+        require(registrar.ownerOf(tokenId) == msg.sender, NotNameOwner(msg.sender, tokenId));
+
+        string memory fullName = string.concat(label, DotnsConstants.TLD);
+        reverseNames[msg.sender] = fullName;
+        emit ReverseNameSet(msg.sender, fullName);
+    }
+
+    /// @inheritdoc IDotnsReverseResolver
     function nameOf(address addr) external view override returns (string memory name) {
-        return reverseNames[addr];
+        string memory stored = reverseNames[addr];
+        if (bytes(stored).length == 0) return "";
+
+        // Strip the `.dot` suffix and validate against current ownership so a transferred-away
+        // name never resolves under a stale reverse record.
+        string memory label = LabelUtils.stripDotTld(stored);
+        if (bytes(label).length == 0) return "";
+
+        bytes32 labelhash = LabelUtils.labelhashMemory(label);
+        uint256 tokenId = uint256(LabelUtils.namehash(labelhash));
+
+        IERC721 registrar = IERC721(protocolRegistry.get(DotnsConstants.REGISTRAR));
+        try registrar.ownerOf(tokenId) returns (address currentOwner) {
+            if (currentOwner != addr) return "";
+            return stored;
+        } catch {
+            return "";
+        }
     }
 
     /// @inheritdoc ERC165Upgradeable

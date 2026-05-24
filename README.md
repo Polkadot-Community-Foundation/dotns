@@ -67,6 +67,53 @@ back through the same file. `scripts/deploy/run.sh` chains the stages, and
 enough for OpenZeppelin's upgrade-safety validation to run without exhausting
 the simulated EVM.
 
+## Economics
+
+dotNS uses a single tunable constant, written **`D`** throughout the protocol. `D` is the value returned by `PopRules.startingPrice()` and equals `10 ether` (ten DOT) at launch; the owner can adjust it through `PopRules.updateStartingPrice` under the same governance gate as the upgrade authority. `D` is the only money quantity the protocol charges; everything else is composition of `D` with zero.
+
+`D` plays two distinct roles. As a **deposit** it is the refundable lock a NoStatus user posts to register a NoStatus-tier label; it stays bound to the original depositor through `DotnsNameEscrow._positions[tokenId].recipient` and is refunded when the NFT leaves them. As a **friction** charge it is the non-refundable amount a sender pays on a cross-tier downward or reach-floor transfer, settled to `DotnsNameEscrow.insuranceFund` and never returned. The two flows are economically distinct and tracked under different storage.
+
+### Registration matrix
+
+`DotnsRegistrarController.register` computes the charge as `max(priced.price, friction)`, never their sum, where `priced.price` is the owner-side flat price from `PopRules.priceWithCheck` / `priceWithoutCheck` and `friction` is the payer-to-owner downward-friction amount from `PopRules.transferFloor` (zero on a direct registration). The single charge routes to the deposit position on a direct registration and to the insurance fund on a cross-payer registration.
+
+| Owner tier      | Reserved (stem ≤5) | PopFull-tier (stem 6-8, no digits) | PopLite-tier (stem 6-8, two digits) | NoStatus-tier (stem ≥9) |
+|---|---|---|---|---|
+| **NoStatus user**     | revert | revert | revert | direct: pays `D` into deposit |
+| **PopLite user**      | revert | revert | gateway-only; free | free |
+| **PopFull user**      | revert | free | gateway-only; free | free |
+| **Whitelisted address** | free (`registerReserved`) | free | free | free |
+
+Cross-payer registrations (`msg.sender != registration.owner`) bypass the eligibility gate for the owner via `priceWithoutCheck`, but still pay `max(ownerPrice, transferFloor)` into insurance. Reserved labels remain forbidden on the cross-payer path because the owner-side gate still rejects them. Whitelist registrations go through the same commit-reveal pipeline as the public path.
+
+### Transfer matrix
+
+`DotnsRegistrar._update` consults `PopRules.transferFloor(label, from, to)`, which returns `max(reachComponent, downgradeComponent)`. A transfer pays `D` whenever the recipient's tier is strictly below the sender's, or whenever the recipient cannot reach the label's required tier (a stale PopFull-tier name landing in a PopLite holder, for example, even on a same-tier PopLite-to-PopLite move). Same-tier and upward transfers between holders of the label's own class are free.
+
+| Sender → Recipient                | Friction (to insurance) | Deposit movement |
+|---|---|---|
+| NoStatus → NoStatus (same tier)   | 0                      | Refunded to original depositor if the name leaves them |
+| NoStatus → PopLite or PopFull     | 0                      | Refunded to original depositor (always leaving) |
+| PopLite → NoStatus                | `D`                    | n/a (recipient takes no new deposit) |
+| PopLite → PopLite (same)          | 0                      | None, unless reach-floor fires |
+| PopLite → PopFull (upward)        | 0                      | None |
+| PopFull → NoStatus                | `D`                    | n/a |
+| PopFull → PopLite (downward)      | `D`                    | n/a |
+| PopFull → PopFull (same)          | 0                      | None, unless reach-floor fires |
+
+The friction is constant and additive across downward hops. Every step that crosses a tier boundary downward charges `D` independently, so routing a name through intermediary tiers never costs less than the equivalent direct transfer. Laundering pays at least as much as the route it tries to avoid.
+
+### Refund and cooldown model
+
+The escrow maintains two separate pull-payment ledgers. The split is deliberate: the second ledger exists to enforce a cooldown that the first ledger must not impose.
+
+- **Overpayment ledger** — `_pendingWithdrawals[recipient] => uint256`, claimed via `claimWithdrawal()`. No cooldown. Used only as the fallback when `DotnsRegistrarController.register` tries to push a registration overpayment back to `msg.sender` inline and the push call returns false (contract receivers that reject inbound value).
+- **Refund ledger** — `_refundEntries[entryId] => RefundEntry { recipient, amount, availableAt, tokenId }`, claimed via `claimRefund(entryId)` or `claimRefundsBatch(entryIds[])`. Every credit allocates a fresh `entryId` and stamps its own `availableAt = block.timestamp + cooldown`, so drip-feed credits cannot reset earlier entries' clocks. Used for two flows: the full deposit refunded when a NoStatus-deposited name leaves its original depositor (the **refund-on-leave** path), and any transfer-fee overpayment a sender attaches above the required `reachFloor`.
+
+Only registrations trigger an immediate refund. `DotnsRegistrarController.register` attempts an inline `payable(msg.sender).call{value: refund}("")`; on success the surplus is back in the caller's wallet in the same transaction, on failure the surplus lands on the overpayment ledger for later claim. Every other refund path waits behind its own entry-bound cooldown. The cooldown value lives on `DotnsNameEscrow.cooldown` and is governance-tunable through `updateCooldown`.
+
+Enumerate pending refunds with `pendingRefundCount(addr)` / `pendingRefundIds(addr, offset, limit)` / `pendingRefunds(addr, offset, limit)`; inspect a single entry with `refundEntry(entryId)`. The pagination limit constant is `MAX_REFUND_PAGE_SIZE` (200).
+
 ## Contracts
 
 Two controllers sit on top of a single registrar and a single protocol registry. The registrar holds the ERC721 token per name; the registry holds the forward `node => (owner, resolver)` mapping and subname hierarchy; the resolvers hold per-name records; the protocol registry is the indirection layer through which every contract resolves its siblings at runtime. Controllers are the entry points: they mint names and drive the side effects. Neither controller imports the other. The layers underneath arbitrate collision handling: ERC721 uniqueness on the registrar, and a single reservation table on PopRules that both flows read through.
@@ -79,11 +126,17 @@ Commit-reveal controller for the public registration path. A caller first submit
 
 Dedicated controller for the Proof-of-Personhood gateway flow. Lives behind its own UUPS proxy with its own storage and is registered on the registrar via `addController` alongside the commit-reveal controller. Its gated entry points are callable only from the address resolved through the protocol registry under the `POP_GATEWAY` key, which is the `RootGatewayDispatcher` deployed against this controller; the dispatcher is the contract that actually proves substrate Root authority before forwarding here.
 
+Today the Pop gateway does not write a standalone `user => dotNS PopStatus` mapping. It materializes the PoP flow through gateway-issued labels, PoP resolver records, and reservation queue state; user tier checks for public pricing still come from the personhood precompile/context read.
+
 The first, `reserveBaseName`, mints a lite-person username to a user. The gateway-facing input is a `stem.suffix` shape: a single DNS label followed by exactly one dot and a digits-only suffix of at least two digits (for example `michal.03`). The controller normalises that input by stripping the dot before classification, pricing, and minting, so the on-chain label is always flat (`michal.03` becomes `michal03`). Inputs with more than one dot, no dot, or a non-digit suffix are rejected at the boundary. The call also persists the user's chat key on the PoP resolver and optionally enqueues a reservation for a full-person base name the user intends to claim later.
 
 The second, `registerBaseName`, mints a full-person username. Whether the call is a claim against a prior lite reservation or a fresh standalone registration is derived from on-chain reservation state; the caller does not choose. The link argument selects the chat-key source: inherit from a prior lite label, or accept a fresh one in the payload. When inheriting, the call also writes the `liteLink` (full => lite) and `fullClaim` (lite => full) records on the PoP resolver in the same transaction so downstream consumers can resolve either direction without scanning events.
 
 Each base label carries a head/tail-indexed reservation queue with a capacity of `MAX_RESERVATION_QUEUE` and a governance-configurable `reservationDuration`. The queue head is mirrored into PopRules on every head transition (enqueue-from-empty, expiry-driven promotion, non-expiry head removal, claim-wipes-queue), so the public commit-reveal flow sees the same cross-flow lock through its existing PopRules price check. Expiry advancement is permissionless: anyone can call `expireReservation` to garbage-collect a stale head, which is what the pallet does on its own cadence.
+
+#### Early mainnet quirk: `LabelStore` deployment
+
+Pop-gateway issuances mint the name and persist its label, but `LabelStore` deployment is deferred for users who have not yet interacted with the protocol from their own address. The current pallet-revive runtime does not let substrate Root deploy contracts on behalf of an account it does not control, so the per-user `LabelStore` cannot be created at the moment the gateway writes. The controller stamps a pending-claim entry instead, and the user calls `claimLabelStore` once from their own address to settle the store. The pending-claim entries have a bounded TTL (`expirePendingClaim` is permissionless) so the slot frees itself if a user never claims. When the runtime supports root-origin contract deployment, the deferred path collapses to a no-op and the issuance flow becomes one transaction end-to-end. This is a runtime limitation, not a protocol design choice.
 
 ### `RootGatewayDispatcher`
 
@@ -103,9 +156,28 @@ Subnames are created by the base-name owner. A subname carries its own `(owner, 
 
 ### `PopRules`
 
-PoP-aware name classification and pricing. Classifies a label into one of four tiers: `NoStatus` (labels of 9+ characters, open to anyone for a flat deposit regardless of trailing digits), `PopLite` (6-8 character labels with exactly two trailing digits, gateway-issued to lite-verified users), `PopFull` (6-8 character labels otherwise, requires full-person verification), and `Reserved` (labels of 5 characters or fewer, governed by the protocol). The classification determines the price and the eligibility gate the commit-reveal controller enforces.
+PoP-aware name classification and pricing. Classification reads the label's **stem length** (the character count after stripping the trailing digit suffix) and the trailing digit count itself, then maps to one of four tiers: `NoStatus` (stem of 9+ characters, open to anyone for a flat deposit, with zero or exactly two trailing digits permitted), `PopLite` (stem of 6-8 characters with exactly two trailing digits, gateway-issued to lite-verified users), `PopFull` (stem of 6-8 characters with no trailing digits, requires full-person verification), and `Reserved` (stem of 5 characters or fewer, governed by the protocol). Labels carrying one trailing digit or more than two trailing digits are rejected at the classifier. The classification determines the price and the eligibility gate the commit-reveal controller enforces.
+
+#### Classification examples and failure modes
+
+The classifier bands on the stem, not the total label length. The stem is the label after removing any trailing digits. Trailing digit count must be zero or exactly two; a one-digit suffix and suffixes longer than two digits are invalid before tier eligibility is considered.
+
+| Label | Stem | Trailing digits | Classification | Eligible public path | Notes |
+| --- | --- | ---: | --- | --- | --- |
+| `alice12` | `alice` | 2 | `Reserved` | Whitelist only | The stem is five characters, so the two-digit suffix does not make it PopLite. |
+| `andrew01` | `andrew` | 2 | `PopLite` | Pop gateway only | Valid lite shape: six-character stem plus system-supplied two-digit suffix. |
+| `alicebob42` | `alicebob` | 2 | `PopLite` | Pop gateway only | Eight-character stem plus two digits; total length is ten. |
+| `andrew` | `andrew` | 0 | `PopFull` | PopFull user | Canonical full-person base name. |
+| `andrew1` | `andrew` | 1 | Rejected | None | One trailing digit has no protocol meaning. |
+| `andrewsays` | `andrewsays` | 0 | `NoStatus` | Anyone | NoStatus self-registration pays the flat refundable deposit. |
+| `andrewsays01` | `andrewsays` | 2 | `NoStatus` | Anyone | Long stem remains NoStatus even with a two-digit suffix. |
+| `andrew123` | `andrew` | 3 | Rejected | None | More than two trailing digits is invalid. |
+| `andrew.01` | n/a | n/a | Rejected by public label validator | None | Dots are not valid in the public flat label. The Pop gateway accepts `stem.suffix` and normalises it to `stemsuffix`. |
+| `Andrew01` | n/a | n/a | Rejected by canonical label validator | None | Labels must be lowercase ASCII DNS labels. |
 
 Tier assignment is read on every pricing call, not stored: `PopRules` queries the alias-accounts personhood precompile at `DotnsConstants.PERSONHOOD` with the dotns context (`bytes32("dotns")`), and translates the returned `status` byte into a `PopStatus` (0=NoStatus, 1=PopLite, 2=PopFull). Unknown tier bytes collapse to `NoStatus`, so a future precompile addition fails closed rather than silently being treated as a higher tier. There is no on-chain self-attestation; users obtain personhood off-chain through the People-chain ring proof and the alias-accounts pallet propagates the result via XCM.
+
+Classification is not the same thing as effective holder context. A long label such as `andrewsays` is always a `NoStatus`-tier label by shape, but it may be held by a `PopFull`, `PopLite`, or `NoStatus` account. Consumers that need to know what rules apply to that live name should combine three reads: classify the label, query the registrar owner, then query the owner's dotns-context PoP status through the precompile/materialized context. The escrow position is the economic qualifier: if the token has an active release position with a non-zero amount, it came through the refundable NoStatus deposit path; if no such deposit exists, a verified holder can own the same long label without it being deposit-backed. In other words, `andrewsays` does not become a PopFull-tier label when a PopFull user owns it, but the owner can still be PopFull for transfer pricing, reverse resolution, and UI display.
 
 Whitelisting is the exception path for users or organisations that need to register without satisfying the live PoP tier check. DotNS still does not accept self-attestation: the contracts only consume PoP status from the personhood precompile, and a user cannot set or prove their own status inside DotNS. Instead, the public registrar controller has an owner-managed whitelist for `registerReserved`, which bypasses the PoP pricing gate for approved addresses while still using the normal commit-reveal and availability checks.
 
@@ -117,7 +189,9 @@ Two read paths, `priceWithCheck` and `priceWithoutCheck`, are what the public fl
 
 ### `DotnsReverseResolver`
 
-Reverse records mapping an address to its primary name. When a direct reserved registration lands and the registrant has no existing primary, the commit-reveal controller calls the reverse resolver to seed it; a subsequent reserved registration does not silently overwrite the primary, which keeps the user's chosen identity stable across multiple registrations. Writes are restricted to the addresses registered under `CONTROLLER` and `REGISTRAR` on the protocol registry (the commit-reveal controller and the registrar itself); rotating either is a single `protocolRegistry.set` call. Reads are open.
+Reverse records mapping an address to its primary name, with two write paths. The first, `setReverseName`, is the controller-only seeder: when a direct reserved registration lands and the registrant has no existing primary, the commit-reveal controller calls this entry point so a subsequent reserved registration does not silently overwrite the primary. Writes through this path are restricted to the addresses registered under `CONTROLLER` and `REGISTRAR` on the protocol registry. The second, `claimReverseRecord`, is the self-service path open to any current name owner: the caller hands in a label and the resolver checks that `registrar.ownerOf(namehash(label))` equals the caller before overwriting their reverse entry. Past ownership is never sufficient; the registrar is the single source of truth for the gate.
+
+Reads are open but fail-closed: `nameOf(address)` re-validates current ownership against the registrar before returning the stored name, so an address that has transferred their primary away resolves to the empty string until they claim a new name they currently hold. The protocol still best-effort clears reverse entries on transfer (cheaper reads, no behavioural change), but the security guarantee is the fail-closed read, not the eager clear.
 
 ### `DotnsContentResolver`
 

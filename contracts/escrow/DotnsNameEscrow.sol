@@ -272,50 +272,33 @@ contract DotnsNameEscrow is
         uint256 currentDeposit = position.amount;
         address priorRecipient = position.recipient;
 
-        uint256 depositDelta =
-            params.priceForTo > currentDeposit ? params.priceForTo - currentDeposit : 0;
-        uint256 depositRefund =
-            currentDeposit > params.priceForTo ? currentDeposit - params.priceForTo : 0;
-        uint256 fee = depositDelta + params.reachFloor;
+        // Deposits bind to the original depositor and never follow NFT custody.
+        // Zero-amount positions are lifecycle markers only; they rebind to the
+        // new holder so a free/cross-payer name remains releasable after transfer.
+        bool leavingPositionRecipient = priorRecipient != address(0) && params.to != priorRecipient;
 
-        if (fee == 0 && depositRefund == 0 && priorRecipient == params.to) {
-            if (msg.value > 0) {
-                (bool ok,) = payable(params.payer).call{value: msg.value}("");
-                require(ok, RefundFailed(params.tokenId));
-                emit OverpaymentRefunded(params.payer, msg.value);
-            }
-            return 0;
-        }
-
+        uint256 fee = params.reachFloor;
         require(msg.value >= fee, InsufficientValue());
 
-        if (depositRefund > 0 && priorRecipient != address(0)) {
-            _pendingWithdrawals[priorRecipient] += depositRefund;
-            tokenReserved[address(0)] -= depositRefund;
-            emit OverpaymentRefunded(priorRecipient, depositRefund);
-        }
-
-        // `released` and `withdrawAvailableAt` are not reset here: a released token is held
-        // by escrow and cannot reach this path through a user transferFrom.
-        if (params.priceForTo > 0) {
-            if (depositDelta > 0) {
-                tokenReserved[address(0)] += depositDelta;
+        if (leavingPositionRecipient) {
+            if (currentDeposit > 0) {
+                tokenReserved[address(0)] -= currentDeposit;
+                delete _positions[params.tokenId];
+                // `cooldown` is owner-bounded well under uint64; truncation cannot occur.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                _creditRefund(priorRecipient, currentDeposit, params.tokenId, uint64(cooldown));
+            } else {
+                position.recipient = params.to;
             }
-            position.amount = params.priceForTo;
-            position.recipient = params.to;
-        } else if (priorRecipient != address(0)) {
-            delete _positions[params.tokenId];
         }
 
-        if (params.reachFloor > 0) {
-            insuranceFund += params.reachFloor;
+        if (fee > 0) {
+            insuranceFund += fee;
+            if (fee > runningMax[params.tokenId]) {
+                runningMax[params.tokenId] = fee;
+            }
         }
 
-        uint256 highest =
-            params.priceForTo > params.reachFloor ? params.priceForTo : params.reachFloor;
-        if (highest > runningMax[params.tokenId]) {
-            runningMax[params.tokenId] = highest;
-        }
         charged = fee;
 
         emit CrossTierFeePaid(
@@ -327,12 +310,11 @@ contract DotnsNameEscrow is
             false
         );
 
-        uint256 refund = msg.value - fee;
-
-        if (refund > 0) {
-            (bool ok,) = payable(params.payer).call{value: refund}("");
-            require(ok, RefundFailed(params.tokenId));
-            emit OverpaymentRefunded(params.payer, refund);
+        uint256 overpayment = msg.value - fee;
+        if (overpayment > 0) {
+            // `cooldown` is owner-bounded well under uint64; truncation cannot occur.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            _creditRefund(params.payer, overpayment, params.tokenId, uint64(cooldown));
         }
     }
 
@@ -452,12 +434,7 @@ contract DotnsNameEscrow is
     }
 
     /// @inheritdoc IDotnsNameEscrow
-    function claimRefund(uint256 entryId)
-        external
-        override
-        nonReentrant
-        returns (uint256 amount)
-    {
+    function claimRefund(uint256 entryId) external override nonReentrant returns (uint256 amount) {
         RefundEntry memory entry = _refundEntries[entryId];
         require(entry.recipient == msg.sender, NotRefundRecipient(msg.sender, entry.tokenId));
         require(entry.amount > 0, NoSuchRefundEntry(entryId));
@@ -485,13 +462,9 @@ contract DotnsNameEscrow is
         for (uint256 i; i < length; ++i) {
             uint256 entryId = entryIds[i];
             RefundEntry memory entry = _refundEntries[entryId];
-            require(
-                entry.recipient == msg.sender, NotRefundRecipient(msg.sender, entry.tokenId)
-            );
+            require(entry.recipient == msg.sender, NotRefundRecipient(msg.sender, entry.tokenId));
             require(entry.amount > 0, NoSuchRefundEntry(entryId));
-            require(
-                block.timestamp >= entry.availableAt, RefundLocked(entryId, entry.availableAt)
-            );
+            require(block.timestamp >= entry.availableAt, RefundLocked(entryId, entry.availableAt));
 
             totalAmount += entry.amount;
             _removeRefundEntry(entryId, msg.sender);
@@ -598,10 +571,7 @@ contract DotnsNameEscrow is
         uint64 availableAt = uint64(block.timestamp + cooldownSeconds);
 
         _refundEntries[entryId] = RefundEntry({
-            recipient: recipient,
-            amount: amount,
-            availableAt: availableAt,
-            tokenId: tokenId
+            recipient: recipient, amount: amount, availableAt: availableAt, tokenId: tokenId
         });
 
         uint256[] storage list = _entriesByRecipient[recipient];

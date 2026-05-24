@@ -3,6 +3,7 @@ pragma solidity ^0.8.34;
 
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
+import {IDotnsNameEscrow} from "../../../contracts/escrow/IDotnsNameEscrow.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 import {
     OwnableUpgradeable
@@ -40,7 +41,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, enabled);
     }
 
-    function testFuzz_register_credits_overpayment_to_pull_payment_ledger(
+    function testFuzz_register_pushes_overpayment_back_to_eoa_payer(
         uint256 extra,
         uint256 salt
     )
@@ -59,19 +60,23 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
 
         extra = bound(extra, 0, 5 ether);
 
+        uint256 balanceBefore = registrant.balance;
+
         vm.startPrank(registrant);
         dotnsRegistrarController.register{value: requiredPrice + extra}(registration);
         vm.stopPrank();
 
-        // Overpayment routes to the escrow's pending-withdrawal ledger so
-        // contract receivers with reverting `receive` can still register and
-        // pull the refund later. The registrant's wallet balance therefore
-        // decreases by the full `value` sent; the surplus is recoverable via
-        // `claimWithdrawal`.
+        // EOA receivers accept the push, so the surplus lands back in the
+        // wallet directly and the pull-payment ledger stays at zero.
+        assertEq(
+            balanceBefore - registrant.balance,
+            requiredPrice,
+            "EOA payer is only debited the priced cost; overpayment is refunded inline"
+        );
         assertEq(
             dotnsNameEscrow.pendingWithdrawal(registrant),
-            extra,
-            "overpayment must accrue to the payer's pull-payment ledger"
+            0,
+            "EOA payer must not be routed through the pull ledger"
         );
 
         bytes32 labelhash = keccak256(bytes(nameLabel));
@@ -81,7 +86,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         assertEq(dotnsRegistrar.ownerOf(tokenId), registrant);
     }
 
-    function testFuzz_register_accepts_overpayment_when_price_is_zero(
+    function testFuzz_register_refunds_overpayment_inline_when_price_is_zero(
         uint256 extra,
         uint256 salt
     )
@@ -100,16 +105,23 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
 
         extra = bound(extra, 0, 5 ether);
 
+        uint256 balanceBefore = registrant.balance;
+
         vm.startPrank(registrant);
         dotnsRegistrarController.register{value: extra}(registration);
         vm.stopPrank();
 
-        // Zero-priced mint with overpayment: the full `extra` lands on the
-        // payer's pull-payment ledger.
+        // Zero-priced mint with overpayment: the EOA payer receives the full
+        // `extra` back inline, leaving the pull ledger untouched.
+        assertEq(
+            registrant.balance,
+            balanceBefore,
+            "zero-priced EOA mint must net out balances when overpaid"
+        );
         assertEq(
             dotnsNameEscrow.pendingWithdrawal(registrant),
-            extra,
-            "overpayment must accrue to the payer's pull-payment ledger"
+            0,
+            "zero-priced EOA mint must not credit the pull ledger"
         );
 
         bytes32 labelhash = keccak256(bytes(nameLabel));
@@ -119,7 +131,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         assertEq(dotnsRegistrar.ownerOf(tokenId), registrant);
     }
 
-    function testFuzz_register_credits_overpayment_to_payer_not_owner(
+    function testFuzz_register_refunds_overpayment_to_payer_not_owner(
         uint256 extra,
         uint256 salt
     )
@@ -141,17 +153,19 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         extra = bound(extra, 0, 5 ether);
 
         uint256 ownerBalanceBefore = nameOwner.balance;
+        uint256 payerBalanceBefore = payer.balance;
 
         vm.startPrank(payer);
         dotnsRegistrarController.register{value: requiredPrice + extra}(registration);
         vm.stopPrank();
 
-        // Refund is keyed by `msg.sender`, so the payer (not the owner) is the
-        // ledger recipient. Owner's wallet stays untouched.
+        // EOA payers receive the refund inline. Owner's wallet stays untouched
+        // and the pull ledger is bypassed for both parties.
+        assertEq(payer.balance, payerBalanceBefore, "EOA payer must net to zero on a free mint");
         assertEq(
             dotnsNameEscrow.pendingWithdrawal(payer),
-            extra,
-            "payer must be the ledger recipient on cross-payer registrations"
+            0,
+            "EOA payer must not be routed through the pull ledger"
         );
         assertEq(
             dotnsNameEscrow.pendingWithdrawal(nameOwner),
@@ -227,6 +241,88 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         dotnsRegistrarController.register{value: 0}(giftedRegistration);
 
         assertEq(dotnsReverseResolver.nameOf(nameOwner), string.concat(primaryName, ".dot"));
+    }
+
+    /// @notice For an arbitrary non-depositor NoStatus recipient, a transfer must
+    ///         credit a refund entry to the original depositor equal to RENT_PRICE.
+    /// @dev Exercises the depositor-binding invariant: the deposit is for personhood
+    ///      friction on the depositor; it never follows NFT custody and is fully
+    ///      refunded whenever the NFT leaves the depositor, regardless of who the
+    ///      recipient is or what reach floor they cross.
+    function testFuzz_NoStatus_transfer_credits_full_refund_to_depositor(
+        uint256 salt,
+        address recipientSeed
+    )
+        public
+    {
+        address depositor = ed;
+        vm.assume(recipientSeed != address(0));
+        vm.assume(recipientSeed != depositor);
+        // Recipient must be an EOA so ERC721 transferFrom accepts it without an
+        // onERC721Received hook; fuzzing in contract-receivers is out of scope here.
+        vm.assume(recipientSeed.code.length == 0);
+        // Avoid precompile-style addresses whose transfer behaviour is not modelled
+        // by foundry's default cheats.
+        vm.assume(uint160(recipientSeed) > 0xffff);
+
+        string memory nameLabel = _labelNoStatusPriced(bound(salt, 0, 64));
+
+        _grantNoStatus(depositor);
+        _grantNoStatus(recipientSeed);
+
+        IDotnsRegistrarController.Registration memory registration =
+            _commitFor(nameLabel, depositor, false);
+
+        uint256 ownerPrice = popRules.priceWithCheck(nameLabel, depositor).price;
+        assertEq(ownerPrice, RENT_PRICE, "NoStatus price baseline must match RENT_PRICE");
+
+        vm.prank(depositor);
+        dotnsRegistrarController.register{value: ownerPrice}(registration);
+
+        bytes32 labelhash = keccak256(bytes(nameLabel));
+        bytes32 node = _namehash(dotNode, labelhash);
+        uint256 tokenId = uint256(node);
+
+        IDotnsNameEscrow.ReleasePosition memory atMint = dotnsNameEscrow.getReleasePosition(tokenId);
+        assertEq(atMint.amount, RENT_PRICE, "position must hold full deposit after register");
+        assertEq(atMint.recipient, depositor, "position recipient must be the depositor");
+
+        uint256 priorRefundCount = dotnsNameEscrow.pendingRefundCount(depositor);
+
+        uint256 transferFee = dotnsRegistrar.quoteTransferFee(tokenId, recipientSeed);
+
+        vm.prank(depositor);
+        dotnsRegistrar.transferFrom{value: transferFee}(depositor, recipientSeed, tokenId);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), recipientSeed, "NFT must move to the recipient");
+
+        IDotnsNameEscrow.ReleasePosition memory afterTransfer =
+            dotnsNameEscrow.getReleasePosition(tokenId);
+        assertEq(afterTransfer.amount, 0, "deposit must fully clear on the leaving leg");
+        assertEq(
+            afterTransfer.recipient,
+            address(0),
+            "position must be deleted; recipient must never inherit"
+        );
+
+        assertEq(
+            dotnsNameEscrow.pendingRefundCount(depositor),
+            priorRefundCount + 1,
+            "depositor must receive exactly one new refund entry"
+        );
+        assertEq(
+            dotnsNameEscrow.pendingRefundCount(recipientSeed),
+            0,
+            "recipient must never receive any refund entry"
+        );
+
+        uint256[] memory entries =
+            dotnsNameEscrow.pendingRefundIds(depositor, 0, priorRefundCount + 1);
+        IDotnsNameEscrow.RefundEntry memory entry =
+            dotnsNameEscrow.refundEntry(entries[entries.length - 1]);
+        assertEq(entry.recipient, depositor, "entry must be owed to the depositor");
+        assertEq(entry.amount, RENT_PRICE, "entry must equal the full RENT_PRICE deposit");
+        assertEq(entry.tokenId, tokenId, "entry must trace back to the transferred token");
     }
 
     function testFuzz_transfer_clears_sender_primary_reverse(uint256 salt) public {

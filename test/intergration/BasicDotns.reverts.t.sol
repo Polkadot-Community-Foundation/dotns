@@ -12,7 +12,7 @@ import {IDotnsRegistrarController} from "../../contracts/registrars/IDotnsRegist
 ///         and resolver writes.
 contract BasicDotnsIntegrationReverts is BaseDotns {
     /// @notice PopFull-classified label fixture exercised by the revert cases.
-    string internal constant NAME_POPFULL = "waytall1";
+    string internal constant NAME_POPFULL = "waytalls";
 
     /// @notice Sample CIDv1 content hash used as a record value.
     bytes internal constant CID_A =

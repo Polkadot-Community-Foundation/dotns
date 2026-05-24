@@ -3,16 +3,21 @@ pragma solidity ^0.8.34;
 
 /// @title Dotns Reverse Resolver
 /// @notice Interface for writing and reading reverse name records for addresses.
-/// @dev Defines the minimal surface required to associate an address with a
-///      human-readable name. Reverse records bind to an EOA rather than a
-///      registry node, so implementations are expected to enforce a
-///      writer-policy gate (typically the registrar or its controller) rather
-///      than node ownership.
+/// @dev Reverse records bind to an EOA rather than a registry node. Two write paths exist:
+///      a registrar-only setter used by the controller during reserved registration, and a
+///      self-service claim path callable by the current NFT owner. Reads are fail-closed:
+///      if the stored record no longer maps to a name owned by the address, @custom:function nameOf
+///      returns the empty string.
 /// @custom:security-contact admin@parity.io
 interface IDotnsReverseResolver {
     /// @notice Thrown when a caller is not authorised to modify reverse records.
     /// @param caller The address attempting the modification.
     error NotRegistrarController(address caller);
+
+    /// @notice Thrown when a caller attempts to claim a reverse record for a name they do not own.
+    /// @param caller The address attempting the claim.
+    /// @param tokenId The token identifier derived from the claimed label.
+    error NotNameOwner(address caller, uint256 tokenId);
 
     /// @notice Emitted when a name is associated with an address.
     /// @param addr The address for which the reverse name is being set.
@@ -27,9 +32,19 @@ interface IDotnsReverseResolver {
     /// @param name The human-readable name associated with the address.
     function setReverseName(address addr, string calldata name) external;
 
-    /// @notice Returns the reverse name for an address.
-    /// @dev Returns an empty string if no reverse name is set.
+    /// @notice Self-service claim: associates `msg.sender` with `<label>.dot`.
+    /// @dev The caller must currently own the NFT for `label` per the configured registrar,
+    ///      otherwise @custom:reverts NotNameOwner. Overwrites any existing record for the caller
+    ///      and emits @custom:emits ReverseNameSet on every successful write. Transferring the
+    ///      name away does not eagerly clear the record; @custom:function nameOf fails closed at
+    ///      read time when the stored record no longer matches current ownership.
+    /// @param label The label (without `.dot`) the caller is claiming a reverse record for.
+    function claimReverseRecord(string calldata label) external;
+
+    /// @notice Returns the reverse name for an address, fail-closed against current ownership.
+    /// @dev Returns the empty string when no record is set, when the record is malformed, or
+    ///      when the address no longer owns the name pointed to by the stored record.
     /// @param addr The address to query.
-    /// @return name The reverse name associated with `addr`.
+    /// @return name The reverse name associated with `addr`, or the empty string.
     function nameOf(address addr) external view returns (string memory name);
 }

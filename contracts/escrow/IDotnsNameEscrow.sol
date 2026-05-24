@@ -30,17 +30,17 @@ interface IDotnsNameEscrow {
         address recipient;
     }
 
-    /// @notice Inputs for charging a cross-tier transfer fee.
-    /// @dev The fee charged is `max(priceForTo - runningMax, reachFloor)`: the delta captures
-    ///      cross-tier upgrades against the per-token watermark, while `reachFloor` enforces the
-    ///      flat NoStatus deposit floor whenever the recipient is below the label's required tier.
-    /// @param priceForTo Recipient-tier price quoted from PopRules.
-    /// @param reachFloor Reach-floor friction when the recipient is below the required tier.
+    /// @notice Inputs for charging a transfer fee and clearing any stale deposit.
+    /// @dev The fee charged is the flat `reachFloor` returned by @custom:function
+    /// PopRules.transferFloor. Independently, when an active deposit position exists and the NFT is
+    /// leaving its original
+    ///      depositor, the full deposit is refunded to that depositor via the time-locked refund
+    ///      ledger. The recipient never inherits a deposit at transfer.
+    /// @param reachFloor Required fee paid by the sender on a downward or cross-reach transfer.
     /// @param payer Original `msg.sender` of the registrar transfer entrypoint.
-    /// @param to NFT recipient.
+    /// @param to NFT recipient. Compared against `position.recipient` to decide deposit clearance.
     struct ChargeTransferFeeParams {
         uint256 tokenId;
-        uint256 priceForTo;
         uint256 reachFloor;
         address payer;
         address to;
@@ -283,9 +283,12 @@ interface IDotnsNameEscrow {
     /// @param recipient Address whose pending balance should grow by `msg.value`.
     function creditOverpayment(address recipient) external payable;
 
-    /// @notice Charges the cross-tier transfer-fee delta against the running max for a token.
+    /// @notice Charges transfer friction and synchronises the token's escrow position.
     /// @dev Only the configured registrar may call this, otherwise @custom:reverts NotRegistrar.
     ///      When a fee is owed, `msg.value` must cover it or @custom:reverts InsufficientValue.
+    ///      If a positive deposit position leaves its original recipient, the deposit is cleared
+    ///      and credited as a time-locked refund. If a zero-amount lifecycle marker leaves its
+    ///      recipient, the marker is rebound to `params.to` so the new holder can still release.
     ///      Emits @custom:emits CrossTierFeePaid with `isRegistration = false` when a non-zero
     ///      fee is credited to insurance, and @custom:emits OverpaymentRefunded when surplus
     ///      `msg.value` (or the full amount when no fee is owed) is returned to `params.payer`;
@@ -385,9 +388,7 @@ interface IDotnsNameEscrow {
     ///      @custom:emits RefundClaimed once per entry.
     /// @param entryIds List of entry identifiers to claim.
     /// @return totalAmount Sum of the credited amounts transferred to the caller.
-    function claimRefundsBatch(uint256[] calldata entryIds)
-        external
-        returns (uint256 totalAmount);
+    function claimRefundsBatch(uint256[] calldata entryIds) external returns (uint256 totalAmount);
 
     /// @notice Returns the number of pending refund entries owed to `recipient`.
     function pendingRefundCount(address recipient) external view returns (uint256 count);

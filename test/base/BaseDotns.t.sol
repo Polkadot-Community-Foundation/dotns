@@ -161,7 +161,7 @@ abstract contract BaseDotns is Test {
     /// @notice PoP full classification label fixture C.
     string internal constant BASE_LABEL_C = "carolboy";
 
-    // baselength >= 9 classifies as NoStatus regardless of trailing digits.
+    // baselength >= 9 classifies as NoStatus with no suffix or exactly two trailing digits.
     /// @notice NoStatus classification label fixture A.
     string internal constant NOSTATUS_LABEL_A = "nostatususer01";
     /// @notice NoStatus classification label fixture B.

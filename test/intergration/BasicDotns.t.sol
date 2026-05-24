@@ -13,7 +13,7 @@ import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 ///         records, subnames, and ERC721 transfers across all PoP tiers.
 contract BasicDotnsIntegration is BaseDotns {
     /// @notice PopFull-classified label fixture used by the integration flow.
-    string internal constant NAME_POPFULL = "waytall1";
+    string internal constant NAME_POPFULL = "waytalls";
     /// @notice PopLite-classified label fixture used by the integration flow.
     string internal constant NAME_POPLITE = "way2tall01";
     /// @notice NoStatus-classified label fixture used by the integration flow.

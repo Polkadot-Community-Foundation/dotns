@@ -7,9 +7,11 @@ import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {IDotnsNameEscrow} from "../../../contracts/escrow/IDotnsNameEscrow.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
+import {AcceptingReceiver} from "../../helpers/AcceptingReceiver.sol";
 import {RegistrationProbe} from "../../helpers/RegistrationProbe.sol";
 import {RefundRejecter} from "../../helpers/RefundRejecter.sol";
 import {ReentrantOwner} from "../../helpers/ReentrantOwner.sol";
+import {ReentrantOverpaymentAttacker} from "../../helpers/ReentrantOverpaymentAttacker.sol";
 
 /// @title DotnsRegistrarControllerLifecycleTest
 /// @notice Coverage for the post-mint lifecycle on the public commit-reveal
@@ -61,7 +63,7 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         assertEq(reservationOwner, newOwner, "stale reservation must not block reclaim");
     }
 
-    function test_register_cross_payer_below_reach_pays_reach_fee_on_priced_label() public {
+    function test_register_cross_payer_charges_max_not_sum_of_price_and_reach() public {
         string memory label = "alicebo42";
         address payer = leonardo;
         address nameOwner = ed;
@@ -73,6 +75,8 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         uint256 reachFloor = popRules.reachFee(label, payer);
         assertGt(ownerPrice, 0, "scenario requires non-zero owner price");
         assertGt(reachFloor, 0, "scenario requires non-zero reach floor");
+
+        uint256 expectedCharge = ownerPrice > reachFloor ? ownerPrice : reachFloor;
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
@@ -90,19 +94,19 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         uint256 insuranceBefore = dotnsNameEscrow.insuranceFund();
 
         vm.prank(payer);
-        dotnsRegistrarController.register{value: ownerPrice + reachFloor}(registration);
+        dotnsRegistrarController.register{value: expectedCharge}(registration);
 
-        // Cross-payer credits both the owner's price and the reach floor to
-        // insurance; the refundable-deposit branch is reserved for direct
-        // registrants.
+        // Cross-payer charge is the greater of owner-side price and reach-floor friction,
+        // never their sum. The whole charge routes to the insurance fund; the refundable
+        // deposit branch is reserved for direct registrants.
         assertEq(
             dotnsNameEscrow.insuranceFund() - insuranceBefore,
-            ownerPrice + reachFloor,
-            "cross-payer must credit owner price and reach fee to insurance"
+            expectedCharge,
+            "cross-payer must credit max(ownerPrice, reachFloor) to insurance"
         );
     }
 
-    function test_revert_register_cross_payer_when_msg_value_excludes_reach_fee() public {
+    function test_revert_register_cross_payer_when_msg_value_below_max_of_price_and_reach() public {
         string memory label = "alicebo42";
         address payer = leonardo;
         address nameOwner = ed;
@@ -114,6 +118,8 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         uint256 reachFloor = popRules.reachFee(label, payer);
         assertGt(ownerPrice, 0);
         assertGt(reachFloor, 0);
+
+        uint256 expectedCharge = ownerPrice > reachFloor ? ownerPrice : reachFloor;
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
@@ -130,7 +136,7 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
 
         vm.prank(payer);
         vm.expectRevert(IDotnsRegistrarController.InsufficientValue.selector);
-        dotnsRegistrarController.register{value: ownerPrice}(registration);
+        dotnsRegistrarController.register{value: expectedCharge - 1}(registration);
     }
 
     function test_register_cross_payer_routes_owner_price_to_insurance() public {
@@ -314,7 +320,96 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         );
     }
 
-    function test_register_overpayment_credits_pull_payment_ledger_on_contract_receiver() public {
+    function test_register_overpayment_pushed_directly_to_eoa_payer() public {
+        string memory label = NOSTATUS_LABEL_A;
+        address registrant = ed;
+        _grantNoStatus(registrant);
+
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: label,
+                owner: registrant,
+                secret: keccak256("eoa-overpay-happy"),
+                reserved: true
+            });
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
+        vm.prank(registrant);
+        dotnsRegistrarController.commit(commitment);
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+
+        uint256 ownerPrice = popRules.priceWithCheck(label, registrant).price;
+        uint256 overpayment = 1 ether;
+        uint256 balanceBefore = registrant.balance;
+
+        vm.expectEmit(true, false, false, true, address(dotnsRegistrarController));
+        emit IDotnsRegistrarController.OverpaymentRefunded(registrant, overpayment);
+
+        vm.prank(registrant);
+        dotnsRegistrarController.register{value: ownerPrice + overpayment}(registration);
+
+        uint256 tokenId = _tokenIdForLabel(label);
+        assertEq(dotnsRegistrar.ownerOf(tokenId), registrant);
+        assertEq(
+            balanceBefore - registrant.balance,
+            ownerPrice,
+            "EOA payer is only debited the priced cost; overpayment is pushed back inline"
+        );
+        assertEq(
+            dotnsNameEscrow.pendingWithdrawal(registrant),
+            0,
+            "EOA payer must bypass the pull-payment ledger entirely"
+        );
+    }
+
+    function test_register_overpayment_pushed_directly_to_accepting_contract() public {
+        string memory label = NOSTATUS_LABEL_A;
+
+        AcceptingReceiver receiver = new AcceptingReceiver();
+        vm.deal(address(receiver), DEFAULT_BALANCE);
+        _grantNoStatus(address(receiver));
+
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: label,
+                owner: address(receiver),
+                secret: keccak256("accepting-contract-overpay"),
+                reserved: true
+            });
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
+        vm.prank(address(receiver));
+        dotnsRegistrarController.commit(commitment);
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+
+        uint256 ownerPrice = popRules.priceWithCheck(label, address(receiver)).price;
+        uint256 overpayment = 1 ether;
+        uint256 balanceBefore = address(receiver).balance;
+
+        vm.expectEmit(true, false, false, true, address(dotnsRegistrarController));
+        emit IDotnsRegistrarController.OverpaymentRefunded(address(receiver), overpayment);
+
+        vm.prank(address(receiver));
+        dotnsRegistrarController.register{value: ownerPrice + overpayment}(registration);
+
+        uint256 tokenId = _tokenIdForLabel(label);
+        assertEq(dotnsRegistrar.ownerOf(tokenId), address(receiver));
+        assertEq(
+            balanceBefore - address(receiver).balance,
+            ownerPrice,
+            "accepting contract is only debited the priced cost"
+        );
+        assertEq(
+            receiver.received(),
+            overpayment,
+            "receive() must observe the inline push of the surplus"
+        );
+        assertEq(
+            dotnsNameEscrow.pendingWithdrawal(address(receiver)),
+            0,
+            "accepting contract must bypass the pull-payment ledger"
+        );
+    }
+
+    function test_register_overpayment_falls_back_to_ledger_on_rejecting_contract() public {
         string memory label = NOSTATUS_LABEL_A;
 
         RefundRejecter receiver = new RefundRejecter();
@@ -336,6 +431,9 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         uint256 ownerPrice = popRules.priceWithCheck(label, address(receiver)).price;
         uint256 overpayment = 1 ether;
 
+        vm.expectEmit(true, false, false, true, address(dotnsRegistrarController));
+        emit IDotnsRegistrarController.OverpaymentRefunded(address(receiver), overpayment);
+
         vm.prank(address(receiver));
         dotnsRegistrarController.register{value: ownerPrice + overpayment}(registration);
 
@@ -345,7 +443,60 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         assertEq(
             dotnsNameEscrow.pendingWithdrawal(address(receiver)),
             overpayment,
-            "overpayment must accrue to the payer's pull-payment ledger"
+            "rejected push must fall back to the pull-payment ledger"
+        );
+    }
+
+    function test_register_overpayment_reentrant_attacker_falls_back_to_ledger() public {
+        string memory label = NOSTATUS_LABEL_A;
+
+        ReentrantOverpaymentAttacker attacker =
+            new ReentrantOverpaymentAttacker(dotnsRegistrarController);
+        vm.deal(address(attacker), DEFAULT_BALANCE);
+        _grantNoStatus(address(attacker));
+
+        // Arm the attacker with a second registration its receive() will try to
+        // replay. The payload is never consumed because the transient guard
+        // reverts the re-entry inside the push, but the call data must decode.
+        string memory replayLabel = "reentrybait02";
+        IDotnsRegistrarController.Registration memory replay = IDotnsRegistrarController.Registration({
+            label: replayLabel,
+            owner: address(attacker),
+            secret: keccak256("reentry-replay"),
+            reserved: true
+        });
+        attacker.arm(replay);
+
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: label,
+                owner: address(attacker),
+                secret: keccak256("reentrant-overpay"),
+                reserved: true
+            });
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
+        vm.prank(address(attacker));
+        dotnsRegistrarController.commit(commitment);
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+
+        uint256 ownerPrice = popRules.priceWithCheck(label, address(attacker)).price;
+        uint256 overpayment = 1 ether;
+
+        vm.expectEmit(true, false, false, true, address(dotnsRegistrarController));
+        emit IDotnsRegistrarController.OverpaymentRefunded(address(attacker), overpayment);
+
+        vm.prank(address(attacker));
+        dotnsRegistrarController.register{value: ownerPrice + overpayment}(registration);
+
+        uint256 tokenId = _tokenIdForLabel(label);
+        assertEq(dotnsRegistrar.ownerOf(tokenId), address(attacker));
+        // The attempted re-entry reverts inside `receive`, so the push
+        // call frame rolls back and the attacker's balance is untouched by
+        // the surplus. The controller falls back to the pull-payment ledger.
+        assertEq(
+            dotnsNameEscrow.pendingWithdrawal(address(attacker)),
+            overpayment,
+            "blocked re-entry must fall back to the pull-payment ledger"
         );
     }
 

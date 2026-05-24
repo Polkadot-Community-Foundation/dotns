@@ -125,7 +125,7 @@ contract DotnsRegistrar is
     function labelOf(uint256 tokenId) external view override returns (string memory) {
         address holder = _ownerOf(tokenId);
         if (holder == address(0)) return "";
-        return _stripTld(_readLabel(tokenId, holder));
+        return LabelUtils.stripDotTld(_readLabel(tokenId, holder));
     }
 
     /// @inheritdoc IDotnsRegistrar
@@ -141,7 +141,7 @@ contract DotnsRegistrar is
         require(to != address(0), ERC721InvalidReceiver(address(0)));
 
         address from = ownerOf(tokenId);
-        (,,, requiredFee) = _quoteTransferFee(from, to, tokenId);
+        (,, requiredFee) = _quoteTransferFee(from, to, tokenId);
     }
 
     /// @inheritdoc IDotnsRegistrar
@@ -231,21 +231,29 @@ contract DotnsRegistrar is
         if (to == address(0)) return from;
         if (from == to) return from;
 
-        (address escrow, uint256 priceForTo, uint256 reachFloor, uint256 requiredFee) =
+        (address escrow, uint256 reachFloor, uint256 requiredFee) =
             _quoteTransferFee(from, to, tokenId);
         require(requiredFee == 0 || msg.value != 0, TransferFeeRequired(tokenId, to, requiredFee));
 
-        // Preserve the existing zero-fee, zero-value path so legitimate non-fee transfers do
-        // not need to round-trip through the escrow.
-        if (requiredFee == 0 && msg.value == 0) return from;
+        // Deposits bind to the original depositor and never follow NFT custody. Zero-amount
+        // positions are only lifecycle markers, so escrow still needs to see owner changes
+        // and rebind the marker to the new holder. Escrow-touching transfers (release into
+        // escrow, reclaim out of it) are excluded because the escrow is mid-call and its
+        // non-reentrancy guard would reject a re-entry; the release/reclaim paths manage the
+        // position directly.
+        bool isEscrowTouching = to == escrow || from == escrow;
+        bool positionSyncNeeded;
+        if (!isEscrowTouching) {
+            IDotnsNameEscrow.ReleasePosition memory position =
+                IDotnsNameEscrow(payable(escrow)).getReleasePosition(tokenId);
+            positionSyncNeeded = position.recipient != address(0) && to != position.recipient;
+        }
+
+        if (requiredFee == 0 && msg.value == 0 && !positionSyncNeeded) return from;
 
         IDotnsNameEscrow(payable(escrow)).chargeTransferFee{value: msg.value}(
             IDotnsNameEscrow.ChargeTransferFeeParams({
-                tokenId: tokenId,
-                priceForTo: priceForTo,
-                reachFloor: reachFloor,
-                payer: msg.sender,
-                to: to
+                tokenId: tokenId, reachFloor: reachFloor, payer: msg.sender, to: to
             })
         );
 
@@ -295,18 +303,6 @@ contract DotnsRegistrar is
         return ILabelStore(store).getLabel(bytes32(tokenId));
     }
 
-    /// @notice Strips the configured `.tld` suffix from a stored full name.
-    function _stripTld(string memory fullName) private pure returns (string memory label) {
-        bytes memory full = bytes(fullName);
-        bytes memory tld = bytes(DotnsConstants.TLD);
-        if (full.length <= tld.length) return fullName;
-        bytes memory bare = new bytes(full.length - tld.length);
-        for (uint256 i; i < bare.length; ++i) {
-            bare[i] = full[i];
-        }
-        return string(bare);
-    }
-
     /// @notice Resolves the configured name escrow address from the protocol registry.
     function _escrow() private view returns (address escrow) {
         escrow = protocolRegistry.get(DotnsConstants.NAME_ESCROW);
@@ -331,11 +327,13 @@ contract DotnsRegistrar is
         factory.writeLabel(owner, bytes32(tokenId), string.concat(label, DotnsConstants.TLD));
     }
 
-    /// @notice Quotes the recipient-tier price and required delta for a transfer.
-    /// @dev Required fee is `deltaFee + reachFloor`. `deltaFee` becomes the recipient's
-    /// refundable deposit; `reachFloor` (from `transferFloor`) is a non-refundable
-    /// tier-friction tax routed to the insurance fund. Self-transfers and escrow-touching
-    /// transfers return zero.
+    /// @notice Quotes the friction fee required for a transfer.
+    /// @dev Required fee is `reachFloor` (the value returned by @custom:function
+    /// PopRules.transferFloor). It is paid by the sender on every downward or cross-reach transfer
+    /// and settles to the
+    /// insurance fund. The recipient never locks a fresh deposit at transfer; any prior deposit
+    /// is refunded to its original depositor by the escrow when the NFT leaves that depositor.
+    /// Self-transfers and escrow-touching transfers return zero.
     function _quoteTransferFee(
         address from,
         address to,
@@ -343,29 +341,23 @@ contract DotnsRegistrar is
     )
         private
         view
-        returns (address escrow, uint256 priceForTo, uint256 reachFloor, uint256 requiredFee)
+        returns (address escrow, uint256 reachFloor, uint256 requiredFee)
     {
         escrow = _escrow();
         require(escrow != address(0), EscrowNotConfigured());
 
-        if (from == to) return (escrow, 0, 0, 0);
-        if (to == escrow || from == escrow) return (escrow, 0, 0, 0);
+        if (from == to) return (escrow, 0, 0);
+        if (to == escrow || from == escrow) return (escrow, 0, 0);
 
         string memory fullName = _readLabel(tokenId, from);
         // No label means there is no label-derived price to charge against; treat as
         // a zero-fee move.
-        if (bytes(fullName).length == 0) return (escrow, 0, 0, 0);
-        string memory label = _stripTld(fullName);
+        if (bytes(fullName).length == 0) return (escrow, 0, 0);
+        string memory label = LabelUtils.stripDotTld(fullName);
+        if (bytes(label).length == 0) return (escrow, 0, 0);
 
-        IPopRules popRules = _popRules();
-        priceForTo = popRules.priceWithoutCheck(label, to).price;
-
-        uint256 prior = IDotnsNameEscrow(payable(escrow)).runningMax(tokenId);
-        uint256 deltaFee = priceForTo > prior ? priceForTo - prior : 0;
-
-        reachFloor = popRules.transferFloor(label, from, to);
-
-        requiredFee = deltaFee + reachFloor;
+        reachFloor = _popRules().transferFloor(label, from, to);
+        requiredFee = reachFloor;
     }
 
     /// @inheritdoc UUPSUpgradeable

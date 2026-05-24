@@ -21,10 +21,10 @@ import {IPersonhood} from "../external/personhood/IPersonhood.sol";
 /// @notice Implements DotNS classification, flat NoStatus pricing, and base-name reservations.
 /// @dev Tier shape: lengths <= 5 are governance-reserved, lengths 6-8 require PopFull (or
 ///      PopLite when carrying exactly two trailing digits, for gateway-issued lite names),
-///      lengths >= 9 are open to any caller as NoStatus regardless of trailing digits.
-///      NoStatus users pay a single flat deposit (`startingPrice`) per name; verified users
-///      pay zero.
-/// @custom:security-contact admin@parity.io
+///      lengths >= 9 are open to any caller as NoStatus when they carry zero or exactly two
+///      trailing digits. A one-digit suffix and more than two trailing digits are invalid.
+///      NoStatus users pay a single flat deposit (`startingPrice`) per name; verified users pay
+/// zero. @custom:security-contact admin@parity.io
 contract PopRules is
     Initializable,
     UUPSUpgradeable,
@@ -398,7 +398,10 @@ contract PopRules is
         uint256 totallength = bytes(name).length;
         uint256 trailingDigits = _countTrailingDigits(name);
 
-        require(trailingDigits <= 2, PopError("Name can have maximum 2 digit suffix"));
+        require(
+            trailingDigits == 0 || trailingDigits == 2,
+            PopError("Name must have no digit suffix or exactly 2 digit suffix")
+        );
 
         uint256 baselength = totallength - trailingDigits;
 
@@ -413,7 +416,7 @@ contract PopRules is
             return (PopStatus.PopFull, "Requires Full personhood verification");
         }
 
-        // Baselength >= 9 is open to any caller regardless of trailing digits.
+        // Baselength >= 9 is open to any caller with no suffix or the two-digit lite suffix shape.
         return (PopStatus.NoStatus, "Available to all");
     }
 
