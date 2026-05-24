@@ -93,7 +93,7 @@ The second, registerBaseName, mints a full-person username. Whether the call is 
 
 Each base label carries a head/tail-indexed reservation queue with a capacity of MAX_RESERVATION_QUEUE and a governance-configurable reservationDuration. The queue head is mirrored into PopRules on every head transition (enqueue-from-empty, expiry-driven promotion, non-expiry head removal, claim-wipes-queue), so the public commit-reveal flow sees the same cross-flow lock through its existing PopRules price check. Expiry advancement is permissionless: anyone can call expireReservation to garbage-collect a stale head, which is what the pallet does on its own cadence.
 
-#### Early mainnet quirk: LabelStore deployment
+#### Early testnet quirk: LabelStore deployment
 
 Pop-gateway issuances mint the name and persist its label, but LabelStore deployment is deferred for users who have not yet interacted with the protocol from their own address. The current pallet-revive runtime does not let substrate Root deploy contracts on behalf of an account it does not control, so the per-user LabelStore cannot be created at the moment the gateway writes. The controller stamps a pending-claim entry instead, and the user calls claimLabelStore once from their own address to settle the store. The pending-claim entries have a bounded TTL (expirePendingClaim is permissionless) so the slot frees itself if a user never claims. When the runtime supports root-origin contract deployment, the deferred path collapses to a no-op and the issuance flow becomes one transaction end-to-end. This is a runtime limitation, not a protocol design choice.
 
