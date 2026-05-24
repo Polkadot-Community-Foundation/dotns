@@ -589,30 +589,17 @@ contract DotnsPopController is
     /// @param store Owner's `LabelStore` proxy.
     /// @param node `namehash(labelhash)` for the entry.
     /// @param label Bare DNS label (no TLD); the TLD is appended on write.
-    function _writeRecord(
-        address store,
-        bytes32 node,
-        string memory label
-    )
-        internal
-    {
+    function _writeRecord(address store, bytes32 node, string memory label) internal {
         ILabelStore(store).storeLabel(node, string.concat(label, DotnsConstants.TLD));
     }
 
     /// @notice Records a deferred binding for `user` and adds them to the enumeration set.
     /// @dev Reverts with `PendingClaimExists` when the user already holds an entry. Emits
     /// @custom:emits PendingClaimStashed.
-    function _stashPendingClaim(
-        address user,
-        string memory label,
-        bytes32 labelhash
-    )
-        internal
-    {
+    function _stashPendingClaim(address user, string memory label, bytes32 labelhash) internal {
         require(_pendingClaims[user].mintedAt == 0, PendingClaimExists(user));
 
-        _pendingClaims[user] =
-            PendingClaim({label: label, mintedAt: uint64(block.timestamp)});
+        _pendingClaims[user] = PendingClaim({label: label, mintedAt: uint64(block.timestamp)});
         _pendingClaimUsers.add(user);
 
         emit PendingClaimStashed(user, labelhash, label);
