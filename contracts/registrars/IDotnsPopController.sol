@@ -14,7 +14,7 @@ import {IDotnsController} from "./IDotnsController.sol";
 ///
 /// Label formats:
 /// Lite-person usernames (first argument to @custom:function reserveBaseName and the
-/// `liteLabel` of a `LinkKind.LiteUsername` link) are DNS labels with at least two
+/// `liteLabel` of a `LinkKind.LiteUsername` link) are DNS labels with exactly two
 /// trailing digits (e.g. `alice42`) per @custom:function StringUtils.isLitePersonLabel.
 /// The gateway strips any separator before calling so the on-chain label is flat.
 /// Full-person usernames (the `label` of @custom:function registerBaseName and the
@@ -235,13 +235,14 @@ interface IDotnsPopController is IDotnsController {
     /// claim as a full person later.
     /// @dev Callable only via the registered PoP gateway (otherwise @custom:reverts NotGateway);
     /// the gateway is responsible for asserting substrate Root authority before forwarding
-    /// here. The lite leg validates the `NAMEXX` shape (otherwise @custom:reverts InvalidLiteLabel)
-    /// and runs PopRules price-with-check before minting, emitting @custom:emits LiteNameReserved
-    /// and @custom:emits NameRegistered on success. The base-name leg only runs when
-    /// `reservedBaseLabel` is non-empty: it validates the DNS-label shape (otherwise
-    /// @custom:reverts InvalidBaseLabel), runs PopRules price-with-check before any queue
-    /// mutation so a mis-tiered reservation never touches the queue, advances the head past
-    /// expired entries (emitting @custom:emits ReservationExpired for each one), removes the
+    /// here. The lite leg validates the dotted `stem.NN` shape and requires the flattened label
+    /// to classify as PopLite (otherwise @custom:reverts InvalidLiteLabel), emitting
+    /// @custom:emits LiteNameReserved and @custom:emits NameRegistered on success. The base-name
+    /// leg only runs when `reservedBaseLabel` is non-empty: it validates the DNS-label shape and
+    /// requires a true base label with no trailing digits (otherwise @custom:reverts
+    /// InvalidBaseLabel) before any queue mutation so a bad reservation never touches the queue,
+    /// advances the head
+    /// past expired entries (emitting @custom:emits ReservationExpired for each one), removes the
     /// user from any prior queue position so a single user holds at most one live reservation
     /// across all labels, and enqueues a fresh entry (emitting @custom:emits ReservationQueued).
     /// The enqueue rejects with @custom:reverts AlreadyReserved when the user already holds a
@@ -274,10 +275,10 @@ interface IDotnsPopController is IDotnsController {
     /// user without touching the base-name reservation queue.
     /// @dev Callable only via the registered PoP gateway (otherwise @custom:reverts NotGateway);
     /// the gateway is responsible for asserting substrate Root authority before forwarding
-    /// here. The supplied label must satisfy the `NAMEXX` shape (otherwise
-    /// @custom:reverts InvalidLiteLabel) before PopRules price-with-check, mint, and resolver
-    /// writes run. Emits @custom:emits LiteNameReserved and @custom:emits NameRegistered on
-    /// success. Cross-chain callers pass the ABI-encoded lite-registration tuple as the call's
+    /// here. The supplied label must satisfy the dotted `stem.NN` shape and the flattened label
+    /// must classify as PopLite (otherwise @custom:reverts InvalidLiteLabel) before mint and
+    /// resolver writes run. Emits @custom:emits LiteNameReserved and @custom:emits NameRegistered
+    /// on success. Cross-chain callers pass the ABI-encoded lite-registration tuple as the call's
     /// payload, which Solidity decodes directly.
     /// @param params Registration request; see @custom:struct LiteRegistration.
     function reserveLiteName(LiteRegistration calldata params) external;

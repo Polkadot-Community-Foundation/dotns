@@ -523,23 +523,23 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function test_pop_reservation_of_already_public_minted_name_fails_on_claim() public {
-        _commitAndRegister("longnamebob01", ed, true);
+        _commitAndRegister("longnamebob", ed, true);
 
         _grantPopFull(tiago);
-        _reservePop(tiago, LITE_LABEL_A, _validChatKey(0xaa), "longnamebob01");
+        _reservePop(tiago, LITE_LABEL_A, _validChatKey(0xaa), "longnamebob");
 
-        (bool reserved, address holder) = dotnsPopController.isReservedForClaim("longnamebob01");
+        (bool reserved, address holder) = dotnsPopController.isReservedForClaim("longnamebob");
         assertTrue(reserved);
         assertEq(holder, tiago);
 
         IDotnsPopController.Link memory link = _linkWithLite(LITE_LABEL_A);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IDotnsRegistrar.NameNotAvailable.selector, uint256(_nodeOf("longnamebob01"))
+                IDotnsRegistrar.NameNotAvailable.selector, uint256(_nodeOf("longnamebob"))
             )
         );
         _gatewayRegisterBaseName(
-            IDotnsPopController.FullRegistration({label: "longnamebob01", user: tiago, link: link})
+            IDotnsPopController.FullRegistration({label: "longnamebob", user: tiago, link: link})
         );
     }
 
@@ -587,17 +587,10 @@ contract DotnsPopControllerTests is BaseDotns {
         assertEq(holder, address(0));
     }
 
-    function test_controller_normalises_reservedBaseLabel_to_stripped_stem() public {
+    function test_reserveBaseName_reverts_for_digit_suffixed_reserved_base_label() public {
         _grantPopFull(ed);
-        // The gateway may pass a digit-suffixed `reservedBaseLabel`; the controller
-        // normalises to the stripped stem before writing PopRules so the public
-        // commit-reveal flow (which strips before reading) sees the slot under the
-        // same key.
+        vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0xaa), "longnamebob01");
-        (address rawHolder,) = popRules.getBaseNameReservation("longnamebob01");
-        assertEq(rawHolder, address(0), "raw-label slot must not be written");
-        (address strippedHolder,) = popRules.getBaseNameReservation("longnamebob");
-        assertEq(strippedHolder, ed, "stripped-stem slot must hold the reservation");
     }
 
     function test_public_stranger_can_mint_after_claim_clears_reservation() public {
@@ -811,6 +804,28 @@ contract DotnsPopControllerTests is BaseDotns {
         _gatewayReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: "alice", user: ed, chatKey: _validChatKey(0xaa)
+            })
+        );
+    }
+
+    function test_reserveLiteName_reverts_when_suffix_is_not_exactly_two_digits() public {
+        _grantPopFull(ed);
+
+        vm.expectRevert(IDotnsPopController.InvalidLiteLabel.selector);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: "aliceli.001", user: ed, chatKey: _validChatKey(0xaa)
+            })
+        );
+    }
+
+    function test_reserveLiteName_reverts_when_flattened_label_is_not_pop_lite() public {
+        _grantPopFull(ed);
+
+        vm.expectRevert(IDotnsPopController.InvalidLiteLabel.selector);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: "longnamebob.01", user: ed, chatKey: _validChatKey(0xaa)
             })
         );
     }

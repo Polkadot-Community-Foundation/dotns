@@ -250,7 +250,7 @@ interface IPopRules {
         returns (uint256 floor);
 
     /// @notice Returns whether `name` is a base name under PoP rules.
-    /// @dev A base name has no trailing digits; lite-person labels always have at least two
+    /// @dev A base name has no trailing digits; lite-person labels always have exactly two
     ///      trailing digits, so the two spaces are disjoint. Non-canonical labels trigger
     ///      @custom:reverts PopError.
     /// @param name The label to check.

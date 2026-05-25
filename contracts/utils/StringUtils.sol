@@ -83,7 +83,7 @@ library StringUtils {
 
     /// @notice Validates the gateway-facing lite input shape: `stem.suffix`.
     /// @dev Requires exactly one dot separator. The left segment must be a canonical DNS
-    ///      label and the right segment must be digits-only with at least
+    ///      label and the right segment must be digits-only with exactly
     ///      @custom:constant MIN_LITE_SUFFIX_DIGITS characters.
     /// @param value Candidate dotted lite label.
     /// @return isValid True when `value` matches the gateway lite input shape.
@@ -109,7 +109,7 @@ library StringUtils {
         if (!_isDnsLabel(stem, 0, separator)) return false;
 
         uint256 suffixLength = length - separator - 1;
-        if (suffixLength < MIN_LITE_SUFFIX_DIGITS) return false;
+        if (suffixLength != MIN_LITE_SUFFIX_DIGITS) return false;
 
         for (uint256 i = separator + 1; i < length; ++i) {
             bytes1 char = raw[i];

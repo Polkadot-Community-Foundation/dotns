@@ -46,7 +46,7 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 /// relies on two distinct properties, neither of which requires the two controllers to know
 /// about each other:
 /// (1) Lite-person labels (`NAMEXX`) share the public namespace: they are just DNS labels
-/// with at least two trailing digits. First-to-mint wins at the ERC721 layer, so a lite-user
+/// with exactly two trailing digits. First-to-mint wins at the ERC721 layer, so a lite-user
 /// and a public registrant cannot hold the same flat label simultaneously. Keeping one
 /// namespace removes the ambiguity downstream tooling (dotli, dweb) would see with a
 /// separate separator form.
@@ -206,7 +206,11 @@ contract DotnsPopController is
             // Governance-reserved labels can never be enqueued through the gateway. Runs
             // before any queue mutation so a Reserved label never touches the queue.
             (IPopRules.PopStatus required,) = _popRules().classifyName(params.reservedBaseLabel);
-            require(required != IPopRules.PopStatus.Reserved, InvalidBaseLabel());
+            require(
+                required != IPopRules.PopStatus.Reserved
+                    && _popRules().isBaseName(params.reservedBaseLabel),
+                InvalidBaseLabel()
+            );
 
             bytes32 reservedHash = _validateBaseLabelHash(params.reservedBaseLabel);
             _advanceExpiredHead(reservedHash);
@@ -226,17 +230,17 @@ contract DotnsPopController is
     /// @notice Lite-only mint shared by @custom:function reserveLiteName and the lite leg
     /// of @custom:function reserveBaseName.
     /// @dev Gateway attestation is the authority for personhood on this path; the on-chain
-    /// precompile is not consulted. The dotted-format check is sufficient to keep
-    /// governance-reserved labels out of the lite leg: `isSingleDotLiteLabel` constrains
-    /// the input to a 6-8 character DNS stem followed by exactly two digits, which
-    /// `IPopRules._classifyValidatedName` cannot map to `Reserved`. Takes the
-    /// @custom:struct LiteRegistration struct directly so both call sites pass the same
-    /// payload shape: the typed entrypoint forwards its own `params`, the
-    /// `reserveBaseName` entrypoint forwards `params.lite`.
+    /// precompile is not consulted. The dotted-format check accepts only `stem.NN`, then
+    /// PopRules classification must identify the flattened label as `PopLite` before minting.
+    /// Takes the @custom:struct LiteRegistration struct directly so both call sites pass the
+    /// same payload shape: the typed entrypoint forwards its own `params`, the `reserveBaseName`
+    /// entrypoint forwards `params.lite`.
     function _reserveLite(LiteRegistration calldata params) internal {
         require(params.liteLabel.isSingleDotLiteLabel(), InvalidLiteLabel());
 
         string memory liteLabel = params.liteLabel.stripDots();
+        (IPopRules.PopStatus required,) = _popRules().classifyName(liteLabel);
+        require(required == IPopRules.PopStatus.PopLite, InvalidLiteLabel());
         (bytes32 labelhash, bytes32 node) = _validateLiteLabel(liteLabel);
 
         _advanceExpiredHead(labelhash);
