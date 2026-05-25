@@ -249,43 +249,200 @@ If the deploy script succeeds, .env should be gone. Future runs should use the k
 
 If a stage fails after writing partial addresses, inspect the relevant deployment manifest before retrying. Later stages consume whatever earlier stages wrote, so stale manifests can produce confusing wire-up errors.
 
-## Paseo Asset Hub Previewnet
+## Live addresses
 
-| Contract | Address |
-| --- | --- |
-| DotnsProtocolRegistry | 0xc07A2F24387DA27283CD87b9F24573b74C9e0c9b |
-| Multicall3 | Not deployed in this manifest yet |
-| DotnsRegistrar | 0x6c40817cdb96Ab57A4d9E9fa21D0eEa8307BDDE8 |
-| DotnsRegistry | 0xE6c0fB6D5492666144A8a4a015E25a98ACa604cA |
-| DotnsRegistrarController | 0x732C38082CFAebed505A46e4e2D6414154694580 |
-| DotnsPopController | 0xfE1e25E8d521CaaA8055301CA61Ec3557263Ca76 |
-| PopRules | 0x5f2Dd23Ee3ceD39B293701ccE8355DdDd83Cd324 |
-| DotnsResolver | 0x5E174c960F5276Bd0387F200cE42f98fe927E220 |
-| DotnsReverseResolver | 0xd5C3dcC7CE44593fEB1D72017A3539c4dB14e54a |
-| DotnsContentResolver | 0x108376A5B6DDc6BE3201C94Fd169BE444f220076 |
-| DotnsPopResolver | 0x29Ace5d2C57109c82A30Db175e645880572c6369 |
-| DotnsNameEscrow | 0x034b072eB8AF5cEfd820390bfe239bD911174ad2 |
-| StoreFactory | 0x9C38DFec452391696a8f0D3daFE71F7Eb29e08f8 |
-| LabelStoreBeacon | 0x6B609A89Fec9898B441E17f1618670bdD08c437e |
-| UserStoreBeacon | 0xbeb79e8BB2bC610822e8748e5439B9D890d88FF5 |
+### Paseo Asset Hub Previewnet
 
-## Paseo Asset Hub Next V2
+**DotnsProtocolRegistry**
 
-| Contract | Address |
-| --- | --- |
-| DotnsProtocolRegistry | 0x5Caef84563fc980178e28417414aa65bA32f6B4e |
-| Multicall3 | Not deployed in this manifest yet |
-| DotnsRegistrar | 0x885b8085bA92A31c4ef52076f77379E647ECC399 |
-| DotnsRegistry | 0x8877344A885682523B4613779C95688ed7037BfD |
-| DotnsRegistrarController | 0x320b72c6e70D5a631d835FfD95915B288b26E6Be |
-| DotnsPopController | 0xaC8A28b60832E6E22bC19bD9Ee273C008576Bde4 |
-| RootGatewayDispatcher | 0xF470Dd693ED557b33f8775476776532D99Fb60d9 |
-| PopRules | 0x2002C1c15b88632Ad01c7770f6EbE1Ca05c8472E |
-| DotnsResolver | 0x0cCdfea1a5E62DE116BF6cA79D397798d49e351E |
-| DotnsReverseResolver | 0x025D5c4b10bD9723DeA2F4518aeD5B761DE08CDc |
-| DotnsContentResolver | 0x2c9FF5D9136DBE5814C7B4FDbeDC15273a776663 |
-| DotnsPopResolver | 0xB992e74cBeaf1Fd71310f85D1944d3A0c15C4c73 |
-| DotnsNameEscrow | 0x6F7068c04487a90BFB42b128B84231c252b3017a |
-| StoreFactory | 0x0DE5De70d61cc6b44B45d6595afDe8dB9b55bc31 |
-| LabelStoreBeacon | 0xD033F7Ada687E8BC776928AB239505F9f0479Ce7 |
-| UserStoreBeacon | 0x7eD9b7D137Fa535965048F93b3B0248fEd2fcd32 |
+```text
+0x984F17a9077808F4B7e127F76806A1D59546B5B6
+```
+
+**Multicall3**
+
+```text
+0x758F88C7761FCD4742f9471448c2209a7e859280
+```
+
+**DotnsRegistrar**
+
+```text
+0x061273AeF34e8ab9Ca08E199d7440E2639Fc2088
+```
+
+**DotnsRegistry**
+
+```text
+0x5622CA75C75726Da13ae46C69127C07c87538633
+```
+
+**DotnsRegistrarController**
+
+```text
+0x269c4A5957EE8ba94B3350BEa0Ba214EFD501991
+```
+
+**DotnsPopController**
+
+```text
+0xae2c63b921Bc9DC30C149A8FA462fd3efA53D1F4
+```
+
+**RootGatewayDispatcher**
+
+```text
+0xDf919455Fb357c173d6C3143dB1B7aFb9eA61324
+```
+
+**PopRules**
+
+```text
+0x6eA97Bbd9A182F3306E53a15c2BAa673dFd03384
+```
+
+**DotnsResolver**
+
+```text
+0x823f39E7a4126669be53211FFbCF27e55b3274C6
+```
+
+**DotnsReverseResolver**
+
+```text
+0xA347059298aA171b3E744538F7043e9AAaAa95E0
+```
+
+**DotnsContentResolver**
+
+```text
+0xBD003d5Dd04E68aC60d529a46AEfBdEf8941868C
+```
+
+**DotnsPopResolver**
+
+```text
+0xeD11Bb5064fAAcb0A91e52dac2272E89856F2F6a
+```
+
+**DotnsNameEscrow**
+
+```text
+0xaCFdb3751C4a9060d2F048B1846A9a606B6Eae4B
+```
+
+**StoreFactory**
+
+```text
+0x4BEFaB5de968183524b1eBd2FAec9C68Cdc696Fd
+```
+
+**LabelStoreBeacon**
+
+```text
+0x11f324597d850d626d6406713808Ed854dA00a6b
+```
+
+**UserStoreBeacon**
+
+```text
+0xaC2209aFc366505d10Fd27d27030EB8C5E54874e
+```
+
+### Paseo Asset Hub Next V2
+
+**DotnsProtocolRegistry**
+
+```text
+0x0000000000000000000000000000000000000000
+```
+
+**Multicall3**
+
+```text
+0x0000000000000000000000000000000000000000
+```
+
+**DotnsRegistrar**
+
+```text
+0x0000000000000000000000000000000000000000
+```
+
+**DotnsRegistry**
+
+```text
+0x0000000000000000000000000000000000000000
+```
+
+**DotnsRegistrarController**
+
+```text
+0x0000000000000000000000000000000000000000
+```
+
+**DotnsPopController**
+
+```text
+0x0000000000000000000000000000000000000000
+```
+
+**RootGatewayDispatcher**
+
+```text
+0x0000000000000000000000000000000000000000
+```
+
+**PopRules**
+
+```text
+0x0000000000000000000000000000000000000000
+```
+
+**DotnsResolver**
+
+```text
+0x0000000000000000000000000000000000000000
+```
+
+**DotnsReverseResolver**
+
+```text
+0x0000000000000000000000000000000000000000
+```
+
+**DotnsContentResolver**
+
+```text
+0x0000000000000000000000000000000000000000
+```
+
+**DotnsPopResolver**
+
+```text
+0x0000000000000000000000000000000000000000
+```
+
+**DotnsNameEscrow**
+
+```text
+0x0000000000000000000000000000000000000000
+```
+
+**StoreFactory**
+
+```text
+0x0000000000000000000000000000000000000000
+```
+
+**LabelStoreBeacon**
+
+```text
+0x0000000000000000000000000000000000000000
+```
+
+**UserStoreBeacon**
+
+```text
+0x0000000000000000000000000000000000000000
+```

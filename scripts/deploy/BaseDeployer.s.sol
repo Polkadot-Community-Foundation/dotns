@@ -76,6 +76,7 @@ abstract contract BaseDeployer is Script {
     /// @param name Label under which the address is recorded.
     /// @param addr Proxy or contract address to record.
     function logDeployment(string memory name, address addr) internal {
+        _requireContract(name, addr);
         manifestJson = vm.serializeAddress(MANIFEST_OBJECT_KEY, name, addr);
     }
 
@@ -103,6 +104,12 @@ abstract contract BaseDeployer is Script {
     function _readAddress(string memory name) internal view returns (address addr) {
         string memory key = string.concat(".", name);
         addr = vm.parseJsonAddress(manifestJson, key);
+        _requireContract(name, addr);
+    }
+
+    function _requireContract(string memory name, address addr) internal view {
+        require(addr != address(0), string.concat(name, ": zero address"));
+        require(addr.code.length != 0, string.concat(name, ": no code"));
     }
 
     /// @notice Deploys a UUPS proxy inside its own broadcast scope, labels the

@@ -100,6 +100,77 @@ if [ ! -f "$KEYSTORE_PATH" ]; then
 fi
 
 SENDER=$(cast wallet address --account "$ACCOUNT_NAME" --password "$ACCOUNT_PASSWORD")
+CHAIN_ID=$(cast chain-id --rpc-url "$RPC_URL")
+
+if [ "${DOTNS_DEPLOY_SKIP_CLEAN_BUILD:-0}" != "1" ]; then
+  echo "=== Rebuilding full Foundry artifacts for OpenZeppelin validation ==="
+  forge clean
+  forge build
+fi
+
+case "$CHAIN_ID" in
+  420420422) DEPLOYMENT_FOLDER="passethub-testnet" ;;
+  420420417) DEPLOYMENT_FOLDER="paseo-assethub" ;;
+  420420420) DEPLOYMENT_FOLDER="paseo-local" ;;
+  *) DEPLOYMENT_FOLDER="localhost" ;;
+esac
+
+MANIFEST_PATH="deployments/$DEPLOYMENT_FOLDER/$CHAIN_ID.json"
+mkdir -p "$(dirname "$MANIFEST_PATH")"
+
+backup_manifest() {
+  local backup
+  backup=$(mktemp "${TMPDIR:-/tmp}/dotns-manifest.${CHAIN_ID}.XXXXXX")
+  if [ -f "$MANIFEST_PATH" ]; then
+    cp "$MANIFEST_PATH" "$backup"
+    echo "$backup"
+  else
+    rm -f "$backup"
+    echo ""
+  fi
+}
+
+restore_manifest() {
+  local backup="$1"
+  if [ -n "$backup" ]; then
+    cp "$backup" "$MANIFEST_PATH"
+  else
+    rm -f "$MANIFEST_PATH"
+  fi
+}
+
+validate_manifest_contracts() {
+  if [ ! -f "$MANIFEST_PATH" ]; then
+    echo "Manifest missing after stage: $MANIFEST_PATH" >&2
+    return 1
+  fi
+
+  local failed=0
+  while read -r name addr; do
+    [ -n "$name" ] || continue
+    code=$(cast code "$addr" --rpc-url "$RPC_URL")
+    if [ "$code" = "0x" ]; then
+      echo "Manifest address has no code: $name=$addr" >&2
+      failed=1
+    fi
+  done < <(
+    jq -r '
+      to_entries[]
+      | select(.key != "_seed")
+      | select(.value != "0x0000000000000000000000000000000000000000")
+      | "\(.key) \(.value)"
+    ' "$MANIFEST_PATH"
+  )
+
+  return "$failed"
+}
+
+if [ "${DOTNS_DEPLOY_KEEP_MANIFEST:-0}" != "1" ] && [ -f "$MANIFEST_PATH" ]; then
+  ARCHIVE_PATH="${MANIFEST_PATH}.pre-fresh.$(date +%Y%m%d%H%M%S)"
+  cp "$MANIFEST_PATH" "$ARCHIVE_PATH"
+  rm -f "$MANIFEST_PATH"
+  echo "Archived existing manifest for fresh deploy: $ARCHIVE_PATH"
+fi
 
 common=(
   --rpc-url "$RPC_URL"
@@ -109,7 +180,8 @@ common=(
   --broadcast
   --slow
   --legacy
-  --gas-limit 1000000000
+  --gas-limit 2000000000
+  --gas-estimate-multiplier 10000
   -vvvvv
 )
 
@@ -123,8 +195,18 @@ stages=(
 
 for stage in "${stages[@]}"; do
   echo "=== Running $stage ==="
+  manifest_backup=$(backup_manifest)
   # shellcheck disable=SC2086
-  forge script "scripts/deploy/${stage}.s.sol:${stage}" "${common[@]}" $extra
+  if ! forge script "scripts/deploy/${stage}.s.sol:${stage}" "${common[@]}" $extra; then
+    restore_manifest "$manifest_backup"
+    echo "Restored manifest after failed stage: $stage" >&2
+    exit 1
+  fi
+  if ! validate_manifest_contracts; then
+    restore_manifest "$manifest_backup"
+    echo "Restored manifest after invalid stage output: $stage" >&2
+    exit 1
+  fi
 done
 
 echo "=== Pipeline complete ==="
