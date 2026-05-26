@@ -280,7 +280,7 @@ If a stage fails after writing partial addresses, inspect the relevant deploymen
 **DotnsRegistrarController**
 
 ```text
-0x269c4A5957EE8ba94B3350BEa0Ba214EFD501991
+0xC0c21ca6302884572E61d69D5bf3E271Acf39B23
 ```
 
 **DotnsPopController**
@@ -298,7 +298,7 @@ If a stage fails after writing partial addresses, inspect the relevant deploymen
 **PopRules**
 
 ```text
-0x6eA97Bbd9A182F3306E53a15c2BAa673dFd03384
+0xF209a15e8a10D208bb4d3e3c56D9EB73a5934C26
 ```
 
 **DotnsResolver**
@@ -328,7 +328,7 @@ If a stage fails after writing partial addresses, inspect the relevant deploymen
 **DotnsNameEscrow**
 
 ```text
-0xaCFdb3751C4a9060d2F048B1846A9a606B6Eae4B
+0xb7E39199f13aCf7e90cCf67b980aC3ef0E2C4Fbe
 ```
 
 **StoreFactory**
