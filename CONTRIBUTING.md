@@ -123,6 +123,64 @@ Example query paths. Each row starts from a small set of known contracts; every 
 | Node => forward address record | Protocol registry => forward resolver => address record |
 | Address => primary name | Protocol registry => reverse resolver => primary name |
 
+### New addresses go through the protocol registry
+
+Any new contract address that other contracts need to read must be looked up through `DotnsProtocolRegistry` at the point of use. Do not hardcode it in a constructor, store it in an `immutable`, or expose a one-off `setX(address)` setter. The protocol registry is the only address a contract may hold directly; everything else is fetched on demand so rotation is a single `protocolRegistry.set(KEY, newAddress)` call with no upgrade.
+
+If you are adding a new contract category, add a `bytes32` key for it in `DotnsConstants.sol` and wire it up in `WireDeployments.s.sol`. Read it the same way every existing contract does.
+
+Bad — the registrar address is frozen at construction, so rotating it needs an upgrade:
+
+```solidity
+contract MyResolver {
+    address public immutable registrar;
+
+    constructor(address _registrar) {
+        registrar = _registrar;
+    }
+
+    function _someWrite() internal view {
+        require(msg.sender == registrar, "not registrar");
+    }
+}
+```
+
+Good — fetched from the protocol registry on every call, so rotation is one `set`:
+
+```solidity
+contract MyResolver {
+    IDotnsProtocolRegistry public immutable protocolRegistry;
+
+    constructor(IDotnsProtocolRegistry _protocolRegistry) {
+        protocolRegistry = _protocolRegistry;
+    }
+
+    function _someWrite() internal view {
+        require(msg.sender == protocolRegistry.get(DotnsConstants.REGISTRAR), "not registrar");
+    }
+}
+```
+
+### Updating an existing contract to consume a new address
+
+When a new contract is added, existing contracts that already read through the protocol registry need no work. A new `bytes32` key in `DotnsConstants.sol` plus a new `protocolRegistry.set(NEW_KEY, addr)` line in `WireDeployments.s.sol` is enough; every other contract picks it up automatically.
+
+An existing contract only needs an upgrade when it must *call* the new contract. The upgrade is small: add the consumer call site and read the address from the protocol registry at the point of use. Ship it as a normal proxy upgrade with the `Old.sol` snapshot and the cleanup checklist below.
+
+Example. A new `ScoreResolver` is added and `MyResolver` should check the caller's score on writes. The upgrade adds one `.get(...)` lookup, no storage moves, so the `Old.sol` diff is trivial:
+
+```solidity
+function _someWrite() internal view {
+    require(msg.sender == protocolRegistry.get(DotnsConstants.REGISTRAR), "not registrar");
+
+    // New consumer call site introduced by the upgrade.
+    uint256 score = IScoreResolver(protocolRegistry.get(DotnsConstants.SCORE_RESOLVER)).scoreOf(msg.sender);
+    require(score >= MIN_SCORE, "insufficient score");
+}
+```
+
+Do not cache the new address in storage on the existing contract during the upgrade. Caching it locally is what forces the next rotation into a second upgrade PR; reading from the protocol registry on every call keeps future rotations to a single `set`.
+
 ## Static analysis and security tooling
 
 DotNS uses automated checks (including static analysis) on pull requests.
