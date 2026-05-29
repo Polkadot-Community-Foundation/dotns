@@ -861,6 +861,60 @@ contract DotnsPopControllerTests is BaseDotns {
         assertEq(holder, ed);
     }
 
+    function test_split_gateway_flow_mints_lite_then_reserves_base() public {
+        _grantPopFull(ed);
+
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
+            })
+        );
+
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf(LITE_LABEL_A))), ed);
+        assertFalse(dotnsRegistrar.exists(uint256(_nodeOf(BASE_LABEL_A))));
+
+        _gatewayReserveBaseNameOnly(
+            IDotnsPopController.BaseNameReservation({user: ed, reservedBaseLabel: BASE_LABEL_A})
+        );
+
+        (bool reserved, address holder) = dotnsPopController.isReservedForClaim(BASE_LABEL_A);
+        assertTrue(reserved);
+        assertEq(holder, ed);
+        assertFalse(dotnsRegistrar.exists(uint256(_nodeOf(BASE_LABEL_A))));
+    }
+
+    function test_reserveBaseNameOnly_reverts_for_non_gateway() public {
+        _mockCallerIsRoot(false);
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(this))
+        );
+        dotnsPopController.reserveBaseNameOnly(
+            IDotnsPopController.BaseNameReservation({user: ed, reservedBaseLabel: BASE_LABEL_A})
+        );
+    }
+
+    function test_gateway_can_settle_label_store_for_user() public {
+        _grantPopFull(ed);
+
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
+            })
+        );
+
+        assertEq(dotnsPopController.pendingClaim(ed).label, LITE_LABEL_A);
+        assertEq(storeFactory.getLabelStore(ed), address(0));
+
+        _dispatchFromRoot(abi.encodeCall(IDotnsPopController.claimLabelStoreFor, (ed)));
+
+        address store = storeFactory.getLabelStore(ed);
+        assertTrue(store != address(0));
+        assertEq(
+            ILabelStore(store).getLabel(_nodeOf(LITE_LABEL_A)), string.concat(LITE_LABEL_A, ".dot")
+        );
+        assertEq(dotnsPopController.pendingClaim(ed).mintedAt, 0);
+    }
+
     function test_registerBaseName_zero_length_label_reverts() public {
         _grantPopFull(ed);
 
