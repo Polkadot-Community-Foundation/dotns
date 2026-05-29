@@ -42,8 +42,10 @@ contract DotnsNameEscrowRefundHarness is DotnsNameEscrow {
 
 contract RejectingReceiver {
     // No receive(), no fallback(): any incoming value reverts.
-
+    function marker() external pure returns (bool) {
+        return true;
     }
+}
 
 /// @title DotnsNameEscrowRefundsTest
 /// @notice Unit tests for the time-locked refund ledger added to @custom:contract DotnsNameEscrow.

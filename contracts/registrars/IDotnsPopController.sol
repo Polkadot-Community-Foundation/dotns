@@ -111,6 +111,17 @@ interface IDotnsPopController is IDotnsController {
         string reservedBaseLabel;
     }
 
+    /// @notice Base-name reservation payload for the split gateway flow.
+    /// @dev This is the reservation-only primitive. The lite username mint is handled by
+    /// @custom:function reserveLiteName, and LabelStore settlement is handled by
+    /// @custom:function claimLabelStoreFor or the user fallback @custom:function claimLabelStore.
+    /// @param user Beneficiary account that will hold the reservation.
+    /// @param reservedBaseLabel Base label to enqueue for a later full-person claim.
+    struct BaseNameReservation {
+        address user;
+        string reservedBaseLabel;
+    }
+
     /// @notice Full-person registration payload.
     /// @param label Base DNS label being minted.
     /// @param user Beneficiary account on this chain.
@@ -281,6 +292,21 @@ interface IDotnsPopController is IDotnsController {
     /// encoders MUST NOT assume strict length validation.
     /// @param payload `abi.encode(BaseReservation)` produced by the cross-chain caller.
     function reserveBaseName(bytes calldata payload) external;
+
+    /// @notice Enqueues only the full/base-name reservation for a user.
+    /// @dev Callable only via the registered PoP gateway. This is the second step of the split
+    /// gateway flow: @custom:function reserveLiteName mints the lite username first, then this
+    /// function reserves the full/base label in a separate transaction so proof-size stays below
+    /// per-call limits. Reverts with @custom:reverts InvalidBaseLabel when the label is empty,
+    /// non-canonical, digit-suffixed, or governance-reserved. The caller remains agnostic about
+    /// backend batching; it simply exposes a small retryable primitive.
+    /// @param params Reservation request; see @custom:struct BaseNameReservation.
+    function reserveBaseNameOnly(BaseNameReservation calldata params) external;
+
+    /// @notice Raw-payload variant of @custom:function reserveBaseNameOnly for cross-chain
+    /// dispatch. @param payload `abi.encode(BaseNameReservation)` produced by the cross-chain
+    /// caller.
+    function reserveBaseNameOnly(bytes calldata payload) external;
 
     /// @notice Registers a lite-person username on behalf of the supplied
     /// user without touching the base-name reservation queue.
@@ -453,6 +479,14 @@ interface IDotnsPopController is IDotnsController {
     /// @custom:emits NameRegistered. Chat-key and lite-link records are not touched here;
     /// they are persisted on the PoP resolver at mint time, not at settlement.
     function claimLabelStore() external;
+
+    /// @notice Gateway-driven variant of @custom:function claimLabelStore for split workflows.
+    /// @dev Callable only via the registered PoP gateway. It settles the pending LabelStore claim
+    /// for `user` without requiring a user transaction. The user-signed
+    /// @custom:function claimLabelStore remains as a permissioned-by-origin fallback if gateway
+    /// dispatch fails.
+    /// @param user Account whose pending claim should be settled.
+    function claimLabelStoreFor(address user) external;
 
     /// @notice Permissionlessly reaps a deferred binding that sat unsettled past
     /// `reservationDuration`.

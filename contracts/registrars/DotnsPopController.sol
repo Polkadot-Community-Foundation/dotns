@@ -102,6 +102,10 @@ contract DotnsPopController is
     bytes4 private constant SELECTOR_RESERVE_BASE =
         bytes4(keccak256("reserveBaseName(((string,address,bytes),string))"));
 
+    /// @notice Selector for the typed reservation-only gateway primitive.
+    bytes4 private constant SELECTOR_RESERVE_BASE_ONLY =
+        bytes4(keccak256("reserveBaseNameOnly((address,string))"));
+
     /// @notice Selector for the typed @custom:function registerBaseName overload.
     /// @dev `Link` is `(uint8,string,bytes)` because `LinkKind` is an enum.
     bytes4 private constant SELECTOR_REGISTER_BASE =
@@ -233,6 +237,30 @@ contract DotnsPopController is
         _dispatchTyped(SELECTOR_RESERVE_BASE, payload);
     }
 
+    /// @inheritdoc IDotnsPopController
+    function reserveBaseNameOnly(BaseNameReservation calldata params)
+        external
+        override
+        onlyGateway
+    {
+        IPopRules rules = _popRules();
+        (IPopRules.PopStatus required,) = rules.classifyName(params.reservedBaseLabel);
+        require(
+            required != IPopRules.PopStatus.Reserved && rules.isBaseName(params.reservedBaseLabel),
+            InvalidBaseLabel()
+        );
+
+        (bytes32 reservedHash,) = _validateBaseLabel(params.reservedBaseLabel);
+        _advanceExpiredHead(reservedHash);
+        _removeUserFromQueue(params.user);
+        _enqueueReservation(rules, reservedHash, params.reservedBaseLabel, params.user);
+    }
+
+    /// @inheritdoc IDotnsPopController
+    function reserveBaseNameOnly(bytes calldata payload) external override onlyGateway {
+        _dispatchTyped(SELECTOR_RESERVE_BASE_ONLY, payload);
+    }
+
     /// @notice Lite-only mint shared by @custom:function reserveLiteName and the lite leg
     /// of @custom:function reserveBaseName.
     /// @dev Gateway attestation is the authority for personhood on this path; the on-chain
@@ -356,25 +384,34 @@ contract DotnsPopController is
 
     /// @inheritdoc IDotnsPopController
     function claimLabelStore() external override {
-        uint64 mintedAt = _pendingClaims[msg.sender].mintedAt;
-        require(mintedAt != 0 && !_isExpired(mintedAt), NoPendingClaim(msg.sender));
+        _claimLabelStoreFor(msg.sender);
+    }
 
-        string memory label = _pendingClaims[msg.sender].label;
+    /// @inheritdoc IDotnsPopController
+    function claimLabelStoreFor(address user) external override onlyGateway {
+        _claimLabelStoreFor(user);
+    }
+
+    function _claimLabelStoreFor(address user) internal {
+        uint64 mintedAt = _pendingClaims[user].mintedAt;
+        require(mintedAt != 0 && !_isExpired(mintedAt), NoPendingClaim(user));
+
+        string memory label = _pendingClaims[user].label;
         bytes32 labelhash = LabelUtils.labelhashMemory(label);
         bytes32 node = LabelUtils.namehash(labelhash);
 
         IStoreFactory factory = _storeFactory();
-        address store = factory.getLabelStore(msg.sender);
+        address store = factory.getLabelStore(user);
         if (store == address(0)) {
-            store = factory.deployLabelStoreFor(msg.sender);
+            store = factory.deployLabelStoreFor(user);
         }
 
         _writeRecord(store, node, label);
 
-        _clearPendingClaim(msg.sender);
+        _clearPendingClaim(user);
 
-        emit PendingClaimSettled(msg.sender, labelhash, store);
-        emit NameRegistered(label, labelhash, msg.sender, store);
+        emit PendingClaimSettled(user, labelhash, store);
+        emit NameRegistered(label, labelhash, user, store);
     }
 
     /// @inheritdoc IDotnsPopController
