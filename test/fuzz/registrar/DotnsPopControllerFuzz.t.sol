@@ -215,11 +215,11 @@ contract DotnsPopControllerFuzz is BaseDotns {
         public
     {
         suffix = uint8(bound(uint256(suffix), 0, 99));
-        // Stem `dualbase` (baselength 8) plus a 2-digit suffix classifies as PopLite,
-        // so a single `_grantPopLite(ed)` covers both classification gates the
-        // entrypoint runs. `useLiteLink` toggles between the `None` (fresh chat key)
-        // and `LiteUsername` (inherit from prior lite) branches.
-        string memory baseLabel = string.concat("dualbase", _twoDigitDecimal(uint256(suffix)));
+        // Stem `longnamebob` (stem length above the PopLite ceiling) plus a 2-digit suffix
+        // classifies as NoStatus, the legitimate inhabitant of the base-name path. The
+        // `useLiteLink` toggle picks between the `None` (fresh chat key) and `LiteUsername`
+        // (inherit from prior lite) branches.
+        string memory baseLabel = string.concat("longnamebob", _twoDigitDecimal(uint256(suffix)));
         bytes memory chatKey = _validChatKey(keySeed);
 
         _grantPopLite(ed);
@@ -318,7 +318,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         vm.warp(block.timestamp + uint256(elapsed));
 
         (bool reserved, address holder) = dotnsPopController.isReservedForClaim(BASE_LABEL_A);
-        if (uint256(elapsed) < uint256(duration)) {
+        if (uint256(elapsed) <= uint256(duration)) {
             assertTrue(reserved);
             assertEq(holder, ed);
         } else {
@@ -404,7 +404,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         uint64 mintedAt = dotnsPopController.pendingClaim(ed).mintedAt;
         vm.warp(uint256(mintedAt) + uint256(elapsed));
 
-        if (elapsed < duration) {
+        if (elapsed <= duration) {
             vm.expectRevert(
                 abi.encodeWithSelector(IDotnsPopController.PendingClaimNotExpired.selector, ed)
             );

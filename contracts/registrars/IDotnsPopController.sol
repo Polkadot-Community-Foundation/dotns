@@ -189,6 +189,12 @@ interface IDotnsPopController is IDotnsController {
     /// @notice Thrown when a supplied base label is not a canonical DNS label.
     error InvalidBaseLabel();
 
+    /// @notice Thrown when a supplied chat key is non-empty and not exactly 65 bytes long.
+    /// @dev Mirrors the resolver's `InvalidChatKeyLength` so the controller surfaces a
+    /// controller-local error before the mint runs.
+    /// @param length Caller-supplied chat key length, in bytes.
+    error InvalidChatKey(uint256 length);
+
     /// @notice Thrown when a user tries to claim or relinquish a reservation that they do not hold.
     error NoActiveReservation(address user);
 
@@ -236,19 +242,24 @@ interface IDotnsPopController is IDotnsController {
     /// @dev Callable only via the registered PoP gateway (otherwise @custom:reverts NotGateway);
     /// the gateway is responsible for asserting substrate Root authority before forwarding
     /// here. The lite leg validates the dotted `stem.NN` shape and requires the flattened label
-    /// to classify as PopLite (otherwise @custom:reverts InvalidLiteLabel), emitting
-    /// @custom:emits LiteNameReserved and @custom:emits NameRegistered on success. The base-name
-    /// leg only runs when `reservedBaseLabel` is non-empty: it validates the DNS-label shape and
-    /// requires a true base label with no trailing digits (otherwise @custom:reverts
-    /// InvalidBaseLabel) before any queue mutation so a bad reservation never touches the queue,
-    /// advances the head
-    /// past expired entries (emitting @custom:emits ReservationExpired for each one), removes the
-    /// user from any prior queue position so a single user holds at most one live reservation
-    /// across all labels, and enqueues a fresh entry (emitting @custom:emits ReservationQueued).
-    /// The enqueue rejects with @custom:reverts AlreadyReserved when the user already holds a
-    /// reservation that was not cleared by the prior removal and with @custom:reverts QueueFull
-    /// when the per-label queue has reached `MAX_RESERVATION_QUEUE`. Cross-chain callers pass
-    /// the ABI-encoded reservation tuple as the call's payload, which Solidity decodes directly.
+    /// to classify as PopLite (otherwise @custom:reverts InvalidLiteLabel), and rejects a
+    /// supplied chat key whose length is neither zero nor `CHAT_KEY_LENGTH`
+    /// (otherwise @custom:reverts InvalidChatKey). On a warm-path mint (user already has a
+    /// `LabelStore`) it emits @custom:emits LiteNameReserved and @custom:emits NameRegistered;
+    /// on a cold-path mint it emits @custom:emits LiteNameReserved and
+    /// @custom:emits PendingClaimStashed, with @custom:emits NameRegistered deferred to
+    /// @custom:function claimLabelStore when the user settles. The base-name leg only runs
+    /// when `reservedBaseLabel` is non-empty: it validates the DNS-label shape and requires a
+    /// true base label with no trailing digits (otherwise @custom:reverts InvalidBaseLabel)
+    /// before any queue mutation so a bad reservation never touches the queue, advances the
+    /// head past expired entries (emitting @custom:emits ReservationExpired for each one),
+    /// removes the user from any prior queue position so a single user holds at most one live
+    /// reservation across all labels, and enqueues a fresh entry (emitting
+    /// @custom:emits ReservationQueued). The enqueue rejects with @custom:reverts
+    /// AlreadyReserved when the user already holds a reservation that was not cleared by the
+    /// prior removal and with @custom:reverts QueueFull when the per-label queue has reached
+    /// `MAX_RESERVATION_QUEUE`. Cross-chain callers pass the ABI-encoded reservation tuple as
+    /// the call's payload, which Solidity decodes directly.
     /// @param params Reservation request; see @custom:struct BaseReservation.
     function reserveBaseName(BaseReservation calldata params) external;
 
@@ -276,9 +287,13 @@ interface IDotnsPopController is IDotnsController {
     /// @dev Callable only via the registered PoP gateway (otherwise @custom:reverts NotGateway);
     /// the gateway is responsible for asserting substrate Root authority before forwarding
     /// here. The supplied label must satisfy the dotted `stem.NN` shape and the flattened label
-    /// must classify as PopLite (otherwise @custom:reverts InvalidLiteLabel) before mint and
-    /// resolver writes run. Emits @custom:emits LiteNameReserved and @custom:emits NameRegistered
-    /// on success. Cross-chain callers pass the ABI-encoded lite-registration tuple as the call's
+    /// must classify as PopLite (otherwise @custom:reverts InvalidLiteLabel); a supplied chat
+    /// key whose length is neither zero nor `CHAT_KEY_LENGTH` reverts
+    /// @custom:reverts InvalidChatKey before mint and resolver writes run. On a warm-path mint
+    /// emits @custom:emits LiteNameReserved and @custom:emits NameRegistered. On a cold-path
+    /// mint emits @custom:emits LiteNameReserved and @custom:emits PendingClaimStashed, with
+    /// @custom:emits NameRegistered deferred to @custom:function claimLabelStore when the user
+    /// settles. Cross-chain callers pass the ABI-encoded lite-registration tuple as the call's
     /// payload, which Solidity decodes directly.
     /// @param params Registration request; see @custom:struct LiteRegistration.
     function reserveLiteName(LiteRegistration calldata params) external;
@@ -305,23 +320,35 @@ interface IDotnsPopController is IDotnsController {
     /// @notice Registers a full-person username on behalf of the supplied user.
     /// @dev Callable only via the registered PoP gateway (otherwise @custom:reverts NotGateway);
     /// the gateway is responsible for asserting substrate Root authority before forwarding
-    /// here. The base label must satisfy the DNS-label shape (otherwise
-    /// @custom:reverts InvalidBaseLabel) and PopRules price-with-check runs first so a
-    /// mis-tiered request never touches the queue. Two orthogonal axes drive the state
-    /// machine. The reservation axis treats the user as claiming if and only if they hold the
-    /// live head-of-queue reservation on the base label: a claim wipes the entire queue,
-    /// releases the PopRules slot, and emits @custom:emits BaseNameClaimed, while a non-claim
-    /// silently relinquishes any pending entry the user holds and emits
-    /// @custom:emits StandaloneNameRegistered, reverting with @custom:reverts NotHolder when
-    /// another live head blocks the mint. Advancing the queue head past expired entries emits
-    /// @custom:emits ReservationExpired for each one. The chat-key axis selects whether a
-    /// fresh key is persisted on the resolver or the new entry inherits its key from a prior
-    /// lite-person username; the `LiteUsername` branch validates the lite label's `NAMEXX`
-    /// shape (otherwise @custom:reverts InvalidLiteLabel) and emits
-    /// @custom:emits LiteToFullLinked alongside the registration event. Every successful path
-    /// emits @custom:emits NameRegistered. The two axes are independent, so any combination is
-    /// reachable. Cross-chain callers pass the ABI-encoded full-registration tuple as the
-    /// call's payload, which Solidity decodes directly.
+    /// here. The base label must satisfy the DNS-label shape and be a true base label with no
+    /// trailing digits (otherwise @custom:reverts InvalidBaseLabel), and the label must not
+    /// classify as governance-reserved (otherwise @custom:reverts InvalidBaseLabel). The
+    /// gateway also defers to PopRules as the single cross-flow authority: when PopRules
+    /// carries a live base-name slot held by another user (stamped by the public commit-reveal
+    /// flow or this controller's prior queue head), the call reverts @custom:reverts NotHolder
+    /// before any queue mutation. Two orthogonal axes drive the state machine. The reservation
+    /// axis treats the user as claiming if and only if they hold the live head-of-queue
+    /// reservation on the base label: a claim wipes the entire queue, releases the PopRules
+    /// slot, and emits @custom:emits BaseNameClaimed; a non-claim silently relinquishes any
+    /// pending entry the user holds and emits @custom:emits StandaloneNameRegistered. Advancing
+    /// the queue head past expired entries emits @custom:emits ReservationExpired for each
+    /// one. The chat-key axis selects whether a fresh key is persisted on the resolver or the
+    /// new entry inherits its key from a prior lite-person username. The fresh-key branch
+    /// rejects a chat key whose length is neither zero nor `CHAT_KEY_LENGTH` (otherwise
+    /// @custom:reverts InvalidChatKey). The `LiteUsername` branch validates the lite label's
+    /// `NAMEXX` shape (otherwise @custom:reverts InvalidLiteLabel), requires the registrant to
+    /// own the lite token (otherwise @custom:reverts LiteLabelNotOwnedByUser), reads the lite
+    /// node's chat key from the resolver and copies it across; if the lite node carries no chat
+    /// key the inherited value is empty and the full node's chat-key write is silently skipped
+    /// (the `LiteToFullLinked` event still fires). Emits @custom:emits LiteToFullLinked
+    /// alongside the registration event. On a warm-path mint the event order is
+    /// @custom:emits NameRegistered first (from the inner mint), then
+    /// @custom:emits BaseNameClaimed or @custom:emits StandaloneNameRegistered, then
+    /// @custom:emits LiteToFullLinked when applicable. On a cold-path mint
+    /// @custom:emits PendingClaimStashed replaces the initial @custom:emits NameRegistered;
+    /// the deferred @custom:emits NameRegistered fires later from @custom:function
+    /// claimLabelStore. Cross-chain callers pass the ABI-encoded full-registration tuple as
+    /// the call's payload, which Solidity decodes directly.
     /// @param params Registration request; see @custom:struct FullRegistration.
     function registerBaseName(FullRegistration calldata params) external;
 
@@ -347,7 +374,10 @@ interface IDotnsPopController is IDotnsController {
     /// @dev Permissionless on purpose: anyone (typically a UI or a bot) can poke a stale queue
     /// so the next live head takes over without waiting for the next gateway call. Validates
     /// the DNS-label shape of `reservedBaseLabel` (otherwise @custom:reverts InvalidBaseLabel)
-    /// and emits @custom:emits ReservationExpired for every expired entry reaped from the head.
+    /// and emits @custom:emits ReservationExpired for every expired entry reaped from the
+    /// head. Only base-shaped labels (no trailing digits) ever key a reservation queue, so a
+    /// lite-shaped label still passes the shape check but resolves to an empty queue and the
+    /// call is a no-op.
     function expireReservation(string calldata reservedBaseLabel) external;
 
     /// @notice Lets the caller voluntarily drop their own active reservation.
@@ -408,21 +438,24 @@ interface IDotnsPopController is IDotnsController {
         view
         returns (UserReservation memory reservation);
 
-    /// @notice Settles the caller's deferred binding by deploying their `LabelStore` and
-    /// writing the stashed label.
-    /// @dev User-signed entrypoint: `pallet-revive` charges the `LabelStore` storage
+    /// @notice Settles the caller's deferred binding by writing the stashed label into
+    /// the caller's `LabelStore`, deploying the store first if the caller doesn't yet
+    /// have one.
+    /// @dev User-signed entrypoint: `pallet-revive` charges any `LabelStore` storage
     /// deposit against `msg.sender`'s balance through the runtime's configured deposit
     /// backend. Reverts with @custom:reverts NoPendingClaim when the caller has no
-    /// stashed entry or the entry has lapsed past `reservationDuration`. On success
-    /// deploys the store via the protocol-registered factory, writes the label keyed by
-    /// its labelhash, deletes the pending-claim entry, and emits
-    /// @custom:emits PendingClaimSettled and @custom:emits NameRegistered. Chat-key and
-    /// lite-link records are not touched here; they are persisted on the PoP resolver at
-    /// mint time, not at settlement.
+    /// stashed entry or the entry has lapsed past `reservationDuration`. Reuses any
+    /// existing `LabelStore` returned by the factory (settling via this controller after a
+    /// concurrent public-flow mint, or settling twice through this controller, both find
+    /// a live store and skip deployment), otherwise deploys a fresh store via the
+    /// protocol-registered factory. Writes the label keyed by its `node` (namehash),
+    /// deletes the pending-claim entry, and emits @custom:emits PendingClaimSettled and
+    /// @custom:emits NameRegistered. Chat-key and lite-link records are not touched here;
+    /// they are persisted on the PoP resolver at mint time, not at settlement.
     function claimLabelStore() external;
 
     /// @notice Permissionlessly reaps a deferred binding that sat unsettled past
-    /// `pendingClaimDuration`.
+    /// `reservationDuration`.
     /// @dev Permissionless on purpose: anyone (typically a UI or a bot) can poke a
     /// stale entry so the slot frees up for the next gateway-path mint. Reverts with
     /// @custom:reverts NoPendingClaim when the user has no stashed entry and with
