@@ -893,6 +893,80 @@ contract DotnsPopControllerTests is BaseDotns {
         );
     }
 
+    function test_reserveBaseNameOnly_reverts_for_reserved_or_suffixed_labels() public {
+        vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
+        _gatewayReserveBaseNameOnly(
+            IDotnsPopController.BaseNameReservation({user: ed, reservedBaseLabel: "alice"})
+        );
+
+        vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
+        _gatewayReserveBaseNameOnly(
+            IDotnsPopController.BaseNameReservation({user: ed, reservedBaseLabel: "longnamebob01"})
+        );
+    }
+
+    function test_reserveBaseNameOnly_does_not_mint_lite_or_base_name() public {
+        _gatewayReserveBaseNameOnly(
+            IDotnsPopController.BaseNameReservation({user: ed, reservedBaseLabel: BASE_LABEL_A})
+        );
+
+        assertFalse(dotnsRegistrar.exists(uint256(_nodeOf(LITE_LABEL_A))));
+        assertFalse(dotnsRegistrar.exists(uint256(_nodeOf(BASE_LABEL_A))));
+
+        (bool reserved, address holder) = dotnsPopController.isReservedForClaim(BASE_LABEL_A);
+        assertTrue(reserved);
+        assertEq(holder, ed);
+    }
+
+    function test_reserveBaseNameOnly_same_user_can_replace_prior_reservation() public {
+        _gatewayReserveBaseNameOnly(
+            IDotnsPopController.BaseNameReservation({user: ed, reservedBaseLabel: BASE_LABEL_A})
+        );
+        _gatewayReserveBaseNameOnly(
+            IDotnsPopController.BaseNameReservation({user: ed, reservedBaseLabel: BASE_LABEL_B})
+        );
+
+        (bool firstReserved,) = dotnsPopController.isReservedForClaim(BASE_LABEL_A);
+        assertFalse(firstReserved);
+
+        (bool secondReserved, address holder) = dotnsPopController.isReservedForClaim(BASE_LABEL_B);
+        assertTrue(secondReserved);
+        assertEq(holder, ed);
+    }
+
+    function test_claimLabelStoreFor_reverts_for_non_gateway() public {
+        _grantPopFull(ed);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
+            })
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(this))
+        );
+        dotnsPopController.claimLabelStoreFor(ed);
+    }
+
+    function test_user_claimLabelStore_fallback_still_settles_after_gateway_mint() public {
+        _grantPopFull(ed);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
+            })
+        );
+
+        vm.prank(ed);
+        dotnsPopController.claimLabelStore();
+
+        address store = storeFactory.getLabelStore(ed);
+        assertTrue(store != address(0));
+        assertEq(
+            ILabelStore(store).getLabel(_nodeOf(LITE_LABEL_A)), string.concat(LITE_LABEL_A, ".dot")
+        );
+        assertEq(dotnsPopController.pendingClaim(ed).mintedAt, 0);
+    }
+
     function test_gateway_can_settle_label_store_for_user() public {
         _grantPopFull(ed);
 
