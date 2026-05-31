@@ -215,7 +215,7 @@ abstract contract BaseDotns is Test {
         vm.label(protocolRegistryAddress, "DotnsProtocolRegistry");
         IDotnsProtocolRegistry registry = IDotnsProtocolRegistry(protocolRegistryAddress);
 
-        storeFactory = new StoreFactory(protocolRegistryAddress);
+        storeFactory = new StoreFactory(protocolRegistryAddress, owner);
         vm.label(address(storeFactory), "StoreFactory");
 
         address dotnsRegistrarAddress = Upgrades.deployUUPSProxy(

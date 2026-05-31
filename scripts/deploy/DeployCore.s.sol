@@ -52,23 +52,26 @@ contract DeployCore is BaseDeployer {
     }
 
     function _deployStoreFactory(address owner, address protocolRegistry) internal {
-        vm.startBroadcast(owner);
-        StoreFactory factory = new StoreFactory(protocolRegistry);
-        vm.stopBroadcast();
+        StoreFactory factory = StoreFactory(
+            _broadcastDeployCreate3(
+                owner,
+                "StoreFactory.sol:StoreFactory",
+                abi.encode(protocolRegistry, owner),
+                "StoreFactory"
+            )
+        );
         vm.label(address(factory), "StoreFactory");
         vm.label(factory.labelStoreBeacon(), "LabelStoreBeacon");
         vm.label(factory.userStoreBeacon(), "UserStoreBeacon");
-        logDeployment("StoreFactory", address(factory));
         logDeployment("LabelStoreBeacon", factory.labelStoreBeacon());
         logDeployment("UserStoreBeacon", factory.userStoreBeacon());
     }
 
     function _deployMulticall3(address owner) internal {
-        vm.startBroadcast(owner);
-        Multicall3 multicall3 = new Multicall3();
-        vm.stopBroadcast();
+        Multicall3 multicall3 = Multicall3(
+            _broadcastDeployCreate3(owner, "Multicall3.sol:Multicall3", bytes(""), "Multicall3")
+        );
         vm.label(address(multicall3), "Multicall3");
-        logDeployment("Multicall3", address(multicall3));
     }
 
     function _deployRegistrar(

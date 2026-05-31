@@ -2,7 +2,10 @@
 pragma solidity ^0.8.34;
 
 import {Script} from "forge-std/Script.sol";
+import {Options} from "openzeppelin-foundry-upgrades/Options.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
+
+import {Create3Factory} from "../../contracts/deploy/Create3Factory.sol";
 
 /// @title BaseDeployer
 /// @notice Shared base for the DotNS deploy pipeline. Each concrete stage
@@ -21,6 +24,16 @@ abstract contract BaseDeployer is Script {
     ///         helper. The value is arbitrary; it only has to be stable across
     ///         successive calls within the same run.
     string internal constant MANIFEST_OBJECT_KEY = "dotns.manifest";
+
+    /// @notice Namespace for all DotNS CREATE3 salts.
+    /// @dev Do not include the chain ID: the deployment goal is identical
+    ///      addresses for identical bytecode and constructor data on every
+    ///      chain. Bump this value only when intentionally moving the whole
+    ///      deployment address set.
+    string internal constant CREATE3_SALT_NAMESPACE = "dotns.create3.v1";
+
+    /// @notice Optional in-memory override used by tests and custom scripts.
+    address private create3FactoryOverride;
 
     /// @notice In-memory JSON string representing the full deployment manifest
     ///         accumulated across this stage's calls to `logDeployment`.
@@ -112,12 +125,15 @@ abstract contract BaseDeployer is Script {
         require(addr.code.length != 0, string.concat(name, ": no code"));
     }
 
-    /// @notice Deploys a UUPS proxy inside its own broadcast scope, labels the
-    ///         resulting address for trace readability, and records it on the
-    ///         manifest.
+    /// @notice Deploys a UUPS implementation and ERC1967 proxy through CREATE3
+    ///         inside its own broadcast scope, labels the proxy for trace
+    ///         readability, and records it on the manifest.
     /// @dev Full OZ upgrade-safety validation runs on every call. The helper
     ///      exists so every stage script shares one canonical deploy shape
-    ///      rather than repeating the broadcast, label, and log triple.
+    ///      rather than repeating the validation, broadcast, label, and log
+    ///      sequence. Salts are derived from a stable DotNS namespace plus the
+    ///      manifest label, so addresses stay the same across chains as long as
+    ///      the deployer, bytecode, constructor args, and label remain stable.
     /// @param owner Broadcasting account; becomes the proxy owner.
     /// @param artefact Fully-qualified artefact name (`File.sol:Contract`).
     /// @param initialiserCalldata ABI-encoded initialiser call.
@@ -132,11 +148,111 @@ abstract contract BaseDeployer is Script {
         internal
         returns (address proxy)
     {
+        Options memory opts;
+        Upgrades.validateImplementation(artefact, opts);
+
         vm.startBroadcast(owner);
-        proxy = Upgrades.deployUUPSProxy(artefact, initialiserCalldata);
+        address implementation =
+            _deployCreate3(artefact, opts.constructorData, _create3Salt(label, "implementation"));
+        proxy = _deployCreate3(
+            "ERC1967Proxy.sol:ERC1967Proxy",
+            abi.encode(implementation, bytes("")),
+            _create3Salt(label, "proxy")
+        );
+        if (initialiserCalldata.length != 0) {
+            (bool ok, bytes memory ret) = proxy.call(initialiserCalldata);
+            if (!ok) {
+                assembly ("memory-safe") {
+                    revert(add(ret, 32), mload(ret))
+                }
+            }
+        }
         vm.stopBroadcast();
         vm.label(proxy, label);
         logDeployment(label, proxy);
+    }
+
+    /// @notice Deploys a non-upgradeable contract with CREATE3 in a broadcast
+    ///         scope, labels it, and records it in the manifest.
+    /// @param owner Broadcasting account.
+    /// @param artefact Fully-qualified artefact name.
+    /// @param constructorData ABI-encoded constructor arguments.
+    /// @param label Trace / manifest identifier.
+    /// @return deployed Address of the deployed contract.
+    function _broadcastDeployCreate3(
+        address owner,
+        string memory artefact,
+        bytes memory constructorData,
+        string memory label
+    )
+        internal
+        returns (address deployed)
+    {
+        vm.startBroadcast(owner);
+        deployed = _deployCreate3(artefact, constructorData, _create3Salt(label, "contract"));
+        vm.stopBroadcast();
+        vm.label(deployed, label);
+        logDeployment(label, deployed);
+    }
+
+    /// @notice Sets the CREATE3 factory address used by deterministic deploy
+    ///         helpers. Intended for tests and custom bootstrap scripts.
+    function _setCreate3Factory(address factory) internal {
+        require(factory.code.length != 0, "Create3Factory: no code");
+        create3FactoryOverride = factory;
+    }
+
+    /// @notice Predicts the CREATE3 address used by the deterministic deploy
+    ///         helpers for the same inputs.
+    function _predictCreate3(
+        string memory label,
+        string memory kind
+    )
+        internal
+        view
+        returns (address predicted)
+    {
+        predicted = _create3Factory().predict(_create3Salt(label, kind));
+    }
+
+    function _deployCreate3(
+        string memory artefact,
+        bytes memory constructorData,
+        bytes32 salt
+    )
+        internal
+        returns (address deployed)
+    {
+        bytes memory bytecode = _creationBytecode(artefact, constructorData);
+        address predicted = _create3Factory().predict(salt);
+        require(predicted.code.length == 0, string.concat(artefact, ": CREATE3 target occupied"));
+
+        deployed = _create3Factory().deploy(salt, bytecode);
+        require(deployed == predicted, string.concat(artefact, ": CREATE3 deploy failed"));
+    }
+
+    function _creationBytecode(
+        string memory artefact,
+        bytes memory constructorData
+    )
+        internal
+        view
+        returns (bytes memory)
+    {
+        return abi.encodePacked(vm.getCode(artefact), constructorData);
+    }
+
+    function _create3Factory() internal view returns (Create3Factory factory) {
+        address factoryAddress = create3FactoryOverride;
+        if (factoryAddress == address(0)) {
+            factoryAddress = vm.envOr("DOTNS_CREATE3_FACTORY", address(0));
+        }
+        require(factoryAddress.code.length != 0, "DOTNS_CREATE3_FACTORY: no code");
+        factory = Create3Factory(payable(factoryAddress));
+    }
+
+    function _create3Salt(string memory label, string memory kind) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(CREATE3_SALT_NAMESPACE, ":", label, ":", kind));
     }
 
     function _deploymentPath(
