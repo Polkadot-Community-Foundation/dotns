@@ -10,6 +10,7 @@ import {DotnsProtocolRegistry} from "../../../contracts/registry/DotnsProtocolRe
 import {IDotnsProtocolRegistry} from "../../../contracts/registry/IDotnsProtocolRegistry.sol";
 import {DotnsReverseResolver} from "../../../contracts/resolvers/DotnsReverseResolver.sol";
 import {StoreFactory} from "../../../contracts/store/StoreFactory.sol";
+import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 
 import {DeterministicDeploymentHarness} from "./DeterministicDeploymentHarness.t.sol";
 
@@ -31,9 +32,10 @@ contract DeterministicDeploymentTest is Test {
         deployer = new DeterministicDeploymentHarness();
         owner = makeAddr("deterministic-owner");
         vm.deal(owner, 100 ether);
-        factory = new Create3Factory();
-        deployer.setCreate3Factory(address(factory));
         deployer.initManifest();
+        // Mirror DeployCore: bootstrap the factory and prime it as the override
+        // so the protocol registry can be deployed through it.
+        factory = Create3Factory(payable(deployer.bootstrapCreate3Factory(owner)));
     }
 
     function test_coreDeploymentAddressesStayTheSameAcrossChainIds() public {
@@ -71,6 +73,33 @@ contract DeterministicDeploymentTest is Test {
 
         assertEq(deployed, predicted, "predicted proxy");
         assertEq(DotnsProtocolRegistry(deployed).owner(), owner, "proxy owner");
+    }
+
+    function test_create3FactoryResolvesFromProtocolRegistry() public {
+        // Mirror DeployCore: deploy the protocol registry through the bootstrapped
+        // factory, then record the factory on the registry.
+        address protocolRegistry = deployer.deployUups(
+            owner,
+            "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
+            abi.encodeCall(DotnsProtocolRegistry.initialize, ()),
+            "DotnsProtocolRegistry"
+        );
+        deployer.registerCreate3Factory(owner, protocolRegistry, address(factory));
+
+        assertEq(
+            IDotnsProtocolRegistry(protocolRegistry).get(DotnsConstants.CREATE3_FACTORY),
+            address(factory),
+            "factory recorded on protocol registry"
+        );
+
+        // Simulate a later pipeline stage: clear the override so the factory must
+        // be resolved from the protocol registry recorded in the manifest.
+        deployer.setCreate3Factory(address(0));
+
+        address predicted = deployer.predictCreate3("Multicall3", "contract");
+        address deployed =
+            deployer.deployCreate3(owner, "Multicall3.sol:Multicall3", bytes(""), "Multicall3");
+        assertEq(deployed, predicted, "registry-resolved deploy matches prediction");
     }
 
     function test_predictionsMatchForNonProxyDeploys() public {

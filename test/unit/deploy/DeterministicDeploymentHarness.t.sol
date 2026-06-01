@@ -19,6 +19,20 @@ contract DeterministicDeploymentHarness is BaseDeployer {
         initDeployment("__test_scratch", "deterministic");
     }
 
+    function bootstrapCreate3Factory(address owner) external returns (address) {
+        return _bootstrapCreate3Factory(owner);
+    }
+
+    function registerCreate3Factory(
+        address owner,
+        address protocolRegistry,
+        address factory
+    )
+        external
+    {
+        _registerCreate3Factory(owner, protocolRegistry, factory);
+    }
+
     function setCreate3Factory(address factory) external {
         _setCreate3Factory(factory);
     }

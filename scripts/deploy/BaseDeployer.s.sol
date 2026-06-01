@@ -6,6 +6,8 @@ import {Options} from "openzeppelin-foundry-upgrades/Options.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 import {Create3Factory} from "../../contracts/deploy/Create3Factory.sol";
+import {IDotnsProtocolRegistry} from "../../contracts/registry/IDotnsProtocolRegistry.sol";
+import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 
 /// @title BaseDeployer
 /// @notice Shared base for the DotNS deploy pipeline. Each concrete stage
@@ -195,10 +197,49 @@ abstract contract BaseDeployer is Script {
         logDeployment(label, deployed);
     }
 
-    /// @notice Sets the CREATE3 factory address used by deterministic deploy
-    ///         helpers. Intended for tests and custom bootstrap scripts.
+    /// @notice Deploys the CREATE3 factory directly and primes it as the
+    ///         in-memory override for the remainder of this process.
+    /// @dev Bootstrap step for the first deploy stage: the factory cannot deploy
+    ///      itself, and it must exist before any CREATE3 deploy, including the
+    ///      protocol registry's own. The factory address is derived from the
+    ///      deployer's nonce, so deploy it as the deployer's first pipeline
+    ///      transaction on every chain to keep it (and therefore every CREATE3
+    ///      address) identical across chains.
+    /// @param owner Broadcasting account; deploys and is recorded as the factory.
+    /// @return factory Address of the freshly deployed CREATE3 factory.
+    function _bootstrapCreate3Factory(address owner) internal returns (address factory) {
+        vm.startBroadcast(owner);
+        factory = address(new Create3Factory());
+        vm.stopBroadcast();
+        _setCreate3Factory(factory);
+        vm.label(factory, "Create3Factory");
+        logDeployment("Create3Factory", factory);
+    }
+
+    /// @notice Records the CREATE3 factory under `DotnsConstants.CREATE3_FACTORY`
+    ///         on the protocol registry so every later stage resolves it from the
+    ///         registry rather than an environment variable.
+    /// @param owner Broadcasting account; must own the protocol registry.
+    /// @param protocolRegistry Protocol registry proxy address.
+    /// @param factory CREATE3 factory address to record.
+    function _registerCreate3Factory(
+        address owner,
+        address protocolRegistry,
+        address factory
+    )
+        internal
+    {
+        vm.startBroadcast(owner);
+        IDotnsProtocolRegistry(protocolRegistry).set(DotnsConstants.CREATE3_FACTORY, factory);
+        vm.stopBroadcast();
+    }
+
+    /// @notice Sets the in-memory CREATE3 factory override used by the bootstrap
+    ///         stage and tests. Passing `address(0)` clears the override so
+    ///         resolution falls back to the protocol registry.
+    /// @dev The factory's code is validated at the point of use in
+    ///      `_create3Factory`, so this setter accepts any address.
     function _setCreate3Factory(address factory) internal {
-        require(factory.code.length != 0, "Create3Factory: no code");
         create3FactoryOverride = factory;
     }
 
@@ -242,12 +283,21 @@ abstract contract BaseDeployer is Script {
         return abi.encodePacked(vm.getCode(artefact), constructorData);
     }
 
+    /// @notice Resolves the CREATE3 factory: the in-memory override when set
+    ///         (bootstrap stage and tests), otherwise the address recorded under
+    ///         `DotnsConstants.CREATE3_FACTORY` on the protocol registry.
+    /// @dev Reading the factory from the protocol registry keeps the deterministic
+    ///      deploy pipeline self-describing: every stage after the first finds the
+    ///      factory through the manifest's protocol registry, so no environment
+    ///      variable is required.
     function _create3Factory() internal view returns (Create3Factory factory) {
         address factoryAddress = create3FactoryOverride;
         if (factoryAddress == address(0)) {
-            factoryAddress = vm.envOr("DOTNS_CREATE3_FACTORY", address(0));
+            address protocolRegistry = _readAddress("DotnsProtocolRegistry");
+            factoryAddress =
+                IDotnsProtocolRegistry(protocolRegistry).get(DotnsConstants.CREATE3_FACTORY);
         }
-        require(factoryAddress.code.length != 0, "DOTNS_CREATE3_FACTORY: no code");
+        require(factoryAddress.code.length != 0, "Create3Factory: no code");
         factory = Create3Factory(payable(factoryAddress));
     }
 
