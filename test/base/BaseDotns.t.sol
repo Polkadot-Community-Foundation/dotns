@@ -451,10 +451,10 @@ abstract contract BaseDotns is Test {
                 reservedBaseLabel: reservedBaseLabel
             })
         );
-        IDotnsPopController.PendingClaim memory pending = dotnsPopController.pendingClaim(user);
+        IDotnsPopController.PendingClaim[] memory pending = dotnsPopController.pendingClaims(user);
         if (
-            pending.mintedAt != 0
-                && pending.mintedAt + dotnsPopController.reservationDuration() > block.timestamp
+            pending.length != 0
+                && pending[0].mintedAt + dotnsPopController.reservationDuration() > block.timestamp
         ) {
             vm.prank(user);
             dotnsPopController.claimLabelStore();

@@ -139,21 +139,32 @@ contract DotnsPopController is
     /// governance via `setReservationDuration`.
     uint64 public reservationDuration;
 
-    /// @notice Per-user record of a freshly minted name whose `LabelStore` write was
-    /// deferred because the user had no store at mint time.
-    /// @dev Set when the gateway path mints for a user with no `LabelStore`. Cleared
-    /// on settlement via @custom:function claimLabelStore or on expiry via
-    /// @custom:function expirePendingClaim. At most one entry per address; expiry is
-    /// measured from `mintedAt` against `reservationDuration`.
+    /// @notice First (head) deferred name per user whose `LabelStore` write was deferred
+    /// because the user had no store at mint time.
+    /// @dev Pre-existing storage slot from before the controller supported piling. Its layout is
+    /// preserved verbatim so the proxy upgrade passes storage-collision validation and any entry
+    /// stashed under the prior single-claim implementation is still settled or swept. Subsequent
+    /// deferred names for the same user accrue in `_pendingClaimQueue`; together they form the
+    /// user's full pending pile. A non-zero `mintedAt` means the head slot is occupied.
     mapping(address user => PendingClaim claim) internal _pendingClaims;
 
-    /// @notice Enumeration set of users holding a live pending claim.
-    /// @dev Membership equals the live key set of `_pendingClaims`. Used by
-    /// `pendingClaimUserCount` and `pendingClaimUsers` for paginated enumeration.
+    /// @notice Enumeration set of users holding at least one pending claim.
+    /// @dev Membership equals the set of users with an occupied head or a non-empty queue. Used
+    /// by `pendingClaimUserCount` and `pendingClaimUsers` for paginated enumeration.
     EnumerableSet.AddressSet private _pendingClaimUsers;
 
-    /// @dev Reserved storage space to allow for layout changes in the future.
-    uint256[50] private __gap;
+    /// @notice Overflow pile of deferred names per user, beyond the head in `_pendingClaims`.
+    /// @dev The Root gateway origin cannot deploy a `LabelStore` (contract creation is forbidden
+    /// from Root), so deferred names accumulate here until a signed-origin
+    /// @custom:function claimLabelStore deploys the store and settles the whole pile, or
+    /// @custom:function expirePendingClaim sweeps the lapsed entries. Each entry's expiry is
+    /// measured from its own `mintedAt`. Carved from the reserved gap so the upgrade preserves
+    /// every prior slot.
+    mapping(address user => PendingClaim[] queue) internal _pendingClaimQueue;
+
+    /// @dev Reserved storage space to allow for layout changes in the future. Reduced by one
+    /// slot when `_pendingClaimQueue` was introduced.
+    uint256[49] private __gap;
 
     /// @notice Restricts calls to the address registered as the PoP gateway
     ///         on the protocol registry.
@@ -393,38 +404,93 @@ contract DotnsPopController is
     }
 
     function _claimLabelStoreFor(address user) internal {
-        uint64 mintedAt = _pendingClaims[user].mintedAt;
-        require(mintedAt != 0 && !_isExpired(mintedAt), NoPendingClaim(user));
-
-        string memory label = _pendingClaims[user].label;
-        bytes32 labelhash = LabelUtils.labelhashMemory(label);
-        bytes32 node = LabelUtils.namehash(labelhash);
-
         IStoreFactory factory = _storeFactory();
         address store = factory.getLabelStore(user);
+
+        uint256 settled;
+
+        // Head slot first: any entry stashed under the prior single-claim implementation lives
+        // here, so draining it keeps pre-upgrade deferrals settleable.
+        PendingClaim memory head = _pendingClaims[user];
+        if (head.mintedAt != 0 && !_isExpired(head.mintedAt)) {
+            store = _settlePendingLabel(factory, store, user, head.label);
+            ++settled;
+        }
+
+        PendingClaim[] storage queue = _pendingClaimQueue[user];
+        uint256 count = queue.length;
+        for (uint256 i = 0; i < count; ++i) {
+            if (_isExpired(queue[i].mintedAt)) continue;
+            store = _settlePendingLabel(factory, store, user, queue[i].label);
+            ++settled;
+        }
+
+        require(settled != 0, NoPendingClaim(user));
+
+        _clearPendingClaim(user);
+    }
+
+    /// @notice Writes a single pending label into the user's store, deploying the store lazily.
+    /// @dev Deferring the deploy to the first settled label means a pile of only-lapsed entries
+    /// never leaves a fresh store behind with nothing written. Returns the (possibly newly
+    /// deployed) store so the caller threads it through the remaining entries.
+    function _settlePendingLabel(
+        IStoreFactory factory,
+        address store,
+        address user,
+        string memory label
+    )
+        internal
+        returns (address)
+    {
+        bytes32 labelhash = LabelUtils.labelhashMemory(label);
+        bytes32 node = LabelUtils.namehash(labelhash);
         if (store == address(0)) {
             store = factory.deployLabelStoreFor(user);
         }
-
         _writeRecord(store, node, label);
-
-        _clearPendingClaim(user);
-
         emit PendingClaimSettled(user, labelhash, store);
         emit NameRegistered(label, labelhash, user, store);
+        return store;
     }
 
     /// @inheritdoc IDotnsPopController
     function expirePendingClaim(address user) external override {
-        uint64 mintedAt = _pendingClaims[user].mintedAt;
-        require(mintedAt != 0, NoPendingClaim(user));
-        require(_isExpired(mintedAt), PendingClaimNotExpired(user));
+        PendingClaim memory head = _pendingClaims[user];
+        PendingClaim[] storage queue = _pendingClaimQueue[user];
+        require(head.mintedAt != 0 || queue.length != 0, NoPendingClaim(user));
 
-        bytes32 labelhash = LabelUtils.labelhashMemory(_pendingClaims[user].label);
+        bool sweptAny;
 
-        _clearPendingClaim(user);
+        if (head.mintedAt != 0 && _isExpired(head.mintedAt)) {
+            emit PendingClaimExpired(user, LabelUtils.labelhashMemory(head.label));
+            delete _pendingClaims[user];
+            sweptAny = true;
+        }
 
-        emit PendingClaimExpired(user, labelhash);
+        // Swap-and-pop every expired queue entry. The swapped-in tail is re-inspected at the
+        // same index, so a single pass removes all lapsed entries while preserving the live ones.
+        uint256 i;
+        while (i < queue.length) {
+            if (_isExpired(queue[i].mintedAt)) {
+                bytes32 labelhash = LabelUtils.labelhashMemory(queue[i].label);
+                uint256 last = queue.length - 1;
+                if (i != last) {
+                    queue[i] = queue[last];
+                }
+                queue.pop();
+                emit PendingClaimExpired(user, labelhash);
+                sweptAny = true;
+            } else {
+                ++i;
+            }
+        }
+
+        require(sweptAny, PendingClaimNotExpired(user));
+
+        if (_pendingClaims[user].mintedAt == 0 && queue.length == 0) {
+            _pendingClaimUsers.remove(user);
+        }
     }
 
     /// @inheritdoc IDotnsPopController
@@ -488,13 +554,22 @@ contract DotnsPopController is
     }
 
     /// @inheritdoc IDotnsPopController
-    function pendingClaim(address user)
+    function pendingClaims(address user)
         external
         view
         override
-        returns (PendingClaim memory claim_)
+        returns (PendingClaim[] memory claims_)
     {
-        return _pendingClaims[user];
+        PendingClaim memory head = _pendingClaims[user];
+        PendingClaim[] memory queue = _pendingClaimQueue[user];
+        if (head.mintedAt == 0) {
+            return queue;
+        }
+        claims_ = new PendingClaim[](queue.length + 1);
+        claims_[0] = head;
+        for (uint256 i = 0; i < queue.length; ++i) {
+            claims_[i + 1] = queue[i];
+        }
     }
 
     /// @inheritdoc IDotnsPopController
@@ -609,21 +684,31 @@ contract DotnsPopController is
         ILabelStore(store).storeLabel(node, string.concat(label, DotnsConstants.TLD));
     }
 
-    /// @notice Records a deferred binding for `user` and adds them to the enumeration set.
-    /// @dev Reverts with `PendingClaimExists` when the user already holds an entry. Emits
+    /// @notice Appends a deferred binding for `user` and adds them to the enumeration set.
+    /// @dev The Root gateway origin cannot deploy the user's `LabelStore`, so deferred names pile
+    /// up until a signed-origin @custom:function claimLabelStore settles them. The first name
+    /// fills the head slot (`_pendingClaims`, layout-shared with the pre-pile implementation);
+    /// every subsequent name appends to `_pendingClaimQueue`. Adding the user to the set is
+    /// idempotent, so repeat stashes keep a single enumeration entry. Emits
     /// @custom:emits PendingClaimStashed.
     function _stashPendingClaim(address user, string memory label, bytes32 labelhash) internal {
-        require(_pendingClaims[user].mintedAt == 0, PendingClaimExists(user));
-
-        _pendingClaims[user] = PendingClaim({label: label, mintedAt: uint64(block.timestamp)});
+        if (_pendingClaims[user].mintedAt == 0) {
+            _pendingClaims[user] = PendingClaim({label: label, mintedAt: uint64(block.timestamp)});
+        } else {
+            _pendingClaimQueue[user].push(
+                PendingClaim({label: label, mintedAt: uint64(block.timestamp)})
+            );
+        }
         _pendingClaimUsers.add(user);
 
         emit PendingClaimStashed(user, labelhash, label);
     }
 
-    /// @notice Clears a user's pending claim and removes them from the enumeration set.
+    /// @notice Clears a user's entire pending pile (head and queue) and removes them from the
+    /// enumeration set.
     function _clearPendingClaim(address user) internal {
         delete _pendingClaims[user];
+        delete _pendingClaimQueue[user];
         _pendingClaimUsers.remove(user);
     }
 

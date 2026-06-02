@@ -342,9 +342,9 @@ contract DotnsPopControllerFuzz is BaseDotns {
             IDotnsPopController.LiteRegistration({liteLabel: label, user: ed, chatKey: chatKey})
         );
 
-        IDotnsPopController.PendingClaim memory pending = dotnsPopController.pendingClaim(ed);
-        assertEq(pending.label, label);
-        assertGt(pending.mintedAt, 0);
+        IDotnsPopController.PendingClaim[] memory pending = dotnsPopController.pendingClaims(ed);
+        assertEq(pending[0].label, label);
+        assertGt(pending[0].mintedAt, 0);
         assertEq(storeFactory.getLabelStore(ed), address(0));
         // Chat key is persisted eagerly on the resolver at reserve time, even though
         // the LabelStore write is deferred to settlement on the cold path.
@@ -375,7 +375,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         assertTrue(store != address(0));
         assertEq(ILabelStore(store).getLabel(node), string.concat(label, DotnsConstants.TLD));
         assertEq(dotnsPopResolver.chatKey(node), chatKey);
-        assertEq(dotnsPopController.pendingClaim(ed).mintedAt, 0);
+        assertEq(dotnsPopController.pendingClaims(ed).length, 0);
     }
 
     function testFuzz_pendingClaim_expiry_boundary_admits_or_lapses(
@@ -401,7 +401,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
             })
         );
 
-        uint64 mintedAt = dotnsPopController.pendingClaim(ed).mintedAt;
+        uint64 mintedAt = dotnsPopController.pendingClaims(ed)[0].mintedAt;
         vm.warp(uint256(mintedAt) + uint256(elapsed));
 
         if (elapsed <= duration) {

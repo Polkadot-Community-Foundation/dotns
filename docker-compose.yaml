@@ -12,12 +12,12 @@ services:
       RUST_LOG: "info,eth-rpc=debug,error"
       RUST_BACKTRACE: "1"
     ports:
-      - "8545:8545"
+      - "8546:8546"
     command:
       - "--node-rpc-url"
-      - "wss://previewnet.substrate.dev/asset-hub"
+      - "wss://paseo-asset-hub-next-rpc.polkadot.io"
       - "--rpc-port"
-      - "8545"
+      - "8546"
       - "--rpc-external"
       # Container is bound to host loopback only (`8545:8545` publishes on
       # 127.0.0.1 by default with the `host.docker.internal` network mode).

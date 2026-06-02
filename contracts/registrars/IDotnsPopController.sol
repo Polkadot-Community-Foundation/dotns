@@ -76,8 +76,11 @@ interface IDotnsPopController is IDotnsController {
     /// (chat key, lite link) are persisted eagerly at mint time on
     /// @custom:contract IDotnsPopResolver, not at settlement, so the resolver carries
     /// the full identity record regardless of whether the user has settled their Store.
-    /// An entry exists iff `mintedAt` is non-zero; the slot is cleared on settlement or
-    /// expiry. Expiry is measured from `mintedAt` against `reservationDuration`.
+    /// A user accumulates one entry per deferred name: the Root gateway path cannot deploy a
+    /// `LabelStore` (contract creation is forbidden from the Root origin), so it keeps stashing
+    /// entries until a signed-origin @custom:function claimLabelStore deploys the store and
+    /// settles every entry at once. Each entry's expiry is measured from its own `mintedAt`
+    /// against `reservationDuration`.
     /// @param label Bare DNS label (no TLD); the TLD is appended at settlement time.
     /// @param mintedAt Timestamp of the originating mint.
     struct PendingClaim {
@@ -220,18 +223,13 @@ interface IDotnsPopController is IDotnsController {
     error NotHolder(address user, bytes32 labelhash);
 
     /// @notice Thrown when @custom:function claimLabelStore is called by a user with no
-    /// recorded pending-claim entry.
+    /// recorded pending-claim entries.
     /// @param user Caller observed by the controller.
     error NoPendingClaim(address user);
 
-    /// @notice Thrown when the gateway path tries to stash a second pending claim for a
-    /// user who already has one outstanding.
-    /// @param user Address that already holds a pending claim.
-    error PendingClaimExists(address user);
-
-    /// @notice Thrown when @custom:function expirePendingClaim is invoked before the
-    /// entry's `mintedAt + reservationDuration` deadline.
-    /// @param user Address whose entry is being inspected.
+    /// @notice Thrown when @custom:function expirePendingClaim is invoked but the user holds
+    /// no entry past its `mintedAt + reservationDuration` deadline.
+    /// @param user Address whose entries are being inspected.
     error PendingClaimNotExpired(address user);
 
     /// @notice Thrown when a lite-link inheritance does not match the registrar-side owner
@@ -464,20 +462,21 @@ interface IDotnsPopController is IDotnsController {
         view
         returns (UserReservation memory reservation);
 
-    /// @notice Settles the caller's deferred binding by writing the stashed label into
+    /// @notice Settles the caller's deferred bindings by writing every stashed label into
     /// the caller's `LabelStore`, deploying the store first if the caller doesn't yet
     /// have one.
     /// @dev User-signed entrypoint: `pallet-revive` charges any `LabelStore` storage
     /// deposit against `msg.sender`'s balance through the runtime's configured deposit
-    /// backend. Reverts with @custom:reverts NoPendingClaim when the caller has no
-    /// stashed entry or the entry has lapsed past `reservationDuration`. Reuses any
-    /// existing `LabelStore` returned by the factory (settling via this controller after a
-    /// concurrent public-flow mint, or settling twice through this controller, both find
-    /// a live store and skip deployment), otherwise deploys a fresh store via the
-    /// protocol-registered factory. Writes the label keyed by its `node` (namehash),
-    /// deletes the pending-claim entry, and emits @custom:emits PendingClaimSettled and
-    /// @custom:emits NameRegistered. Chat-key and lite-link records are not touched here;
-    /// they are persisted on the PoP resolver at mint time, not at settlement.
+    /// backend. This is the only path that can create the store, because the Root gateway
+    /// origin cannot instantiate contracts. Reverts with @custom:reverts NoPendingClaim when
+    /// the caller holds no live stashed entries. Reuses any existing `LabelStore` returned by
+    /// the factory (settling via this controller after a concurrent public-flow mint, or
+    /// settling twice through this controller, both find a live store and skip deployment),
+    /// otherwise deploys a fresh store via the protocol-registered factory. Writes each live
+    /// label keyed by its `node` (namehash), clears the pending-claim entries, and emits
+    /// @custom:emits PendingClaimSettled and @custom:emits NameRegistered per settled name.
+    /// Chat-key and lite-link records are not touched here; they are persisted on the PoP
+    /// resolver at mint time, not at settlement.
     function claimLabelStore() external;
 
     /// @notice Gateway-driven variant of @custom:function claimLabelStore for split workflows.
@@ -488,32 +487,34 @@ interface IDotnsPopController is IDotnsController {
     /// @param user Account whose pending claim should be settled.
     function claimLabelStoreFor(address user) external;
 
-    /// @notice Permissionlessly reaps a deferred binding that sat unsettled past
+    /// @notice Permissionlessly reaps a user's deferred bindings that sat unsettled past
     /// `reservationDuration`.
-    /// @dev Permissionless on purpose: anyone (typically a UI or a bot) can poke a
-    /// stale entry so the slot frees up for the next gateway-path mint. Reverts with
-    /// @custom:reverts NoPendingClaim when the user has no stashed entry and with
-    /// @custom:reverts PendingClaimNotExpired when the entry is still live. Emits
-    /// @custom:emits PendingClaimExpired on success.
-    /// @param user Address whose pending claim is being swept.
+    /// @dev Permissionless on purpose: anyone (typically a UI or a bot) can poke stale
+    /// entries so the user's pile cannot grow without bound. Sweeps every expired entry,
+    /// leaving any still-live ones in place; the user is removed from the enumeration set
+    /// only when no entries remain. Reverts with @custom:reverts NoPendingClaim when the
+    /// user holds no entries and with @custom:reverts PendingClaimNotExpired when none of
+    /// the held entries have lapsed. Emits @custom:emits PendingClaimExpired per swept name.
+    /// @param user Address whose pending claims are being swept.
     function expirePendingClaim(address user) external;
 
-    /// @notice Returns `user`'s pending-claim entry.
-    /// @dev A zero `mintedAt` on the returned struct means the user has no pending
-    /// claim; the remaining fields are meaningful only when `mintedAt` is non-zero.
-    /// @param user Account whose pending claim is being read.
-    /// @return claim Per-user pending-claim entry; see @custom:struct PendingClaim.
-    function pendingClaim(address user) external view returns (PendingClaim memory claim);
+    /// @notice Returns `user`'s pending-claim entries.
+    /// @dev An empty array means the user has no pending claims. A user accumulates one
+    /// entry per deferred name until a signed-origin @custom:function claimLabelStore
+    /// settles them.
+    /// @param user Account whose pending claims are being read.
+    /// @return claims Per-user pending-claim entries; see @custom:struct PendingClaim.
+    function pendingClaims(address user) external view returns (PendingClaim[] memory claims);
 
-    /// @notice Returns the number of users with a live pending claim.
-    /// @dev Exact live count, not an all-time tally: settled and expired entries are
-    /// removed from the enumeration set so off-chain consumers can page through every
+    /// @notice Returns the number of users with at least one live pending claim.
+    /// @dev Exact live count, not an all-time tally: fully settled and fully expired users
+    /// are removed from the enumeration set so off-chain consumers can page through every
     /// stalled user without filtering.
     /// @return count Number of users currently holding a pending claim.
     function pendingClaimUserCount() external view returns (uint256 count);
 
-    /// @notice Returns a paginated slice of users with a live pending claim.
-    /// @dev Pair with @custom:function pendingClaim to read each user's stashed entry.
+    /// @notice Returns a paginated slice of users with at least one live pending claim.
+    /// @dev Pair with @custom:function pendingClaims to read each user's stashed entries.
     /// Ordering is not chronological; callers MUST NOT assume `mintedAt` is monotonic
     /// across the slice. Returns an empty array when `offset` is past the live count.
     /// @param offset Start index.
