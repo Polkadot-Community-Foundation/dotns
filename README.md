@@ -6,18 +6,6 @@ DotNS is a naming system for Polkadot. An account can register a .dot name, rece
 
 ## Diagrams
 
-### Registration flow
-
-![Registration flow](./diagrams/registration.png)
-
-### Subnode creation flow
-
-![Subnode creation](./diagrams/subname.png)
-
-### CID flow (Bulletin Chain)
-
-![CID flow](./diagrams/cid.png)
-
 ### System diagram
 
 ![System diagram](./diagrams/system.png)
