@@ -62,10 +62,13 @@ jobs:
       - name: Retry Foundry install on transient failure
         if: steps.foundry_toolchain.outcome == 'failure'
         run: |
-          echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.foundry/bin:$PATH"
+          if [ ! -x "$HOME/.foundry/bin/foundryup" ]; then
+            curl -L https://foundry.paradigm.xyz | bash
+          fi
           for attempt in 1 2 3; do
             echo "Retrying Foundry nightly install (attempt $attempt/3)..."
-            if "$HOME/.foundry/bin/foundryup" --install nightly; then
+            if $HOME/.foundry/bin/foundryup --install nightly; then
               exit 0
             fi
             sleep 5
