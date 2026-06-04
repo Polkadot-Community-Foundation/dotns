@@ -54,9 +54,24 @@ jobs:
           ref: ${{ matrix.target.ref }}
           submodules: recursive
 
-      - uses: foundry-rs/foundry-toolchain@v1
+      - id: foundry_toolchain
+        continue-on-error: true
+        uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
+      - name: Retry Foundry install on transient failure
+        if: steps.foundry_toolchain.outcome == 'failure'
+        run: |
+          echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
+          for attempt in 1 2 3; do
+            echo "Retrying Foundry nightly install (attempt $attempt/3)..."
+            if "$HOME/.foundry/bin/foundryup" --install nightly; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Foundry nightly install failed after retries."
+          exit 1
 
       # Parity internal runners ship a minimal image; `oven-sh/setup-bun@v2`
       # extracts a zip archive at install time and needs `unzip` on PATH.
