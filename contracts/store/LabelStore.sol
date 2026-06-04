@@ -31,13 +31,6 @@ contract LabelStore is Initializable, ILabelStore {
     /// @dev labelhash => stored label string.
     mapping(bytes32 labelhash => string label) private _labels;
 
-    /// @dev Deprecated. Previously held the `_locked` lock flag per labelhash; the lock state is
-    /// now derived from `_labelIndex != 0`. The mapping type and slot are retained verbatim so
-    /// the OZ Upgrades validator accepts the storage layout against deployed proxies.
-    /// @custom:oz-renamed-from _locked
-    // forge-lint: disable-next-line(mixed-case-variable)
-    mapping(bytes32 labelhash => bool locked) private __deprecated_locked;
-
     /// @dev Insertion-order list of all stored labelhashes. Append-only.
     bytes32[] private _labelList;
 
