@@ -36,9 +36,10 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 /// Personhood is attested off-chain by the gateway pallet before the call reaches this
 /// contract, so the on-chain personhood precompile is not re-queried on the gateway path.
 /// Every base-label mint path still calls @custom:function IPopRules.classifyName to reject
-/// governance-reserved labels (@custom:reverts InvalidBaseLabel), and the lite leg's
-/// `isSingleDotLiteLabel` format guard guarantees the stripped lite label cannot classify
-/// as `Reserved`. Native-token pricing is bypassed entirely; the gateway pays no rent.
+/// governance-reserved labels (@custom:reverts InvalidBaseLabel on the base path,
+/// @custom:reverts InvalidLiteLabel on the lite path). The lite leg accepts any two-digit lite
+/// label whose stem is not governance-reserved, regardless of stem length. Native-token pricing
+/// is bypassed entirely; the gateway pays no rent.
 ///
 /// Decoupling:
 /// This contract does not import or call `IDotnsRegistrarController`. The public
@@ -265,17 +266,21 @@ contract DotnsPopController is
     /// of @custom:function reserveBaseName.
     /// @dev Gateway attestation is the authority for personhood on this path; the on-chain
     /// precompile is not consulted. The dotted-format check accepts only `stem.NN`, then
-    /// PopRules classification must identify the flattened label as `PopLite` before minting.
-    /// Takes the @custom:struct LiteRegistration struct directly so both call sites pass the
-    /// same payload shape: the typed entrypoint forwards its own `params`, the `reserveBaseName`
-    /// entrypoint forwards `params.lite`.
+    /// PopRules classification must place the flattened label outside the governance-reserved
+    /// tier before minting; any non-reserved two-digit lite label is accepted regardless of stem
+    /// length. Takes the @custom:struct LiteRegistration struct directly so both call sites pass
+    /// the same payload shape: the typed entrypoint forwards its own `params`, the
+    /// `reserveBaseName` entrypoint forwards `params.lite`.
     function _reserveLite(IPopRules rules, LiteRegistration calldata params) internal {
         require(params.liteLabel.isSingleDotLiteLabel(), InvalidLiteLabel());
         _requireValidChatKey(params.chatKey);
 
         string memory liteLabel = params.liteLabel.stripDots();
         (IPopRules.PopStatus required,) = rules.classifyName(liteLabel);
-        require(required == IPopRules.PopStatus.PopLite, InvalidLiteLabel());
+        // `isSingleDotLiteLabel` guarantees exactly two trailing digits, so the flattened label
+        // classifies as PopLite (base 6-8), NoStatus (base >= 9), or Reserved (base <= 5). Accept
+        // the first two; governance-reserved short stems are still rejected.
+        require(required != IPopRules.PopStatus.Reserved, InvalidLiteLabel());
         (bytes32 labelhash, bytes32 node) = _validateLiteLabel(liteLabel);
 
         _completeGatewayRegistration(

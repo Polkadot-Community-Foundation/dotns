@@ -819,15 +819,31 @@ contract DotnsPopControllerTests is BaseDotns {
         );
     }
 
-    function test_reserveLiteName_reverts_when_flattened_label_is_not_pop_lite() public {
+    function test_reserveLiteName_reverts_when_flattened_label_is_governance_reserved() public {
         _grantPopFull(ed);
 
+        // `abcd.12` flattens to `abcd12`: base length 4 classifies as Reserved (governance), so the
+        // gateway lite path still rejects it even though the dotted format is valid.
         vm.expectRevert(IDotnsPopController.InvalidLiteLabel.selector);
         _gatewayReserveLiteName(
             IDotnsPopController.LiteRegistration({
-                liteLabel: "longnamebob.01", user: ed, chatKey: _validChatKey(0xaa)
+                liteLabel: "abcd.12", user: ed, chatKey: _validChatKey(0xaa)
             })
         );
+    }
+
+    function test_reserveLiteName_succeeds_for_long_stem() public {
+        _grantPopLite(ed);
+
+        // `andrewsays.01` flattens to `andrewsays01`: base length 10 classifies as NoStatus, which
+        // the gateway may issue as a lite username regardless of stem length.
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: "andrewsays.01", user: ed, chatKey: _validChatKey(0xaa)
+            })
+        );
+
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("andrewsays01"))), ed);
     }
 
     function test_reserveLiteName_reverts_when_origin_is_not_root() public {
