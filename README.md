@@ -200,6 +200,10 @@ Current network addresses are listed in [DEPLOYMENTS.md](./DEPLOYMENTS.md).
 
 Builds and tests are run with Foundry. Fork tests use the local Paseo Asset Hub adapter described in [DEPLOYMENTS.md](./DEPLOYMENTS.md); ordinary unit, fuzz, and invariant tests run against Foundry's in-process EVM.
 
+## Security
+
+This repository is reference and proof-of-concept code and has **not** received a full security audit. Do not use it in production or production-like deployments without an independent review. Do not open a public issue for a vulnerability; report it privately to **security@parity.io**. Full policy, scope, and safe-use guidance: see [SECURITY.md](./SECURITY.md).
+
 ## License
 
 Licensed under the MIT License. See [LICENSE](./LICENSE). External interface definitions under `contracts/external/` retain their upstream licences (the SPDX header in each file is authoritative). Security policy and disclosure: see [SECURITY.md](./SECURITY.md).
