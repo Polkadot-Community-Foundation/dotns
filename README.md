@@ -202,7 +202,15 @@ Builds and tests are run with Foundry. Fork tests use the local Paseo Asset Hub 
 
 ## Security
 
-This repository is reference and proof-of-concept code and has **not** received a full security audit. Do not use it in production or production-like deployments without an independent review. Do not open a public issue for a vulnerability; report it privately to **security@parity.io**. Full policy, scope, and safe-use guidance: see [SECURITY.md](./SECURITY.md).
+Before deploying it for real use cases, you are responsible for:
+
+- Reviewing the code yourself, we publish a reference, not a hardened production build
+- Checking that the dependencies are up to date and free of known vulnerabilities
+- Securing your own fork or deployment environment (keys, secrets, network configuration)
+- Tracking the latest tagged release/commits for security fixes; older releases are not backported (exceptions might apply)
+
+For Parity's security disclosure process, and Bug Bounty program, feel free to visit:  https://parity.io/bug-bounty
+
 
 ## License
 
