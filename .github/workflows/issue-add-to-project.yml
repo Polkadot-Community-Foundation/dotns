@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/add-to-project@v1.0.2
         with:
-          # Create a project at https://github.com/orgs/paritytech/projects/new
-          # then paste the URL here, e.g. https://github.com/orgs/paritytech/projects/42
+          # Create a project at https://github.com/orgs/Polkadot-Community-Foundation/projects/new
+          # then paste the URL here, e.g. https://github.com/orgs/Polkadot-Community-Foundation/projects/42
           project-url: ${{ vars.DOTNS_PROJECT_URL }}
           github-token: ${{ secrets.PROJECT_PAT }}

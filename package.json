@@ -29,14 +29,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/paritytech/dotns.git"
+    "url": "git+https://github.com/Polkadot-Community-Foundation/dotns.git"
   },
   "author": "",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/paritytech/dotns/issues"
+    "url": "https://github.com/Polkadot-Community-Foundation/dotns/issues"
   },
-  "homepage": "https://github.com/paritytech/dotns/#readme",
+  "homepage": "https://github.com/Polkadot-Community-Foundation/dotns/#readme",
   "volta": {
     "node": "24.6.0"
   },
