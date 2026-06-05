@@ -110,7 +110,7 @@ fi
 
 case "$CHAIN_ID" in
   420420422) DEPLOYMENT_FOLDER="passethub-testnet" ;;
-  420420417) DEPLOYMENT_FOLDER="paseo-assethub" ;;
+  420420417) DEPLOYMENT_FOLDER="summit-asset-hub" ;;
   420420420) DEPLOYMENT_FOLDER="paseo-local" ;;
   *) DEPLOYMENT_FOLDER="localhost" ;;
 esac
