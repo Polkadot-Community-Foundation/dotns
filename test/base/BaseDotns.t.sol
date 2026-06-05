@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: MIT
-// ci: temporary touch to trigger workflow runs on ubuntu-latest (revert before merge)
 pragma solidity ^0.8.34;
 
 import {Test} from "forge-std/Test.sol";
