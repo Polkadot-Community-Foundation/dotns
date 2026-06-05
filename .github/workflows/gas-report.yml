@@ -54,13 +54,32 @@ jobs:
           ref: ${{ matrix.target.ref }}
           submodules: recursive
 
-      - uses: foundry-rs/foundry-toolchain@v1
+      - id: foundry_toolchain
+        continue-on-error: true
+        uses: foundry-rs/foundry-toolchain@v1
         with:
-          version: nightly
+          version: stable
+      - name: Retry Foundry install on transient failure
+        if: steps.foundry_toolchain.outcome == 'failure'
+        run: |
+          export PATH="$HOME/.foundry/bin:$PATH"
+          if [ ! -x "$HOME/.foundry/bin/foundryup" ]; then
+            curl -L https://foundry.paradigm.xyz | bash
+          fi
+          for attempt in 1 2 3; do
+            echo "Retrying Foundry nightly install (attempt $attempt/3)..."
+            if $HOME/.foundry/bin/foundryup --install stable; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Foundry nightly install failed after retries."
+          exit 1
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.2.6"
+          no-cache: true
 
       # `openzeppelin-foundry-upgrades` shells out to `npx @openzeppelin/upgrades-core`
       # via `vm.ffi` during tests; bun does not provide `npx`, so install Node here.

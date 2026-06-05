@@ -170,11 +170,11 @@ contract DotnsPopControllerInvariant is BaseDotns {
         }
     }
 
-    /// @notice `pendingClaimUsers()` membership mirrors the live key set of
-    ///         the `_pendingClaims` mapping exactly. Every actor with a
-    ///         non-zero `mintedAt` appears in the enumeration, and every
-    ///         entry in the enumeration has a non-zero `mintedAt` and is one
-    ///         of the actors the handler has stashed for.
+    /// @notice `pendingClaimUsers()` membership mirrors the set of users with a
+    ///         non-empty pending-claim queue exactly. Every actor with a queued
+    ///         entry appears in the enumeration, and every entry in the
+    ///         enumeration has a non-empty queue and is one of the actors the
+    ///         handler has stashed for.
     function invariant_pendingClaimUsers_mirrors_pendingClaims_mapping() public view {
         uint256 enumCount = dotnsPopController.pendingClaimUserCount();
         address[] memory enumerated = dotnsPopController.pendingClaimUsers(0, enumCount);

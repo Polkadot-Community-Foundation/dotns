@@ -1,0 +1,6 @@
+# Fingerprints of historical findings that are no longer present in the
+# working tree. Both were example keys in documentation, removed in later
+# commits. They survive only in git history, so they are pinned here to keep
+# a full-history scan clean. Format: commit:file:rule:startline.
+b78bf07b92f7655877aaaa43c2446c6d03b49c91:INSTRUCTIONS.md:generic-api-key:18
+cf2b5d4fa93b47d2a2a0857baf9538b1b871f9f3:README.md:generic-api-key:302

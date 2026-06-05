@@ -18,11 +18,12 @@ jobs:
 
       - uses: foundry-rs/foundry-toolchain@v1
         with:
-          version: nightly
+          version: stable
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.2.6"
+          no-cache: true
 
       # `openzeppelin-foundry-upgrades` shells out to `npx @openzeppelin/upgrades-core`
       # via `vm.ffi` during tests; bun does not provide `npx`, so install Node here.
