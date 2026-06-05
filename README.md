@@ -190,6 +190,17 @@ Current network addresses are listed in [DEPLOYMENTS.md](./DEPLOYMENTS.md).
 
 Builds and tests are run with Foundry. Fork tests use the local Paseo Asset Hub adapter described in [DEPLOYMENTS.md](./DEPLOYMENTS.md); ordinary unit, fuzz, and invariant tests run against Foundry's in-process EVM.
 
+## Security
+
+Before deploying it for real use cases, you are responsible for:
+
+- Reviewing the code yourself, we publish a reference, not a hardened production build
+- Checking that the dependencies are up to date and free of known vulnerabilities
+- Securing your own fork or deployment environment (keys, secrets, network configuration)
+- Tracking the latest tagged release/commits for security fixes; older releases are not backported (exceptions might apply)
+
+For Parity's security disclosure process, and Bug Bounty program, feel free to visit:  https://parity.io/bug-bounty
+
 ## Known limitations
 
 The protocol carries a handful of constraints worth knowing before deploying or building against it. Most stem from the current pallet-revive runtime rather than from protocol design, and collapse to a no-op once the runtime gains the corresponding capability. [KNOWN_ISSUES.md](./KNOWN_ISSUES.md) is the consolidated reference; each issue is also described in full where the relevant contract is documented below.

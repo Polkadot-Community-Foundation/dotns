@@ -4,6 +4,35 @@ This project (MIT) incorporates or builds against the following third-party comp
 property of its respective authors and is used under its own licence. This file is a convenience
 summary; the licence text shipped with each dependency is authoritative.
 
+## Code derived from ENS
+
+Parts of the DotNS contract suite are adapted from the Ethereum Name Service (ENS) contracts
+(registry / registrar / resolver / reverse-resolver structure, namehash and labelhash, and the
+commit-reveal registration flow). The ENS contracts are MIT-licensed and copyright True Names
+Limited. The MIT licence requires the original copyright and permission notice to be retained; it is
+reproduced here in full:
+
+> MIT License
+>
+> Copyright (c) 2018, True Names Limited
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+> associated documentation files (the "Software"), to deal in the Software without restriction,
+> including without limitation the rights to use, copy, modify, merge, publish, distribute,
+> sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all copies or
+> substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+> NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+> NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+> DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
+> OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Source: https://github.com/ensdomains/ens-contracts
+
 ## Solidity libraries
 
 These are vendored under `lib/` (pinned by commit in `setup.bash` or `.gitmodules`).
