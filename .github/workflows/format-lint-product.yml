@@ -18,10 +18,11 @@ jobs:
           submodules: recursive
       - uses: foundry-rs/foundry-toolchain@v1
         with:
-          version: nightly
+          version: stable
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+          no-cache: true
       - run: bun install
 
       - name: Check formatting
