@@ -574,7 +574,7 @@ contract DotnsDeployer is BaseDeployer {
         if (block.chainid == 420420422) {
             directory = "passethub-testnet";
         } else if (block.chainid == 420420417) {
-            directory = "paseo-assethub";
+            directory = "summit-asset-hub";
         } else if (block.chainid == 420420420) {
             directory = "paseo-local";
         }

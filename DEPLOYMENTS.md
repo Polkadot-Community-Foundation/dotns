@@ -252,7 +252,7 @@ The manifest folder is selected from the current chain id:
 | Chain id | Manifest folder |
 | ---: | --- |
 | 420420422 | deployments/passethub-testnet |
-| 420420417 | deployments/paseo-assethub |
+| 420420417 | deployments/summit-asset-hub |
 | 420420420 | deployments/paseo-local |
 | other | deployments/localhost |
 
@@ -261,7 +261,7 @@ The manifest filename is the numeric chain id with a .json extension.
 Examples:
 
 ```text
-deployments/paseo-assethub/420420417.json
+deployments/summit-asset-hub/420420417.json
 deployments/paseo-local/420420420.json
 ```
 
