@@ -71,7 +71,7 @@ jobs:
                 "",
                 "Only code owners can approve whitelist requests. The label has been removed.",
                 "",
-                "If you need approval permissions, request to be added as a [code owner](https://github.com/paritytech/dotns/blob/master/.github/CODEOWNERS).",
+                "If you need approval permissions, request to be added as a [code owner](https://github.com/Polkadot-Community-Foundation/dotns/blob/master/.github/CODEOWNERS).",
                 "",
                 `cc ${process.env.REVIEWERS}`,
               ].join("\n"),

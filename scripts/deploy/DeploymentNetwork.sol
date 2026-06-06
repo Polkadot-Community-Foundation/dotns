@@ -10,7 +10,7 @@ pragma solidity ^0.8.34;
 library DeploymentNetwork {
     function folder(uint256 chainId) internal pure returns (string memory name) {
         if (chainId == 420420422) return "passethub-testnet";
-        if (chainId == 420420417) return "paseo-assethub";
+        if (chainId == 420420417) return "summit-asset-hub";
         if (chainId == 420420420) return "paseo-local";
         return "localhost";
     }
