@@ -147,7 +147,8 @@ jobs:
             const labels = pr.labels.map(l => l.name);
             const required = [
               "dotns-sdk", "smartcontracts", "other",
-              "scope: registration", "scope: resolver", "scope: store", "scope: pop"
+              "scope: registration", "scope: resolver", "scope: store", "scope: pop",
+              "type: docs", "type: test", "dependencies"
             ];
 
             const matched = labels.filter(l => required.includes(l));
@@ -157,7 +158,7 @@ jobs:
               core.setOutput("result", `Passed - ${matched.join(", ")}`);
               core.setOutput("details", allLabels);
             } else {
-              core.setOutput("result", "Failed - Requires one of: dotns-sdk, smartcontracts, other, or a scope label");
+              core.setOutput("result", "Failed - Requires one of: dotns-sdk, smartcontracts, other, a scope label, type: docs, type: test, or dependencies");
               core.setOutput("details", allLabels);
               core.setFailed("Missing required label");
             }
@@ -218,7 +219,7 @@ jobs:
             rows[section] = result;
 
             if (result.startsWith("Failed")) {
-              existingDetails[section] = `<details>\n<summary><strong>${section}</strong></summary>\n\nApplied: ${details}\n\nRequired: dotns-sdk, smartcontracts, other, or a scope label\n\n[View run](${runUrl})\n\n</details>`;
+              existingDetails[section] = `<details>\n<summary><strong>${section}</strong></summary>\n\nApplied: ${details}\n\nRequired: dotns-sdk, smartcontracts, other, a scope label, type: docs, type: test, or dependencies\n\n[View run](${runUrl})\n\n</details>`;
             } else if (details && details !== "None") {
               existingDetails[section] = `<details>\n<summary><strong>${section}</strong></summary>\n\n${details}\n\n</details>`;
             } else {
