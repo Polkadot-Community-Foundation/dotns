@@ -1,3 +1,7 @@
+> [!WARNING]
+> This open source code is provided for research, experimentation, and developer education only. This code has not been audited, is actively experimental, and may contain bugs, vulnerabilities, or incomplete features. Use at your own risk.
+
+
 # Dotns
 
 Smart contracts for registering .dot names on Polkadot.
