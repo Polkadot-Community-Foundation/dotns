@@ -135,4 +135,16 @@ interface IDotnsRegistry {
 
     /// @notice Returns whether a node exists.
     function recordExists(bytes32 node) external view returns (bool);
+
+    /// @notice Returns whether `account` is authorised to manage `node`.
+    /// @dev For subnodes, authority is the explicit stored owner. For tokenised nodes it is the
+    ///      ERC-721 owner, an address approved for the token, or an operator approved for all of
+    ///      the owner's tokens via the registrar. This is the canonical authorisation check the
+    ///      registry enforces on owner-gated entry points; sibling contracts may consult it so a
+    ///      single registrar-level approval delegates management across the protocol. Returns
+    ///      false for a node that does not exist.
+    /// @param node Node identifier.
+    /// @param account Address whose authority is being checked.
+    /// @return authorisedFlag True when `account` may manage `node`.
+    function isAuthorised(bytes32 node, address account) external view returns (bool authorisedFlag);
 }

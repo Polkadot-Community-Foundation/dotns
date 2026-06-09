@@ -17,10 +17,12 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
 /// @title Dotns Content Resolver
 /// @notice Implements `IDotnsContentResolver` interface with content hash, text records, and
-/// operator approvals @dev Writes are gated on node ownership (or an operator approved by the
-///      owner) rather than on a privileged writer address. Content records are
-///      user-managed metadata, so authority follows the node owner across
-///      transfers without any registrar coordination.
+/// operator approvals.
+/// @dev Writes are gated on the registry's authorisation for the node (owner or registrar-level
+///      approval) or on a resolver-local operator the owner has approved, rather than on a
+///      privileged writer address. Content records are user-managed metadata, so write authority
+///      follows the node owner across transfers and honours the same delegates the registry
+///      recognises.
 /// @custom:security-contact admin@parity.io
 contract DotnsContentResolver is
     Initializable,
@@ -113,15 +115,21 @@ contract DotnsContentResolver is
         return operators[owner][operator];
     }
 
-    /// @notice Ensures caller is either the node owner or an approved operator.
-    /// @dev Operator approval mirrors ERC721 semantics so a single delegate can
-    ///      manage all of an owner's nodes without per-node approvals.
+    /// @notice Ensures the caller may write records for `node`.
+    /// @dev Authority is granted to the node owner, to a resolver-local operator the owner has
+    ///      approved for all of their records, or to any address the registry deems authorised
+    ///      for the node. Delegating through the registry means a single registrar-level
+    ///      approval (ERC-721 owner / approved / operator-for-all) also confers record-write
+    ///      authority, while the resolver-local operator mapping remains a narrower record-only
+    ///      delegation that grants no power over ownership or transfers. The cheap owner and
+    ///      local-operator checks run before the cross-contract registry call.
     /// @param node Node identifier.
     function _requireNodeOwnerOrOperator(bytes32 node) internal view {
         IDotnsRegistry _registry = IDotnsRegistry(protocolRegistry.get(DotnsConstants.REGISTRY));
         address nodeOwner = _registry.owner(node);
         require(
-            msg.sender == nodeOwner || operators[nodeOwner][msg.sender],
+            msg.sender == nodeOwner || operators[nodeOwner][msg.sender]
+                || _registry.isAuthorised(node, msg.sender),
             NotAuthorised(node, msg.sender)
         );
     }
