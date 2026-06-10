@@ -111,6 +111,8 @@ Forward registry mapping node to (owner, resolver) and supporting subnode creati
 
 Subnames are created by the base-name owner. A subname carries its own (owner, resolver) and can in turn carry subnames, so the registry is the place the name hierarchy actually lives.
 
+The registry exposes isAuthorised(node, account) as the canonical check for whether an address may manage a node: the stored owner for a subname, or the ERC-721 holder, a single-token approvee, or an operator-for-all on the registrar for a tokenised name. Sibling contracts consult this view so a single registrar-level approval delegates management across the protocol rather than each contract maintaining its own approval list.
+
 ### PopRules
 
 PoP-aware name classification and pricing. Classification reads the label's **stem length** (the character count after stripping the trailing digit suffix) and the trailing digit count itself, then maps to one of four tiers: NoStatus (stem of 9+ characters, open to anyone for a flat deposit, with zero or exactly two trailing digits permitted), PopLite (stem of 6-8 characters with exactly two trailing digits, gateway-issued to lite-verified users), PopFull (stem of 6-8 characters with no trailing digits, requires full-person verification), and Reserved (stem of 5 characters or fewer, governed by the protocol). Labels carrying one trailing digit or more than two trailing digits are rejected at the classifier. The classification determines the price and the eligibility gate the commit-reveal controller enforces.
@@ -152,7 +154,17 @@ Reads are open but fail-closed: nameOf(address) re-validates current ownership a
 
 ### DotnsContentResolver
 
-Stores contenthash and text records per node. This is where external content links (for example IPFS hashes) and arbitrary key-value text records (for example social handles, verification metadata) live. Writes require node ownership or an approved operator; reads are open.
+Stores contenthash and text records per node. This is where external content links (for example IPFS hashes) and arbitrary key-value text records (for example social handles, verification metadata) live. Writes accept the node owner, any address the registry recognises as authorised for the node through isAuthorised (the ERC-721 holder, a single-token approvee, or an operator-for-all on the registrar), or an operator approved directly on this resolver; reads are open. The registry-recognised path lets a registrar-level name admin manage records without a separate grant, while the resolver-local operator is a narrower record-only delegation that confers no power over ownership or transfer. Authority is evaluated against the current owner on every write, so transferring the name reassigns write access automatically.
+
+Choosing a delegation mechanism:
+
+| Goal | Use | Why |
+| --- | --- | --- |
+| Delegate full control of one name, including the right to transfer it, automatically revoked on sale | registrar `approve(operator, tokenId)` | Single-token approval. ERC-721 clears it on every transfer, so it cannot follow the name to a buyer. |
+| Delegate full control of all your names, current and future, including transferring them | registrar `setApprovalForAll(operator, true)` | The name-admin role. Persists until revoked and spans every name you hold. It grants transfer power, so grant it only to fully trusted managers; this is the approval marketplaces and escrows require. |
+| Delegate record edits only, with no power over ownership or transfer | content resolver `setApprovalForAll(operator, true)` | The narrowest grant. Resolver-local and record-scoped: the operator can set text and contenthash but cannot transfer the name or change its owner. |
+
+Revoke any grant with the inverse call (`approve(address(0), tokenId)` or `setApprovalForAll(operator, false)`). Because every write re-reads the current owner, a transfer drops all delegates the prior owner had set.
 
 ### DotnsResolver
 

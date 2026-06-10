@@ -182,6 +182,19 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         return records[node].exists;
     }
 
+    /// @inheritdoc IDotnsRegistry
+    function isAuthorised(
+        bytes32 node,
+        address account
+    )
+        external
+        view
+        override
+        returns (bool authorisedFlag)
+    {
+        authorisedFlag = _isAuthorised(node, account);
+    }
+
     /// @notice Writes subnode registration to the owner's `LabelStore`.
     /// @dev Keys the entry by `node` (full namehash) rather than labelhash so a single store
     ///      lookup yields the canonical full name without re-walking the parent chain.
@@ -233,9 +246,16 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
     }
 
     /// @notice Internal authorisation check for node ownership.
-    /// @dev Honours the sentinel-zero pattern: if the registry has no explicit owner, fall back
-    ///      to the registrar's ERC-721 owner / approved / operator-for-all chain.
+    /// @dev Reverts with NotAuthorised when `msg.sender` is not authorised for `node`.
     function _authorised(bytes32 node) internal view {
+        require(_isAuthorised(node, msg.sender), NotAuthorised());
+    }
+
+    /// @notice Canonical authorisation rule for a node, parameterised by `account`.
+    /// @dev Honours the sentinel-zero pattern: if the registry has no explicit owner, fall back
+    ///      to the registrar's ERC-721 owner / approved / operator-for-all chain. This is the
+    ///      single source of truth `_authorised` and `isAuthorised` both delegate to.
+    function _isAuthorised(bytes32 node, address account) internal view returns (bool) {
         Record storage record = records[node];
 
         // Read `owner` first: a non-zero stored owner means this is a subnode with an explicit
@@ -243,20 +263,19 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         // subnode path saves one slot read.
         address storedOwner = record.owner;
         if (storedOwner != address(0)) {
-            require(storedOwner == msg.sender, NotAuthorised());
-            return;
+            return storedOwner == account;
         }
 
-        require(record.exists, NotAuthorised());
+        if (!record.exists) return false;
 
         IDotnsRegistrar registrar = IDotnsRegistrar(protocolRegistry.get(DotnsConstants.REGISTRAR));
         uint256 tokenId = uint256(node);
         address tokenOwner = registrar.ownerOf(tokenId);
-        if (msg.sender == tokenOwner) return;
+        if (account == tokenOwner) return true;
         // Operator-for-all is the common marketplace / escrow delegation path; check it before
         // the single-token approval so the common case terminates on one STATICCALL.
-        if (registrar.isApprovedForAll(tokenOwner, msg.sender)) return;
-        require(registrar.getApproved(tokenId) == msg.sender, NotAuthorised());
+        if (registrar.isApprovedForAll(tokenOwner, account)) return true;
+        return registrar.getApproved(tokenId) == account;
     }
 
     /// @notice Internal check for registrar-authorised controller privileges.
