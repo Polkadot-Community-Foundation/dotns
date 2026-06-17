@@ -219,6 +219,62 @@ forge test --match-path 'test/fork/**' -vvvvv
 
 If the deployment was intended to update a public environment, update the address tables in this file from the deployment manifest in the same change that updates the generated deployment JSON.
 
+## Whitelisting
+
+The public registrar controller carries a whitelist for `registerReserved`. A whitelisted address can run the reserved registration path, which skips the Proof-of-Personhood pricing gate while still going through the normal commit-reveal and availability checks. See the [README economics section](./README.md#economics) for what whitelisting does and does not grant; this section covers the operator mechanics.
+
+Authority comes in two levels. The owner holds the controller and grants or revokes the whitelist-operator role. A whitelist operator holds `WHITELIST_OPERATOR_ROLE` and can add or remove whitelisted addresses, but cannot grant the role on. A whitelisted address can call `registerReserved`. The role is held on the controller itself, so the owner rotates, grants, or revokes operators at any time without an upgrade. Granting the operator role and whitelisting an address are separate grants.
+
+`WHITELIST_OPERATOR_ROLE` is a standard access-control role, so any number of addresses can hold it at once. The fresh-deploy pipeline grants it to the single `WHITELIST_OPERATOR` address described in [One-time deployer bootstrap](#one-time-deployer-bootstrap), in `_bootstrapWhitelistOperator` (present in both `scripts/deploy/WireDeployments.s.sol` and `scripts/deploy/DotnsDeployer.s.sol`):
+
+```solidity
+DotnsRegistrarController(addr.registrarController)
+    .setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator, true);
+```
+
+The `WHITELIST_OPERATOR` env carries one address. To seed more operators in the same deployment, add a `setRole` call per extra address in that helper, each address hardcoded or read from a further env var. The controller handle is `addr.registrarController` in WireDeployments and `deployment.registrarController` in DotnsDeployer:
+
+```solidity
+DotnsRegistrarController(addr.registrarController)
+    .setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, anotherOperator, true);
+```
+
+After deployment, the owner grants further operators with `setRole`, which is owner-only and so must be broadcast from the owner key. Revoke with `false`:
+
+```bash
+ROLE=$(cast keccak "DOTNS_WHITELIST_OPERATOR_ROLE")
+cast send "$CONTROLLER" "setRole(bytes32,address,bool)" "$ROLE" "$OPERATOR" true \
+  --rpc-url "$RPC_URL" --account "$ACCOUNT_NAME"
+```
+
+To grant many operators, loop the same call over the addresses from the owner account:
+
+```bash
+ROLE=$(cast keccak "DOTNS_WHITELIST_OPERATOR_ROLE")
+for OPERATOR in 0xOperator1 0xOperator2 0xOperator3; do
+  cast send "$CONTROLLER" "setRole(bytes32,address,bool)" "$ROLE" "$OPERATOR" true \
+    --rpc-url "$RPC_URL" --account "$ACCOUNT_NAME"
+done
+```
+
+Whitelisting an address is the day-to-day operation, run by the owner or any operator. The dotNS SDK CLI exposes a whitelist command for this; run it from an account that holds the role (see the [dotns-sdk](https://github.com/paritytech/dotns-sdk) repository). The hosted dotNS app at [dotns.paseo.li](https://dotns.paseo.li) and [dotns.dot.li](https://dotns.dot.li) drives the same flow from its UI; see its docs section, built from the dotns-sdk UI packages. The equivalent direct call is `whiteListAddress(address who, bool whiteListStatus)`, again with `false` to remove:
+
+```bash
+cast send "$CONTROLLER" "whiteListAddress(address,bool)" "$ADDRESS" true \
+  --rpc-url "$RPC_URL" --account "$ACCOUNT_NAME"
+```
+
+There is no batch entry point, so whitelisting many addresses is one call each. The SDK CLI applies a list in bulk; the dependency-free equivalent loops over the addresses from the role-holding account:
+
+```bash
+for ADDRESS in 0xAddress1 0xAddress2 0xAddress3; do
+  cast send "$CONTROLLER" "whiteListAddress(address,bool)" "$ADDRESS" true \
+    --rpc-url "$RPC_URL" --account "$ACCOUNT_NAME"
+done
+```
+
+Both states are open view calls needing no authority: `isWhiteListed(address)` reports whether an address may call `registerReserved`, and `hasRole(WHITELIST_OPERATOR_ROLE, account)` reports whether an account holds the operator role. `$CONTROLLER` is the `DotnsRegistrarController` address for the target network, taken from the deployment manifest or the [Live addresses](#live-addresses) tables below, never hardcoded across networks.
+
 ## Deterministic addresses (CREATE3)
 
 Every contract in the pipeline is deployed through a CREATE3 factory, so its address is a pure function of the factory address and a salt. It does not depend on the deployed bytecode, the constructor arguments, the deployer's nonce, or (for a proxy) the implementation behind it. This is what lets the same logical contract land at the same address on every chain, and lets an implementation be upgraded without moving its proxy.
