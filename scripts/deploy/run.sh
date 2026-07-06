@@ -115,6 +115,11 @@ case "$CHAIN_ID" in
   *) DEPLOYMENT_FOLDER="localhost" ;;
 esac
 
+# Chains sharing an EVM chain id (paseo-next vs summit, both 420420417) are
+# disambiguated with DOTNS_DEPLOYMENT_FOLDER; the Solidity stage scripts honor
+# the same override (DeploymentNetwork.folder / _getDeploymentFolder).
+DEPLOYMENT_FOLDER="${DOTNS_DEPLOYMENT_FOLDER:-$DEPLOYMENT_FOLDER}"
+
 MANIFEST_PATH="deployments/$DEPLOYMENT_FOLDER/$CHAIN_ID.json"
 mkdir -p "$(dirname "$MANIFEST_PATH")"
 

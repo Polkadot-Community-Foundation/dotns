@@ -578,5 +578,8 @@ contract DotnsDeployer is BaseDeployer {
         } else if (block.chainid == 420420420) {
             directory = "paseo-local";
         }
+        // Chains sharing an EVM chain id (paseo-next vs summit, both 420420417)
+        // are disambiguated via the same override DeploymentNetwork.folder honors.
+        directory = vm.envOr("DOTNS_DEPLOYMENT_FOLDER", directory);
     }
 }
