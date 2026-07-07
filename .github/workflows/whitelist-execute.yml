@@ -137,7 +137,7 @@ jobs:
             if (!["EVM (H160)", "Substrate (SS58)"].includes(addressType)) {
               missing.push("Address Type");
             }
-            if (!["Paseo V2"].includes(network)) {
+            if (!["Summit"].includes(network)) {
               missing.push("Network");
             }
             if (description.length < 30) {
@@ -160,10 +160,10 @@ jobs:
         with:
           script: |
             const configs = {
-              "Paseo V2": {
-                env: "paseo-v2",
-                rpc: "wss://paseo-asset-hub-next-rpc.polkadot.io",
-                explorer: "https://blockscout-testnet.polkadot.io",
+              "Summit": {
+                env: "summit",
+                rpc: "wss://summit-asset-hub-rpc.polkadot.io",
+                explorer: "",
               },
             };
 
@@ -465,8 +465,8 @@ jobs:
           node-version: "22"
       - if: steps.retry_guard.outputs.noop != 'true'
         run: |
-          TAG=v0.6.2
-          gh release download "$TAG" --repo paritytech/dotns-sdk --pattern '*.tgz' --dir /tmp/dotns-cli
+          TAG=v0.7.0
+          gh release download "$TAG" --repo Polkadot-Community-Foundation/dotns-sdk --pattern '*.tgz' --dir /tmp/dotns-cli
           npm install -g /tmp/dotns-cli/*.tgz
         env:
           GH_TOKEN: ${{ github.token }}
@@ -704,7 +704,7 @@ jobs:
               "",
               `@${author} Your Substrate address \`${original}\` has not been mapped to its EVM address (\`${evm}\`) on-chain yet.`,
               "",
-              "Before your address can be whitelisted you need to map your account. Install the [DotNS CLI](https://github.com/paritytech/dotns-sdk/releases) and run:",
+              "Before your address can be whitelisted you need to map your account. Install the [DotNS CLI](https://github.com/Polkadot-Community-Foundation/dotns-sdk/releases) and run:",
               "",
               "```bash",
               `dotns account map --env ${dotnsEnv} -m "<your mnemonic>"`,

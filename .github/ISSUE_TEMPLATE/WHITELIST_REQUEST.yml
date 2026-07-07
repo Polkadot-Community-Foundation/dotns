@@ -29,7 +29,7 @@ body:
       label: Network
       description: Select the network where this address should be whitelisted.
       options:
-        - Paseo V2
+        - Summit
     validations:
       required: true
 
