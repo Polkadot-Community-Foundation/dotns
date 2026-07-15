@@ -137,7 +137,7 @@ jobs:
             if (!["EVM (H160)", "Substrate (SS58)"].includes(addressType)) {
               missing.push("Address Type");
             }
-            if (!["Summit"].includes(network)) {
+            if (!["Devnet"].includes(network)) {
               missing.push("Network");
             }
             if (description.length < 30) {
@@ -160,9 +160,9 @@ jobs:
         with:
           script: |
             const configs = {
-              "Summit": {
-                env: "summit",
-                rpc: "wss://summit-asset-hub-rpc.polkadot.io",
+              "Devnet": {
+                env: "devnet",
+                rpc: "wss://asset-hub-paseo-rpc.n.dwellir.com",
                 explorer: "",
               },
             };
