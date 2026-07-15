@@ -46,7 +46,7 @@ jobs:
               const missing = [];
               if (!address) missing.push("Address");
               if (!["EVM (H160)", "Substrate (SS58)"].includes(addressType)) missing.push("Address Type");
-              if (!["Summit"].includes(network)) missing.push("Network");
+              if (!["Devnet"].includes(network)) missing.push("Network");
               if (description.length < 30) missing.push("Description (at least 30 characters explaining why the bypass is needed)");
               return missing;
             }
