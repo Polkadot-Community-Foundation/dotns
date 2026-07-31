@@ -69,4 +69,23 @@ fi
 # cast receive them as explicit flags, so nothing needs the password in a child
 # process's environment.
 SENDER=$(cast wallet address --account "$ACCOUNT_NAME" --password "$ACCOUNT_PASSWORD")
+# shellcheck disable=SC2034  # consumed by the sourcing script (run.sh)
 CHAIN_ID=$(cast chain-id --rpc-url "$RPC_URL")
+
+# Shared forge broadcast arguments for the resolved account, so run.sh and
+# factory.sh invoke forge identically and the flags cannot drift apart.
+# --legacy suits the eth-rpc adapter, --slow sequences one transaction at a time
+# to keep nonces ordered, and --gas-limit matches block_gas_limit in foundry.toml
+# (and the anvil --block-gas-limit used in CI). Callers append verbosity and any
+# extra flags.
+# shellcheck disable=SC2034  # consumed by the sourcing scripts (run.sh, factory.sh)
+FORGE_DEPLOY_ARGS=(
+  --rpc-url "$RPC_URL"
+  --account "$ACCOUNT_NAME"
+  --password "$ACCOUNT_PASSWORD"
+  --sender "$SENDER"
+  --broadcast
+  --slow
+  --legacy
+  --gas-limit 1000000000
+)

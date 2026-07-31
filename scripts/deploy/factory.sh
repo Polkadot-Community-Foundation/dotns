@@ -32,14 +32,8 @@ extra="${1:-}"
 
 echo "=== Deploying Create3Factory from '$ACCOUNT_NAME' ($SENDER) on chain $CHAIN_ID ==="
 
+# Broadcast flags shared with the pipeline (defined in _account.sh).
 # shellcheck disable=SC2086
 forge script scripts/deploy/DeployCreate3Factory.s.sol:DeployCreate3Factory \
-  --rpc-url "$RPC_URL" \
-  --account "$ACCOUNT_NAME" \
-  --password "$ACCOUNT_PASSWORD" \
-  --sender "$SENDER" \
-  --broadcast \
-  --slow \
-  --legacy \
-  --gas-limit 1000000000 \
+  "${FORGE_DEPLOY_ARGS[@]}" \
   -vvvv $extra

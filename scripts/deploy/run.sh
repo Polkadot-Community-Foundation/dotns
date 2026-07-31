@@ -156,17 +156,9 @@ if [ "${DOTNS_DEPLOY_KEEP_MANIFEST:-0}" != "1" ] && [ -f "$MANIFEST_PATH" ]; the
   echo "Archived existing manifest for fresh deploy: $ARCHIVE_PATH"
 fi
 
-common=(
-  --rpc-url "$RPC_URL"
-  --account "$ACCOUNT_NAME"
-  --password "$ACCOUNT_PASSWORD"
-  --sender "$SENDER"
-  --broadcast
-  --slow
-  --legacy
-  --gas-limit 100000000000
-  -vvvvv
-)
+# Broadcast flags shared with factory.sh (defined in _account.sh); each stage
+# also gets full verbosity.
+common=("${FORGE_DEPLOY_ARGS[@]}" -vvvvv)
 
 stages=(
   DeployCore
