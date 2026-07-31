@@ -304,12 +304,10 @@ The one address that is not CREATE3-derived is the CREATE3 factory itself: it bo
 
 The "first transaction on a fresh account" rule only holds while the deployer key stays pristine. In practice the same key also runs upgrades and other operations, so on a chain reset it is no longer at nonce 0 when the pipeline runs, the factory lands at a new address, and every downstream address shifts with it. Because only the factory is nonce-sensitive, the fix is to isolate just the factory onto a single-purpose key and have the pipeline reuse it.
 
-1. Deploy the factory once from a dedicated key that does nothing else, as its first transaction. The script asserts the deployer is at nonce 0 and prints the factory address:
+1. Deploy the factory once from a dedicated key that does nothing else, as its first transaction. The command asserts the deployer is at nonce 0 and prints the factory address. `ACCOUNT_NAME` defaults to `dotns-factory` so it is never the pipeline or upgrade key:
 
 ```bash
-forge script scripts/deploy/DeployCreate3Factory.s.sol:DeployCreate3Factory \
-  --rpc-url "$RPC_URL" --account factory-deployer --broadcast --legacy --slow \
-  --gas-limit 1000000000
+ACCOUNT_NAME=dotns-factory RPC_URL=paseo bun run deploy:factory
 ```
 
 2. Pass that address to the pipeline as `CREATE3_FACTORY`. `DeployCore` reuses it instead of minting a new one, so the rest of the pipeline (and every later upgrade) can run from the shared deployer key without moving any address:

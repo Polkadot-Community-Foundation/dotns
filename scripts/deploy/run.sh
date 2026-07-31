@@ -46,61 +46,17 @@
 
 set -euo pipefail
 
-ENV_FILE="${ENV_FILE:-.env}"
+# Resolve the deployer keystore account, RPC alias, broadcasting address, and
+# chain id (importing from a one-off .env on first run). Shared with the factory
+# deploy so both use identical account handling.
+# shellcheck source=scripts/deploy/_account.sh
+. "$(dirname "$0")/_account.sh"
 
-if [ -f "$ENV_FILE" ]; then
-  set -a
-  # shellcheck source=/dev/null
-  . "$ENV_FILE"
-  set +a
-fi
-
-# Defaults for the values that do not need to be re-entered between
-# deploys. Override either via .env (during bootstrap) or via the shell
-# environment.
-: "${ACCOUNT_NAME:=dotns-deploy}"
+# Pipeline-only default; .env has already been loaded by _account.sh.
 : "${WHITELIST_OPERATOR:=0xd908e5a6c88e9263f8fd0756bd0b77916008bb72}"
-: "${RPC_URL:=paseo_local}"
-export ACCOUNT_NAME WHITELIST_OPERATOR
-
-# Prompt for the keystore password when it has not been supplied by
-# .env or the shell. Reading once into a bash variable keeps the prompt
-# to a single keystroke per deploy even though every stage receives
-# --password on its forge invocation.
-if [ -z "${ACCOUNT_PASSWORD:-}" ]; then
-  if [ ! -t 0 ]; then
-    echo "ACCOUNT_PASSWORD is required (set in $ENV_FILE or as env var, or run from a terminal that can prompt)" >&2
-    exit 1
-  fi
-  read -rsp "Password for Foundry keystore '$ACCOUNT_NAME': " ACCOUNT_PASSWORD
-  echo
-fi
+export WHITELIST_OPERATOR
 
 extra="${1:-}"
-
-KEYSTORE_DIR="${FOUNDRY_KEYSTORES_DIR:-$HOME/.foundry/keystores}"
-KEYSTORE_PATH="$KEYSTORE_DIR/$ACCOUNT_NAME"
-
-if [ ! -f "$KEYSTORE_PATH" ]; then
-  if [ -z "${PRIVATE_KEY:-}" ]; then
-    echo "PRIVATE_KEY is required once to import missing account '$ACCOUNT_NAME'" >&2
-    echo "see .env.example for the expected shape" >&2
-    exit 1
-  fi
-
-  # Strip 0x prefix if present. `cast wallet import` accepts both, but one
-  # normalised shell value keeps the command shape predictable.
-  PK="${PRIVATE_KEY#0x}"
-
-  cast wallet import "$ACCOUNT_NAME" \
-    --private-key "$PK" \
-    --unsafe-password "$ACCOUNT_PASSWORD" >/dev/null
-
-  unset PK PRIVATE_KEY
-fi
-
-SENDER=$(cast wallet address --account "$ACCOUNT_NAME" --password "$ACCOUNT_PASSWORD")
-CHAIN_ID=$(cast chain-id --rpc-url "$RPC_URL")
 
 if [ "${DOTNS_DEPLOY_SKIP_CLEAN_BUILD:-0}" != "1" ]; then
   echo "=== Rebuilding full Foundry artifacts for OpenZeppelin validation ==="
