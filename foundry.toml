@@ -32,7 +32,11 @@ solc_version = "0.8.34"
 evm_version = "cancun"
 
 ignored_error_codes = [
-    "unreachable"
+    "unreachable",
+    # forge-std (safeconsole.sol) uses the deprecated
+    # `/// @solidity memory-safe-assembly` natspec form. It is a vendored
+    # dependency we do not edit, so the deprecation is a false positive here.
+    "natspec-memory-safe-assembly-deprecated",
 ]
 
 [profile.default.optimizer_details]

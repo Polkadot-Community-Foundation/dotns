@@ -8,6 +8,7 @@ import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 import {Create3Factory} from "../../contracts/deploy/Create3Factory.sol";
 import {IDotnsProtocolRegistry} from "../../contracts/registry/IDotnsProtocolRegistry.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
+import {DeploymentNetwork} from "./DeploymentNetwork.sol";
 
 /// @title BaseDeployer
 /// @notice Shared base for the DotNS deploy pipeline. Each concrete stage
@@ -44,6 +45,22 @@ abstract contract BaseDeployer is Script {
     /// @notice Disk path the current stage reads from and writes to. Populated
     ///         by `initDeployment`.
     string private manifestPath;
+
+    /// @notice Resolves the manifest subdirectory for the network being
+    ///         deployed to, honouring an explicit `DEPLOYMENT_NETWORK` override.
+    /// @dev Distinct chains can present the same `block.chainid` (for example a
+    ///      previewnet and a next environment both reached through the local
+    ///      ETH-RPC adapter). Chain id alone then aliases their manifests onto
+    ///      one file, so a later deploy silently overwrites an earlier one.
+    ///      Setting `DEPLOYMENT_NETWORK` names the subdirectory explicitly so
+    ///      each upstream keeps its own manifest; when it is unset the mapping
+    ///      falls back to the chain-id default in `DeploymentNetwork.folder`.
+    ///      The deploy runner exports the same variable so its manifest path
+    ///      stays in step with the one resolved here.
+    /// @return subdirectory Folder under `deployments/` for the current network.
+    function networkFolder() internal view returns (string memory subdirectory) {
+        subdirectory = vm.envOr("DEPLOYMENT_NETWORK", DeploymentNetwork.folder(block.chainid));
+    }
 
     /// @notice Loads the existing deployment manifest for `(subdirectory, filename)`
     ///         if one exists; otherwise begins a fresh in-memory object. Every

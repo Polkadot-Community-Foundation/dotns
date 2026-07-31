@@ -86,6 +86,7 @@ Set these fields:
 | PRIVATE_KEY | yes on first import | Hex deployer private key. This is imported into the Foundry keystore, then removed from disk when the deploy succeeds. |
 | WHITELIST_OPERATOR | optional | Address granted whitelist-management permission after deployment. Defaults to the team operator in the example file. |
 | RPC_URL | optional | Foundry RPC alias or full RPC URL. Defaults to paseo_local, which means the local adapter. |
+| DEPLOYMENT_NETWORK | optional | Manifest subdirectory under deployments/. Set it to keep networks that share a chain id apart (see [Deployment manifests](#deployment-manifests)). Defaults to the chain-id mapping. |
 
 The .env file is bootstrap input only. It is git-ignored. On a successful deployment the runner deletes it automatically. On failure the file is left in place so you can correct it and retry.
 
@@ -303,14 +304,24 @@ The one address that is not CREATE3-derived is the CREATE3 factory itself: it bo
 
 Every stage writes its output to a shared JSON manifest. Later stages read the addresses written by earlier stages from the same file.
 
-The manifest folder is selected from the current chain id:
+The manifest folder defaults to a mapping from the current chain id:
 
-| Chain id | Manifest folder |
+| Chain id | Default manifest folder |
 | ---: | --- |
 | 420420422 | deployments/passethub-testnet |
 | 420420417 | deployments/paseo-assethub |
 | 420420420 | deployments/paseo-local |
 | other | deployments/localhost |
+
+Some environments cannot be told apart by chain id alone. A previewnet and a next environment reached through the same local ETH-RPC adapter both report 420420417, so the default mapping would write both to `deployments/paseo-assethub/420420417.json`, and each fresh deploy would overwrite the previous network's manifest.
+
+Set `DEPLOYMENT_NETWORK` to name the subdirectory explicitly and keep each upstream's manifest separate:
+
+```bash
+DEPLOYMENT_NETWORK=paseo-previewnet bun run deploy
+```
+
+The deploy runner and every Solidity stage honour the same variable, so the bash-side manifest path and the on-chain stage output stay in step. When it is unset, the chain-id default above applies.
 
 The manifest filename is the numeric chain id with a .json extension.
 
@@ -340,97 +351,97 @@ If a stage fails after writing partial addresses, inspect the relevant deploymen
 **DotnsProtocolRegistry**
 
 ```text
-0x984F17a9077808F4B7e127F76806A1D59546B5B6
+0xC2517c1903f5CF670B85D9D4389af7049F5bD9AF
 ```
 
 **Multicall3**
 
 ```text
-0x758F88C7761FCD4742f9471448c2209a7e859280
+0x3E69D7c38d5B7D75ACED13190e357Fca22226277
 ```
 
 **DotnsRegistrar**
 
 ```text
-0x061273AeF34e8ab9Ca08E199d7440E2639Fc2088
+0xe60499AD9378466d4268b37a35104a6D4E67D200
 ```
 
 **DotnsRegistry**
 
 ```text
-0x5622CA75C75726Da13ae46C69127C07c87538633
+0x4a25f18fF4f5D9821Bc51E1da93A2BB2BF40Da2A
 ```
 
 **DotnsRegistrarController**
 
 ```text
-0xC0c21ca6302884572E61d69D5bf3E271Acf39B23
+0x39536381516aC73fc1b04b0F349e6359cCf55c7f
 ```
 
 **DotnsPopController**
 
 ```text
-0xae2c63b921Bc9DC30C149A8FA462fd3efA53D1F4
+0x7d93ce2bD4F55100c49e84472ef1833666e5637b
 ```
 
 **RootGatewayDispatcher**
 
 ```text
-0xDf919455Fb357c173d6C3143dB1B7aFb9eA61324
+0x57020946c71D83ACffE81A0c33e6cB0B94df3F75
 ```
 
 **PopRules**
 
 ```text
-0xF209a15e8a10D208bb4d3e3c56D9EB73a5934C26
+0xF3fb7a0eEb62B5A32B02364655726B252820758F
 ```
 
 **DotnsResolver**
 
 ```text
-0x823f39E7a4126669be53211FFbCF27e55b3274C6
+0x3017f0e32eD44CA11D888eEF9Ac3001D29f9cAcD
 ```
 
 **DotnsReverseResolver**
 
 ```text
-0xA347059298aA171b3E744538F7043e9AAaAa95E0
+0x4A347368e504F69fa03eAa252DC997Bf24dd1712
 ```
 
 **DotnsContentResolver**
 
 ```text
-0xBD003d5Dd04E68aC60d529a46AEfBdEf8941868C
+0x6c4A41AcC7000B747720D6dAe28601C8eC2e0574
 ```
 
 **DotnsPopResolver**
 
 ```text
-0xeD11Bb5064fAAcb0A91e52dac2272E89856F2F6a
+0x23Acd11839e214C2DC68a2BDAF97a975DD1807Ab
 ```
 
 **DotnsNameEscrow**
 
 ```text
-0xb7E39199f13aCf7e90cCf67b980aC3ef0E2C4Fbe
+0x72a7904ef346Bc071961A9e81FFd006324974572
 ```
 
 **StoreFactory**
 
 ```text
-0x4BEFaB5de968183524b1eBd2FAec9C68Cdc696Fd
+0x5C304611114F116Df1b5cA7F1FFeA9c702ac97Ab
 ```
 
 **LabelStoreBeacon**
 
 ```text
-0x11f324597d850d626d6406713808Ed854dA00a6b
+0x95CCD108d0d127B7B36c121f71D4feEa20268B7c
 ```
 
 **UserStoreBeacon**
 
 ```text
-0xaC2209aFc366505d10Fd27d27030EB8C5E54874e
+0x40411AA11D9d7aD0658FdF6E2a6CB4781CC384E8
 ```
 
 ### Paseo Asset Hub Next V2

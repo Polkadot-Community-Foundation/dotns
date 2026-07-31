@@ -108,12 +108,26 @@ if [ "${DOTNS_DEPLOY_SKIP_CLEAN_BUILD:-0}" != "1" ]; then
   forge build
 fi
 
-case "$CHAIN_ID" in
-  420420422) DEPLOYMENT_FOLDER="passethub-testnet" ;;
-  420420417) DEPLOYMENT_FOLDER="paseo-assethub" ;;
-  420420420) DEPLOYMENT_FOLDER="paseo-local" ;;
-  *) DEPLOYMENT_FOLDER="localhost" ;;
-esac
+# Manifest subdirectory. Two chains can present the same chain id (for example
+# a previewnet and a next environment both reached through the local ETH-RPC
+# adapter); chain id alone then aliases their manifests onto one file, so a
+# later deploy silently overwrites an earlier one. DEPLOYMENT_NETWORK names the
+# subdirectory explicitly so each upstream keeps its own manifest. When unset,
+# fall back to the chain-id default, which must match DeploymentNetwork.folder
+# on the Solidity side. The variable is exported (only when set) so every forge
+# stage resolves the same folder through BaseDeployer.networkFolder.
+if [ -n "${DEPLOYMENT_NETWORK:-}" ]; then
+  DEPLOYMENT_FOLDER="$DEPLOYMENT_NETWORK"
+  export DEPLOYMENT_NETWORK
+else
+  unset DEPLOYMENT_NETWORK
+  case "$CHAIN_ID" in
+    420420422) DEPLOYMENT_FOLDER="passethub-testnet" ;;
+    420420417) DEPLOYMENT_FOLDER="paseo-assethub" ;;
+    420420420) DEPLOYMENT_FOLDER="paseo-local" ;;
+    *) DEPLOYMENT_FOLDER="localhost" ;;
+  esac
+fi
 
 MANIFEST_PATH="deployments/$DEPLOYMENT_FOLDER/$CHAIN_ID.json"
 mkdir -p "$(dirname "$MANIFEST_PATH")"
@@ -180,8 +194,7 @@ common=(
   --broadcast
   --slow
   --legacy
-  --gas-limit 2000000000
-  --gas-estimate-multiplier 10000
+  --gas-limit 100000000000
   -vvvvv
 )
 
