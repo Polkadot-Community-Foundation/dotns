@@ -30,7 +30,7 @@ contract DeployCore is BaseDeployer {
 
         initDeployment(networkFolder(), vm.toString(block.chainid));
 
-        address factory = _bootstrapCreate3Factory(owner);
+        address factory = _ensureCreate3Factory(owner);
         address protocolRegistry = _deployProtocolRegistry(owner);
         _registerCreate3Factory(owner, protocolRegistry, factory);
 

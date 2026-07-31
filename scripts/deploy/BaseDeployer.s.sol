@@ -214,20 +214,65 @@ abstract contract BaseDeployer is Script {
         logDeployment(label, deployed);
     }
 
-    /// @notice Deploys the CREATE3 factory directly and primes it as the
-    ///         in-memory override for the remainder of this process.
+    /// @notice Ensures the CREATE3 factory exists and primes it as the in-memory
+    ///         override for the remainder of this process, reusing a pre-deployed
+    ///         factory when one is configured.
+    /// @dev Every DotNS address is a pure function of the factory address and a
+    ///      stable salt, and the factory address is `keccak(deployer, nonce)`. A
+    ///      fresh `new Create3Factory()` from a key whose nonce is not fixed
+    ///      therefore lands at a new address and shifts every downstream CREATE3
+    ///      address with it, which is why a key that also runs upgrades cannot
+    ///      keep addresses stable across chain resets. Deploy the factory once
+    ///      from a single-purpose key at nonce 0 (see `DeployCreate3Factory`) and
+    ///      pass its address as `CREATE3_FACTORY`; every pipeline run then reuses
+    ///      that factory instead of minting one, so the shared deployer's nonce
+    ///      no longer affects any address. With `CREATE3_FACTORY` unset the
+    ///      factory is minted here as before.
+    /// @param owner Broadcasting account; deploys the factory only when none is
+    ///        configured.
+    /// @return factory Address of the reused or freshly deployed CREATE3 factory.
+    function _ensureCreate3Factory(address owner) internal returns (address factory) {
+        factory = _configuredCreate3Factory();
+        if (factory != address(0)) {
+            _adoptCreate3Factory(factory);
+        } else {
+            factory = _bootstrapCreate3Factory(owner);
+        }
+    }
+
+    /// @notice Returns the pre-deployed CREATE3 factory address supplied through
+    ///         the `CREATE3_FACTORY` environment variable, or the zero address
+    ///         when the pipeline should mint its own.
+    /// @return configured Configured factory address, or `address(0)` when unset.
+    function _configuredCreate3Factory() internal view returns (address configured) {
+        configured = vm.envOr("CREATE3_FACTORY", address(0));
+    }
+
+    /// @notice Mints a fresh CREATE3 factory and primes it as the in-memory
+    ///         override for the remainder of this process.
     /// @dev Bootstrap step for the first deploy stage: the factory cannot deploy
     ///      itself, and it must exist before any CREATE3 deploy, including the
-    ///      protocol registry's own. The factory address is derived from the
-    ///      deployer's nonce, so deploy it as the deployer's first pipeline
-    ///      transaction on every chain to keep it (and therefore every CREATE3
-    ///      address) identical across chains.
+    ///      protocol registry's own. The minted address is nonce-derived, so this
+    ///      path only reproduces the same address when `owner` is at the same
+    ///      nonce as the original deploy; prefer reuse via `_ensureCreate3Factory`
+    ///      for stable addresses across resets.
     /// @param owner Broadcasting account; deploys and is recorded as the factory.
     /// @return factory Address of the freshly deployed CREATE3 factory.
     function _bootstrapCreate3Factory(address owner) internal returns (address factory) {
         vm.startBroadcast(owner);
         factory = address(new Create3Factory());
         vm.stopBroadcast();
+        _adoptCreate3Factory(factory);
+    }
+
+    /// @notice Primes `factory` as the in-memory override, labels it, and records
+    ///         it on the manifest. Shared by the reuse and mint paths.
+    /// @dev Reverts when `factory` has no code, so a mistyped or wrong-chain
+    ///      `CREATE3_FACTORY` fails fast instead of producing a deploy against a
+    ///      non-existent factory.
+    /// @param factory CREATE3 factory address to adopt for this process.
+    function _adoptCreate3Factory(address factory) internal {
+        require(factory.code.length != 0, "Create3Factory: no code at factory address");
         _setCreate3Factory(factory);
         vm.label(factory, "Create3Factory");
         logDeployment("Create3Factory", factory);

@@ -129,6 +129,20 @@ else
   esac
 fi
 
+# Reuse a pre-deployed CREATE3 factory when its address is supplied. Every DotNS
+# address derives from the factory address, and the factory's own address is
+# nonce-derived, so a key that also runs upgrades cannot keep it stable across
+# chain resets. Deploy the factory once from a single-purpose key at nonce 0
+# (scripts/deploy/DeployCreate3Factory.s.sol) and export its address as
+# CREATE3_FACTORY; DeployCore then reuses it instead of minting a new one, so
+# the pipeline key's nonce no longer affects any address. Exported (only when
+# set) so every forge stage resolves it through BaseDeployer.
+if [ -n "${CREATE3_FACTORY:-}" ]; then
+  export CREATE3_FACTORY
+else
+  unset CREATE3_FACTORY
+fi
+
 MANIFEST_PATH="deployments/$DEPLOYMENT_FOLDER/$CHAIN_ID.json"
 mkdir -p "$(dirname "$MANIFEST_PATH")"
 
