@@ -171,14 +171,17 @@ abstract contract BaseDeployer is Script {
         Upgrades.validateImplementation(artefact, opts);
 
         vm.startBroadcast(owner);
-        address implementation =
+        (address implementation,) =
             _deployCreate3(artefact, opts.constructorData, _create3Salt(label, "implementation"));
-        proxy = _deployCreate3(
+        bool proxyExisted;
+        (proxy, proxyExisted) = _deployCreate3(
             "ERC1967Proxy.sol:ERC1967Proxy",
             abi.encode(implementation, bytes("")),
             _create3Salt(label, "proxy")
         );
-        if (initialiserCalldata.length != 0) {
+        // Initialise only a freshly deployed proxy; an adopted one (a resumed run)
+        // is already initialised, and re-initialising would revert.
+        if (!proxyExisted && initialiserCalldata.length != 0) {
             (bool ok, bytes memory ret) = proxy.call(initialiserCalldata);
             if (!ok) {
                 assembly ("memory-safe") {
@@ -208,7 +211,7 @@ abstract contract BaseDeployer is Script {
         returns (address deployed)
     {
         vm.startBroadcast(owner);
-        deployed = _deployCreate3(artefact, constructorData, _create3Salt(label, "contract"));
+        (deployed,) = _deployCreate3(artefact, constructorData, _create3Salt(label, "contract"));
         vm.stopBroadcast();
         vm.label(deployed, label);
         logDeployment(label, deployed);
@@ -325,19 +328,27 @@ abstract contract BaseDeployer is Script {
         predicted = _create3Factory().predict(_create3Salt(label, kind));
     }
 
+    /// @notice Deploys `artefact` at its CREATE3 address, or adopts that address
+    ///         when it already has code, so a re-run resumes instead of reverting.
+    /// @dev The CREATE3 address is a pure function of the factory and salt, so it
+    ///      is identical whether freshly deployed or adopted. `existed` lets
+    ///      callers skip one-time steps (such as proxy initialisation) on adoption.
+    /// @return deployed The CREATE3 address of the contract.
+    /// @return existed True when the target already had code and was adopted.
     function _deployCreate3(
         string memory artefact,
         bytes memory constructorData,
         bytes32 salt
     )
         internal
-        returns (address deployed)
+        returns (address deployed, bool existed)
     {
-        bytes memory bytecode = _creationBytecode(artefact, constructorData);
         address predicted = _create3Factory().predict(salt);
-        require(predicted.code.length == 0, string.concat(artefact, ": CREATE3 target occupied"));
+        if (predicted.code.length != 0) {
+            return (predicted, true);
+        }
 
-        deployed = _create3Factory().deploy(salt, bytecode);
+        deployed = _create3Factory().deploy(salt, _creationBytecode(artefact, constructorData));
         require(deployed == predicted, string.concat(artefact, ": CREATE3 deploy failed"));
     }
 

@@ -194,6 +194,36 @@ contract DeterministicDeploymentTest is Test {
         fresh.adoptCreate3Factory(makeAddr("not-a-factory"));
     }
 
+    function test_reDeployAdoptsAnExistingContract() public {
+        // A resumed run re-deploys a non-upgradeable contract already on-chain:
+        // it must adopt the existing address rather than revert.
+        address first =
+            deployer.deployCreate3(owner, "Multicall3.sol:Multicall3", bytes(""), "Multicall3");
+        address second =
+            deployer.deployCreate3(owner, "Multicall3.sol:Multicall3", bytes(""), "Multicall3");
+        assertEq(second, first, "re-run adopts the existing contract");
+    }
+
+    function test_reDeployAdoptsProxyWithoutReinitialising() public {
+        bytes memory initData = abi.encodeCall(DotnsProtocolRegistry.initialize, ());
+        address first = deployer.deployUups(
+            owner,
+            "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
+            initData,
+            "DotnsProtocolRegistry"
+        );
+        // A resumed run adopts the proxy and must NOT call initialize again, which
+        // would revert on an already-initialised proxy.
+        address second = deployer.deployUups(
+            owner,
+            "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
+            initData,
+            "DotnsProtocolRegistry"
+        );
+        assertEq(second, first, "re-run adopts the existing proxy");
+        assertEq(DotnsProtocolRegistry(second).owner(), owner, "proxy stays initialised");
+    }
+
     function _deployRegistry(address deployerAccount) private returns (address) {
         return deployer.deployUups(
             deployerAccount,

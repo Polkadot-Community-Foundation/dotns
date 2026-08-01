@@ -312,7 +312,9 @@ The single command does both steps, feeding the factory address into the pipelin
 bun run deploy:all
 ```
 
-It runs `deploy:factory` (from the dedicated `dotns-factory` key, which asserts nonce 0 and lands the factory at its deterministic address), then runs the pipeline with `CREATE3_FACTORY` set to that address so `DeployCore` reuses it. On every fresh chain this reproduces the same address set. The factory step is idempotent, so re-running is safe.
+It runs `deploy:factory` (from the dedicated `dotns-factory` key, which asserts nonce 0 and lands the factory at its deterministic address), then runs the pipeline with `CREATE3_FACTORY` set to that address so `DeployCore` reuses it. On every fresh chain this reproduces the same address set.
+
+The whole pipeline is idempotent, so a re-run resumes an interrupted deploy. Each stage adopts any contract already present at its deterministic address and skips re-initialising an adopted proxy, so rerunning the same command deploys only what is missing and leaves everything already deployed untouched. This is the recovery path when the adapter stalls a transaction part way through.
 
 The two steps can also be run separately:
 
@@ -367,106 +369,112 @@ If the deploy script fails after importing the key, .env is intentionally left i
 
 If the deploy script succeeds, .env should be gone. Future runs should use the keystore account and should not require the deployer private key.
 
-If a stage fails after writing partial addresses, inspect the relevant deployment manifest before retrying. Later stages consume whatever earlier stages wrote, so stale manifests can produce confusing wire-up errors.
+If a stage fails part way through, rerun the same command. Each stage adopts any contract already at its deterministic address and skips re-initialising an adopted proxy, so the rerun resumes from where it stopped and deploys only what is missing. Later stages read the deployment manifest for wire-up, so if you edit the manifest by hand keep it consistent with what is actually on chain, or the wire-up can fail.
 
 ## Live addresses
 
 ### Paseo Asset Hub Previewnet
 
+**Create3Factory**
+
+```text
+0x8533c79E058c5a6489CAFeCA86dc600E029D75f5
+```
+
 **DotnsProtocolRegistry**
 
 ```text
-0x984F17a9077808F4B7e127F76806A1D59546B5B6
+0xD19e3D0C97CF501125a04A97405e3e6592fa846E
 ```
 
 **Multicall3**
 
 ```text
-0x758F88C7761FCD4742f9471448c2209a7e859280
+0xB4468000abD87D3c56cbFBd153161223D7b109e5
 ```
 
 **DotnsRegistrar**
 
 ```text
-0x061273AeF34e8ab9Ca08E199d7440E2639Fc2088
+0x4f06E818Ba3d987704fd91cf3d868E4b019106Ab
 ```
 
 **DotnsRegistry**
 
 ```text
-0x5622CA75C75726Da13ae46C69127C07c87538633
+0xf34054fd76BbF85f216cf9908226D5f0A72E50CA
 ```
 
 **DotnsRegistrarController**
 
 ```text
-0xC0c21ca6302884572E61d69D5bf3E271Acf39B23
+0xBdaA01bD1bA67d709F2b1fF286Da0d854977EA30
 ```
 
 **DotnsPopController**
 
 ```text
-0xae2c63b921Bc9DC30C149A8FA462fd3efA53D1F4
+0xCC932348606cc1f3318cADeC5A5Cd2CA447f8a4b
 ```
 
 **RootGatewayDispatcher**
 
 ```text
-0xDf919455Fb357c173d6C3143dB1B7aFb9eA61324
+0xa889CCA3Fb4B07b98a11cc54C10f13dDA20bc3db
 ```
 
 **PopRules**
 
 ```text
-0xF209a15e8a10D208bb4d3e3c56D9EB73a5934C26
+0x747B456bE03aec0b42bd85C51513730FBD45DA31
 ```
 
 **DotnsResolver**
 
 ```text
-0x823f39E7a4126669be53211FFbCF27e55b3274C6
+0xbd1165E549DF96F083c0A16f61590927bC187009
 ```
 
 **DotnsReverseResolver**
 
 ```text
-0xA347059298aA171b3E744538F7043e9AAaAa95E0
+0xee3883d7eB60Ee9BCD7F3bcD8f2f05302A9Cc035
 ```
 
 **DotnsContentResolver**
 
 ```text
-0xBD003d5Dd04E68aC60d529a46AEfBdEf8941868C
+0x7F74D7CD50f5a834270E2ad395a01b01891AB37d
 ```
 
 **DotnsPopResolver**
 
 ```text
-0xeD11Bb5064fAAcb0A91e52dac2272E89856F2F6a
+0xDaC984884EcA8Fc44011f1D6C49B27828390A72B
 ```
 
 **DotnsNameEscrow**
 
 ```text
-0xb7E39199f13aCf7e90cCf67b980aC3ef0E2C4Fbe
+0x4881Afb78e7C908cAe818168B926229D93376520
 ```
 
 **StoreFactory**
 
 ```text
-0x4BEFaB5de968183524b1eBd2FAec9C68Cdc696Fd
+0x709A027F446a9e2a4BB9cb9a9c754435b19e32B7
 ```
 
 **LabelStoreBeacon**
 
 ```text
-0x11f324597d850d626d6406713808Ed854dA00a6b
+0xb57Ebc2e7085616d4906D1fE49af1cE13f7dffeF
 ```
 
 **UserStoreBeacon**
 
 ```text
-0xaC2209aFc366505d10Fd27d27030EB8C5E54874e
+0xb7C995601679840d36F37E86DB2d7dF30797eC5C
 ```
 
 ### Paseo Asset Hub Next V2
