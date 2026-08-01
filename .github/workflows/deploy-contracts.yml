@@ -21,6 +21,17 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    # Shared by the deploy and resume steps: anvil test account 7 from the
+    # deterministic local set (public test keys, never valid on a real network)
+    # and the local manifest path. PRIVATE_KEY is deliberately not here; it is
+    # set only on the first deploy to import the keystore, and must never reach
+    # the resume step, which reuses the already-imported account.
+    env:
+      ACCOUNT_NAME: anvil-default-7
+      ACCOUNT_PASSWORD: anvil-default-password
+      WHITELIST_OPERATOR: "0x14dC79964da2C08b23698B3D3cc7Ca32193d9955"
+      MANIFEST: deployments/paseo-local/420420420.json
+
     steps:
       - name: Checkout repo (with submodules)
         uses: actions/checkout@v4
@@ -81,14 +92,10 @@ jobs:
       - name: Deploy contracts
         id: deploy
         if: steps.rpc_wait.outcome == 'success'
-        # Uses anvil account 7 from the deterministic local development set.
-        # These credentials are public test keys and must never be used on a
-        # real network.
+        # PRIVATE_KEY imports the keystore on this first run only; the account,
+        # password, operator, and manifest path come from the job env above.
         env:
-          ACCOUNT_NAME: anvil-default-7
-          ACCOUNT_PASSWORD: anvil-default-password
           PRIVATE_KEY: "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356"
-          WHITELIST_OPERATOR: "0x14dC79964da2C08b23698B3D3cc7Ca32193d9955"
         run: |
           set +e
           bun run deploy:anvil > deploy.log 2>&1
@@ -193,7 +200,7 @@ jobs:
         if: steps.deploy.outcome == 'success'
         run: |
           set +e
-          if [ -f deployments/paseo-local/420420420.json ]; then
+          if [ -f "$MANIFEST" ]; then
             echo "result=Artifacts verified" >> "$GITHUB_OUTPUT"
             echo "Deployment artifact exists"
           else
@@ -201,7 +208,7 @@ jobs:
             echo "has_details=true" >> "$GITHUB_OUTPUT"
             echo "### Missing Deployment Artifact" > deploy-error.md
             echo "" >> deploy-error.md
-            echo "Expected file \`deployments/paseo-local/420420420.json\` was not created." >> deploy-error.md
+            echo "Expected file \`$MANIFEST\` was not created." >> deploy-error.md
             echo "" >> deploy-error.md
             echo "**Files in deployments directory:**" >> deploy-error.md
             echo "\`\`\`" >> deploy-error.md
@@ -221,18 +228,14 @@ jobs:
       - name: Verify re-run resumes without relocating addresses
         id: resume
         if: steps.verify.outcome == 'success'
-        # No PRIVATE_KEY: the keystore account is already imported by the first
-        # deploy, so the rerun reuses it, which is the real resume path a human
-        # takes (they never re-supply the key). CREATE3_FACTORY pins the factory
-        # to the one already on chain so the pipeline adopts it instead of
-        # minting a fresh, nonce-derived one.
-        env:
-          ACCOUNT_NAME: anvil-default-7
-          ACCOUNT_PASSWORD: anvil-default-password
-          WHITELIST_OPERATOR: "0x14dC79964da2C08b23698B3D3cc7Ca32193d9955"
+        # The account, password, operator, and manifest path come from the job
+        # env. Crucially there is no PRIVATE_KEY here: the keystore account is
+        # already imported by the first deploy, so the rerun reuses it, which is
+        # the real resume path a human takes (they never re-supply the key).
+        # CREATE3_FACTORY pins the factory to the one already on chain so the
+        # pipeline adopts it instead of minting a fresh, nonce-derived one.
         run: |
           set +e
-          MANIFEST=deployments/paseo-local/420420420.json
           cp "$MANIFEST" first-deploy.json
           FACTORY=$(jq -r '.Create3Factory' "$MANIFEST")
 
@@ -313,12 +316,12 @@ jobs:
           elif [ "${{ steps.verify.outcome }}" != "success" ]; then
             echo "result=${{ steps.verify.outputs.result }}" >> "$GITHUB_OUTPUT"
             echo "has_details=${{ steps.verify.outputs.has_details }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ steps.resume.outcome }}" != "success" ]; then
+          else
+            # rpc, deploy, and verify all passed, so the resume step ran. Its
+            # outputs carry the final verdict, pass or fail, and the has_details
+            # flag that surfaces the expected-vs-actual table.
             echo "result=${{ steps.resume.outputs.result }}" >> "$GITHUB_OUTPUT"
             echo "has_details=${{ steps.resume.outputs.has_details }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "result=Deployment and resume verified" >> "$GITHUB_OUTPUT"
-            echo "has_details=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Upload logs
