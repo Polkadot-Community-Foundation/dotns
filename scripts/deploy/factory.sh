@@ -63,5 +63,5 @@ else
     -vvvv $extra
 fi
 
-# Machine-parseable line consumed by deploy-all.sh.
+# Machine-parseable line consumed by deployall.sh.
 echo "CREATE3_FACTORY=$FACTORY_ADDRESS"

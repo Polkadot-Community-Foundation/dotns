@@ -27,9 +27,24 @@ ENV_FILE="${ENV_FILE:-.env}"
 # flags). The few variables forge scripts read from the environment
 # (ACCOUNT_NAME here; WHITELIST_OPERATOR, DEPLOYMENT_NETWORK, CREATE3_FACTORY in
 # run.sh) are exported explicitly.
+# Preserve caller-provided account details (for example deployall.sh selecting
+# the factory keystore with its own password and key) so sourcing .env cannot
+# clobber them.
+_caller_account_name="${ACCOUNT_NAME:-}"
+_caller_account_password="${ACCOUNT_PASSWORD:-}"
+_caller_private_key="${PRIVATE_KEY:-}"
 if [ -f "$ENV_FILE" ]; then
   # shellcheck source=/dev/null
   . "$ENV_FILE"
+fi
+if [ -n "$_caller_account_name" ]; then
+  ACCOUNT_NAME="$_caller_account_name"
+fi
+if [ -n "$_caller_account_password" ]; then
+  ACCOUNT_PASSWORD="$_caller_account_password"
+fi
+if [ -n "$_caller_private_key" ]; then
+  PRIVATE_KEY="$_caller_private_key"
 fi
 
 : "${ACCOUNT_NAME:=dotns-deploy}"
