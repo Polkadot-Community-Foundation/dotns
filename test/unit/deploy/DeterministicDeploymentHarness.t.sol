@@ -23,6 +23,14 @@ contract DeterministicDeploymentHarness is BaseDeployer {
         return _bootstrapCreate3Factory(owner);
     }
 
+    function ensureCreate3Factory(address owner) external returns (address) {
+        return _ensureCreate3Factory(owner);
+    }
+
+    function adoptCreate3Factory(address factory) external {
+        _adoptCreate3Factory(factory);
+    }
+
     function registerCreate3Factory(
         address owner,
         address protocolRegistry,

@@ -3,7 +3,6 @@ pragma solidity ^0.8.34;
 
 import {console} from "forge-std/Script.sol";
 import {BaseDeployer} from "./BaseDeployer.s.sol";
-import {DeploymentNetwork} from "./DeploymentNetwork.sol";
 
 import {DotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
 import {DotnsRegistrarController} from "../../contracts/registrars/DotnsRegistrarController.sol";
@@ -58,7 +57,7 @@ contract WireDeployments is BaseDeployer {
         address whitelistOperator = vm.envAddress(WHITELIST_OPERATOR_ENV);
         vm.label(whitelistOperator, "WHITELIST_OPERATOR");
 
-        initDeployment(DeploymentNetwork.folder(block.chainid), vm.toString(block.chainid));
+        initDeployment(networkFolder(), vm.toString(block.chainid));
 
         Addresses memory addr = _loadAddresses();
 

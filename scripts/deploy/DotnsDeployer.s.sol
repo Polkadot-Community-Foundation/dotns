@@ -84,8 +84,9 @@ contract DotnsDeployer is BaseDeployer {
 
     /// @notice Deploys the full DotNS contract set, wires the protocol registry,
     ///         and writes the resulting manifest under `deployments/`.
-    /// @dev Network-specific output folder is chosen from `block.chainid`; see
-    ///      {_getDeploymentFolder}. The broadcasting account becomes the owner
+    /// @dev Network-specific output folder comes from `networkFolder`, honouring
+    ///      the `DEPLOYMENT_NETWORK` override and otherwise the `block.chainid`
+    ///      default. The broadcasting account becomes the owner
     ///      of every proxy. PoP-controller auth is gated on the substrate
     ///      `Root` origin via revive's System precompile, so no on-chain
     ///      gateway address is configured here.
@@ -96,7 +97,7 @@ contract DotnsDeployer is BaseDeployer {
 
         console.log("Current blocktime", block.timestamp);
 
-        initDeployment(_getDeploymentFolder(), vm.toString(chainId));
+        initDeployment(networkFolder(), vm.toString(chainId));
 
         address OWNER = msg.sender;
         vm.label(OWNER, "OWNER");
@@ -567,16 +568,5 @@ contract DotnsDeployer is BaseDeployer {
                 .controllers(IDotnsController(deployment.popController)),
             "PopController not added to registrar"
         );
-    }
-
-    function _getDeploymentFolder() internal view returns (string memory directory) {
-        directory = "localhost";
-        if (block.chainid == 420420422) {
-            directory = "passethub-testnet";
-        } else if (block.chainid == 420420417) {
-            directory = "paseo-assethub";
-        } else if (block.chainid == 420420420) {
-            directory = "paseo-local";
-        }
     }
 }

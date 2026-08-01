@@ -139,6 +139,91 @@ contract DeterministicDeploymentTest is Test {
         assertEq(passetHubFirst, paseoFirst, "sequential run stable across chains");
     }
 
+    function test_reusedFactoryMakesAddressesDeployerIndependent() public {
+        // A CREATE3 factory deployed once, independently of any pipeline run.
+        Create3Factory shared = new Create3Factory();
+
+        // Two separate deployer runs that reuse the same factory must predict
+        // the same address, even though neither minted it.
+        DeterministicDeploymentHarness runA = new DeterministicDeploymentHarness();
+        runA.initManifest();
+        runA.adoptCreate3Factory(address(shared));
+
+        DeterministicDeploymentHarness runB = new DeterministicDeploymentHarness();
+        runB.initManifest();
+        runB.adoptCreate3Factory(address(shared));
+
+        assertEq(
+            runA.predictCreate3("DotnsRegistrar", "proxy"),
+            runB.predictCreate3("DotnsRegistrar", "proxy"),
+            "reused factory: identical address across deployers"
+        );
+
+        // Minting a fresh factory instead lands the same contract elsewhere,
+        // which is exactly the drift reuse avoids across chain resets.
+        DeterministicDeploymentHarness minting = new DeterministicDeploymentHarness();
+        minting.initManifest();
+        minting.bootstrapCreate3Factory(owner);
+        assertTrue(
+            minting.predictCreate3("DotnsRegistrar", "proxy")
+                != runA.predictCreate3("DotnsRegistrar", "proxy"),
+            "freshly minted factory yields a different address"
+        );
+    }
+
+    function test_ensureReusesConfiguredFactory() public {
+        Create3Factory preDeployed = new Create3Factory();
+        vm.setEnv("CREATE3_FACTORY", vm.toString(address(preDeployed)));
+
+        DeterministicDeploymentHarness reuse = new DeterministicDeploymentHarness();
+        reuse.initManifest();
+        assertEq(
+            reuse.ensureCreate3Factory(owner),
+            address(preDeployed),
+            "ensure reuses the configured factory"
+        );
+
+        // Reset so later tests mint their own factory.
+        vm.setEnv("CREATE3_FACTORY", vm.toString(address(0)));
+    }
+
+    function test_adoptRevertsWhenFactoryHasNoCode() public {
+        DeterministicDeploymentHarness fresh = new DeterministicDeploymentHarness();
+        fresh.initManifest();
+        vm.expectRevert(bytes("Create3Factory: no code at factory address"));
+        fresh.adoptCreate3Factory(makeAddr("not-a-factory"));
+    }
+
+    function test_reDeployAdoptsAnExistingContract() public {
+        // A resumed run re-deploys a non-upgradeable contract already on-chain:
+        // it must adopt the existing address rather than revert.
+        address first =
+            deployer.deployCreate3(owner, "Multicall3.sol:Multicall3", bytes(""), "Multicall3");
+        address second =
+            deployer.deployCreate3(owner, "Multicall3.sol:Multicall3", bytes(""), "Multicall3");
+        assertEq(second, first, "re-run adopts the existing contract");
+    }
+
+    function test_reDeployAdoptsProxyWithoutReinitialising() public {
+        bytes memory initData = abi.encodeCall(DotnsProtocolRegistry.initialize, ());
+        address first = deployer.deployUups(
+            owner,
+            "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
+            initData,
+            "DotnsProtocolRegistry"
+        );
+        // A resumed run adopts the proxy and must NOT call initialize again, which
+        // would revert on an already-initialised proxy.
+        address second = deployer.deployUups(
+            owner,
+            "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
+            initData,
+            "DotnsProtocolRegistry"
+        );
+        assertEq(second, first, "re-run adopts the existing proxy");
+        assertEq(DotnsProtocolRegistry(second).owner(), owner, "proxy stays initialised");
+    }
+
     function _deployRegistry(address deployerAccount) private returns (address) {
         return deployer.deployUups(
             deployerAccount,

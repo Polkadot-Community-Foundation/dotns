@@ -3,7 +3,6 @@ pragma solidity ^0.8.34;
 
 import {console} from "forge-std/Script.sol";
 import {BaseDeployer} from "./BaseDeployer.s.sol";
-import {DeploymentNetwork} from "./DeploymentNetwork.sol";
 
 import {StoreFactory} from "../../contracts/store/StoreFactory.sol";
 import {DotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
@@ -29,9 +28,9 @@ contract DeployCore is BaseDeployer {
         address owner = msg.sender;
         vm.label(owner, "OWNER");
 
-        initDeployment(DeploymentNetwork.folder(block.chainid), vm.toString(block.chainid));
+        initDeployment(networkFolder(), vm.toString(block.chainid));
 
-        address factory = _bootstrapCreate3Factory(owner);
+        address factory = _ensureCreate3Factory(owner);
         address protocolRegistry = _deployProtocolRegistry(owner);
         _registerCreate3Factory(owner, protocolRegistry, factory);
 

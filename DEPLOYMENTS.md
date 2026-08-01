@@ -86,6 +86,7 @@ Set these fields:
 | PRIVATE_KEY | yes on first import | Hex deployer private key. This is imported into the Foundry keystore, then removed from disk when the deploy succeeds. |
 | WHITELIST_OPERATOR | optional | Address granted whitelist-management permission after deployment. Defaults to the team operator in the example file. |
 | RPC_URL | optional | Foundry RPC alias or full RPC URL. Defaults to paseo_local, which means the local adapter. |
+| DEPLOYMENT_NETWORK | optional | Manifest subdirectory under deployments/. Set it to keep networks that share a chain id apart (see [Deployment manifests](#deployment-manifests)). Defaults to the chain-id mapping. |
 
 The .env file is bootstrap input only. It is git-ignored. On a successful deployment the runner deletes it automatically. On failure the file is left in place so you can correct it and retry.
 
@@ -297,20 +298,57 @@ Choosing and changing addresses:
 - To intentionally move the entire address set (a clean re-deploy that must not collide with the previous one), bump `CREATE3_SALT_NAMESPACE` (`v1` becomes `v2`). Every address shifts together.
 - Do not reuse a `label` for a different contract. The wire stage and external tooling key off stable labels, so a reused label silently repoints them.
 
+Two other manifest entries are not CREATE3-derived: `LabelStoreBeacon` and `UserStoreBeacon`. They are deployed inside the `StoreFactory` constructor (and owned by it, so the factory owner can upgrade store implementations), so their addresses are `keccak(StoreFactory, nonce)`. They stay put across resets while `StoreFactory`'s bytecode is unchanged, but a change to that constructor can move them. This is deliberate: only the core CREATE3 contracts are guaranteed stable, so do not treat the beacon addresses as network-stable, read them from the manifest or the factory.
+
 The one address that is not CREATE3-derived is the CREATE3 factory itself: it bootstraps the scheme, so it cannot deploy itself. The first deploy stage deploys it directly and records it on the protocol registry under the `CREATE3_FACTORY` key; every later stage resolves it from there rather than from an environment variable. Because every other address is derived from the factory's address, the factory must sit at the same address on each chain for the rest of the set to match. Deploy it as the deployer's first transaction on a fresh account (or through a deterministic singleton deployer) so its nonce-derived address is identical across chains.
+
+### Keeping the factory address stable across chain resets
+
+The "first transaction on a fresh account" rule only holds while the deployer key stays pristine. In practice the same key also runs upgrades and other operations, so on a chain reset it is no longer at nonce 0 when the pipeline runs, the factory lands at a new address, and every downstream address shifts with it. Because only the factory is nonce-sensitive, the fix is to isolate just the factory onto a single-purpose key and have the pipeline reuse it.
+
+The single command does both steps, feeding the factory address into the pipeline:
+
+```bash
+bun run deploy:all
+```
+
+It runs `deploy:factory` (from the dedicated `dotns-factory` key, which asserts nonce 0 and lands the factory at its deterministic address), then runs the pipeline with `CREATE3_FACTORY` set to that address so `DeployCore` reuses it. On every fresh chain this reproduces the same address set.
+
+The whole pipeline is idempotent, so a re-run resumes an interrupted deploy. Each stage adopts any contract already present at its deterministic address and skips re-initialising an adopted proxy, so rerunning the same command deploys only what is missing and leaves everything already deployed untouched. This is the recovery path when the adapter stalls a transaction part way through.
+
+The two steps can also be run separately:
+
+```bash
+# 1. deploy (or confirm) the factory from the single-purpose key
+ACCOUNT_NAME=dotns-factory RPC_URL=paseo bun run deploy:factory
+# 2. run the pipeline reusing it (the shared pipeline/upgrade key can be at any nonce)
+CREATE3_FACTORY=0xYourFactory bun run deploy
+```
+
+With `CREATE3_FACTORY` unset, `DeployCore` mints a fresh factory as before. On the next reset, `deploy:all` redeploys the factory from the same single-purpose key (nonce 0 again on the fresh genesis) to reproduce the same factory address.
 
 ## Deployment manifests
 
 Every stage writes its output to a shared JSON manifest. Later stages read the addresses written by earlier stages from the same file.
 
-The manifest folder is selected from the current chain id:
+The manifest folder defaults to a mapping from the current chain id:
 
-| Chain id | Manifest folder |
+| Chain id | Default manifest folder |
 | ---: | --- |
 | 420420422 | deployments/passethub-testnet |
 | 420420417 | deployments/paseo-assethub |
 | 420420420 | deployments/paseo-local |
 | other | deployments/localhost |
+
+Some environments cannot be told apart by chain id alone. A previewnet and a next environment reached through the same local ETH-RPC adapter both report 420420417, so the default mapping would write both to `deployments/paseo-assethub/420420417.json`, and each fresh deploy would overwrite the previous network's manifest.
+
+Set `DEPLOYMENT_NETWORK` to name the subdirectory explicitly and keep each upstream's manifest separate:
+
+```bash
+DEPLOYMENT_NETWORK=paseo-previewnet bun run deploy
+```
+
+The deploy runner and every Solidity stage honour the same variable, so the bash-side manifest path and the on-chain stage output stay in step. When it is unset, the chain-id default above applies.
 
 The manifest filename is the numeric chain id with a .json extension.
 
@@ -331,106 +369,112 @@ If the deploy script fails after importing the key, .env is intentionally left i
 
 If the deploy script succeeds, .env should be gone. Future runs should use the keystore account and should not require the deployer private key.
 
-If a stage fails after writing partial addresses, inspect the relevant deployment manifest before retrying. Later stages consume whatever earlier stages wrote, so stale manifests can produce confusing wire-up errors.
+If a stage fails part way through, rerun the same command. Each stage adopts any contract already at its deterministic address and skips re-initialising an adopted proxy, so the rerun resumes from where it stopped and deploys only what is missing. Later stages read the deployment manifest for wire-up, so if you edit the manifest by hand keep it consistent with what is actually on chain, or the wire-up can fail.
 
 ## Live addresses
 
 ### Paseo Asset Hub Previewnet
 
+**Create3Factory**
+
+```text
+0x8533c79E058c5a6489CAFeCA86dc600E029D75f5
+```
+
 **DotnsProtocolRegistry**
 
 ```text
-0x984F17a9077808F4B7e127F76806A1D59546B5B6
+0xD19e3D0C97CF501125a04A97405e3e6592fa846E
 ```
 
 **Multicall3**
 
 ```text
-0x758F88C7761FCD4742f9471448c2209a7e859280
+0xB4468000abD87D3c56cbFBd153161223D7b109e5
 ```
 
 **DotnsRegistrar**
 
 ```text
-0x061273AeF34e8ab9Ca08E199d7440E2639Fc2088
+0x4f06E818Ba3d987704fd91cf3d868E4b019106Ab
 ```
 
 **DotnsRegistry**
 
 ```text
-0x5622CA75C75726Da13ae46C69127C07c87538633
+0xf34054fd76BbF85f216cf9908226D5f0A72E50CA
 ```
 
 **DotnsRegistrarController**
 
 ```text
-0xC0c21ca6302884572E61d69D5bf3E271Acf39B23
+0xBdaA01bD1bA67d709F2b1fF286Da0d854977EA30
 ```
 
 **DotnsPopController**
 
 ```text
-0xae2c63b921Bc9DC30C149A8FA462fd3efA53D1F4
+0xCC932348606cc1f3318cADeC5A5Cd2CA447f8a4b
 ```
 
 **RootGatewayDispatcher**
 
 ```text
-0xDf919455Fb357c173d6C3143dB1B7aFb9eA61324
+0xa889CCA3Fb4B07b98a11cc54C10f13dDA20bc3db
 ```
 
 **PopRules**
 
 ```text
-0xF209a15e8a10D208bb4d3e3c56D9EB73a5934C26
+0x747B456bE03aec0b42bd85C51513730FBD45DA31
 ```
 
 **DotnsResolver**
 
 ```text
-0x823f39E7a4126669be53211FFbCF27e55b3274C6
+0xbd1165E549DF96F083c0A16f61590927bC187009
 ```
 
 **DotnsReverseResolver**
 
 ```text
-0xA347059298aA171b3E744538F7043e9AAaAa95E0
+0xee3883d7eB60Ee9BCD7F3bcD8f2f05302A9Cc035
 ```
 
 **DotnsContentResolver**
 
 ```text
-0xBD003d5Dd04E68aC60d529a46AEfBdEf8941868C
+0x7F74D7CD50f5a834270E2ad395a01b01891AB37d
 ```
 
 **DotnsPopResolver**
 
 ```text
-0xeD11Bb5064fAAcb0A91e52dac2272E89856F2F6a
+0xDaC984884EcA8Fc44011f1D6C49B27828390A72B
 ```
 
 **DotnsNameEscrow**
 
 ```text
-0xb7E39199f13aCf7e90cCf67b980aC3ef0E2C4Fbe
+0x4881Afb78e7C908cAe818168B926229D93376520
 ```
 
 **StoreFactory**
 
 ```text
-0x4BEFaB5de968183524b1eBd2FAec9C68Cdc696Fd
+0x709A027F446a9e2a4BB9cb9a9c754435b19e32B7
 ```
 
 **LabelStoreBeacon**
 
 ```text
-0x11f324597d850d626d6406713808Ed854dA00a6b
+0xb57Ebc2e7085616d4906D1fE49af1cE13f7dffeF
 ```
 
 **UserStoreBeacon**
 
 ```text
-0xaC2209aFc366505d10Fd27d27030EB8C5E54874e
+0xb7C995601679840d36F37E86DB2d7dF30797eC5C
 ```
 
 ### Paseo Asset Hub Next V2

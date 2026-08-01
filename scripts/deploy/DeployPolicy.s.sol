@@ -3,7 +3,6 @@ pragma solidity ^0.8.34;
 
 import {console} from "forge-std/Script.sol";
 import {BaseDeployer} from "./BaseDeployer.s.sol";
-import {DeploymentNetwork} from "./DeploymentNetwork.sol";
 
 import {DotnsRegistrarController} from "../../contracts/registrars/DotnsRegistrarController.sol";
 import {DotnsNameEscrow} from "../../contracts/escrow/DotnsNameEscrow.sol";
@@ -23,7 +22,7 @@ contract DeployPolicy is BaseDeployer {
         address owner = msg.sender;
         vm.label(owner, "OWNER");
 
-        initDeployment(DeploymentNetwork.folder(block.chainid), vm.toString(block.chainid));
+        initDeployment(networkFolder(), vm.toString(block.chainid));
 
         address protocolRegistry = _readAddress("DotnsProtocolRegistry");
         _deployNameEscrow(owner, protocolRegistry);

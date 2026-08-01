@@ -3,7 +3,6 @@ pragma solidity ^0.8.34;
 
 import {console} from "forge-std/Script.sol";
 import {BaseDeployer} from "./BaseDeployer.s.sol";
-import {DeploymentNetwork} from "./DeploymentNetwork.sol";
 
 import {DotnsPopResolver} from "../../contracts/resolvers/DotnsPopResolver.sol";
 import {DotnsPopController} from "../../contracts/registrars/DotnsPopController.sol";
@@ -25,7 +24,7 @@ contract DeployPopSystem is BaseDeployer {
         address owner = msg.sender;
         vm.label(owner, "OWNER");
 
-        initDeployment(DeploymentNetwork.folder(block.chainid), vm.toString(block.chainid));
+        initDeployment(networkFolder(), vm.toString(block.chainid));
 
         address protocolRegistry = _readAddress("DotnsProtocolRegistry");
 
