@@ -256,28 +256,49 @@ jobs:
             exit 1
           fi
 
+          # Print every contract's expected (first deploy) and actual (re-run)
+          # address side by side, so the run shows the two address sets in full
+          # rather than only a pass/fail. The Match column flags any row that
+          # moved. Emitted to the step log, the run summary, and the PR comment.
+          {
+            echo "### Resume verification: expected vs actual"
+            echo ""
+            echo "Expected is the first deploy; actual is the re-run reusing the recorded factory."
+            echo ""
+            echo "| Contract | Expected | Actual | Match |"
+            echo "|:---------|:---------|:-------|:-----:|"
+            jq -rn --slurpfile e first-deploy.json --slurpfile a "$MANIFEST" '
+              ($e[0]) as $exp | ($a[0]) as $act
+              | $exp | keys_unsorted[] as $k
+              | "| \($k) | `\($exp[$k])` | `\($act[$k] // "MISSING")` | \(if $exp[$k] == $act[$k] then "match" else "MOVED" end) |"
+            '
+          } > resume-table.md
+          cat resume-table.md
+          cat resume-table.md >> "$GITHUB_STEP_SUMMARY"
+
           # Address set must be byte-identical across the two runs. Sort keys so
           # only value differences, never key ordering, register as a diff.
-          if ! diff <(jq -S . first-deploy.json) <(jq -S . "$MANIFEST") > manifest.diff; then
+          if ! diff <(jq -S . first-deploy.json) <(jq -S . "$MANIFEST") > /dev/null; then
             echo "result=Failed - addresses moved on re-run" >> "$GITHUB_OUTPUT"
             echo "has_details=true" >> "$GITHUB_OUTPUT"
             {
               echo "### Addresses moved on re-run"
               echo ""
-              echo "The pipeline is meant to be deterministic: a re-run must reproduce the"
-              echo "same address set. It did not, so determinism has regressed."
+              echo "The pipeline is meant to be deterministic: a re-run must reproduce"
+              echo "the same address set. It did not, so determinism has regressed. Rows"
+              echo "marked MOVED below changed between the first deploy and the re-run."
               echo ""
-              echo "**Manifest diff (first deploy vs re-run):**"
-              echo '```diff'
-              cat manifest.diff
-              echo '```'
+              cat resume-table.md
             } > deploy-error.md
             cat deploy-error.md
             exit 1
           fi
 
+          # Surface the table under the passing row too, so the address set is
+          # always on record, not only when something breaks.
+          cp resume-table.md deploy-error.md
           echo "result=Deployment and resume verified" >> "$GITHUB_OUTPUT"
-          echo "has_details=false" >> "$GITHUB_OUTPUT"
+          echo "has_details=true" >> "$GITHUB_OUTPUT"
 
       - name: Set final result
         id: result
