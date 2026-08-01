@@ -210,6 +210,75 @@ jobs:
             exit 1
           fi
 
+      # Prove the deploy is resumable: rerun the whole pipeline against the same
+      # chain, reusing the factory the first run recorded (exactly what
+      # `deploy:all` does in production). Every stage must adopt the contract
+      # already at its deterministic address and skip re-initialising an adopted
+      # proxy, so the rerun exits 0 and rewrites the manifest with byte-identical
+      # addresses. A revert here means an adopt path regressed; a manifest diff
+      # means an address moved on rerun. This keeps the resume guarantee in
+      # DEPLOYMENTS.md verified on every change, not just asserted in prose.
+      - name: Verify re-run resumes without relocating addresses
+        id: resume
+        if: steps.verify.outcome == 'success'
+        # No PRIVATE_KEY: the keystore account is already imported by the first
+        # deploy, so the rerun reuses it, which is the real resume path a human
+        # takes (they never re-supply the key). CREATE3_FACTORY pins the factory
+        # to the one already on chain so the pipeline adopts it instead of
+        # minting a fresh, nonce-derived one.
+        env:
+          ACCOUNT_NAME: anvil-default-7
+          ACCOUNT_PASSWORD: anvil-default-password
+          WHITELIST_OPERATOR: "0x14dC79964da2C08b23698B3D3cc7Ca32193d9955"
+        run: |
+          set +e
+          MANIFEST=deployments/paseo-local/420420420.json
+          cp "$MANIFEST" first-deploy.json
+          FACTORY=$(jq -r '.Create3Factory' "$MANIFEST")
+
+          CREATE3_FACTORY="$FACTORY" ./scripts/deploy/run.sh > resume.log 2>&1
+          RESUME_EXIT=$?
+          if [ $RESUME_EXIT -ne 0 ]; then
+            echo "result=Failed - re-run did not resume" >> "$GITHUB_OUTPUT"
+            echo "has_details=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Re-run did not resume"
+              echo ""
+              echo "Rerunning the pipeline against the already-deployed chain reverted."
+              echo "An adopt path (\`_deployCreate3\` or the proxy-init skip) has regressed."
+              echo ""
+              echo "**Last 50 lines of re-run output:**"
+              echo '```'
+              tail -50 resume.log
+              echo '```'
+            } > deploy-error.md
+            cat deploy-error.md
+            exit 1
+          fi
+
+          # Address set must be byte-identical across the two runs. Sort keys so
+          # only value differences, never key ordering, register as a diff.
+          if ! diff <(jq -S . first-deploy.json) <(jq -S . "$MANIFEST") > manifest.diff; then
+            echo "result=Failed - addresses moved on re-run" >> "$GITHUB_OUTPUT"
+            echo "has_details=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Addresses moved on re-run"
+              echo ""
+              echo "The pipeline is meant to be deterministic: a re-run must reproduce the"
+              echo "same address set. It did not, so determinism has regressed."
+              echo ""
+              echo "**Manifest diff (first deploy vs re-run):**"
+              echo '```diff'
+              cat manifest.diff
+              echo '```'
+            } > deploy-error.md
+            cat deploy-error.md
+            exit 1
+          fi
+
+          echo "result=Deployment and resume verified" >> "$GITHUB_OUTPUT"
+          echo "has_details=false" >> "$GITHUB_OUTPUT"
+
       - name: Set final result
         id: result
         if: always()
@@ -223,8 +292,11 @@ jobs:
           elif [ "${{ steps.verify.outcome }}" != "success" ]; then
             echo "result=${{ steps.verify.outputs.result }}" >> "$GITHUB_OUTPUT"
             echo "has_details=${{ steps.verify.outputs.has_details }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.resume.outcome }}" != "success" ]; then
+            echo "result=${{ steps.resume.outputs.result }}" >> "$GITHUB_OUTPUT"
+            echo "has_details=${{ steps.resume.outputs.has_details }}" >> "$GITHUB_OUTPUT"
           else
-            echo "result=Deployment successful" >> "$GITHUB_OUTPUT"
+            echo "result=Deployment and resume verified" >> "$GITHUB_OUTPUT"
             echo "has_details=false" >> "$GITHUB_OUTPUT"
           fi
 
