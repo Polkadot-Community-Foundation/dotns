@@ -9,6 +9,7 @@
     "deploy:anvil": "forge clean && forge build && ./scripts/deploy/run.sh",
     "deploy:testnet": "./scripts/deploy/run.sh '--timeout 1000'",
     "deploy:factory": "./scripts/deploy/factory.sh",
+    "deploy:all": "./scripts/deploy/deploy-all.sh",
     "postinstall": "./setup.bash",
     "reset": "forge clean"
   },

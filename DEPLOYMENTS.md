@@ -298,25 +298,32 @@ Choosing and changing addresses:
 - To intentionally move the entire address set (a clean re-deploy that must not collide with the previous one), bump `CREATE3_SALT_NAMESPACE` (`v1` becomes `v2`). Every address shifts together.
 - Do not reuse a `label` for a different contract. The wire stage and external tooling key off stable labels, so a reused label silently repoints them.
 
+Two other manifest entries are not CREATE3-derived: `LabelStoreBeacon` and `UserStoreBeacon`. They are deployed inside the `StoreFactory` constructor (and owned by it, so the factory owner can upgrade store implementations), so their addresses are `keccak(StoreFactory, nonce)`. They stay put across resets while `StoreFactory`'s bytecode is unchanged, but a change to that constructor can move them. This is deliberate: only the core CREATE3 contracts are guaranteed stable, so do not treat the beacon addresses as network-stable, read them from the manifest or the factory.
+
 The one address that is not CREATE3-derived is the CREATE3 factory itself: it bootstraps the scheme, so it cannot deploy itself. The first deploy stage deploys it directly and records it on the protocol registry under the `CREATE3_FACTORY` key; every later stage resolves it from there rather than from an environment variable. Because every other address is derived from the factory's address, the factory must sit at the same address on each chain for the rest of the set to match. Deploy it as the deployer's first transaction on a fresh account (or through a deterministic singleton deployer) so its nonce-derived address is identical across chains.
 
 ### Keeping the factory address stable across chain resets
 
 The "first transaction on a fresh account" rule only holds while the deployer key stays pristine. In practice the same key also runs upgrades and other operations, so on a chain reset it is no longer at nonce 0 when the pipeline runs, the factory lands at a new address, and every downstream address shifts with it. Because only the factory is nonce-sensitive, the fix is to isolate just the factory onto a single-purpose key and have the pipeline reuse it.
 
-1. Deploy the factory once from a dedicated key that does nothing else, as its first transaction. The command asserts the deployer is at nonce 0 and prints the factory address. `ACCOUNT_NAME` defaults to `dotns-factory` so it is never the pipeline or upgrade key:
+The single command does both steps, feeding the factory address into the pipeline:
 
 ```bash
-ACCOUNT_NAME=dotns-factory RPC_URL=paseo bun run deploy:factory
+bun run deploy:all
 ```
 
-2. Pass that address to the pipeline as `CREATE3_FACTORY`. `DeployCore` reuses it instead of minting a new one, so the rest of the pipeline (and every later upgrade) can run from the shared deployer key without moving any address:
+It runs `deploy:factory` (from the dedicated `dotns-factory` key, which asserts nonce 0 and lands the factory at its deterministic address), then runs the pipeline with `CREATE3_FACTORY` set to that address so `DeployCore` reuses it. On every fresh chain this reproduces the same address set. The factory step is idempotent, so re-running is safe.
+
+The two steps can also be run separately:
 
 ```bash
+# 1. deploy (or confirm) the factory from the single-purpose key
+ACCOUNT_NAME=dotns-factory RPC_URL=paseo bun run deploy:factory
+# 2. run the pipeline reusing it (the shared pipeline/upgrade key can be at any nonce)
 CREATE3_FACTORY=0xYourFactory bun run deploy
 ```
 
-On the next reset, redeploy the factory from the same single-purpose key (nonce 0 again on the fresh genesis) to reproduce the same factory address, then run the pipeline with `CREATE3_FACTORY` set. With `CREATE3_FACTORY` unset, `DeployCore` mints a fresh factory as before.
+With `CREATE3_FACTORY` unset, `DeployCore` mints a fresh factory as before. On the next reset, `deploy:all` redeploys the factory from the same single-purpose key (nonce 0 again on the fresh genesis) to reproduce the same factory address.
 
 ## Deployment manifests
 

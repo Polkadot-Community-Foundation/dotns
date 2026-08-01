@@ -21,11 +21,15 @@
 
 ENV_FILE="${ENV_FILE:-.env}"
 
+# Source .env WITHOUT auto-export (no `set -a`), so secrets such as
+# ACCOUNT_PASSWORD and PRIVATE_KEY stay as shell variables and are never
+# exported into child processes (forge and cast receive them as explicit
+# flags). The few variables forge scripts read from the environment
+# (ACCOUNT_NAME here; WHITELIST_OPERATOR, DEPLOYMENT_NETWORK, CREATE3_FACTORY in
+# run.sh) are exported explicitly.
 if [ -f "$ENV_FILE" ]; then
-  set -a
   # shellcheck source=/dev/null
   . "$ENV_FILE"
-  set +a
 fi
 
 : "${ACCOUNT_NAME:=dotns-deploy}"

@@ -56,7 +56,8 @@ set -euo pipefail
 : "${WHITELIST_OPERATOR:=0xd908e5a6c88e9263f8fd0756bd0b77916008bb72}"
 export WHITELIST_OPERATOR
 
-extra="${1:-}"
+# Forward every extra forge flag (word-split), not just the first token.
+extra="$*"
 
 if [ "${DOTNS_DEPLOY_SKIP_CLEAN_BUILD:-0}" != "1" ]; then
   echo "=== Rebuilding full Foundry artifacts for OpenZeppelin validation ==="
@@ -182,6 +183,8 @@ for stage in "${stages[@]}"; do
     echo "Restored manifest after invalid stage output: $stage" >&2
     exit 1
   fi
+  # Stage succeeded; drop its rollback backup so successful runs leave no temp files.
+  [ -n "$manifest_backup" ] && rm -f "$manifest_backup"
 done
 
 echo "=== Pipeline complete ==="

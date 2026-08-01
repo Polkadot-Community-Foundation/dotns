@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.34;
 
-import {Script} from "forge-std/Script.sol";
+import {Script, console} from "forge-std/Script.sol";
 import {Options} from "openzeppelin-foundry-upgrades/Options.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
@@ -262,6 +262,13 @@ abstract contract BaseDeployer is Script {
         vm.startBroadcast(owner);
         factory = address(new Create3Factory());
         vm.stopBroadcast();
+        console.log("WARNING: minted a nonce-derived CREATE3 factory at", factory);
+        console.log(
+            "  Its address depends on the deployer nonce and is NOT reproducible across chain"
+        );
+        console.log(
+            "  resets. To pin every DotNS address, set CREATE3_FACTORY (or run deploy:all)."
+        );
         _adoptCreate3Factory(factory);
     }
 
