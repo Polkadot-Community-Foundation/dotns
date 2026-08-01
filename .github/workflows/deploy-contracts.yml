@@ -21,15 +21,21 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    # Shared by the deploy and resume steps: anvil test account 7 from the
-    # deterministic local set (public test keys, never valid on a real network)
-    # and the local manifest path. PRIVATE_KEY is deliberately not here; it is
-    # set only on the first deploy to import the keystore, and must never reach
-    # the resume step, which reuses the already-imported account.
+    # Shared across steps. ACCOUNT_* is anvil test account 7 (public test keys,
+    # never valid on a real network) used to run the pipeline. FACTORY_DEPLOYER is
+    # the public address of the single-purpose factory key; PINNED_FACTORY is its
+    # nonce-0 CREATE address and the one recorded in every manifest. CANONICAL is
+    # the committed manifest that seeds DEPLOYMENTS.md; MANIFEST is the file this
+    # CI deploy writes. PRIVATE_KEY is deliberately absent here: it is set only on
+    # the first deploy to import the keystore, and must not reach the resume run,
+    # which reuses the already-imported account.
     env:
       ACCOUNT_NAME: anvil-default-7
       ACCOUNT_PASSWORD: anvil-default-password
       WHITELIST_OPERATOR: "0x14dC79964da2C08b23698B3D3cc7Ca32193d9955"
+      FACTORY_DEPLOYER: "0xd498F7BC5bB3cBdd0068c3deEbbd814b69C3F164"
+      PINNED_FACTORY: "0x8533c79E058c5a6489CAFeCA86dc600E029D75f5"
+      CANONICAL: deployments/paseo-assethub/420420417.json
       MANIFEST: deployments/paseo-local/420420420.json
 
     steps:
@@ -89,18 +95,53 @@ jobs:
           echo "result=Failed - RPC connection timeout" >> "$GITHUB_OUTPUT"
           exit 1
 
-      - name: Deploy contracts
+      - name: Deploy contracts (production flow on a fresh chain)
         id: deploy
         if: steps.rpc_wait.outcome == 'success'
-        # PRIVATE_KEY imports the keystore on this first run only; the account,
-        # password, operator, and manifest path come from the job env above.
+        # Runs the exact production two-key `deploy:all` on a fresh anvil. The
+        # factory key (a repo secret) deploys the CREATE3 factory at nonce 0,
+        # landing it at the canonical PINNED_FACTORY, then the pipeline (anvil test
+        # account 7) deploys everything through it. EXPECTED_CREATE3_FACTORY aborts
+        # the run if the factory lands anywhere else. This is a genuine new-chain
+        # deploy, so the addresses it produces are the ones every environment gets.
         env:
+          # Pipeline account: anvil test account 7, imported on first run.
           PRIVATE_KEY: "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356"
+          # Factory account: the single-purpose key that owns the canonical factory
+          # address, supplied as a repo secret so CI signs the nonce-0 deploy for
+          # real. Its password is CI-local; the keystore is imported on first run.
+          FACTORY_ACCOUNT: create3-factory
+          FACTORY_PASSWORD: anvil-default-password
+          FACTORY_PRIVATE_KEY: ${{ secrets.FACTORY_DEPLOYER_KEY }}
+          EXPECTED_CREATE3_FACTORY: ${{ env.PINNED_FACTORY }}
         run: |
           set +e
-          bun run deploy:anvil > deploy.log 2>&1
+          if [ -z "$FACTORY_PRIVATE_KEY" ]; then
+            echo "result=Failed - FACTORY_DEPLOYER_KEY secret unavailable" >> "$GITHUB_OUTPUT"
+            echo "has_details=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Factory key secret unavailable"
+              echo ""
+              echo "The \`FACTORY_DEPLOYER_KEY\` repo secret is not set, or is withheld on a"
+              echo "fork PR. The reproduction deploy needs it to sign the nonce-0 factory"
+              echo "deploy that lands the factory at its canonical address."
+            } > deploy-error.md
+            cat deploy-error.md
+            exit 1
+          fi
+
+          # Fund the factory deployer on anvil; it is not a prefunded dev account.
+          cast rpc anvil_setBalance "$FACTORY_DEPLOYER" 0x3635C9ADC5DEA00000 \
+            --rpc-url http://127.0.0.1:8545 > /dev/null
+
+          bun run deploy:all > deploy.log 2>&1
           DEPLOY_EXIT=$?
-          
+
+          # Drop the factory credentials the moment the deploy is done, so nothing
+          # later in this step (the error extractor that feeds the public PR
+          # comment, or any future command) inherits the key in its environment.
+          unset FACTORY_PRIVATE_KEY FACTORY_PASSWORD PRIVATE_KEY
+
           if [ $DEPLOY_EXIT -eq 0 ]; then
             echo "result=Deployment successful" >> "$GITHUB_OUTPUT"
             echo "has_details=false" >> "$GITHUB_OUTPUT"
@@ -217,90 +258,98 @@ jobs:
             exit 1
           fi
 
-      # Prove the deploy is resumable: rerun the whole pipeline against the same
-      # chain, reusing the factory the first run recorded (exactly what
-      # `deploy:all` does in production). Every stage must adopt the contract
-      # already at its deterministic address and skip re-initialising an adopted
-      # proxy, so the rerun exits 0 and rewrites the manifest with byte-identical
-      # addresses. A revert here means an adopt path regressed; a manifest diff
-      # means an address moved on rerun. This keeps the resume guarantee in
-      # DEPLOYMENTS.md verified on every change, not just asserted in prose.
-      - name: Verify re-run resumes without relocating addresses
-        id: resume
+      # This CI deploy reproduces the published address set. The canonical factory
+      # was deployed above, and every DotNS address is a pure function of that
+      # factory plus a fixed salt, so the freshly deployed manifest must equal the
+      # committed manifest that seeds DEPLOYMENTS.md. Assert that, print the
+      # expected-vs-actual table, then rerun the pipeline to prove the deploy is
+      # resumable: a rerun adopts every contract and still lands on the same set.
+      - name: Verify addresses match DEPLOYMENTS.md
+        id: verify_addresses
         if: steps.verify.outcome == 'success'
-        # The account, password, operator, and manifest path come from the job
-        # env. Crucially there is no PRIVATE_KEY here: the keystore account is
-        # already imported by the first deploy, so the rerun reuses it, which is
-        # the real resume path a human takes (they never re-supply the key).
-        # CREATE3_FACTORY pins the factory to the one already on chain so the
-        # pipeline adopts it instead of minting a fresh, nonce-derived one.
         run: |
           set +e
-          cp "$MANIFEST" first-deploy.json
-          FACTORY=$(jq -r '.Create3Factory' "$MANIFEST")
 
-          CREATE3_FACTORY="$FACTORY" ./scripts/deploy/run.sh > resume.log 2>&1
-          RESUME_EXIT=$?
-          if [ $RESUME_EXIT -ne 0 ]; then
-            echo "result=Failed - re-run did not resume" >> "$GITHUB_OUTPUT"
+          # Markdown expected-vs-actual table: expected = committed manifest,
+          # actual = this CI deployment. Any row whose addresses differ is MOVED.
+          emit_table() {
+            echo "### Deployed addresses vs DEPLOYMENTS.md"
+            echo ""
+            echo "Expected is the committed manifest; actual is this CI deployment of the same pipeline."
+            echo ""
+            echo "| Contract | Expected | Actual | Match |"
+            echo "|:---------|:---------|:-------|:-----:|"
+            jq -rn --slurpfile e "$CANONICAL" --slurpfile a "$MANIFEST" '
+              ($e[0]) as $exp | ($a[0]) as $act
+              | $exp | keys_unsorted[] as $k
+              | "| \($k) | `\($exp[$k])` | `\($act[$k] // "MISSING")` | \(if $exp[$k] == $act[$k] then "match" else "MOVED" end) |"
+            '
+          }
+
+          # True when the deployed manifest equals the committed one. Sort keys so
+          # only value differences, never ordering, register as a mismatch.
+          matches_canonical() {
+            diff <(jq -S . "$CANONICAL") <(jq -S . "$MANIFEST") > /dev/null
+          }
+
+          # Record a failure (deploy-error.md already written) and stop.
+          fail() {
+            echo "result=$1" >> "$GITHUB_OUTPUT"
             echo "has_details=true" >> "$GITHUB_OUTPUT"
+            cat deploy-error.md
+            exit 1
+          }
+
+          emit_table > table.md
+          cat table.md
+          cat table.md >> "$GITHUB_STEP_SUMMARY"
+
+          if ! matches_canonical; then
+            {
+              echo "### Deployed addresses do not match DEPLOYMENTS.md"
+              echo ""
+              echo "The pipeline no longer reproduces the published set. Rows marked MOVED"
+              echo "below differ from the committed manifest; regenerate DEPLOYMENTS.md and"
+              echo "the manifest, or restore the salt or label that moved."
+              echo ""
+              cat table.md
+            } > deploy-error.md
+            fail "Failed - addresses differ from DEPLOYMENTS.md"
+          fi
+
+          # Resume: rerun the same pinned pipeline. It must adopt every contract
+          # and still land on the published set. No PRIVATE_KEY: the keystore is
+          # already imported, the real resume path a human takes.
+          if ! CREATE3_FACTORY="$PINNED_FACTORY" ./scripts/deploy/run.sh > resume.log 2>&1; then
             {
               echo "### Re-run did not resume"
               echo ""
-              echo "Rerunning the pipeline against the already-deployed chain reverted."
-              echo "An adopt path (\`_deployCreate3\` or the proxy-init skip) has regressed."
+              echo "Rerunning the pipeline against the already-deployed chain reverted; an"
+              echo "adopt path (\`_deployCreate3\` or the proxy-init skip) has regressed."
               echo ""
               echo "**Last 50 lines of re-run output:**"
               echo '```'
               tail -50 resume.log
               echo '```'
             } > deploy-error.md
-            cat deploy-error.md
-            exit 1
+            fail "Failed - re-run did not resume"
           fi
-
-          # Print every contract's expected (first deploy) and actual (re-run)
-          # address side by side, so the run shows the two address sets in full
-          # rather than only a pass/fail. The Match column flags any row that
-          # moved. Emitted to the step log, the run summary, and the PR comment.
-          {
-            echo "### Resume verification: expected vs actual"
-            echo ""
-            echo "Expected is the first deploy; actual is the re-run reusing the recorded factory."
-            echo ""
-            echo "| Contract | Expected | Actual | Match |"
-            echo "|:---------|:---------|:-------|:-----:|"
-            jq -rn --slurpfile e first-deploy.json --slurpfile a "$MANIFEST" '
-              ($e[0]) as $exp | ($a[0]) as $act
-              | $exp | keys_unsorted[] as $k
-              | "| \($k) | `\($exp[$k])` | `\($act[$k] // "MISSING")` | \(if $exp[$k] == $act[$k] then "match" else "MOVED" end) |"
-            '
-          } > resume-table.md
-          cat resume-table.md
-          cat resume-table.md >> "$GITHUB_STEP_SUMMARY"
-
-          # Address set must be byte-identical across the two runs. Sort keys so
-          # only value differences, never key ordering, register as a diff.
-          if ! diff <(jq -S . first-deploy.json) <(jq -S . "$MANIFEST") > /dev/null; then
-            echo "result=Failed - addresses moved on re-run" >> "$GITHUB_OUTPUT"
-            echo "has_details=true" >> "$GITHUB_OUTPUT"
+          if ! matches_canonical; then
             {
-              echo "### Addresses moved on re-run"
+              echo "### Resume moved addresses"
               echo ""
-              echo "The pipeline is meant to be deterministic: a re-run must reproduce"
-              echo "the same address set. It did not, so determinism has regressed. Rows"
-              echo "marked MOVED below changed between the first deploy and the re-run."
+              echo "The rerun no longer matches DEPLOYMENTS.md, so a resumed deploy would"
+              echo "relocate contracts."
               echo ""
-              cat resume-table.md
+              emit_table
             } > deploy-error.md
-            cat deploy-error.md
-            exit 1
+            fail "Failed - resume moved addresses"
           fi
 
-          # Surface the table under the passing row too, so the address set is
-          # always on record, not only when something breaks.
-          cp resume-table.md deploy-error.md
-          echo "result=Deployment and resume verified" >> "$GITHUB_OUTPUT"
+          # Surface the table under the passing row too, so the address set is on
+          # record every run, not only on failure.
+          cp table.md deploy-error.md
+          echo "result=Reproduces DEPLOYMENTS.md; resume verified" >> "$GITHUB_OUTPUT"
           echo "has_details=true" >> "$GITHUB_OUTPUT"
 
       - name: Set final result
@@ -317,12 +366,25 @@ jobs:
             echo "result=${{ steps.verify.outputs.result }}" >> "$GITHUB_OUTPUT"
             echo "has_details=${{ steps.verify.outputs.has_details }}" >> "$GITHUB_OUTPUT"
           else
-            # rpc, deploy, and verify all passed, so the resume step ran. Its
-            # outputs carry the final verdict, pass or fail, and the has_details
-            # flag that surfaces the expected-vs-actual table.
-            echo "result=${{ steps.resume.outputs.result }}" >> "$GITHUB_OUTPUT"
-            echo "has_details=${{ steps.resume.outputs.has_details }}" >> "$GITHUB_OUTPUT"
+            # Everything up to and including verify passed, so verify_addresses ran.
+            # Its outputs carry the final verdict and the has_details flag that
+            # surfaces the expected-vs-actual table.
+            echo "result=${{ steps.verify_addresses.outputs.result }}" >> "$GITHUB_OUTPUT"
+            echo "has_details=${{ steps.verify_addresses.outputs.has_details }}" >> "$GITHUB_OUTPUT"
           fi
+
+      # Defence in depth for the public sinks. deploy-error.md is posted verbatim
+      # to a public PR comment and *.log is uploaded as a public artifact, and
+      # GitHub secret masking rewrites only the streamed log view, never file
+      # contents. No path writes the key to these files today; this strips any
+      # private-key-shaped hex (32 bytes, optionally 0x-prefixed) so a future
+      # regression cannot surface it publicly.
+      - name: Redact key-shaped hex from public outputs
+        if: always()
+        run: |
+          for f in deploy-error.md *.log; do
+            [ -f "$f" ] && sed -E -i 's/(0x)?[0-9a-fA-F]{64}/[REDACTED]/g' "$f" || true
+          done
 
       - name: Upload logs
         if: always()
