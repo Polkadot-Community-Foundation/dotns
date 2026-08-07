@@ -98,12 +98,12 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         dotnsRegistrarController.register{value: expectedCharge}(registration);
 
         // Cross-payer charge is the greater of owner-side price and reach-floor friction,
-        // never their sum. The whole charge routes to the insurance fund; the refundable
+        // never their sum. The whole charge routes to protocol fees; the refundable
         // deposit branch is reserved for direct registrants.
         assertEq(
             dotnsNameEscrow.protocolFees() - protocolFeesBefore,
             expectedCharge,
-            "cross-payer must credit max(ownerPrice, reachFloor) to insurance"
+            "cross-payer must credit max(ownerPrice, reachFloor) to protocol fees"
         );
     }
 
@@ -140,7 +140,7 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         dotnsRegistrarController.register{value: expectedCharge - 1}(registration);
     }
 
-    function test_register_cross_payer_routes_owner_price_to_insurance() public {
+    function test_register_cross_payer_routes_owner_price_to_protocol_fees() public {
         string memory label = NOSTATUS_LABEL_A;
         address payer = leonardo;
         address nameOwner = ed;
@@ -177,7 +177,7 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         assertEq(
             dotnsNameEscrow.protocolFees() - protocolFeesBefore,
             ownerPrice,
-            "cross-payer price must accrue to insurance"
+            "cross-payer price must accrue to protocol fees"
         );
     }
 

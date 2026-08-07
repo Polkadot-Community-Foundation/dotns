@@ -38,9 +38,9 @@ The price doubles for each character below nine and flattens to D from nine upwa
 
 ### Bands and who pays
 
-Three bands share the one curve. Names of nine characters or more are open to anyone at the flat fee D. Names of six to eight characters are the premium band: only a verified person may register there, and they pay the curve for the length, 8D, 4D or 2D. Personhood buys access to the premium band, not a discount inside it. Names of five characters or fewer are reserved to governance; no user registers them, and governance releases them itself at the curve floor into the treasury it already controls.
+Three bands share the one curve. Names of nine characters or more are open to anyone at the flat fee D. Names of six to eight characters are the premium band: only a verified person may register there, and they pay the curve for the length, 8D, 4D or 2D. Personhood buys access to the premium band, not a discount inside it. Names of five characters or fewer are reserved to governance; no user registers them, and governance releases them itself at the price their length sets, into the treasury it already controls.
 
-Every caller pays the same curve for a given length. The two zero-cost paths are both bounded. Each verified person gets one free name through the personhood gateway, which is the unpriced lane: the gateway issues that single grant and charges nothing for it. Governance releasing a reserved name pays itself the floor, which settles in a circle into its own treasury and nets nothing.
+Every caller pays the same curve for a given length. The two zero-cost paths are both bounded. Each verified person gets one free name through the personhood gateway, which is the unpriced lane: the gateway issues that single grant and charges nothing for it. Governance releasing a reserved name charges itself that length's price, which settles in a circle into its own treasury and nets nothing.
 
 ### Deposits and protocol fees
 

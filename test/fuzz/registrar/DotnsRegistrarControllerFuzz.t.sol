@@ -88,7 +88,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
 
     function testFuzz_register_refunds_overpayment_inline(uint256 extra, uint256 salt) public {
         address registrant = tiago;
-        string memory nameLabel = _labelPriceZero(bound(salt, 0, 64));
+        string memory nameLabel = _labelPopLitePriced(bound(salt, 0, 64));
 
         _grantPopLite(registrant);
 
@@ -402,8 +402,9 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         return string(abi.encodePacked("nostatus", _uintToAlphaFixed(salt, 2), "01"));
     }
 
-    /// @notice Generate a label that classifies as PopLite and prices to zero.
-    function _labelPriceZero(uint256 salt) internal pure returns (string memory label) {
+    /// @notice Generate an 8-char PopLite-tier label (base length 6) that prices at 8D on the
+    ///         curve, so the amount is non-zero.
+    function _labelPopLitePriced(uint256 salt) internal pure returns (string memory label) {
         return string(abi.encodePacked("free", _uintToAlphaFixed(salt, 2), "01"));
     }
 

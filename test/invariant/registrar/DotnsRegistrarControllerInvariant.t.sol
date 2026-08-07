@@ -101,9 +101,9 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
     }
 
     function invariant_value_conservation() public view {
-        // Escrow balance equals reserves + insurance + pending withdrawals.
+        // Escrow balance equals reserves + protocol fees + pending withdrawals.
         uint256 reservedAmount = dotnsNameEscrow.reserves(address(0));
-        uint256 insurance = dotnsNameEscrow.protocolFees();
+        uint256 protocolFees = dotnsNameEscrow.protocolFees();
 
         uint256 pendingTotal;
         for (uint256 i; i < 5; ++i) {
@@ -117,8 +117,8 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         uint256 escrowBalance = address(dotnsNameEscrow).balance;
         assertEq(
             escrowBalance,
-            reservedAmount + insurance + pendingTotal,
-            "Escrow balance must equal reserves + insurance + pending withdrawals"
+            reservedAmount + protocolFees + pendingTotal,
+            "Escrow balance must equal reserves + protocol fees + pending withdrawals"
         );
     }
 

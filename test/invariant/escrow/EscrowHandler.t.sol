@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.34;
 
-import {Test, Vm} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {
     DotnsRegistrarController,
     IDotnsRegistrarController
@@ -56,16 +56,11 @@ contract EscrowHandler is Test {
     /// @notice Label used to register each tokenId; required for re-registration after finalise.
     mapping(uint256 tokenId => string label) public labelByTokenId;
 
-    /// @notice Cumulative native amount credited into the insurance fund by handler-driven flows.
+    /// @notice Cumulative native amount credited into protocol fees by handler-driven flows.
     /// @dev Increments via cross-tier register (`depositProtocolFee`) and payable `transferFrom`
-    ///      (`chargeTransferFee`). Counterpart to `ghost_insurancePaidOut`.
-    uint256 public ghost_insurancePaidIn;
-
-    /// @notice Cumulative native amount drawn out of the insurance fund.
-    /// @dev Updated by parsing `InsuranceDraw` events emitted from `withdraw()`. The
-    ///      conservation invariant asserts `ghost_insurancePaidIn - ghost_insurancePaidOut
-    ///      == escrow.protocolFees()`.
-    uint256 public ghost_insurancePaidOut;
+    ///      (`chargeTransferFee`). Protocol fees only ever accrue, so a conservation invariant
+    ///      asserts this equals `escrow.protocolFees()`.
+    uint256 public ghost_protocolFeesPaidIn;
 
     /// @notice Cumulative native amount credited to recipients via `withdraw()`.
     uint256 public ghost_pendingCredits;
@@ -214,10 +209,9 @@ contract EscrowHandler is Test {
 
         // Under the A1 max-not-sum rule the controller charges
         // `max(priced.price, friction)` on the cross-payer path and routes the
-        // whole charge into the insurance fund via `depositProtocolFee`. The
+        // whole charge into protocol fees via `depositProtocolFee`. The
         // refundable deposit position is seeded at zero amount, so the only
-        // mutation invariant tracking has to mirror here is the insurance leg.
-        uint256 priorProtocolFees = escrow.protocolFees();
+        // mutation invariant tracking has to mirror here is the protocol-fee leg.
         bytes32 labelhash = keccak256(bytes(label));
         bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
         uint256 tokenId = uint256(node);
@@ -231,29 +225,22 @@ contract EscrowHandler is Test {
         uint256 charge = ownerPrice > frictionForCharge ? ownerPrice : frictionForCharge;
 
         // Skip when no value moves: a zero charge produces a free zero-amount
-        // position with no insurance or reserves delta, so adding it to the
+        // position with no protocol-fee or reserves delta, so adding it to the
         // ghost-state token set adds noise without exercising any new branch.
         if (charge == 0) return;
 
-        vm.recordLogs();
         vm.prank(payer);
         try controller.register{value: charge}(registration) {
-            Vm.Log[] memory logs = vm.getRecordedLogs();
-            uint256 newInsurance = escrow.protocolFees();
-
             _depositedTokenIds.push(tokenId);
             labelByTokenId[tokenId] = label;
             // Cross-payer registrations seed a zero-amount refundable position;
             // ghost-state mirrors that by leaving `depositAmounts` at zero.
             depositAmounts[tokenId] = 0;
 
-            if (newInsurance > priorProtocolFees) {
-                ghost_insurancePaidIn += (newInsurance - priorProtocolFees);
-            }
-
-            // Track InsuranceDraw outflows surfaced by this transaction (defensive; the
-            // register path itself does not draw insurance, but recordLogs is already on).
-            _accountInsuranceDraws(logs);
+            // The whole cross-payer charge becomes protocol fee. Accumulate the
+            // independently-computed `charge` so the conservation invariant verifies the
+            // escrow credited exactly what the caller was charged, not an echo of its own state.
+            ghost_protocolFeesPaidIn += charge;
         } catch {
             return;
         }
@@ -307,8 +294,7 @@ contract EscrowHandler is Test {
 
     /// @notice Withdraws refund for a released token after cooldown.
     /// @dev Picks from _releasedTokenIds, warps past cooldown, withdraws.
-    ///      Moves the token to _withdrawnTokenIds. Records pending credits and any
-    ///      `InsuranceDraw` event amounts via `vm.recordLogs`.
+    ///      Moves the token to _withdrawnTokenIds and records the pending credit.
     /// @param tokenSeed Seed for selecting which released token to withdraw.
     function withdrawRefund(uint256 tokenSeed) external {
         if (_releasedTokenIds.length == 0) return;
@@ -326,16 +312,13 @@ contract EscrowHandler is Test {
 
         uint256 owed = position.amount;
 
-        vm.recordLogs();
         vm.prank(recipient);
         escrow.withdraw(tokenId);
-        Vm.Log[] memory logs = vm.getRecordedLogs();
 
         // Update ghost state after the inner call so a revert leaves accounting intact.
         _withdrawnTokenIds.push(tokenId);
         _removeReleased(index);
         ghost_pendingCredits += owed;
-        _accountInsuranceDraws(logs);
     }
 
     /// @notice Pulls the caller's accumulated pending refund balance.
@@ -514,24 +497,13 @@ contract EscrowHandler is Test {
         uint256 requiredFee = registrar.quoteTransferFee(tokenId, to);
         if (requiredFee == 0) return;
 
-        uint256 priorProtocolFees = escrow.protocolFees();
-
-        vm.recordLogs();
         vm.prank(currentOwner);
         try registrar.transferFrom{value: requiredFee}(currentOwner, to, tokenId) {
-            Vm.Log[] memory logs = vm.getRecordedLogs();
-
-            // Read the on-chain insurance delta rather than predicting it. The
-            // chargeTransferFee path credits the reach floor to insurance; when
-            // the NFT is leaving its prior position recipient the position is
-            // rebound to the new holder rather than refunded, so reserves stay
-            // put and only insurance moves. Mirroring the formula in the handler
-            // would re-create the drift this guard is meant to prevent.
-            uint256 newInsurance = escrow.protocolFees();
-            if (newInsurance > priorProtocolFees) {
-                ghost_insurancePaidIn += (newInsurance - priorProtocolFees);
-            }
-            _accountInsuranceDraws(logs);
+            // The transfer fee is credited in full to protocol fees: the position rebinds
+            // to the new holder rather than refunding, so reserves stay put. Accumulate the
+            // independently-quoted `requiredFee` so the conservation invariant verifies the
+            // escrow credited exactly the quoted fee.
+            ghost_protocolFeesPaidIn += requiredFee;
 
             // Sync the amount as a safety net against future downgrade paths.
             // Under the deposit-follows-name design the leaving-recipient branch
@@ -665,25 +637,6 @@ contract EscrowHandler is Test {
             if (candidate != exclude) return candidate;
         }
         return address(0);
-    }
-
-    /// @notice Scans recorded logs for `InsuranceDraw` events and accumulates the amount
-    ///         drawn into `ghost_insurancePaidOut`.
-    /// @dev Single canonical accounting helper used by every handler call that may trigger a draw
-    ///      (currently `withdraw()`). Other inner calls forward an empty log array, which
-    ///      is a no-op.
-    /// @param logs Recorded logs from the most recent inner call.
-    function _accountInsuranceDraws(Vm.Log[] memory logs) internal {
-        // keccak256("InsuranceDraw(uint256,uint256)")
-        bytes32 sig = keccak256("InsuranceDraw(uint256,uint256)");
-        uint256 length = logs.length;
-        for (uint256 i; i < length; ++i) {
-            Vm.Log memory entry = logs[i];
-            if (entry.emitter != address(escrow)) continue;
-            if (entry.topics.length == 0 || entry.topics[0] != sig) continue;
-            uint256 amount = abi.decode(entry.data, (uint256));
-            ghost_insurancePaidOut += amount;
-        }
     }
 
     /// @notice Allows the handler to receive ETH refunds.
