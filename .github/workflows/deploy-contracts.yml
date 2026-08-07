@@ -82,7 +82,7 @@ jobs:
         id: rpc_wait
         run: |
           set +e
-          for i in {1..30}; do
+          for _ in {1..30}; do
             if curl -s -X POST -H "Content-Type: application/json" \
               --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' \
               http://127.0.0.1:8545 | grep -q "result"; then
@@ -247,12 +247,14 @@ jobs:
           else
             echo "result=Failed - Artifact not found" >> "$GITHUB_OUTPUT"
             echo "has_details=true" >> "$GITHUB_OUTPUT"
-            echo "### Missing Deployment Artifact" > deploy-error.md
-            echo "" >> deploy-error.md
-            echo "Expected file \`$MANIFEST\` was not created." >> deploy-error.md
-            echo "" >> deploy-error.md
-            echo "**Files in deployments directory:**" >> deploy-error.md
-            echo "\`\`\`" >> deploy-error.md
+            {
+              echo "### Missing Deployment Artifact"
+              echo ""
+              echo "Expected file \`$MANIFEST\` was not created."
+              echo ""
+              echo "**Files in deployments directory:**"
+              echo "\`\`\`"
+            } > deploy-error.md
             ls -la deployments/ 2>&1 || echo "Directory does not exist" >> deploy-error.md
             echo "\`\`\`" >> deploy-error.md
             exit 1

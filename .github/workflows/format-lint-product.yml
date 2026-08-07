@@ -30,14 +30,14 @@ jobs:
         continue-on-error: true
         env:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
-        run: forge fmt --check > format.log 2>&1 || echo "FORMAT_FAILED=true" >> $GITHUB_ENV
+        run: forge fmt --check > format.log 2>&1 || echo "FORMAT_FAILED=true" >> "$GITHUB_ENV"
 
       - name: Build contracts
         id: build
         continue-on-error: true
         env:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
-        run: forge build --sizes > build.log 2>&1 || echo "BUILD_FAILED=true" >> $GITHUB_ENV
+        run: forge build --sizes > build.log 2>&1 || echo "BUILD_FAILED=true" >> "$GITHUB_ENV"
 
       - name: Prepare result
         id: run
