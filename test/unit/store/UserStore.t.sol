@@ -80,10 +80,10 @@ contract UserStoreTests is BaseDotns {
         IUserStore store = _freshUserStore(ed);
         vm.startPrank(ed);
         store.setValue(KEY_A, bytes("v1"));
-        uint256 timestampV1 = block.timestamp;
 
         vm.warp(block.timestamp + 100);
         store.setValue(KEY_A, bytes("v2"));
+        uint256 supersededAt = block.timestamp;
         vm.stopPrank();
 
         assertEq(store.getValue(KEY_A), bytes("v2"));
@@ -91,7 +91,7 @@ contract UserStoreTests is BaseDotns {
 
         IUserStore.Entry memory entry = store.getHistoryAt(KEY_A, 0);
         assertEq(entry.value, bytes("v1"));
-        assertEq(entry.timestamp, timestampV1 + 100);
+        assertEq(entry.timestamp, supersededAt);
     }
 
     function test_setValue_does_not_duplicate_key_list_entries() public {
