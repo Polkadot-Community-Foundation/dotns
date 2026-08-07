@@ -158,7 +158,7 @@ interface IDotnsRegistrarController is IDotnsController {
     /// charge on the cross-payer path is the greater of the owner-side registration price and
     /// the owner-tier `transferFloor` friction (never their sum); friction is computed against
     /// the owner's tier so a verified payer cannot pay around an unverified owner. The entire
-    /// charge routes to the escrow insurance fund while seeding a zero-amount deposit slot so
+    /// charge routes to the escrow protocol fee pot while seeding a zero-amount deposit slot so
     /// the release lifecycle stays reachable. The caller must supply at least the charge
     /// (otherwise @custom:reverts InsufficientValue); any overpayment is pushed back to
     /// `msg.sender` inline and, on failure, credited to the escrow's pull-payment ledger so

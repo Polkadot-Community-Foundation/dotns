@@ -20,41 +20,43 @@ Current network addresses and deployment notes are listed in [DEPLOYMENTS.md](./
 
 ## Economics
 
-dotNS uses a single tunable constant, written **D** throughout the protocol. D is the starting price used by PopRules and equals ten DOT at launch; governance can adjust it under the same gate as the upgrade authority. D is the only money quantity the protocol charges; everything else is a composition of D with zero.
+Every price comes from one number. The base fee D is set in the native token and equals ten DOT at launch. A name's price depends only on its base length, the character count once a trailing number is set aside:
 
-D plays two distinct roles. As a **deposit** it is the refundable lock a NoStatus user posts to register a NoStatus-tier label; the deposit is bound to the name, not to the depositor, so it travels with the NFT on every transfer and only unlocks when the current holder releases the name back to escrow. Transferring a funded name forfeits the deposit to the new holder, who inherits the locked D and the right to release later. As a **friction** charge it is the non-refundable amount a sender pays on a cross-tier downward or reach-floor transfer. The two flows are economically distinct: the deposit gates a count of names (one D per NoStatus name in existence), the friction gates the rate of tier laundering.
+price(n) = D · 2^(9 − n) for a base length n below nine, and D for n of nine or more.
 
-### Registration matrix
+The price doubles for each character below nine and flattens to D from nine upward. Short names are scarce, so they cost more, and the curve follows how the count of available names falls as they shorten. A trailing number never changes the price, because it comes off before the length is measured, so `andrew` and `andrew01` both cost 8D. A name carries no digits or exactly two; any other trailing-digit count is rejected.
 
-The public controller computes the registration charge as the greater of the owner-side price and the payer-to-owner downward friction; it does not add the two together. The single charge becomes a refundable deposit on a direct NoStatus registration and becomes non-refundable reserve funding on a cross-payer registration.
+| Base length | Price |
+|---|---|
+| 9 or more | D |
+| 8 | 2D |
+| 7 | 4D |
+| 6 | 8D |
+| 5 | 16D |
+| 4 | 32D |
+| 3 | 64D |
 
-| Owner tier      | Reserved (stem ≤5) | PopFull-tier (stem 6-8, no digits) | PopLite-tier (stem 6-8, two digits) | NoStatus-tier (stem ≥9) |
-|---|---|---|---|---|
-| **NoStatus user**     | rejected | rejected | rejected | direct: pays D into deposit |
-| **PopLite user**      | rejected | rejected | gateway-only; free | free |
-| **PopFull user**      | rejected | free | gateway-only; free | free |
-| **Whitelisted address** | free | free | free | free |
+### Bands and who pays
 
-Cross-payer registrations pay the greater of the owner-side price and the transfer-floor amount into the reserve. Reserved labels remain forbidden on the cross-payer path because the owner-side gate still rejects them. Whitelist registrations go through the same commit-reveal pipeline as the public path.
+Three bands share the one curve. Names of nine characters or more are open to anyone at the flat fee D. Names of six to eight characters are the premium band: only a verified person may register there, and they pay the curve for the length, 8D, 4D or 2D. Personhood buys access to the premium band, not a discount inside it. Names of five characters or fewer are reserved to governance; no user registers them, and governance releases them itself at the curve floor into the treasury it already controls.
 
-### Transfer matrix
+Every caller pays the same curve for a given length. The two zero-cost paths are both bounded. Each verified person gets one free name through the personhood gateway, which is the unpriced lane: the gateway issues that single grant and charges nothing for it. Governance releasing a reserved name pays itself the floor, which settles in a circle into its own treasury and nets nothing.
 
-The registrar consults PopRules for the transfer floor. A transfer pays D whenever the recipient's tier is strictly below the sender's, or whenever the recipient cannot reach the label's required tier. A stale PopFull-tier name landing with a PopLite holder, for example, can still owe friction even when the holder-to-holder move otherwise looks same-tier. Same-tier and upward transfers between holders of the label's own class are free of friction.
+### Deposits and protocol fees
 
-The deposit, when present, is bound to the name and rides with it on every transfer. The escrow position is rebound to the new holder rather than refunded; only releasing the name back to escrow ever unlocks the locked D. Transferring a funded name is therefore a real forfeiture: the sender hands the locked deposit over to the recipient along with the NFT.
+Registering a name under your own key locks a refundable deposit equal to the name's price. The deposit is bound to the name rather than the depositor, so it travels with the token on every transfer and unlocks only when the current holder releases the name back to escrow. Holding many names ties up capital on the same curve, and the cost rises with scarcity because the price does.
 
-| Sender → Recipient                | Friction (to insurance) | Deposit movement |
-|---|---|---|
-| NoStatus → NoStatus (same tier)   | 0                      | Travels with the name; position rebinds to recipient |
-| NoStatus → PopLite or PopFull     | 0                      | Travels with the name; position rebinds to recipient |
-| PopLite → NoStatus                | D                      | Any inherited deposit travels with the name |
-| PopLite → PopLite (same)          | 0                      | Any inherited deposit stays bound to the name |
-| PopLite → PopFull (upward)        | 0                      | Any inherited deposit stays bound to the name |
-| PopFull → NoStatus                | D                      | Any inherited deposit travels with the name |
-| PopFull → PopLite (downward)      | D                      | Any inherited deposit stays bound to the name |
-| PopFull → PopFull (same)          | 0                      | Any inherited deposit stays bound to the name |
+A fee is non-refundable. Two things pay a fee instead of a deposit: a name someone else pays for, and a transfer. Fees flow into one protocol fee pot that only accumulates. Governance can route the pot to one of a fixed pair, a burn or the on-chain treasury, and to nowhere else. A holder's own deposit is their money held in trust and is never swept into fees.
 
-The friction is constant and additive across downward hops. Every step that crosses a tier boundary downward charges D independently, so routing a name through intermediary tiers never costs less than the equivalent direct transfer. Laundering pays at least as much as the route it tries to avoid. Because the deposit follows the NFT, a NoStatus user cannot recover their D by handing the name to a fresh address and registering again; the only path back to D is releasing the current name into escrow. This binds Sybil cost to one D per live NoStatus name in existence, independent of how often names change hands.
+### Transfers re-price at the name's own length
+
+Moving a name re-prices it from scratch at its own length on every move. Passing a six-character name to a wallet that could never have registered it costs 8D, the name's own price, not the flat D floor. `andrew` and `andrew01` re-derive to the same 8D. The exit price equals what the name was worth to acquire, so there is no cheap way to hand a scarce name to a party who could not have earned it. A move between parties who both clear the name's band costs nothing, and the fee, when one is owed, settles into protocol fees.
+
+The deposit, when present, is bound to the name and rides with it on every transfer. The escrow position is rebound to the new holder rather than refunded; only releasing the name back to escrow ever unlocks the locked deposit. Transferring a funded name hands the locked deposit to the recipient along with the token.
+
+### What governance controls
+
+Everything hangs off D. Governance can move D, but only inside a fixed band and by at most a set multiple per vote, so it can neither drop the price to zero, which would free every short name, nor raise it to an extractive level, and any change is legible several votes ahead. Governance sets how long the interval on the free grant runs, and chooses where fees go, a burn or the treasury, from that fixed pair. Nothing in that surface lets governance seize, reassign or destroy a name anyone already holds.
 
 ### Refund and cooldown model
 

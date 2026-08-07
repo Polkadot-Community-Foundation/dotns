@@ -41,6 +41,14 @@ contract PopRulesFuzzTest is BaseDotns {
         popRules.priceWithCheck(nameLabel, ed);
     }
 
+    function testFuzz_price_matches_curve(uint256 seed, uint256 length) public view {
+        length = bound(length, 3, 20);
+        string memory nameLabel = _makeAlpha(seed, length);
+
+        uint256 expected = length >= 9 ? RENT_PRICE : RENT_PRICE * (2 ** (9 - length));
+        assertEq(popRules.price(nameLabel), expected);
+    }
+
     function testFuzz_governance_names_always_revert(
         uint256 seed,
         uint256 length,

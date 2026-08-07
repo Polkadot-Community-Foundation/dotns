@@ -59,7 +59,7 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
     function invariant_solvency() public view {
         uint256 escrowBalance = address(dotnsNameEscrow).balance;
         uint256 reservedAmount = dotnsNameEscrow.reserves(address(0));
-        uint256 insurance = dotnsNameEscrow.insuranceFund();
+        uint256 insurance = dotnsNameEscrow.protocolFees();
         uint256 pending = handler.totalPendingWithdrawals();
         uint256 refundEntries = handler.totalPendingRefundEntries();
 

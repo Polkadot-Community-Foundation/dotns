@@ -181,7 +181,8 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
 
-        dotnsRegistrarController.register{value: 0}(registration);
+        uint256 registrationPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
+        dotnsRegistrarController.register{value: registrationPrice}(registration);
         vm.stopPrank();
 
         bytes32 labelHash = keccak256(bytes(nameLabel));
@@ -214,7 +215,8 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
 
-        dotnsRegistrarController.register{value: 0}(registration);
+        uint256 registrationPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
+        dotnsRegistrarController.register{value: registrationPrice}(registration);
         vm.stopPrank();
 
         (bool isReserved, address reservationOwner,) = popRules.isBaseNameReserved("lights");

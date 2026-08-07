@@ -106,8 +106,8 @@ interface IDotnsRegistrar is IERC721 {
     function labelOf(uint256 tokenId) external view returns (string memory label);
 
     /// @notice Quotes the additional native fee required to transfer a token to `to`.
-    /// @dev Returns the reach floor from @custom:function PopRules.transferFloor: the
-    /// maximum of (i) the flat reach component charged when the recipient does not meet
+    /// @dev Returns the fee from @custom:function PopRules.transferFloor: the name's own price
+    /// as the maximum of (i) the reach component charged when the recipient does not meet
     /// the label's required tier and (ii) the downgrade component charged when the
     /// recipient tier is strictly below the sender tier. Self-transfers and
     /// escrow-touching transfers (release into escrow, reclaim out of escrow) return

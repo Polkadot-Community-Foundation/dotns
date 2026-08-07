@@ -18,13 +18,15 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 import {IPersonhood} from "../external/personhood/IPersonhood.sol";
 
 /// @title PopRules
-/// @notice Implements DotNS classification, flat NoStatus pricing, and base-name reservations.
+/// @notice Implements DotNS classification, scarcity pricing on a geometric curve, and base-name
+///         reservations.
 /// @dev Tier shape: base lengths <= 5 are governance-reserved, base lengths 6-8 require PopFull
 ///      (or PopLite when carrying exactly two trailing digits, for gateway-issued lite names),
 ///      base lengths >= 9 are open to any caller as NoStatus when they carry zero or exactly two
 ///      trailing digits. A one-digit suffix and more than two trailing digits are invalid.
-///      NoStatus users pay a single flat deposit (`startingPrice`) per name; verified users pay
-///      zero on registration.
+///      Every caller pays the same curve for a given base length: price(n) = D * 2^(9 - n) below
+///      nine characters, and the base fee D at nine and above, where D is `startingPrice`.
+///      Personhood buys access to the premium band, not a discount inside it.
 /// @custom:security-contact admin@parity.io
 contract PopRules is
     Initializable,
@@ -35,7 +37,7 @@ contract PopRules is
 {
     using StringUtils for *;
 
-    /// @notice Wei price for names with 9 characters and up.
+    /// @notice Base fee D in wei. Base lengths >= 9 pay D; shorter base lengths pay D * 2^(9 - n).
     uint256 public startingPrice;
 
     /// @notice Active reservations keyed by digit-stripped base name.
@@ -65,7 +67,7 @@ contract PopRules is
     /// @dev Runs once behind the proxy; subsequent calls trigger @custom:reverts
     ///      InvalidInitialization via the `initializer` modifier. Seeds `startingPrice` through
     ///      @custom:function updateStartingPrice.
-    /// @param _startingPrice Base price in wei for NoStatus users.
+    /// @param _startingPrice Base fee D in wei anchoring the scarcity curve, paid by every caller.
     /// @param registry Protocol-level address registry used to resolve sibling contracts.
     function initialize(
         uint256 _startingPrice,
@@ -95,7 +97,7 @@ contract PopRules is
         returns (PopStatus requirement, string memory message)
     {
         _requireCanonicalLabel(name);
-        return _classifyValidatedName(name);
+        (requirement, message,) = _classifyValidatedName(name);
     }
 
     /// @inheritdoc IPopRules
@@ -160,28 +162,17 @@ contract PopRules is
         _requireCanonicalLabel(name);
         _enforceReservationRules(name, userAddress);
 
-        (PopStatus requiredStatus, string memory classification) = _classifyValidatedName(name);
+        (PopStatus requiredStatus, string memory classification, uint256 baseLength) =
+            _classifyValidatedName(name);
         PopStatus userStatus = _personhoodTier(userAddress);
 
-        metadata.price =
-            userStatus == PopStatus.NoStatus ? _priceValidatedName(bytes(name).length) : 0;
+        metadata.price = _priceValidatedName(baseLength);
         metadata.status = requiredStatus;
         metadata.userStatus = userStatus;
         metadata.message = classification;
 
         require(requiredStatus != PopStatus.Reserved, PopError(classification));
-
-        if (requiredStatus == PopStatus.PopFull) {
-            require(
-                userStatus == PopStatus.PopFull, PopError("Requires Full Personhood verification")
-            );
-        } else if (requiredStatus == PopStatus.PopLite) {
-            require(
-                userStatus == PopStatus.PopLite || userStatus == PopStatus.PopFull,
-                PopError("Requires Personhood Lite verification")
-            );
-        }
-        // requiredStatus == PopStatus.NoStatus falls through: any user tier may register.
+        require(_meetsReach(requiredStatus, userStatus), PopError(classification));
 
         return metadata;
     }
@@ -198,11 +189,11 @@ contract PopRules is
     {
         _requireCanonicalLabel(name);
 
-        (PopStatus requiredStatus, string memory classification) = _classifyValidatedName(name);
+        (PopStatus requiredStatus, string memory classification, uint256 baseLength) =
+            _classifyValidatedName(name);
         PopStatus userStatus = _personhoodTier(userAddress);
 
-        metadata.price =
-            userStatus == PopStatus.NoStatus ? _priceValidatedName(bytes(name).length) : 0;
+        metadata.price = _priceValidatedName(baseLength);
         metadata.status = requiredStatus;
         metadata.userStatus = userStatus;
         metadata.message = classification;
@@ -221,25 +212,7 @@ contract PopRules is
     /// @inheritdoc IPopRules
     function price(string calldata name) external view override returns (uint256) {
         _requireCanonicalLabel(name);
-        return _priceValidatedName(bytes(name).length);
-    }
-
-    /// @inheritdoc IPopRules
-    function reachFee(
-        string calldata name,
-        address account
-    )
-        external
-        view
-        override
-        returns (uint256 fee)
-    {
-        _requireCanonicalLabel(name);
-        (PopStatus required,) = _classifyValidatedName(name);
-        if (_meetsReach(required, _personhoodTier(account))) {
-            return 0;
-        }
-        return startingPrice;
+        return _priceValidatedName(_validatedBaseLength(name));
     }
 
     /// @inheritdoc IPopRules
@@ -255,15 +228,16 @@ contract PopRules is
     {
         _requireCanonicalLabel(name);
         if (from == to) return 0;
-        (PopStatus required,) = _classifyValidatedName(name);
+        (PopStatus required,, uint256 baseLength) = _classifyValidatedName(name);
+        uint256 ownPrice = _priceValidatedName(baseLength);
 
         PopStatus toTier = _personhoodTier(to);
-        uint256 reachComponent = _meetsReach(required, toTier) ? 0 : startingPrice;
+        uint256 reachComponent = _meetsReach(required, toTier) ? 0 : ownPrice;
 
         PopStatus fromTier = _personhoodTier(from);
         // `_personhoodTier` never returns Reserved, so users are in {NoStatus, PopLite, PopFull}
         // and enum comparison reflects tier ordering directly.
-        uint256 downgradeComponent = toTier < fromTier ? startingPrice : 0;
+        uint256 downgradeComponent = toTier < fromTier ? ownPrice : 0;
 
         return reachComponent > downgradeComponent ? reachComponent : downgradeComponent;
     }
@@ -284,8 +258,8 @@ contract PopRules is
     }
 
     /// @notice Single canonical "is `userStatus` at reach for `required`?" predicate.
-    /// @dev Both `reachFee` and `priceWithCheck` build on this so the tier-eligibility rule lives
-    /// in exactly one place and the two callers cannot disagree about who clears a given label.
+    /// @dev Both `priceWithCheck` and `transferFloor` build on this so the tier-eligibility rule
+    /// lives in exactly one place and the callers cannot disagree about who clears a given label.
     /// `_personhoodTier` never returns `Reserved`, so `userStatus` is in `{NoStatus, PopLite,
     /// PopFull}` and the enum comparison reflects tier ordering directly. A `Reserved` `required`
     /// (governance label) is unreachable by any verified user, so the comparison returns false and
@@ -295,11 +269,25 @@ contract PopRules is
         return userStatus >= required;
     }
 
-    function _priceValidatedName(uint256 namelength) internal view returns (uint256 priceValue) {
-        if (namelength < 9) {
-            return 0;
-        }
-        return startingPrice;
+    /// @notice Scarcity price for a base length: `D * 2 ** (9 - n)` below nine, else the base fee
+    /// D. @dev The multiplier is at most 512 and arithmetic is checked, so an oversized base fee
+    ///      reverts rather than truncating.
+    function _priceValidatedName(uint256 baseLength) internal view returns (uint256 priceValue) {
+        if (baseLength >= 9) return startingPrice;
+        return startingPrice * (2 ** (9 - baseLength));
+    }
+
+    /// @notice Validates the digit suffix and returns the base length, the single source pricing
+    ///         and classification both derive a name's band from.
+    /// @dev A name carries no digit suffix or exactly two digits; any other count triggers
+    ///      @custom:reverts PopError, so a longer suffix cannot slip a name into a shorter band.
+    function _validatedBaseLength(string calldata name) internal pure returns (uint256 baseLength) {
+        uint256 trailingDigits = _countTrailingDigits(name);
+        require(
+            trailingDigits == 0 || trailingDigits == 2,
+            PopError("Name must have no digit suffix or exactly 2 digit suffix")
+        );
+        return bytes(name).length - trailingDigits;
     }
 
     /// @notice Enforces base-name reservation rules.
@@ -367,31 +355,24 @@ contract PopRules is
     function _classifyValidatedName(string calldata name)
         internal
         pure
-        returns (PopStatus requirement, string memory message)
+        returns (PopStatus requirement, string memory message, uint256 baseLength)
     {
-        uint256 totallength = bytes(name).length;
-        uint256 trailingDigits = _countTrailingDigits(name);
+        baseLength = _validatedBaseLength(name);
+        uint256 trailingDigits = bytes(name).length - baseLength;
 
-        require(
-            trailingDigits == 0 || trailingDigits == 2,
-            PopError("Name must have no digit suffix or exactly 2 digit suffix")
-        );
-
-        uint256 baselength = totallength - trailingDigits;
-
-        if (baselength <= 5) {
-            return (PopStatus.Reserved, "Reserved for Governance");
+        if (baseLength <= 5) {
+            return (PopStatus.Reserved, "Reserved for Governance", baseLength);
         }
 
-        if (baselength >= 6 && baselength <= 8) {
+        if (baseLength >= 6 && baseLength <= 8) {
             if (trailingDigits == 2) {
-                return (PopStatus.PopLite, "Requires Lite personhood verification");
+                return (PopStatus.PopLite, "Requires Lite personhood verification", baseLength);
             }
-            return (PopStatus.PopFull, "Requires Full personhood verification");
+            return (PopStatus.PopFull, "Requires Full personhood verification", baseLength);
         }
 
         // Baselength >= 9 is open to any caller with no suffix or the two-digit lite suffix shape.
-        return (PopStatus.NoStatus, "Available to all");
+        return (PopStatus.NoStatus, "Available to all", baseLength);
     }
 
     function _requireCanonicalLabel(string calldata name) internal pure {

@@ -103,7 +103,7 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
     function invariant_value_conservation() public view {
         // Escrow balance equals reserves + insurance + pending withdrawals.
         uint256 reservedAmount = dotnsNameEscrow.reserves(address(0));
-        uint256 insurance = dotnsNameEscrow.insuranceFund();
+        uint256 insurance = dotnsNameEscrow.protocolFees();
 
         uint256 pendingTotal;
         for (uint256 i; i < 5; ++i) {

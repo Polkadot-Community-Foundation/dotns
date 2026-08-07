@@ -38,7 +38,7 @@ contract BasicDotnsIntegrationReverts is BaseDotns {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IPopRules.PopError.selector, "Requires Full Personhood verification"
+                IPopRules.PopError.selector, "Requires Full personhood verification"
             )
         );
         dotnsRegistrarController.register(registration);

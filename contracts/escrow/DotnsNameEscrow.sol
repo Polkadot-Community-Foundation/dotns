@@ -63,11 +63,10 @@ contract DotnsNameEscrow is
     /// @notice Reverse lookup into `_releasedTokens` (one-based) for O(1) remove-by-swap.
     mapping(uint256 tokenId => uint256 indexPlusOne) private _releasedIndexPlusOne;
 
-    /// @notice Cumulative balance of cross-tier fees held against unreleased shortfalls.
-    /// @dev Credited by cross-tier registration deposits, reach-floor friction, and transfer-fee
-    ///      deltas; debited only when `withdraw` needs to top up a refund that exceeds the
-    ///      asset's reserved balance.
-    uint256 public insuranceFund;
+    /// @notice Cumulative balance of non-refundable protocol fees; only accumulates.
+    /// @dev Credited by cross-paid registration fees and transfer fees. Never debited: protocol
+    ///      fees do not back refunds, which draw solely on the per-asset reserve.
+    uint256 public protocolFees;
 
     /// @notice Pull-payment ledger storing each recipient's claimable refund balance.
     /// @dev Per-recipient isolation ensures a failing or reentrant receiver cannot block other
@@ -228,7 +227,7 @@ contract DotnsNameEscrow is
     }
 
     /// @inheritdoc IDotnsNameEscrow
-    function depositInsurance(InsuranceDepositParams calldata params)
+    function depositProtocolFee(ProtocolFeeDepositParams calldata params)
         external
         payable
         override
@@ -236,7 +235,7 @@ contract DotnsNameEscrow is
     {
         require(msg.value > 0, InvalidAmount());
 
-        insuranceFund += msg.value;
+        protocolFees += msg.value;
 
         emit CrossTierFeePaid(
             params.tokenId,
@@ -277,7 +276,7 @@ contract DotnsNameEscrow is
         }
 
         if (fee > 0) {
-            insuranceFund += fee;
+            protocolFees += fee;
         }
 
         charged = fee;
@@ -359,30 +358,17 @@ contract DotnsNameEscrow is
         // `position.recipient == msg.sender` was just enforced above, so reuse the local in place
         // of an extra warm SLOAD.
         address recipient = msg.sender;
-        uint256 reserved = tokenReserved[asset];
 
-        uint256 fromRefundable;
-        uint256 fromInsurance;
-        if (reserved >= owed) {
-            fromRefundable = owed;
-            // fromInsurance is already 0 from default initialization.
-        } else {
-            fromRefundable = reserved;
-            fromInsurance = owed - reserved;
-            require(
-                insuranceFund >= fromInsurance,
-                InsufficientFunds(tokenId, owed, reserved + insuranceFund)
-            );
-        }
+        // The per-asset reserve backs every refundable deposit; protocol fees are non-refundable
+        // and never cover a refund.
+        require(
+            tokenReserved[asset] >= owed, InsufficientFunds(tokenId, owed, tokenReserved[asset])
+        );
 
         // Effects: mutate state only after all checks have passed.
         position.claimed = true;
         position.amount = 0;
-        tokenReserved[asset] -= fromRefundable;
-        if (fromInsurance > 0) {
-            insuranceFund -= fromInsurance;
-            emit InsuranceDraw(tokenId, fromInsurance);
-        }
+        tokenReserved[asset] -= owed;
 
         _pendingWithdrawals[recipient] += owed;
 

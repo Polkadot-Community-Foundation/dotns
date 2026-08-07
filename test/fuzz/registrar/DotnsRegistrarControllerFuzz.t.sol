@@ -86,12 +86,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         assertEq(dotnsRegistrar.ownerOf(tokenId), registrant);
     }
 
-    function testFuzz_register_refunds_overpayment_inline_when_price_is_zero(
-        uint256 extra,
-        uint256 salt
-    )
-        public
-    {
+    function testFuzz_register_refunds_overpayment_inline(uint256 extra, uint256 salt) public {
         address registrant = tiago;
         string memory nameLabel = _labelPriceZero(bound(salt, 0, 64));
 
@@ -101,27 +96,26 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
             _commitFor(nameLabel, registrant, false);
 
         uint256 requiredPrice = popRules.priceWithCheck(nameLabel, registrant).price;
-        assertEq(requiredPrice, 0);
+        assertGt(requiredPrice, 0);
 
         extra = bound(extra, 0, 5 ether);
 
         uint256 balanceBefore = registrant.balance;
 
         vm.startPrank(registrant);
-        dotnsRegistrarController.register{value: extra}(registration);
+        dotnsRegistrarController.register{value: requiredPrice + extra}(registration);
         vm.stopPrank();
 
-        // Zero-priced mint with overpayment: the EOA payer receives the full
-        // `extra` back inline, leaving the pull ledger untouched.
+        // Overpayment is refunded inline to the EOA payer, leaving the pull ledger untouched.
         assertEq(
             registrant.balance,
-            balanceBefore,
-            "zero-priced EOA mint must net out balances when overpaid"
+            balanceBefore - requiredPrice,
+            "payer nets out to exactly the price when overpaid"
         );
         assertEq(
             dotnsNameEscrow.pendingWithdrawal(registrant),
             0,
-            "zero-priced EOA mint must not credit the pull ledger"
+            "EOA mint must not credit the pull ledger"
         );
 
         bytes32 labelhash = keccak256(bytes(nameLabel));
@@ -148,7 +142,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
             _commitFor(nameLabel, nameOwner, true, payer);
 
         uint256 requiredPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
-        assertEq(requiredPrice, 0);
+        assertGt(requiredPrice, 0);
 
         extra = bound(extra, 0, 5 ether);
 
@@ -159,9 +153,11 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         dotnsRegistrarController.register{value: requiredPrice + extra}(registration);
         vm.stopPrank();
 
-        // EOA payers receive the refund inline. Owner's wallet stays untouched
+        // EOA payers receive the overpayment refund inline. Owner's wallet stays untouched
         // and the pull ledger is bypassed for both parties.
-        assertEq(payer.balance, payerBalanceBefore, "EOA payer must net to zero on a free mint");
+        assertEq(
+            payer.balance, payerBalanceBefore - requiredPrice, "EOA payer pays exactly the price"
+        );
         assertEq(
             dotnsNameEscrow.pendingWithdrawal(payer),
             0,
@@ -192,7 +188,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
             _commitFor(nameLabel, sender, true);
 
         vm.startPrank(sender);
-        dotnsRegistrarController.register{value: 0}(registration);
+        dotnsRegistrarController.register{value: popRules.price(nameLabel)}(registration);
         vm.stopPrank();
 
         bytes32 labelhash = keccak256(bytes(nameLabel));
@@ -225,8 +221,9 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         IDotnsRegistrarController.Registration memory primaryRegistration =
             _commitFor(primaryName, nameOwner, true);
 
+        uint256 primaryPrice = popRules.price(primaryName);
         vm.prank(nameOwner);
-        dotnsRegistrarController.register{value: 0}(primaryRegistration);
+        dotnsRegistrarController.register{value: primaryPrice}(primaryRegistration);
 
         assertEq(dotnsReverseResolver.nameOf(nameOwner), string.concat(primaryName, ".dot"));
 
@@ -237,8 +234,9 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         IDotnsRegistrarController.Registration memory giftedRegistration =
             _commitFor(giftedName, nameOwner, true, payer);
 
+        uint256 giftedPrice = popRules.price(giftedName);
         vm.prank(payer);
-        dotnsRegistrarController.register{value: 0}(giftedRegistration);
+        dotnsRegistrarController.register{value: giftedPrice}(giftedRegistration);
 
         assertEq(dotnsReverseResolver.nameOf(nameOwner), string.concat(primaryName, ".dot"));
     }
@@ -337,8 +335,9 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         IDotnsRegistrarController.Registration memory registration =
             _commitFor(nameLabel, sender, true);
 
+        uint256 registrationPrice = popRules.price(nameLabel);
         vm.prank(sender);
-        dotnsRegistrarController.register{value: 0}(registration);
+        dotnsRegistrarController.register{value: registrationPrice}(registration);
 
         bytes32 labelhash = keccak256(bytes(nameLabel));
         bytes32 node = _namehash(dotNode, labelhash);

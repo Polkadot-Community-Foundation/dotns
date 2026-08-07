@@ -69,18 +69,37 @@ contract PopRulesTests is BaseDotns {
         popRules.classifyName("andrew123");
     }
 
-    function test_flat_price_does_not_scale_with_length() public view {
-        // Three NoStatus labels across the previously-tiered length bands (9, 12, 17 chars)
-        // must all price identically under the flat deposit. The prior curve charged
-        // `startingPrice * (15 - length)` for lengths 9-14 and `startingPrice / 2` for >=15,
-        // so any two of these three would have differed.
-        uint256 minLengthPrice = popRules.price("ninechars");
-        uint256 midLengthPrice = popRules.price("longnamehere");
-        uint256 longLengthPrice = popRules.price("thisisaverylongname");
+    function test_price_follows_scarcity_curve() public view {
+        assertEq(popRules.price("cat"), 64 * RENT_PRICE);
+        assertEq(popRules.price("hello"), 16 * RENT_PRICE);
+        assertEq(popRules.price("lights"), 8 * RENT_PRICE);
+        assertEq(popRules.price("abcdefg"), 4 * RENT_PRICE);
+        assertEq(popRules.price("alicebob"), 2 * RENT_PRICE);
+    }
 
-        assertEq(minLengthPrice, midLengthPrice);
-        assertEq(midLengthPrice, longLengthPrice);
-        assertGt(minLengthPrice, 0);
+    function test_open_band_is_flat_at_base_fee() public view {
+        assertEq(popRules.price("ninechars"), RENT_PRICE);
+        assertEq(popRules.price("longnamehere"), RENT_PRICE);
+        assertEq(popRules.price("thisisaverylongname"), RENT_PRICE);
+    }
+
+    function test_trailing_digits_do_not_change_price() public view {
+        assertEq(popRules.price("andrew"), 8 * RENT_PRICE);
+        assertEq(popRules.price("andrew01"), 8 * RENT_PRICE);
+    }
+
+    function test_verified_person_pays_the_curve_for_premium() public {
+        _grantPopFull(ed);
+
+        assertEq(popRules.priceWithCheck("alicebob", ed).price, 2 * RENT_PRICE);
+        assertEq(popRules.priceWithCheck("lights", ed).price, 8 * RENT_PRICE);
+    }
+
+    function test_transfer_reprices_at_own_length() public {
+        _grantPopFull(leonardo);
+
+        assertEq(popRules.transferFloor("lights", leonardo, tiago), 8 * RENT_PRICE);
+        assertEq(popRules.transferFloor("lights", leonardo, leonardo), 0);
     }
 
     function test_price_with_check_revert_governance() public {
@@ -93,7 +112,7 @@ contract PopRulesTests is BaseDotns {
     function test_price_with_check_revert_full_needed() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                IPopRules.PopError.selector, "Requires Full Personhood verification"
+                IPopRules.PopError.selector, "Requires Full personhood verification"
             )
         );
         popRules.priceWithCheck("alicebob", ed);
@@ -106,6 +125,7 @@ contract PopRulesTests is BaseDotns {
 
         assertEq(uint256(priceMetadata.status), uint256(IPopRules.PopStatus.PopLite));
         assertEq(uint256(priceMetadata.userStatus), uint256(IPopRules.PopStatus.PopFull));
+        assertEq(priceMetadata.price, 8 * RENT_PRICE);
     }
 
     function test_poplite_user_can_access_nostatus_name() public {
@@ -115,6 +135,7 @@ contract PopRulesTests is BaseDotns {
 
         assertEq(uint256(priceMetadata.status), uint256(IPopRules.PopStatus.NoStatus));
         assertEq(uint256(priceMetadata.userStatus), uint256(IPopRules.PopStatus.PopLite));
+        assertEq(priceMetadata.price, RENT_PRICE);
     }
 
     function test_base_reservation_blocks_others() public {

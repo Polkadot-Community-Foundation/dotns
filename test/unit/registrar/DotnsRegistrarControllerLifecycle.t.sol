@@ -54,8 +54,9 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         dotnsRegistrarController.commit(commitment);
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
 
+        uint256 registrationPrice = popRules.price(label);
         vm.prank(newOwner);
-        dotnsRegistrarController.register{value: 0}(registration);
+        dotnsRegistrarController.register{value: registrationPrice}(registration);
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), newOwner);
         (bool isReserved, address reservationOwner,) = popRules.isBaseNameReserved("lights");
@@ -91,7 +92,7 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         dotnsRegistrarController.commit(commitment);
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
 
-        uint256 insuranceBefore = dotnsNameEscrow.insuranceFund();
+        uint256 protocolFeesBefore = dotnsNameEscrow.protocolFees();
 
         vm.prank(payer);
         dotnsRegistrarController.register{value: expectedCharge}(registration);
@@ -100,7 +101,7 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         // never their sum. The whole charge routes to the insurance fund; the refundable
         // deposit branch is reserved for direct registrants.
         assertEq(
-            dotnsNameEscrow.insuranceFund() - insuranceBefore,
+            dotnsNameEscrow.protocolFees() - protocolFeesBefore,
             expectedCharge,
             "cross-payer must credit max(ownerPrice, reachFloor) to insurance"
         );
@@ -163,7 +164,7 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         dotnsRegistrarController.commit(commitment);
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
 
-        uint256 insuranceBefore = dotnsNameEscrow.insuranceFund();
+        uint256 protocolFeesBefore = dotnsNameEscrow.protocolFees();
 
         vm.prank(payer);
         dotnsRegistrarController.register{value: ownerPrice}(registration);
@@ -174,13 +175,13 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
 
         assertEq(position.amount, 0, "cross-payer must not seed a refundable position");
         assertEq(
-            dotnsNameEscrow.insuranceFund() - insuranceBefore,
+            dotnsNameEscrow.protocolFees() - protocolFeesBefore,
             ownerPrice,
             "cross-payer price must accrue to insurance"
         );
     }
 
-    function test_register_creates_escrow_position_for_zero_priced_registration() public {
+    function test_register_creates_funded_position_for_self_registration() public {
         string memory label = BASE_LABEL_A;
         address nameOwner = ed;
         _grantPopFull(nameOwner);
@@ -197,14 +198,15 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         dotnsRegistrarController.commit(commitment);
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
 
+        uint256 registrationPrice = popRules.priceWithCheck(label, nameOwner).price;
         vm.prank(nameOwner);
-        dotnsRegistrarController.register{value: 0}(registration);
+        dotnsRegistrarController.register{value: registrationPrice}(registration);
 
         uint256 tokenId = _tokenIdForLabel(label);
 
         IDotnsNameEscrow.ReleasePosition memory atMint = dotnsNameEscrow.getReleasePosition(tokenId);
         assertEq(atMint.recipient, nameOwner, "position must bind the registrant at mint");
-        assertEq(atMint.amount, 0, "zero-priced mint seeds a zero-amount position");
+        assertEq(atMint.amount, registrationPrice, "self-registration seeds a funded position");
         assertFalse(atMint.released, "fresh position is not yet released");
         assertFalse(atMint.claimed, "fresh position is not yet claimed");
 
@@ -215,7 +217,7 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
 
         IDotnsNameEscrow.ReleasePosition memory atRelease =
             dotnsNameEscrow.getReleasePosition(tokenId);
-        assertTrue(atRelease.released, "zero-priced registration must still be releasable");
+        assertTrue(atRelease.released, "funded registration must still be releasable");
         assertEq(atRelease.recipient, nameOwner, "release recipient must be the registrant");
     }
 

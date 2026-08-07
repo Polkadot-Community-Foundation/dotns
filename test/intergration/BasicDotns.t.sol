@@ -108,10 +108,7 @@ contract BasicDotnsIntegration is BaseDotns {
     ///      bag.
     function _flowEndToEnd(FlowParams memory flow) internal {
         uint256 quotedPriceBefore = popRules.priceWithCheck(flow.name, flow.nameOwner).price;
-
-        if (_personhoodTierIsAtLeastLite(flow.nameOwner)) {
-            assertEq(quotedPriceBefore, 0);
-        }
+        assertEq(quotedPriceBefore, popRules.price(flow.name));
 
         _commitAndRegister(flow.name, flow.nameOwner, flow.reserved);
 
@@ -186,10 +183,7 @@ contract BasicDotnsIntegration is BaseDotns {
 
         uint256 transferRecipientQuotedPrice =
             popRules.priceWithCheck(flow.transferRecipientNewName, flow.transferTo).price;
-
-        if (_personhoodTierIsAtLeastLite(flow.transferTo)) {
-            assertEq(transferRecipientQuotedPrice, 0);
-        }
+        assertEq(transferRecipientQuotedPrice, popRules.price(flow.transferRecipientNewName));
 
         _commitAndRegister(flow.transferRecipientNewName, flow.transferTo, false);
 

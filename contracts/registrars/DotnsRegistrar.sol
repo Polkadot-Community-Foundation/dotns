@@ -358,7 +358,7 @@ contract DotnsRegistrar is
     /// @notice Quotes the friction fee required for a transfer.
     /// @dev Required fee is the reach floor returned by @custom:function PopRules.transferFloor.
     /// It is paid by the sender on every downward or cross-reach transfer and settles to the
-    /// insurance fund. Any prior deposit travels with the NFT: the escrow rebinds the position to
+    /// protocol fee pot. Any prior deposit travels with the NFT: the escrow rebinds the position to
     /// the new holder rather than refunding the sender, so transferring a funded name forfeits the
     /// locked deposit to the recipient. Self-transfers and escrow-touching transfers return zero.
     function _quoteTransferFee(

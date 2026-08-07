@@ -12,8 +12,9 @@ pragma solidity ^0.8.34;
 ///      classification. Reservations are keyed by the digit-stripped stem so `alice` and `alice42`
 ///      share a slot.
 ///
-///      Pricing is a flat per-name deposit on the NoStatus tier; verified PopLite and PopFull
-///      users pay zero.
+///      Pricing is a geometric scarcity curve on the base length: price(n) = D * 2^(9 - n) below
+///      nine characters and the base fee D at nine and above. Every caller pays the same curve for
+///      a given length; personhood buys access to the premium band, not a discount inside it.
 /// @custom:security-contact admin@parity.io
 interface IPopRules {
     /// @notice Proof-of-Personhood eligibility tier.
@@ -33,9 +34,9 @@ interface IPopRules {
     /// @param expires UNIX timestamp when the reservation expires.
     event BaseNameReserved(string indexed baseName, address indexed owner, uint64 expires);
 
-    /// @notice Emitted when the spam-deterrent NoStatus starting price is rotated.
-    /// @dev Owner-only setter @custom:function updateStartingPrice; the new value is consumed
-    ///      by `_priceValidatedName` on the next pricing read.
+    /// @notice Emitted when the base fee D is changed.
+    /// @dev Owner-only setter @custom:function updateStartingPrice; the new value is the base of
+    /// the scarcity curve consumed by `_priceValidatedName` on the next pricing read.
     /// @param oldPrice Previous wei value.
     /// @param newPrice New wei value.
     event StartingPriceUpdated(uint256 oldPrice, uint256 newPrice);
@@ -48,7 +49,7 @@ interface IPopRules {
     error NotRegistry();
 
     /// @notice Bundle returned from metadata-aware pricing queries.
-    /// @param price Registration cost; typically non-zero only for NoStatus users.
+    /// @param price Registration cost on the scarcity curve for the label's base length.
     /// @param status Required PoP tier for this name.
     /// @param userStatus Current PoP status recorded for the querying user.
     /// @param message Human-readable classification description.
@@ -83,12 +84,12 @@ interface IPopRules {
         pure
         returns (PopStatus requirement, string memory message);
 
-    /// @notice Updates the spam-deterrent starting price for NoStatus pricing.
+    /// @notice Updates the base fee D that anchors the scarcity curve.
     /// @dev Owner-only; unauthorised callers trigger @custom:reverts
     ///      OwnableUnauthorizedAccount. `newStartingPrice` must be strictly positive, otherwise
-    ///      @custom:reverts PopError. The new value flows into `_priceValidatedName` on the next
-    ///      pricing read; no redeploy. Emits @custom:emits StartingPriceUpdated with the prior
-    ///      and new values.
+    ///      @custom:reverts PopError. The new value anchors the curve in `_priceValidatedName` on
+    ///      the next pricing read; no redeploy. Emits @custom:emits StartingPriceUpdated with the
+    ///      prior and new values.
     /// @param newStartingPrice New base price in wei.
     function updateStartingPrice(uint256 newStartingPrice) external;
 
@@ -186,11 +187,12 @@ interface IPopRules {
         returns (bool reservedStatus, address owner, uint64 expires);
 
     /// @notice Calculates price with PoP classification and reservation enforcement.
-    /// @dev Reverting pricing path used by the commit-reveal controller. Price is a spam
-    ///      deterrent and is significant only for NoStatus users; verified users pay zero.
-    ///      Non-canonical labels, a base stem held live by another user, a governance-reserved
-    ///      label, or a `userAddress` whose personhood tier does not meet the label's required
-    ///      tier each trigger @custom:reverts PopError.
+    /// @dev Reverting pricing path used by the commit-reveal controller. Price is the scarcity
+    ///      curve for the label's base length and is charged to every caller, verified or not;
+    ///      personhood gates access to the premium band rather than discounting it. Non-canonical
+    ///      labels, a base stem held live by another user, a governance-reserved label, or a
+    ///      `userAddress` whose personhood tier does not meet the label's required tier each
+    ///      trigger @custom:reverts PopError.
     /// @param name Domain label.
     /// @param userAddress Registering user for the given label.
     /// @return metadata Price with PoP requirements and classification.
@@ -222,24 +224,16 @@ interface IPopRules {
         view
         returns (PriceWithMeta memory metadata);
 
-    /// @notice Friction fee owed when `account` reaches into a label tier above its verification
-    /// level.
-    /// @dev Non-zero only when `account` cannot meet the label's required PoP tier; the value is
-    ///      the flat NoStatus deposit. Acts as cross-payer friction at registration time. Use
-    ///      @custom:function transferFloor for transfer-time friction, which folds in the
-    ///      sender-tier-downgrade component as well. Non-canonical labels and labels with exactly
-    ///      one or more than two trailing digits trigger @custom:reverts PopError.
-    /// @param name Domain label being acted on.
-    /// @param account Account whose verification reach is being measured.
-    function reachFee(string calldata name, address account) external view returns (uint256 fee);
-
-    /// @notice Transfer-time friction floor: the greater of the recipient-reach component and
-    ///         the sender-tier-downgrade component.
-    /// @dev Returns the flat NoStatus deposit when either (i) the recipient does not meet the
-    ///      label's required tier, or (ii) the recipient's personhood tier is strictly below the
-    ///      sender's. Returns zero when neither condition holds. The two components overlap on
-    ///      pure tier mismatches, so the function takes their maximum rather than their sum to
-    ///      avoid double-charging. Consumed by @custom:function DotnsRegistrar.quoteTransferFee.
+    /// @notice Transfer-time floor: the greater of the recipient-reach component and the
+    ///         sender-tier-downgrade component, each priced at the name's own length.
+    /// @dev Re-prices the name at its own length on every move: returns the name's curve price when
+    ///      either (i) the recipient does not meet the label's required tier, or (ii) the
+    ///      recipient's personhood tier is strictly below the sender's, and zero when neither
+    /// holds. Passing a name to a wallet that could never have registered it therefore costs what
+    /// the
+    ///      name is worth, not the open-band floor. The two components overlap on pure tier
+    ///      mismatches, so the function takes their maximum rather than their sum to avoid
+    ///      double-charging. Consumed by @custom:function DotnsRegistrar.quoteTransferFee.
     ///      Non-canonical labels and labels with exactly one or more than two trailing digits
     ///      trigger @custom:reverts PopError.
     /// @param name Domain label being transferred.
@@ -263,9 +257,10 @@ interface IPopRules {
     function isBaseName(string calldata name) external pure returns (bool isBase);
 
     /// @notice Calculates registration cost for a label.
-    /// @dev Returns zero for any label shorter than 9 characters; lengths >= 9 pay the flat
-    ///      `startingPrice` deposit. Ignores the caller's personhood status and reservation
-    ///      state. Non-canonical labels trigger @custom:reverts PopError.
+    /// @dev Prices the label on the scarcity curve by base length: D * 2^(9 - n) for a base length
+    ///      below nine, and the base fee D at nine and above. Ignores the caller's personhood
+    ///      status and reservation state. A label whose trailing-digit suffix is neither zero nor
+    ///      exactly two, and any non-canonical label, trigger @custom:reverts PopError.
     /// @param name Domain label to price.
     /// @return cost Registration cost in wei.
     function price(string calldata name) external view returns (uint256 cost);

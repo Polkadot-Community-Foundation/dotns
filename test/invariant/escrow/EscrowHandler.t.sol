@@ -57,14 +57,14 @@ contract EscrowHandler is Test {
     mapping(uint256 tokenId => string label) public labelByTokenId;
 
     /// @notice Cumulative native amount credited into the insurance fund by handler-driven flows.
-    /// @dev Increments via cross-tier register (`depositInsurance`) and payable `transferFrom`
+    /// @dev Increments via cross-tier register (`depositProtocolFee`) and payable `transferFrom`
     ///      (`chargeTransferFee`). Counterpart to `ghost_insurancePaidOut`.
     uint256 public ghost_insurancePaidIn;
 
     /// @notice Cumulative native amount drawn out of the insurance fund.
     /// @dev Updated by parsing `InsuranceDraw` events emitted from `withdraw()`. The
     ///      conservation invariant asserts `ghost_insurancePaidIn - ghost_insurancePaidOut
-    ///      == escrow.insuranceFund()`.
+    ///      == escrow.protocolFees()`.
     uint256 public ghost_insurancePaidOut;
 
     /// @notice Cumulative native amount credited to recipients via `withdraw()`.
@@ -156,7 +156,7 @@ contract EscrowHandler is Test {
     /// @dev Bounds inputs with `bound()` to keep handler runs within meaningful state.
     ///      Picks a payer and an owner from the actor set (different where possible),
     ///      randomly aligns or splits their PoP statuses, and dispatches the controller
-    ///      `register()` call from the payer. Routes to the deposit, depositInsurance,
+    ///      `register()` call from the payer. Routes to the deposit, depositProtocolFee,
     ///      or skip branch depending on the resulting tier prices. Revert-safe: if the
     ///      computed price is zero on both sides (PoPLite/PoPFull no-cost path) the call
     ///      still completes but ghost state is only updated where state actually changed.
@@ -214,10 +214,10 @@ contract EscrowHandler is Test {
 
         // Under the A1 max-not-sum rule the controller charges
         // `max(priced.price, friction)` on the cross-payer path and routes the
-        // whole charge into the insurance fund via `depositInsurance`. The
+        // whole charge into the insurance fund via `depositProtocolFee`. The
         // refundable deposit position is seeded at zero amount, so the only
         // mutation invariant tracking has to mirror here is the insurance leg.
-        uint256 priorInsurance = escrow.insuranceFund();
+        uint256 priorProtocolFees = escrow.protocolFees();
         bytes32 labelhash = keccak256(bytes(label));
         bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
         uint256 tokenId = uint256(node);
@@ -239,7 +239,7 @@ contract EscrowHandler is Test {
         vm.prank(payer);
         try controller.register{value: charge}(registration) {
             Vm.Log[] memory logs = vm.getRecordedLogs();
-            uint256 newInsurance = escrow.insuranceFund();
+            uint256 newInsurance = escrow.protocolFees();
 
             _depositedTokenIds.push(tokenId);
             labelByTokenId[tokenId] = label;
@@ -247,8 +247,8 @@ contract EscrowHandler is Test {
             // ghost-state mirrors that by leaving `depositAmounts` at zero.
             depositAmounts[tokenId] = 0;
 
-            if (newInsurance > priorInsurance) {
-                ghost_insurancePaidIn += (newInsurance - priorInsurance);
+            if (newInsurance > priorProtocolFees) {
+                ghost_insurancePaidIn += (newInsurance - priorProtocolFees);
             }
 
             // Track InsuranceDraw outflows surfaced by this transaction (defensive; the
@@ -514,7 +514,7 @@ contract EscrowHandler is Test {
         uint256 requiredFee = registrar.quoteTransferFee(tokenId, to);
         if (requiredFee == 0) return;
 
-        uint256 priorInsurance = escrow.insuranceFund();
+        uint256 priorProtocolFees = escrow.protocolFees();
 
         vm.recordLogs();
         vm.prank(currentOwner);
@@ -527,9 +527,9 @@ contract EscrowHandler is Test {
             // rebound to the new holder rather than refunded, so reserves stay
             // put and only insurance moves. Mirroring the formula in the handler
             // would re-create the drift this guard is meant to prevent.
-            uint256 newInsurance = escrow.insuranceFund();
-            if (newInsurance > priorInsurance) {
-                ghost_insurancePaidIn += (newInsurance - priorInsurance);
+            uint256 newInsurance = escrow.protocolFees();
+            if (newInsurance > priorProtocolFees) {
+                ghost_insurancePaidIn += (newInsurance - priorProtocolFees);
             }
             _accountInsuranceDraws(logs);
 
@@ -579,7 +579,7 @@ contract EscrowHandler is Test {
 
     /// @notice Returns the sum of pending pull-payment balances across all actors.
     /// @dev Used by the full-solvency invariant to assert escrow native balance covers
-    ///      `reserves + insuranceFund + outstanding-pending-balances`.
+    ///      `reserves + protocolFees + outstanding-pending-balances`.
     /// @return total Aggregate pending balance owed to the actor set.
     function totalPendingWithdrawals() external view returns (uint256 total) {
         uint256 length = actors.length;

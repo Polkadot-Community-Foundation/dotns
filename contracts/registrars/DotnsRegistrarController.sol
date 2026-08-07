@@ -245,7 +245,7 @@ contract DotnsRegistrarController is
     ///      registration the full `chargeAmount` lands in the refundable deposit position
     ///      keyed to `nameOwner`. On a cross-payer registration the deposit position is
     ///      seeded with a zero amount so the release lifecycle stays reachable, and the same
-    ///      `chargeAmount` routes to the insurance fund via `depositInsurance` keyed to
+    ///      `chargeAmount` routes to the protocol fee pot via `depositProtocolFee` keyed to
     ///      `msg.sender` as the payer.
     function _settleEscrow(
         address escrow,
@@ -264,8 +264,8 @@ contract DotnsRegistrarController is
         );
 
         if (!isDirect && chargeAmount > 0) {
-            IDotnsNameEscrow(payable(escrow)).depositInsurance{value: chargeAmount}(
-                IDotnsNameEscrow.InsuranceDepositParams({
+            IDotnsNameEscrow(payable(escrow)).depositProtocolFee{value: chargeAmount}(
+                IDotnsNameEscrow.ProtocolFeeDepositParams({
                     tokenId: tokenId, payer: msg.sender, recipient: nameOwner
                 })
             );
