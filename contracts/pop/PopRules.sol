@@ -269,8 +269,8 @@ contract PopRules is
         return userStatus >= required;
     }
 
-    /// @notice Scarcity price for a base length: `D * 2 ** (9 - n)` below nine, else the base fee
-    /// D. @dev The multiplier is at most 512 and arithmetic is checked, so an oversized base fee
+    /// @notice Scarcity price for a base length: D * 2 ** (9 - n) below nine, else the base fee D.
+    /// @dev The multiplier is at most 512 and arithmetic is checked, so an oversized base fee
     ///      reverts rather than truncating.
     function _priceValidatedName(uint256 baseLength) internal view returns (uint256 priceValue) {
         if (baseLength >= 9) return startingPrice;

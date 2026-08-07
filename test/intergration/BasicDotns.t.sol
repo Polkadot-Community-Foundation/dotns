@@ -5,8 +5,6 @@ import {BaseDotns} from "../base/BaseDotns.t.sol";
 import {IDotnsRegistry} from "../../contracts/registry/IDotnsRegistry.sol";
 import {IDotnsRegistrarController} from "../../contracts/registrars/IDotnsRegistrarController.sol";
 import {ILabelStore} from "../../contracts/store/ILabelStore.sol";
-import {IPersonhood} from "../../contracts/external/personhood/IPersonhood.sol";
-import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 
 /// @title BasicDotnsIntegration
 /// @notice End-to-end happy-path integration coverage for registration,
@@ -91,16 +89,6 @@ contract BasicDotnsIntegration is BaseDotns {
         );
     }
 
-    /// @notice Returns true when the personhood precompile reports `account` at
-    ///         tier `Lite` (1) or `Full` (2) under the dotns context.
-    /// @dev Reads the precompile mock installed by @custom:contract BaseDotns so the integration
-    ///      flow gates pricing assertions on the same tier the controller sees.
-    function _personhoodTierIsAtLeastLite(address account) internal view returns (bool) {
-        IPersonhood.PersonhoodInfo memory info = IPersonhood(DotnsConstants.PERSONHOOD)
-            .personhoodStatus(account, DotnsConstants.PERSONHOOD_CONTEXT);
-        return info.status >= 1;
-    }
-
     /// @notice Drives a full end-to-end registration, records, subname, and
     ///         transfer flow under the configuration described by `flow`.
     /// @dev Aggregates the assertions that every PoP-tier-specific test case
@@ -108,6 +96,8 @@ contract BasicDotnsIntegration is BaseDotns {
     ///      bag.
     function _flowEndToEnd(FlowParams memory flow) internal {
         uint256 quotedPriceBefore = popRules.priceWithCheck(flow.name, flow.nameOwner).price;
+        // Cross-entry-point consistency: the concrete curve amounts are covered by the PopRules
+        // unit tests; this only asserts that priceWithCheck and price agree.
         assertEq(quotedPriceBefore, popRules.price(flow.name));
 
         _commitAndRegister(flow.name, flow.nameOwner, flow.reserved);
@@ -183,6 +173,8 @@ contract BasicDotnsIntegration is BaseDotns {
 
         uint256 transferRecipientQuotedPrice =
             popRules.priceWithCheck(flow.transferRecipientNewName, flow.transferTo).price;
+        // Cross-entry-point consistency: the concrete curve amounts are covered by the PopRules
+        // unit tests; this only asserts that priceWithCheck and price agree.
         assertEq(transferRecipientQuotedPrice, popRules.price(flow.transferRecipientNewName));
 
         _commitAndRegister(flow.transferRecipientNewName, flow.transferTo, false);

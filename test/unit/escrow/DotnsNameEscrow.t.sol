@@ -439,7 +439,7 @@ contract DotnsNameEscrowTest is BaseDotns {
 
     function test_transfer_charges_friction_and_rebinds_position() public {
         // Downward cross-tier transfer of a funded NoStatus name: the friction fee settles to
-        // insurance and the deposit travels with the NFT. There is no transfer-time refund:
+        // protocol fees and the deposit travels with the NFT. There is no transfer-time refund:
         // `position.recipient` rebinds to the new holder, the locked deposit follows, and only
         // the new holder can later release into escrow. Promoting `ed` to PopFull before the
         // transfer forces `PopRules.transferFloor` to return `startingPrice` while the position
@@ -474,7 +474,7 @@ contract DotnsNameEscrowTest is BaseDotns {
         assertEq(
             dotnsNameEscrow.protocolFees() - protocolFeesBefore,
             startingPrice,
-            "friction fee settles to insurance independently of the deposit"
+            "friction fee settles to protocol fees independently of the deposit"
         );
         assertEq(
             dotnsNameEscrow.pendingRefundCount(ed),
@@ -526,7 +526,7 @@ contract DotnsNameEscrowTest is BaseDotns {
         assertEq(
             dotnsNameEscrow.protocolFees() - protocolFeesBefore,
             fee,
-            "fee leg still settles to insurance"
+            "fee leg still settles to protocol fees"
         );
         assertEq(
             dotnsNameEscrow.pendingRefundCount(ed),
@@ -616,7 +616,7 @@ contract DotnsNameEscrowTest is BaseDotns {
         uint256 tokenId = _registerNoStatus(LABEL, ed);
 
         uint256 reservesAtStart = dotnsNameEscrow.reserves(address(0));
-        uint256 insuranceAtStart = dotnsNameEscrow.protocolFees();
+        uint256 protocolFeesAtStart = dotnsNameEscrow.protocolFees();
         uint256 edRefundsAtStart = dotnsNameEscrow.pendingRefundCount(ed);
         uint256 leonardoRefundsAtStart = dotnsNameEscrow.pendingRefundCount(leonardo);
         uint256 tiagoRefundsAtStart = dotnsNameEscrow.pendingRefundCount(tiago);
@@ -650,8 +650,8 @@ contract DotnsNameEscrowTest is BaseDotns {
         );
         assertEq(
             dotnsNameEscrow.protocolFees(),
-            insuranceAtStart,
-            "same-tier hops must not credit insurance"
+            protocolFeesAtStart,
+            "same-tier hops must not credit protocol fees"
         );
         assertEq(
             dotnsNameEscrow.pendingRefundCount(ed),
@@ -713,7 +713,7 @@ contract DotnsNameEscrowTest is BaseDotns {
     /// @dev `priced.price` equals D because the owner is NoStatus, and `transferFloor` returns
     ///      D because the payer's PopFull tier downgrades into the owner's NoStatus tier. The
     ///      controller charges `max(priced.price, friction) = D` and routes the entire charge
-    ///      into the insurance fund; the owner-side refundable position is seeded with zero
+    ///      into protocol fees; the owner-side refundable position is seeded with zero
     ///      amount, so reserves must not move.
     function test_cross_payer_verified_sponsors_nostatus_pays_only_D() public {
         string memory label = "crosspayerlabel01";
@@ -727,17 +727,17 @@ contract DotnsNameEscrowTest is BaseDotns {
 
         uint256 tokenId = _crossPayerRegister(label, leonardo, ed, RENT_PRICE);
 
-        // Insurance must grow by exactly D and reserves must stay flat: the entire charge
+        // Protocol fees must grow by exactly D and reserves must stay flat: the entire charge
         // routes to the friction reserve on the cross-payer path under the max rule.
         assertEq(
             dotnsNameEscrow.protocolFees() - priorProtocolFees,
             RENT_PRICE,
-            "insurance must grow by exactly D on cross-payer NoStatus sponsorship"
+            "protocol fees must grow by exactly D on cross-payer NoStatus sponsorship"
         );
         assertEq(
             dotnsNameEscrow.reserves(address(0)),
             priorReserves,
-            "reserves must not move when the cross-payer charge routes entirely to insurance"
+            "reserves must not move when the cross-payer charge routes entirely to protocol fees"
         );
         assertEq(
             priorBalance - leonardo.balance,
