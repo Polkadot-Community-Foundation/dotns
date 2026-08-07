@@ -120,7 +120,7 @@ jobs:
 
           python3 scripts/reports/test-report.py test.log
 
-          if [ $TEST -ne 0 ]; then
+          if [ "$TEST" -ne 0 ]; then
             exit 1
           fi
 
