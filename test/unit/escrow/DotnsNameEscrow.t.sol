@@ -510,7 +510,7 @@ contract DotnsNameEscrowTest is BaseDotns {
         vm.prank(address(dotnsRegistrar));
         dotnsNameEscrow.chargeTransferFee{value: fee}(
             IDotnsNameEscrow.ChargeTransferFeeParams({
-                tokenId: tokenId, reachFloor: fee, payer: leonardo, to: ed
+                tokenId: tokenId, transferFee: fee, payer: leonardo, to: ed
             })
         );
 

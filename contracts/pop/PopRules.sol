@@ -85,6 +85,10 @@ contract PopRules is
     /// @inheritdoc IPopRules
     function updateStartingPrice(uint256 newStartingPrice) public override onlyOwner {
         require(newStartingPrice > 0, PopError("Price must be greater than 0"));
+        require(
+            newStartingPrice <= type(uint256).max / 512,
+            PopError("Price exceeds the scarcity-curve ceiling")
+        );
         emit StartingPriceUpdated(startingPrice, newStartingPrice);
         startingPrice = newStartingPrice;
     }
@@ -270,8 +274,8 @@ contract PopRules is
     }
 
     /// @notice Scarcity price for a base length: D * 2 ** (9 - n) below nine, else the base fee D.
-    /// @dev The multiplier is at most 512 and arithmetic is checked, so an oversized base fee
-    ///      reverts rather than truncating.
+    /// @dev The multiplier is at most 512; @custom:function updateStartingPrice caps the base fee
+    ///      at `type(uint256).max / 512` so the checked multiplication never overflows.
     function _priceValidatedName(uint256 baseLength) internal view returns (uint256 priceValue) {
         if (baseLength >= 9) return startingPrice;
         return startingPrice * (2 ** (9 - baseLength));
@@ -332,14 +336,7 @@ contract PopRules is
     /// @param name Domain label.
     function _stripDigits(string calldata name) internal pure returns (string memory baseName) {
         bytes calldata bytesName = bytes(name);
-        uint256 endPosition = bytesName.length;
-
-        while (
-            endPosition > 0 && bytesName[endPosition - 1] >= 0x30
-                && bytesName[endPosition - 1] <= 0x39
-        ) {
-            endPosition--;
-        }
+        uint256 endPosition = bytesName.length - _countTrailingDigits(name);
 
         // No trailing digits to strip: return the input verbatim and skip the manual copy.
         if (endPosition == bytesName.length) return name;

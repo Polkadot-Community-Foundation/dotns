@@ -438,7 +438,7 @@ contract EscrowHandler is Test {
 
         // Zero-value transfer path: skip whenever the registrar's quote returns a
         // non-zero fee. The quote folds in both the price-delta path and the
-        // reach-floor path, so the handler stays in sync with whatever fee
+        // transfer-fee path, so the handler stays in sync with whatever fee
         // branches the contract grows over time.
         string memory label = labelByTokenId[tokenId];
         // Read once for documentation continuity; the actual gating check uses the quote.
@@ -489,7 +489,7 @@ contract EscrowHandler is Test {
         if (to == address(0)) return;
 
         // Use the registrar's own quote so the value attached matches whatever the
-        // contract actually requires. This includes the reach-floor branch: when
+        // contract actually requires. This includes the transfer-fee branch: when
         // the recipient's verification level is below the label's required tier,
         // the registrar charges the flat NoStatus deposit even though the
         // price-delta path returns zero. Using `quoteTransferFee` makes the handler
@@ -563,7 +563,7 @@ contract EscrowHandler is Test {
     /// @notice Returns the sum of outstanding time-locked refund entries across all actors.
     /// @dev Used by the full-solvency invariant to capture overpayment refunds that
     ///      @custom:function chargeTransferFee credits via @custom:function _creditRefund when the
-    ///      attached value exceeds the reach floor. Under the deposit-follows-name model the
+    ///      attached value exceeds the transfer fee. Under the deposit-follows-name model the
     ///      deposit itself never lands on this ledger; only payer overpayments do. Iterates each
     ///      actor's entry list and sums each entry's amount.
     /// @return total Aggregate refund-ledger liability owed to the actor set.

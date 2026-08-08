@@ -195,9 +195,7 @@ contract DotnsRegistrarController is
             );
         }
 
-        uint256 friction =
-            !isDirect ? rules.transferFloor(registration.label, msg.sender, registration.owner) : 0;
-        uint256 totalCharged = priced.price > friction ? priced.price : friction;
+        uint256 totalCharged = priced.price;
         require(msg.value >= totalCharged, InsufficientValue());
 
         IDotnsReverseResolver reverse;

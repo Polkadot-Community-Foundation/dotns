@@ -229,16 +229,16 @@ interface IPopRules {
     /// @dev Re-prices the name at its own length on every move: returns the name's curve price when
     ///      either (i) the recipient does not meet the label's required tier, or (ii) the
     ///      recipient's personhood tier is strictly below the sender's, and zero when neither
-    /// holds. Passing a name to a wallet that could never have registered it therefore costs what
-    /// the
-    ///      name is worth, not the open-band floor. The two components overlap on pure tier
-    ///      mismatches, so the function takes their maximum rather than their sum to avoid
+    ///      holds. Passing a name to a wallet that could never have registered it therefore costs
+    ///      what the name is worth, not the open-band floor. The two components overlap on pure
+    ///      tier mismatches, so the function takes their maximum rather than their sum to avoid
     ///      double-charging. Consumed by @custom:function DotnsRegistrar.quoteTransferFee.
     ///      Non-canonical labels and labels with exactly one or more than two trailing digits
     ///      trigger @custom:reverts PopError.
     /// @param name Domain label being transferred.
     /// @param from Current holder of the name.
     /// @param to Incoming holder of the name.
+    /// @return floor Transfer-time floor in wei: the name's own curve price, or zero.
     function transferFloor(
         string calldata name,
         address from,

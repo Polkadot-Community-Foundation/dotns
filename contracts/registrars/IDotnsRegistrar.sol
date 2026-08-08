@@ -21,7 +21,7 @@ interface IDotnsRegistrar is IERC721 {
     error EscrowNotConfigured();
 
     /// @notice Thrown when a standard ERC721 transfer is attempted but the recipient
-    /// tier requires a non-zero reach floor and the caller forwarded no `msg.value`.
+    /// tier requires a non-zero transfer fee and the caller forwarded no `msg.value`.
     error TransferFeeRequired(uint256 tokenId, address to, uint256 requiredFee);
 
     /// @notice Thrown when @custom:function initialize is called with the zero address as
@@ -138,7 +138,7 @@ interface IDotnsRegistrar is IERC721 {
 
     /// @inheritdoc IERC721
     /// @dev The registrar's `_update` hook consults @custom:function PopRules.transferFloor
-    /// to compute the required reach floor; if the caller does not forward at least that
+    /// to compute the required transfer fee; if the caller does not forward at least that
     /// amount as `msg.value`, the transfer reverts with @custom:reverts TransferFeeRequired.
     /// The `payable` modifier on every transfer overload exists so the fee can be forwarded
     /// in the same call.
@@ -154,13 +154,13 @@ interface IDotnsRegistrar is IERC721 {
 
     /// @inheritdoc IERC721
     /// @dev Subject to the same fee-on-transfer gate as the four-argument overload; reverts with
-    /// @custom:reverts TransferFeeRequired when the recipient owes a non-zero reach floor and
+    /// @custom:reverts TransferFeeRequired when the recipient owes a non-zero transfer fee and
     /// the caller has not forwarded it as `msg.value`.
     function safeTransferFrom(address from, address to, uint256 tokenId) external payable override;
 
     /// @inheritdoc IERC721
     /// @dev Subject to the same fee-on-transfer gate as the safe overloads; reverts with
-    /// @custom:reverts TransferFeeRequired when the recipient owes a non-zero reach floor and
+    /// @custom:reverts TransferFeeRequired when the recipient owes a non-zero transfer fee and
     /// the caller has not forwarded it as `msg.value`.
     function transferFrom(address from, address to, uint256 tokenId) external payable override;
 }

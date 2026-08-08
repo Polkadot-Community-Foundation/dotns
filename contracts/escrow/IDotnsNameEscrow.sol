@@ -36,12 +36,13 @@ interface IDotnsNameEscrow {
     ///      travels with the NFT: the position is rebound to the recipient so the new holder is
     ///      the only address that can later release into escrow and unlock the locked value.
     ///      There is no transfer-time refund path.
-    /// @param reachFloor Required fee paid by the sender on a downward or cross-reach transfer.
+    /// @param tokenId Token whose escrow position is charged and rebound to the recipient.
+    /// @param transferFee The name's own curve price on a downward or cross-reach transfer.
     /// @param payer Original sender of the registrar transfer entrypoint.
     /// @param to NFT recipient. Becomes the new position recipient whenever a position exists.
     struct ChargeTransferFeeParams {
         uint256 tokenId;
-        uint256 reachFloor;
+        uint256 transferFee;
         address payer;
         address to;
     }

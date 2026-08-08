@@ -97,13 +97,12 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         vm.prank(payer);
         dotnsRegistrarController.register{value: expectedCharge}(registration);
 
-        // Cross-payer charge is the greater of owner-side price and reach-floor friction,
-        // never their sum. The whole charge routes to protocol fees; the refundable
-        // deposit branch is reserved for direct registrants.
+        // Cross-payer charge is the name's own curve price. The whole charge routes to protocol
+        // fees; the refundable deposit branch is reserved for direct registrants.
         assertEq(
             dotnsNameEscrow.protocolFees() - protocolFeesBefore,
             expectedCharge,
-            "cross-payer must credit max(ownerPrice, reachFloor) to protocol fees"
+            "cross-payer must credit the name's own curve price to protocol fees"
         );
     }
 

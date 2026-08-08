@@ -264,7 +264,7 @@ contract DotnsNameEscrow is
 
         address priorRecipient = position.recipient;
 
-        uint256 fee = params.reachFloor;
+        uint256 fee = params.transferFee;
         require(msg.value >= fee, InsufficientValue());
 
         // Deposits follow the NFT, not the depositor. When the position is funded the locked
@@ -275,20 +275,19 @@ contract DotnsNameEscrow is
             position.recipient = params.to;
         }
 
-        if (fee > 0) {
-            protocolFees += fee;
-        }
-
         charged = fee;
 
-        emit CrossTierFeePaid(
-            params.tokenId,
-            params.payer,
-            params.to,
-            fee,
-            /* isRegistration */
-            false
-        );
+        if (fee > 0) {
+            protocolFees += fee;
+            emit CrossTierFeePaid(
+                params.tokenId,
+                params.payer,
+                params.to,
+                fee,
+                /* isRegistration */
+                false
+            );
+        }
 
         uint256 overpayment = msg.value - fee;
         if (overpayment > 0) {
