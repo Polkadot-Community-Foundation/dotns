@@ -176,17 +176,19 @@ abstract contract BaseDotns is Test {
     /// @notice NoStatus classification label fixture B.
     string internal constant NOSTATUS_LABEL_B = "anothernostatus02";
 
-    /// @notice Label hash for "dot".
-    /// @dev Computed during setup as `keccak256(bytes("dot"))`.
+    /// @notice The bare TLD label the whole suite runs against.
+    /// @dev Single definition point for the fixture's TLD. Change this one line to run every test
+    ///      under a different network TLD; the registry is initialised with it and all node and
+    ///      full-name derivations follow from it (see `_tldNode` and `_nodeOf`).
+    string public constant TLD_LABEL = "dot";
+
+    /// @notice Label hash of @custom:constant TLD_LABEL.
+    /// @dev Computed during setup as `keccak256(bytes(TLD_LABEL))`.
     bytes32 public dotLabel;
 
-    /// @notice Node hash for the ".dot" TLD.
-    /// @dev Computed during setup as `_namehash(ZERO_HASH, dotLabel)`.
+    /// @notice Node hash of the suite's TLD.
+    /// @dev Computed during setup as `_tldNode()`.
     bytes32 public dotNode;
-
-    /// @notice Default node hash for the ".dot" TLD.
-    /// @dev Included to cross-check against computed `dotNode` where relevant.
-    bytes32 private constant DOT_NODE = DotnsConstants.DOT_NODE;
 
     /// @notice Deploys and wires every protocol contract used by the test suite.
     /// @dev Provisions UUPS proxies for each module, registers them under their
@@ -200,8 +202,8 @@ abstract contract BaseDotns is Test {
         tiago = _createUser("tiago");
         owner = _createUser("owner");
 
-        dotLabel = keccak256(bytes("dot"));
-        dotNode = _namehash(ZERO_HASH, dotLabel);
+        dotLabel = LabelUtils.labelhashMemory(TLD_LABEL);
+        dotNode = _tldNode();
 
         vm.startPrank(owner);
         // Deploy protocol registry first so every downstream proxy can bind to
@@ -209,10 +211,14 @@ abstract contract BaseDotns is Test {
         // initialisers might otherwise race with the key lookups.
         address protocolRegistryAddress = Upgrades.deployUUPSProxy(
             "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
-            abi.encodeCall(DotnsProtocolRegistry.initialize, ())
+            abi.encodeCall(DotnsProtocolRegistry.initialize, (TLD_LABEL))
         );
         protocolRegistry = DotnsProtocolRegistry(protocolRegistryAddress);
         vm.label(protocolRegistryAddress, "DotnsProtocolRegistry");
+        // Anchor the fixture to the deployed TLD authority: consumers read these live, so a
+        // fixture whose derived node or suffix disagreed would test the wrong protocol.
+        assertEq(protocolRegistry.tldNode(), dotNode);
+        assertEq(protocolRegistry.tld(), string.concat(".", TLD_LABEL));
         IDotnsProtocolRegistry registry = IDotnsProtocolRegistry(protocolRegistryAddress);
 
         storeFactory = new StoreFactory(protocolRegistryAddress, owner);
@@ -343,21 +349,29 @@ abstract contract BaseDotns is Test {
     }
 
     /// @notice Computes the ERC721 tokenId used by DotnsRegistrar for a given label.
-    /// @dev DotnsRegistrar mints tokenId = uint256(node), where node = namehash(DOT_NODE,
+    /// @dev DotnsRegistrar mints tokenId = uint256(node), where node = namehash(tldNode,
     ///      labelhash). This helper prevents tests from accidentally using uint256(node) as
     ///      the tokenId.
-    /// @param label The label to compute for (without the `.dot` suffix).
+    /// @param label The label to compute for (without the TLD suffix).
     /// @return tokenId The ERC721 tokenId (uint256(node)).
     function _tokenIdForLabel(string memory label) internal pure returns (uint256 tokenId) {
         tokenId = uint256(_nodeOf(label));
     }
 
-    /// @notice Computes `namehash(DOT_NODE, keccak256(label))` for a flat label.
-    /// @dev Shared across test suites that need the node identifier for a .dot label.
-    /// @param label Label (without the `.dot` suffix).
-    /// @return node The node identifier under the `.dot` TLD.
+    /// @notice Node hash of the suite's TLD, derived from @custom:constant TLD_LABEL.
+    /// @dev `namehash(0, keccak256(TLD_LABEL))`. Derived rather than a literal so the single
+    ///      definition point drives every node; stays pure because keccak runs in a pure body.
+    /// @return node The TLD node the registry is initialised with.
+    function _tldNode() internal pure returns (bytes32 node) {
+        node = LabelUtils.namehashUnder(ZERO_HASH, LabelUtils.labelhashMemory(TLD_LABEL));
+    }
+
+    /// @notice Computes `namehash(tldNode, keccak256(label))` for a flat label.
+    /// @dev Shared across test suites that need the node identifier for a top-level label.
+    /// @param label Label (without the TLD suffix).
+    /// @return node The node identifier under the suite's TLD.
     function _nodeOf(string memory label) internal pure returns (bytes32 node) {
-        node = LabelUtils.namehashUnder(DOT_NODE, LabelUtils.labelhashMemory(label));
+        node = LabelUtils.namehashUnder(_tldNode(), LabelUtils.labelhashMemory(label));
     }
 
     /// @notice Returns a valid 65-byte chat key seeded with `seed`.

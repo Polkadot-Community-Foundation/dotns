@@ -61,7 +61,7 @@ contract DeterministicDeploymentTest is Test {
     }
 
     function test_predictionsMatchCreate3Deployments() public {
-        bytes memory initData = abi.encodeCall(DotnsProtocolRegistry.initialize, ());
+        bytes memory initData = abi.encodeCall(DotnsProtocolRegistry.initialize, ("dot"));
         address predicted = deployer.predictCreate3("DotnsProtocolRegistry", "proxy");
 
         address deployed = deployer.deployUups(
@@ -81,7 +81,7 @@ contract DeterministicDeploymentTest is Test {
         address protocolRegistry = deployer.deployUups(
             owner,
             "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
-            abi.encodeCall(DotnsProtocolRegistry.initialize, ()),
+            abi.encodeCall(DotnsProtocolRegistry.initialize, ("dot")),
             "DotnsProtocolRegistry"
         );
         deployer.registerCreate3Factory(owner, protocolRegistry, address(factory));
@@ -205,7 +205,7 @@ contract DeterministicDeploymentTest is Test {
     }
 
     function test_reDeployAdoptsProxyWithoutReinitialising() public {
-        bytes memory initData = abi.encodeCall(DotnsProtocolRegistry.initialize, ());
+        bytes memory initData = abi.encodeCall(DotnsProtocolRegistry.initialize, ("dot"));
         address first = deployer.deployUups(
             owner,
             "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
@@ -228,7 +228,7 @@ contract DeterministicDeploymentTest is Test {
         return deployer.deployUups(
             deployerAccount,
             "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
-            abi.encodeCall(DotnsProtocolRegistry.initialize, ()),
+            abi.encodeCall(DotnsProtocolRegistry.initialize, ("dot")),
             "DotnsProtocolRegistry"
         );
     }
@@ -264,7 +264,7 @@ contract DeterministicDeploymentTest is Test {
         addr.protocolRegistry = deployer.deployUups(
             owner,
             "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
-            abi.encodeCall(DotnsProtocolRegistry.initialize, ()),
+            abi.encodeCall(DotnsProtocolRegistry.initialize, ("dot")),
             "DotnsProtocolRegistry"
         );
 

@@ -62,6 +62,16 @@ abstract contract BaseDeployer is Script {
         subdirectory = vm.envOr("DEPLOYMENT_NETWORK", DeploymentNetwork.folder(block.chainid));
     }
 
+    /// @notice Resolves the bare TLD label to initialise the protocol registry with.
+    /// @dev Read from `DOTNS_TLD` because distinct networks can share one `block.chainid`, so the
+    ///      TLD cannot be keyed off the chain id. The operator sets `DOTNS_TLD=paseo` (or `test`,
+    ///      `dot`) per deployment; it defaults to `dot`. The label is passed straight into
+    ///      `DotnsProtocolRegistry.initialize`, which validates it as a single DNS label.
+    /// @return label Bare TLD label without the leading dot.
+    function tldLabel() internal view returns (string memory label) {
+        label = vm.envOr("DOTNS_TLD", string("dot"));
+    }
+
     /// @notice Loads the existing deployment manifest for `(subdirectory, filename)`
     ///         if one exists; otherwise begins a fresh in-memory object. Every
     ///         stage must call this first so subsequent `_readAddress` / `logDeployment`

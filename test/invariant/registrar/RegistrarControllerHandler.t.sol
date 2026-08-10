@@ -21,8 +21,11 @@ import {IPersonhood} from "../../../contracts/external/personhood/IPersonhood.so
 /// @dev Maintains ghost state to track registrations, commitments, transfers,
 ///      and actors for invariant checks.
 contract RegistrarControllerHandler is Test {
-    /// @notice Namehash of the .dot TLD.
-    bytes32 private constant DOT_NODE = DotnsConstants.DOT_NODE;
+    /// @notice Node hash of the suite's TLD, injected from the deployed protocol registry.
+    /// @dev Keeps the handler rooted at the same TLD the protocol under test uses, without a
+    ///      second TLD definition.
+    bytes32 private immutable TLD_NODE;
+
     /// @notice The registrar controller under test.
     IDotnsRegistrarController public controller;
 
@@ -96,14 +99,17 @@ contract RegistrarControllerHandler is Test {
     /// @param _reverseResolver The reverse resolver.
     /// @param _popRules The PoP rules contract.
     /// @param _storeFactory The store factory.
+    /// @param _tldNode Node hash of the suite's TLD, from the deployed protocol registry.
     constructor(
         DotnsRegistrarController _controller,
         IDotnsRegistry _registry,
         DotnsRegistrar _registrar,
         IDotnsReverseResolver _reverseResolver,
         IPopRules _popRules,
-        IStoreFactory _storeFactory
+        IStoreFactory _storeFactory,
+        bytes32 _tldNode
     ) {
+        TLD_NODE = _tldNode;
         controller = _controller;
         registry = _registry;
         registrar = _registrar;
@@ -332,7 +338,7 @@ contract RegistrarControllerHandler is Test {
         if (recipient == address(0)) return;
 
         bytes32 labelhash = keccak256(bytes(label));
-        bytes32 node = LabelUtils.namehashUnder(DOT_NODE, labelhash);
+        bytes32 node = LabelUtils.namehashUnder(TLD_NODE, labelhash);
         uint256 tokenId = uint256(node);
 
         vm.prank(currentOwner);
@@ -359,7 +365,7 @@ contract RegistrarControllerHandler is Test {
         address currentOwner = _registeredOwners[index];
 
         bytes32 labelhash = keccak256(bytes(label));
-        bytes32 node = LabelUtils.namehashUnder(DOT_NODE, labelhash);
+        bytes32 node = LabelUtils.namehashUnder(TLD_NODE, labelhash);
         uint256 tokenId = uint256(node);
 
         // Transfer through 2 to 4 hops

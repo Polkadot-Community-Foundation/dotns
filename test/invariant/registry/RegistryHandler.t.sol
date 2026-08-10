@@ -18,8 +18,10 @@ import {IPersonhood} from "../../../contracts/external/personhood/IPersonhood.so
 /// @notice Executes bounded random actions on the registry: register base domains,
 ///         create subnodes, reassign subnodes, set resolvers, and transfer base domains.
 contract RegistryHandler is Test {
-    /// @notice Namehash of the .dot TLD.
-    bytes32 private constant DOT_NODE = DotnsConstants.DOT_NODE;
+    /// @notice Node hash of the suite's TLD, injected from the deployed protocol registry.
+    /// @dev Keeps the handler rooted at the same TLD the protocol under test uses, without a
+    ///      second TLD definition.
+    bytes32 private immutable TLD_NODE;
 
     /// @notice The registrar controller driving registrations.
     DotnsRegistrarController public controller;
@@ -65,12 +67,15 @@ contract RegistryHandler is Test {
     /// @param _registry The hierarchical registry.
     /// @param _registrar The base registrar.
     /// @param _popRules The PoP rules contract.
+    /// @param _tldNode Node hash of the suite's TLD, from the deployed protocol registry.
     constructor(
         DotnsRegistrarController _controller,
         DotnsRegistry _registry,
         DotnsRegistrar _registrar,
-        IPopRules _popRules
+        IPopRules _popRules,
+        bytes32 _tldNode
     ) {
+        TLD_NODE = _tldNode;
         controller = _controller;
         registry = _registry;
         registrar = _registrar;
@@ -265,10 +270,10 @@ contract RegistryHandler is Test {
         _subnodeOwners.push(subnodeOwner);
     }
 
-    /// @notice Computes the namehash for `label` under the .dot TLD.
+    /// @notice Computes the namehash for `label` under the suite's TLD.
     /// @param label Label whose node hash is required.
-    function _computeNode(string memory label) internal pure returns (bytes32) {
-        return LabelUtils.namehashUnder(DOT_NODE, LabelUtils.labelhashMemory(label));
+    function _computeNode(string memory label) internal view returns (bytes32) {
+        return LabelUtils.namehashUnder(TLD_NODE, LabelUtils.labelhashMemory(label));
     }
 
     /// @notice Generates a unique label for each registration in the run.

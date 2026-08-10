@@ -430,7 +430,7 @@ contract DotnsPopController is
         returns (address)
     {
         bytes32 labelhash = LabelUtils.labelhashMemory(label);
-        bytes32 node = LabelUtils.namehash(labelhash);
+        bytes32 node = LabelUtils.namehashUnder(protocolRegistry.tldNode(), labelhash);
         if (store == address(0)) {
             store = factory.deployLabelStoreFor(user);
         }
@@ -651,7 +651,7 @@ contract DotnsPopController is
     /// @param label Bare DNS label (no TLD); the TLD is appended on write.
     function _writeRecord(address store, bytes32 node, string memory label) internal {
         if (ILabelStore(store).isLocked(node)) return;
-        ILabelStore(store).storeLabel(node, string.concat(label, DotnsConstants.TLD));
+        ILabelStore(store).storeLabel(node, string.concat(label, protocolRegistry.tld()));
     }
 
     /// @notice Appends a deferred binding for `user` and adds them to the enumeration set.
@@ -796,22 +796,22 @@ contract DotnsPopController is
     /// @notice Validates a lite-person `NAMEXX` label and derives `(labelhash, node)`.
     function _validateLiteLabel(string memory liteLabel)
         internal
-        pure
+        view
         returns (bytes32 labelhash, bytes32 node)
     {
         require(liteLabel.isLitePersonLabelMemory(), InvalidLiteLabel());
         labelhash = LabelUtils.labelhashMemory(liteLabel);
-        node = LabelUtils.namehash(labelhash);
+        node = LabelUtils.namehashUnder(protocolRegistry.tldNode(), labelhash);
     }
 
     /// @notice Validates a base (full-person) DNS label and derives `(labelhash, node)`.
     function _validateBaseLabel(string calldata baseLabel)
         internal
-        pure
+        view
         returns (bytes32 labelhash, bytes32 node)
     {
         require(baseLabel.isSingleLabel(), InvalidBaseLabel());
-        (labelhash, node) = LabelUtils.deriveNode(baseLabel);
+        (labelhash, node) = LabelUtils.deriveNode(protocolRegistry.tldNode(), baseLabel);
     }
 
     /// @notice Reverts when a non-empty chat key is not exactly `CHAT_KEY_LENGTH` bytes.

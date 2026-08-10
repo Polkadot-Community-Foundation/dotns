@@ -17,8 +17,8 @@ import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
 
 /// @title Dotns Name Escrow
-/// @notice Holds refundable deposits for .dot names and manages the release/reclaim lifecycle.
-/// @custom:security-contact admin@parity.io
+/// @notice Holds refundable deposits for registered names and manages the release/reclaim
+/// lifecycle. @custom:security-contact admin@parity.io
 contract DotnsNameEscrow is
     Initializable,
     UUPSUpgradeable,

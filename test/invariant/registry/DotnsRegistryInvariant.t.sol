@@ -19,8 +19,13 @@ contract DotnsRegistryInvariantTest is BaseDotns {
     function setUp() public override {
         super.setUp();
 
-        handler =
-            new RegistryHandler(dotnsRegistrarController, dotnsRegistry, dotnsRegistrar, popRules);
+        handler = new RegistryHandler(
+            dotnsRegistrarController,
+            dotnsRegistry,
+            dotnsRegistrar,
+            popRules,
+            protocolRegistry.tldNode()
+        );
 
         vm.deal(address(handler), 1000 ether);
 
