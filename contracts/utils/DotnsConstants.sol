@@ -3,21 +3,13 @@ pragma solidity ^0.8.34;
 
 /// @title DotNS Constants
 /// @notice Protocol-level invariants shared across DotNS contracts.
-/// @dev Centralises the namehash of the `.dot` TLD, the TLD suffix string, and the
-///      well-known protocol-registry keys that every contract uses to discover its
-///      siblings (registrar, controller, registry, resolvers, etc.). Each key is a
+/// @dev Centralises the well-known protocol-registry keys that every contract uses to discover
+///      its siblings (registrar, controller, registry, resolvers, etc.). Each key is a
 ///      role address resolved at call time, so rotating an implementation is a
-///      single `set` on the protocol registry without redeploying consumers.
+///      single `set` on the protocol registry without redeploying consumers. The TLD is not a
+///      constant here: it is set per network on the protocol registry and read by every consumer.
 /// @custom:security-contact admin@parity.io
 library DotnsConstants {
-    /// @notice Namehash of the .dot TLD node.
-    /// @dev keccak256(abi.encodePacked(bytes32(0), keccak256("dot"))).
-    bytes32 internal constant DOT_NODE =
-        0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
-
-    /// @notice TLD suffix appended to labels when building full domain names.
-    string internal constant TLD = ".dot";
-
     /// @notice Address of revive's System precompile, exposed by every revive runtime
     ///         that opts the precompile in.
     /// @dev Mirrors the upstream `SYSTEM_ADDR` constant in
@@ -53,7 +45,7 @@ library DotnsConstants {
     bytes32 internal constant WHITELIST_OPERATOR_ROLE = keccak256("DOTNS_WHITELIST_OPERATOR_ROLE");
 
     /// @notice Well-known key for the ERC721 registrar backing name ownership.
-    /// @dev Role: token-of-record for `.dot` names. Mints, burns, and tracks the
+    /// @dev Role: token-of-record for registered names. Mints, burns, and tracks the
     ///      `tokenId => label` mapping consumed by the forward registry on
     ///      transfer.
     /// forge-lint: disable-next-line(unsafe-typecast)

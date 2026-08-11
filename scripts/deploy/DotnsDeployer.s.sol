@@ -139,7 +139,7 @@ contract DotnsDeployer is BaseDeployer {
         proxy = _broadcastDeployUups(
             owner,
             "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
-            abi.encodeCall(DotnsProtocolRegistry.initialize, ()),
+            abi.encodeCall(DotnsProtocolRegistry.initialize, (tldLabel())),
             "DotnsProtocolRegistry"
         );
         protocolRegistry = DotnsProtocolRegistry(proxy);

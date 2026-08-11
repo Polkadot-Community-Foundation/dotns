@@ -16,7 +16,7 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 import {LabelUtils} from "../utils/LabelUtils.sol";
 
 /// @title Dotns Reverse Resolver
-/// @notice Resolves an address to its associated .dot name.
+/// @notice Resolves an address to its associated name under the network TLD.
 /// @dev Writes are gated on a fixed writer address resolved from the protocol
 ///      registry (the registrar or its controller), not on node ownership.
 ///      Reverse records bind to an EOA rather than a registry node, so authority
@@ -72,12 +72,12 @@ contract DotnsReverseResolver is
     /// @inheritdoc IDotnsReverseResolver
     function claimReverseRecord(string calldata label) external override {
         bytes32 labelhash = LabelUtils.labelhash(label);
-        uint256 tokenId = uint256(LabelUtils.namehash(labelhash));
+        uint256 tokenId = uint256(LabelUtils.namehashUnder(protocolRegistry.tldNode(), labelhash));
 
         IERC721 registrar = IERC721(protocolRegistry.get(DotnsConstants.REGISTRAR));
         require(registrar.ownerOf(tokenId) == msg.sender, NotNameOwner(msg.sender, tokenId));
 
-        string memory fullName = string.concat(label, DotnsConstants.TLD);
+        string memory fullName = string.concat(label, protocolRegistry.tld());
         reverseNames[msg.sender] = fullName;
         emit ReverseNameSet(msg.sender, fullName);
     }
@@ -87,13 +87,13 @@ contract DotnsReverseResolver is
         string memory stored = reverseNames[addr];
         if (bytes(stored).length == 0) return "";
 
-        // Strip the `.dot` suffix and validate against current ownership so a transferred-away
+        // Strip the TLD suffix and validate against current ownership so a transferred-away
         // name never resolves under a stale reverse record.
-        string memory label = LabelUtils.stripDotTld(stored);
+        string memory label = LabelUtils.stripTld(protocolRegistry.tld(), stored);
         if (bytes(label).length == 0) return "";
 
         bytes32 labelhash = LabelUtils.labelhashMemory(label);
-        uint256 tokenId = uint256(LabelUtils.namehash(labelhash));
+        uint256 tokenId = uint256(LabelUtils.namehashUnder(protocolRegistry.tldNode(), labelhash));
 
         IERC721 registrar = IERC721(protocolRegistry.get(DotnsConstants.REGISTRAR));
         try registrar.ownerOf(tokenId) returns (address currentOwner) {
