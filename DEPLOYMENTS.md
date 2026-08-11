@@ -373,7 +373,12 @@ If a stage fails part way through, rerun the same command. Each stage adopts any
 
 ## Live addresses
 
-### Paseo Asset Hub Previewnet
+Every network is deployed through the same CREATE3 factory, so the contract addresses are the same on all of them. Only the TLD differs per network.
+
+| Network | TLD |
+| --- | --- |
+| Paseo Asset Hub Previewnet | `.dot` |
+| Paseo Asset Hub Next V2 | `.paseo` |
 
 **Create3Factory**
 
@@ -475,102 +480,4 @@ If a stage fails part way through, rerun the same command. Each stage adopts any
 
 ```text
 0xb7C995601679840d36F37E86DB2d7dF30797eC5C
-```
-
-### Paseo Asset Hub Next V2
-
-**DotnsProtocolRegistry**
-
-```text
-0x8F28419f4E32Bb0aA02e156A0543Ff253f126D7D
-```
-
-**Multicall3**
-
-```text
-0xFc430CcCdb9335C1907fc72e93eb1f48e847319C
-```
-
-**DotnsRegistrar**
-
-```text
-0xf7Ad3F44F316C73E4a2b46b1ed48d376bCc9E639
-```
-
-**DotnsRegistry**
-
-```text
-0xa1b2b939E82b2ecE55Bd8a0E283818BfC1CA6CDc
-```
-
-**DotnsRegistrarController**
-
-```text
-0x674b705268DAE369F0a7BE9cbaCDb928b8BA38C2
-```
-
-**DotnsPopController**
-
-```text
-0x1c858C31497a7715C0D56A11208feB6b74FaB2aB
-```
-
-**RootGatewayDispatcher**
-
-```text
-0xd3F059FA65dA566B294b5d755a06054d4bE7ce7C
-```
-
-**PopRules**
-
-```text
-0x4909bFb3f4Fd86244abD6430fDfA0Ce5C91aD0c4
-```
-
-**DotnsResolver**
-
-```text
-0xA8988eA083174ea94Ed1D686f0F073a10f65598D
-```
-
-**DotnsReverseResolver**
-
-```text
-0x259B9D8199c29d2EF132264ad05f8F74F3115A2E
-```
-
-**DotnsContentResolver**
-
-```text
-0x8A26480b0B5Df3d4D9b95adc24a5Ecb33A5b8F64
-```
-
-**DotnsPopResolver**
-
-```text
-0xC9D511Eb80fD8B745DC5Be59aCF5d700271bC01e
-```
-
-**DotnsNameEscrow**
-
-```text
-0x2Cb9899d91Ee575E8917958723F5E941b1BcC6A1
-```
-
-**StoreFactory**
-
-```text
-0x692047C1477a017F287488E1c85F96Ca28C23fD8
-```
-
-**LabelStoreBeacon**
-
-```text
-0x86ff9CE56C86bC3DfcaA7E316FB0Dd816e9fA2df
-```
-
-**UserStoreBeacon**
-
-```text
-0x6a7a938f72D39f949ee484a78c4C500514E2cb69
 ```

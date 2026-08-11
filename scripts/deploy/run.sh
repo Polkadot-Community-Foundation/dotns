@@ -56,6 +56,15 @@ set -euo pipefail
 : "${WHITELIST_OPERATOR:=0xd908e5a6c88e9263f8fd0756bd0b77916008bb72}"
 export WHITELIST_OPERATOR
 
+# TLD the protocol registry initialises with. DeployCore reads it through
+# vm.envString("DOTNS_TLD"), so it has to be exported: sourcing .env does not
+# auto-export, matching DEPLOYMENT_NETWORK below. No default is applied; a
+# missing TLD must abort in the Solidity stage rather than silently land the
+# wrong one, which no setter can correct afterwards.
+if [ -n "${DOTNS_TLD:-}" ]; then
+  export DOTNS_TLD
+fi
+
 # Forward every extra forge flag (word-split), not just the first token.
 extra="$*"
 
