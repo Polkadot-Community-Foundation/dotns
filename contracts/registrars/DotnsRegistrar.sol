@@ -404,8 +404,11 @@ contract DotnsRegistrar is
         // No label means there is no label-derived price to charge against; treat as a zero-fee
         // move (typical of gateway-cold PoP mints that have not yet claimed a `LabelStore`).
         if (bytes(fullName).length == 0) return (0, 0);
+        // A stored full name always carries the registry TLD suffix, so an empty strip means the
+        // name is malformed for this registry (a wrong or missing suffix); fail loudly rather than
+        // mis-pricing the move as zero-fee.
         string memory label = LabelUtils.stripTld(registry.tld(), fullName);
-        if (bytes(label).length == 0) return (0, 0);
+        require(bytes(label).length != 0, InvalidLabel());
 
         reachFloor =
             IPopRules(registry.get(DotnsConstants.POP_RULES)).transferFloor(label, from, to);
