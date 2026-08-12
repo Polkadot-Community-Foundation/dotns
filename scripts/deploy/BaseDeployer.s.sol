@@ -62,6 +62,21 @@ abstract contract BaseDeployer is Script {
         subdirectory = vm.envOr("DEPLOYMENT_NETWORK", DeploymentNetwork.folder(block.chainid));
     }
 
+    /// @notice Resolves the bare TLD label to initialise the protocol registry with.
+    /// @dev Read from `DOTNS_TLD` because distinct networks can share one `block.chainid`, so the
+    ///      TLD cannot be keyed off the chain id. The operator sets `DOTNS_TLD=paseo` (or `test`,
+    ///      `dot`) per deployment; it is required, with no default, so an unset or empty value
+    ///      aborts the deploy rather than silently landing the wrong TLD, which no setter can
+    ///      correct afterwards. The label is passed straight into
+    ///      `DotnsProtocolRegistry.initialize`, which validates it as a single DNS label.
+    /// @return label Bare TLD label without the leading dot.
+    function tldLabel() internal view returns (string memory label) {
+        label = vm.envString("DOTNS_TLD");
+        require(
+            bytes(label).length != 0, "DOTNS_TLD must be set to a bare TLD label (for example dot)"
+        );
+    }
+
     /// @notice Loads the existing deployment manifest for `(subdirectory, filename)`
     ///         if one exists; otherwise begins a fresh in-memory object. Every
     ///         stage must call this first so subsequent `_readAddress` / `logDeployment`
@@ -188,6 +203,13 @@ abstract contract BaseDeployer is Script {
                     revert(add(ret, 32), mload(ret))
                 }
             }
+        } else if (proxyExisted && initialiserCalldata.length != 0) {
+            // The proxy keeps the configuration its first deploy set, so every
+            // initialiser argument computed for this run is discarded. Values
+            // without a setter (such as the TLD) cannot be corrected afterwards,
+            // so surface it rather than reporting success.
+            console.log("WARNING: adopted existing proxy, initialiser skipped for", label);
+            console.log("         on-chain configuration may differ from this run's inputs");
         }
         vm.stopBroadcast();
         vm.label(proxy, label);

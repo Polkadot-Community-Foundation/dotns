@@ -101,12 +101,13 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
 
             if (newOwner != previousOwner) {
                 string memory fullName =
-                    string.concat(subLabel, ".", parentLabel, DotnsConstants.TLD);
+                    string.concat(subLabel, ".", parentLabel, protocolRegistry.tld());
                 _writeSubnodeToStore(newOwner, subnode, fullName);
             }
         } else {
             records[subnode] = Record({owner: newOwner, resolver: reverseResolver, exists: true});
-            string memory fullName = string.concat(subLabel, ".", parentLabel, DotnsConstants.TLD);
+            string memory fullName =
+                string.concat(subLabel, ".", parentLabel, protocolRegistry.tld());
             _writeSubnodeToStore(newOwner, subnode, fullName);
         }
 
@@ -209,15 +210,16 @@ contract DotnsRegistry is Initializable, UUPSUpgradeable, OwnableUpgradeable, ID
         factory.writeLabel(storeOwner, node, fullName);
     }
 
-    /// @notice Computes the namehash of `parentLabel` rooted at the configured TLD.
+    /// @notice Computes the namehash of `parentLabel` rooted at the network's TLD node.
     /// @dev Walks the label right-to-left in calldata using memory-safe assembly to avoid the
     ///      cost of slicing into intermediate `bytes` and to keep gas linear in the label depth.
-    function _parentNamehash(string calldata parentLabel) internal pure returns (bytes32 node) {
+    ///      Reads the TLD node from the protocol registry, so it is a view rather than pure.
+    function _parentNamehash(string calldata parentLabel) internal view returns (bytes32 node) {
         bytes calldata labels = bytes(parentLabel);
         uint256 end = labels.length;
         require(end != 0, ParentLabelMismatch());
 
-        node = DotnsConstants.DOT_NODE;
+        node = protocolRegistry.tldNode();
 
         while (true) {
             uint256 start = end;

@@ -32,13 +32,13 @@ interface IDotnsReverseResolver {
     /// @param name The human-readable name associated with the address.
     function setReverseName(address addr, string calldata name) external;
 
-    /// @notice Self-service claim: associates `msg.sender` with `<label>.dot`.
+    /// @notice Self-service claim: associates `msg.sender` with `<label>` under the network TLD.
     /// @dev The caller must currently own the NFT for `label` per the configured registrar,
     ///      otherwise @custom:reverts NotNameOwner. Overwrites any existing record for the caller
     ///      and emits @custom:emits ReverseNameSet on every successful write. Transferring the
     ///      name away does not eagerly clear the record; @custom:function nameOf fails closed at
     ///      read time when the stored record no longer matches current ownership.
-    /// @param label The label (without `.dot`) the caller is claiming a reverse record for.
+    /// @param label The label (without the TLD suffix) the caller is claiming a reverse record for.
     function claimReverseRecord(string calldata label) external;
 
     /// @notice Returns the reverse name for an address, fail-closed against current ownership.

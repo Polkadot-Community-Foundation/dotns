@@ -6,7 +6,8 @@ pragma solidity ^0.8.34;
 /// @notice Interface for the DotNS protocol-level address registry.
 /// @dev Single source of truth for sibling lookups. Contracts resolve each other via well-known
 ///      `bytes32` constants in `DotnsConstants` so an upgrade or rewire only mutates the
-///      registry, never the consumers.
+///      registry, never the consumers. The registry also holds the network's top-level domain,
+///      so every consumer reads one TLD rather than compiling its own.
 /// @custom:security-contact admin@parity.io
 interface IDotnsProtocolRegistry {
     /// @notice Emitted when a protocol address is set or updated.
@@ -14,6 +15,9 @@ interface IDotnsProtocolRegistry {
 
     /// @notice Thrown when a zero address is provided where one is not allowed.
     error ZeroAddress();
+
+    /// @notice Thrown when the TLD label supplied at initialisation is not a single DNS label.
+    error InvalidTld();
 
     /// @notice Returns the address stored for a given key.
     /// @dev Returns `address(0)` when the key is unset; callers must validate when non-zero is
@@ -35,4 +39,13 @@ interface IDotnsProtocolRegistry {
     ///      registered return true. Treats `address(0)` as never registered regardless of
     ///      refcount.
     function isRegisteredAddress(address addr) external view returns (bool registered);
+
+    /// @notice Returns the namehash of the network's TLD node.
+    /// @dev `namehash(0, keccak256(bytes(tldLabel)))`, fixed at initialisation. Consumers use it
+    ///      as the root parent when deriving a name's node.
+    function tldNode() external view returns (bytes32 node);
+
+    /// @notice Returns the network's TLD suffix, including the leading dot (e.g. `.dot`).
+    /// @dev Fixed at initialisation. Consumers append it when rendering a label as a full name.
+    function tld() external view returns (string memory suffix);
 }

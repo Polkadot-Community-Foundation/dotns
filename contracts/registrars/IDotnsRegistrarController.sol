@@ -5,7 +5,7 @@ import {IDotnsController} from "./IDotnsController.sol";
 import {IPopRules} from "../pop/IPopRules.sol";
 
 /// @title Dotns Registrar Controller
-/// @notice Interface for registering .dot labels using a commit reveal scheme.
+/// @notice Interface for registering top-level labels using a commit reveal scheme.
 /// @dev Defines allocation only; forward resolution, reverse lookup, pricing mechanics, PoP
 /// validation, and store writing are handled by external contracts. Users commit a hash of
 /// registration parameters and, after a minimum delay, reveal the same parameters to register.

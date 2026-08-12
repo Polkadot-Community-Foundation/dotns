@@ -22,12 +22,12 @@ import {RegistrationUtils} from "../utils/RegistrationUtils.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
 
 /// @title Dotns Registrar Controller
-/// @notice Allocates .dot labels using a commit reveal scheme.
+/// @notice Allocates top-level labels using a commit reveal scheme.
 /// @dev Orchestrates allocation, PoP validation, pricing enforcement, forward registry
 /// wiring, default reverse resolution, and immutable store writing.
 ///
 /// Tokenisation: the minted ERC721 tokenId is `uint256(node)`, where
-/// `node = namehash(DOT_NODE, labelhash)`. The registry stores a sentinel owner
+/// `node = namehash(tldNode, labelhash)`. The registry stores a sentinel owner
 /// (`address(0)`) for tokenised nodes and derives ownership from the ERC721 registrar for
 /// authorisation.
 /// @custom:security-contact admin@parity.io
@@ -322,12 +322,12 @@ contract DotnsRegistrarController is
     /// the policy minimum" from "shape-valid but already minted".
     function _validatedLabelNode(string calldata label)
         internal
-        pure
+        view
         returns (bytes32 labelhash, bytes32 node)
     {
         require(label.isSingleLabel(), InvalidLabel());
         require(bytes(label).length >= 3, LabelTooShort(label));
-        (labelhash, node) = LabelUtils.deriveNode(label);
+        (labelhash, node) = LabelUtils.deriveNode(protocolRegistry.tldNode(), label);
     }
 
     function _requireAvailableLabel(string calldata label)
@@ -393,13 +393,13 @@ contract DotnsRegistrarController is
             // @custom:function register) so the registry's `ownerOf` check sees the new holder.
             IStoreFactory factory =
                 IStoreFactory(protocolRegistry.get(DotnsConstants.STORE_FACTORY));
-            string memory fullName = string.concat(registration.label, DotnsConstants.TLD);
+            string memory fullName = string.concat(registration.label, protocolRegistry.tld());
             labelStore = factory.writeLabel(registration.owner, node, fullName);
         }
 
         if (setReverseRecord) {
             reverse.setReverseName(
-                registration.owner, string.concat(registration.label, DotnsConstants.TLD)
+                registration.owner, string.concat(registration.label, protocolRegistry.tld())
             );
         }
 

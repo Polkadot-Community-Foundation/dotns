@@ -20,6 +20,10 @@ import {IPersonhood} from "../../../contracts/external/personhood/IPersonhood.so
 contract PopControllerHandler is Test {
     /// @notice The PoP controller under test.
     DotnsPopController public immutable CONTROLLER;
+    /// @notice Node hash of the suite's TLD, injected from the deployed protocol registry.
+    /// @dev Keeps the handler rooted at the same TLD the protocol under test uses, without a
+    ///      second TLD definition.
+    bytes32 private immutable TLD_NODE;
     /// @notice Mirrors the controller's MAX_RESERVATION_QUEUE for queue-bound
     ///         assertions without re-importing the contract constant.
     uint16 public constant MAX_QUEUE = 64;
@@ -70,8 +74,10 @@ contract PopControllerHandler is Test {
     ///         every action call admits both lite and base classifications.
     /// @param controller_ The PoP controller under test.
     /// @param actors_ Pool of accounts the handler cycles through.
-    constructor(DotnsPopController controller_, address[] memory actors_) {
+    /// @param tldNode_ Node hash of the suite's TLD, from the deployed protocol registry.
+    constructor(DotnsPopController controller_, address[] memory actors_, bytes32 tldNode_) {
         CONTROLLER = controller_;
+        TLD_NODE = tldNode_;
         actors = actors_;
         // baselength 8, no trailing digits: PopFull classification.
         baseLabels.push("alicebob");
@@ -176,9 +182,7 @@ contract PopControllerHandler is Test {
 
         if (_callReserveBaseName(params, useBytes)) {
             if (attachReservation) _track(keccak256(bytes(reservedBase)));
-            bytes32 node = LabelUtils.namehashUnder(
-                DotnsConstants.DOT_NODE, LabelUtils.labelhashMemory(liteLabel)
-            );
+            bytes32 node = LabelUtils.namehashUnder(TLD_NODE, LabelUtils.labelhashMemory(liteLabel));
             mintedLiteTokenIds.push(uint256(node));
             priorLiteLabels.push(liteLabel);
             _trackPendingActor(actor);
@@ -225,14 +229,10 @@ contract PopControllerHandler is Test {
         if (!_callRegisterBaseName(fullParams, useBytes)) return;
 
         bytes32 liteLabelhash = LabelUtils.labelhashMemory(liteLabel);
-        bytes32 fullNode = LabelUtils.namehashUnder(
-            DotnsConstants.DOT_NODE, LabelUtils.labelhashMemory(baseLabel)
-        );
+        bytes32 fullNode = LabelUtils.namehashUnder(TLD_NODE, LabelUtils.labelhashMemory(baseLabel));
         claimedLiteLabelhashes.push(liteLabelhash);
         claimedFullNodes.push(fullNode);
-        mintedLiteTokenIds.push(
-            uint256(LabelUtils.namehashUnder(DotnsConstants.DOT_NODE, liteLabelhash))
-        );
+        mintedLiteTokenIds.push(uint256(LabelUtils.namehashUnder(TLD_NODE, liteLabelhash)));
         mintedLiteTokenIds.push(uint256(fullNode));
         priorLiteLabels.push(liteLabel);
     }
@@ -270,9 +270,7 @@ contract PopControllerHandler is Test {
         if (!_callRegisterBaseName(params, useBytes)) return;
 
         bytes32 liteLabelhash = LabelUtils.labelhashMemory(liteLabel);
-        bytes32 fullNode = LabelUtils.namehashUnder(
-            DotnsConstants.DOT_NODE, LabelUtils.labelhashMemory(baseLabel)
-        );
+        bytes32 fullNode = LabelUtils.namehashUnder(TLD_NODE, LabelUtils.labelhashMemory(baseLabel));
         claimedLiteLabelhashes.push(liteLabelhash);
         claimedFullNodes.push(fullNode);
         mintedLiteTokenIds.push(uint256(fullNode));

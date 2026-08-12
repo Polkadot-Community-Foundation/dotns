@@ -2,7 +2,7 @@
 pragma solidity ^0.8.34;
 
 /// @title Dotns Name Escrow Interface
-/// @notice Escrows refundable deposits for .dot registrations and manages the release lifecycle.
+/// @notice Escrows refundable deposits for registered names and manages the release lifecycle.
 /// @custom:security-contact admin@parity.io
 interface IDotnsNameEscrow {
     /// @notice Parameters for recording a deposit position.

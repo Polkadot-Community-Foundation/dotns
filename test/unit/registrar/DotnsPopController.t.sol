@@ -10,7 +10,6 @@ import {
 import {IDotnsRegistry} from "../../../contracts/registry/IDotnsRegistry.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
-import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Vm} from "forge-std/Vm.sol";
 
@@ -1154,7 +1153,9 @@ contract DotnsPopControllerTests is BaseDotns {
         assertTrue(store != address(0));
 
         bytes32 node = _nodeOf(LITE_LABEL_A);
-        assertEq(ILabelStore(store).getLabel(node), string.concat(LITE_LABEL_A, DotnsConstants.TLD));
+        assertEq(
+            ILabelStore(store).getLabel(node), string.concat(LITE_LABEL_A, protocolRegistry.tld())
+        );
         assertEq(dotnsPopResolver.chatKey(node), chatKey);
 
         IDotnsPopController.PendingClaim[] memory pending = dotnsPopController.pendingClaims(ed);
@@ -1273,11 +1274,11 @@ contract DotnsPopControllerTests is BaseDotns {
         assertTrue(store != address(0));
         assertEq(
             ILabelStore(store).getLabel(_nodeOf(LITE_LABEL_A)),
-            string.concat(LITE_LABEL_A, DotnsConstants.TLD)
+            string.concat(LITE_LABEL_A, protocolRegistry.tld())
         );
         assertEq(
             ILabelStore(store).getLabel(_nodeOf(LITE_LABEL_B)),
-            string.concat(LITE_LABEL_B, DotnsConstants.TLD)
+            string.concat(LITE_LABEL_B, protocolRegistry.tld())
         );
         assertEq(dotnsPopController.pendingClaims(ed).length, 0);
         assertEq(dotnsPopController.pendingClaimUserCount(), 0);
@@ -1322,11 +1323,11 @@ contract DotnsPopControllerTests is BaseDotns {
         assertTrue(store != address(0));
         assertEq(
             ILabelStore(store).getLabel(_nodeOf(LITE_LABEL_A)),
-            string.concat(LITE_LABEL_A, DotnsConstants.TLD)
+            string.concat(LITE_LABEL_A, protocolRegistry.tld())
         );
         assertEq(
             ILabelStore(store).getLabel(_nodeOf(BASE_LABEL_A)),
-            string.concat(BASE_LABEL_A, DotnsConstants.TLD)
+            string.concat(BASE_LABEL_A, protocolRegistry.tld())
         );
         assertEq(dotnsPopController.pendingClaims(ed).length, 0);
     }
@@ -1492,7 +1493,9 @@ contract DotnsPopControllerTests is BaseDotns {
         bytes32 node = _nodeOf(LITE_LABEL_A);
         address store = storeFactory.getLabelStore(ed);
         assertTrue(store != address(0));
-        assertEq(ILabelStore(store).getLabel(node), string.concat(LITE_LABEL_A, DotnsConstants.TLD));
+        assertEq(
+            ILabelStore(store).getLabel(node), string.concat(LITE_LABEL_A, protocolRegistry.tld())
+        );
         assertEq(dotnsPopResolver.chatKey(node).length, 0);
     }
 
@@ -1517,7 +1520,9 @@ contract DotnsPopControllerTests is BaseDotns {
         );
 
         bytes32 node = _nodeOf(LITE_LABEL_B);
-        assertEq(ILabelStore(store).getLabel(node), string.concat(LITE_LABEL_B, DotnsConstants.TLD));
+        assertEq(
+            ILabelStore(store).getLabel(node), string.concat(LITE_LABEL_B, protocolRegistry.tld())
+        );
         assertEq(dotnsPopResolver.chatKey(node), secondChatKey);
         assertEq(dotnsPopController.pendingClaims(ed).length, 0);
         assertEq(dotnsPopController.pendingClaimUserCount(), 0);
