@@ -532,6 +532,10 @@ contract DotnsPopControllerTests is BaseDotns {
         vm.expectRevert(IDotnsPopController.BaseNameAlreadyRegistered.selector);
         _reservePop(tiago, LITE_LABEL_A, _validChatKey(0xaa), "longnamebob");
 
+        // The guard runs before the lite mint, so the whole call aborts and no lite name is
+        // minted for the candidate.
+        assertFalse(dotnsRegistrar.exists(uint256(_nodeOf(LITE_LABEL_A))));
+
         // No reservation was recorded, so the stem family stays open to other candidates.
         (bool reserved,) = dotnsPopController.isReservedForClaim("longnamebob");
         assertFalse(reserved);
