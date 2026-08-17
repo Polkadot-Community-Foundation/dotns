@@ -521,25 +521,20 @@ contract DotnsPopControllerTests is BaseDotns {
         dotnsRegistry.setSubnodeOwner(subnodeRecord);
     }
 
-    function test_pop_reservation_of_already_public_minted_name_fails_on_claim() public {
+    function test_pop_reservation_of_already_public_minted_name_reverts_at_reserve_time() public {
+        // A name minted through the public commit-reveal flow already has an owner, so a PoP
+        // reservation over it could never be redeemed. The guard rejects it at reserve time
+        // rather than admitting it and only failing at claim, which would have locked every
+        // two-digit variant of the stem for the full reservation window.
         _commitAndRegister("longnamebob", ed, true);
 
         _grantPopFull(tiago);
+        vm.expectRevert(IDotnsPopController.BaseNameAlreadyRegistered.selector);
         _reservePop(tiago, LITE_LABEL_A, _validChatKey(0xaa), "longnamebob");
 
-        (bool reserved, address holder) = dotnsPopController.isReservedForClaim("longnamebob");
-        assertTrue(reserved);
-        assertEq(holder, tiago);
-
-        IDotnsPopController.Link memory link = _linkWithLite(LITE_LABEL_A);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IDotnsRegistrar.NameNotAvailable.selector, uint256(_nodeOf("longnamebob"))
-            )
-        );
-        _gatewayRegisterBaseName(
-            IDotnsPopController.FullRegistration({label: "longnamebob", user: tiago, link: link})
-        );
+        // No reservation was recorded, so the stem family stays open to other candidates.
+        (bool reserved,) = dotnsPopController.isReservedForClaim("longnamebob");
+        assertFalse(reserved);
     }
 
     function test_enqueue_becomesHead_writes_popRules_reservation() public {
@@ -590,6 +585,24 @@ contract DotnsPopControllerTests is BaseDotns {
         _grantPopFull(ed);
         vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0xaa), "longnamebob01");
+    }
+
+    function test_reserveBaseName_reverts_when_reserved_label_already_registered() public {
+        // George worked example: ed reserves and then claims the base name, which frees the
+        // stem slot on PopRules. A later lite candidate must not be able to queue a reservation
+        // over the now-registered name; the queue keys by stem, so an unclaimable reservation
+        // would lock every two-digit variant of the stem for the full reservation window.
+        _grantPopFull(ed);
+        _reservePop(ed, LITE_LABEL_A, _validChatKey(0xaa), "longnamebob");
+        _gatewayRegisterBaseName(
+            IDotnsPopController.FullRegistration({
+                label: "longnamebob", user: ed, link: _linkWithLite(LITE_LABEL_A)
+            })
+        );
+
+        _grantPopFull(tiago);
+        vm.expectRevert(IDotnsPopController.BaseNameAlreadyRegistered.selector);
+        _reservePop(tiago, LITE_LABEL_B, _validChatKey(0xbb), "longnamebob");
     }
 
     function test_public_stranger_can_mint_after_claim_clears_reservation() public {
@@ -917,6 +930,24 @@ contract DotnsPopControllerTests is BaseDotns {
         vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
         _gatewayReserveBaseNameOnly(
             IDotnsPopController.BaseNameReservation({user: ed, reservedBaseLabel: "longnamebob01"})
+        );
+    }
+
+    function test_reserveBaseNameOnly_reverts_when_label_already_registered() public {
+        // The standalone reservation entrypoint shares the same guard: a base name that already
+        // has an owner on the registrar can never be redeemed, so the reservation is rejected up
+        // front rather than discovered to be unusable at claim time.
+        _grantPopFull(ed);
+        _reservePop(ed, LITE_LABEL_A, _validChatKey(0xaa), "longnamebob");
+        _gatewayRegisterBaseName(
+            IDotnsPopController.FullRegistration({
+                label: "longnamebob", user: ed, link: _linkWithLite(LITE_LABEL_A)
+            })
+        );
+
+        vm.expectRevert(IDotnsPopController.BaseNameAlreadyRegistered.selector);
+        _gatewayReserveBaseNameOnly(
+            IDotnsPopController.BaseNameReservation({user: tiago, reservedBaseLabel: "longnamebob"})
         );
     }
 

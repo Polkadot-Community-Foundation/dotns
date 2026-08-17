@@ -203,6 +203,10 @@ interface IDotnsPopController is IDotnsController {
     /// @notice Thrown when a supplied base label is not a canonical DNS label.
     error InvalidBaseLabel();
 
+    /// @notice Thrown when a reserved base label already has an owner on the registrar, so the
+    /// queued reservation could never be redeemed at mint time.
+    error BaseNameAlreadyRegistered();
+
     /// @notice Thrown when a supplied chat key is non-empty and not exactly 65 bytes long.
     /// @dev Mirrors the resolver's `InvalidChatKeyLength` so the controller surfaces a
     /// controller-local error before the mint runs.
