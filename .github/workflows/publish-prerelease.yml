@@ -4,24 +4,50 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+-*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Pre-release version, e.g. v0.5.5-rc1. The tag is created from the selected branch."
+        required: true
+        type: string
 
 permissions:
   contents: write
 
-# Two runs for the same tag would race to attach assets to the same draft.
+# Two runs for the same version would race to attach assets to the same draft. On a
+# dispatch `github.ref` is the branch, so key on the requested version instead.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ inputs.version || github.ref }}
   cancel-in-progress: false
 
 jobs:
   beta-release:
     runs-on: ubuntu-latest
     steps:
+      # On workflow_dispatch the tag does not exist yet; the release step creates it
+      # from the branch this run was started on. Read through an env var rather than
+      # interpolating the input into the script.
+      - name: Resolve release tag
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="$INPUT_VERSION"
+          else
+            TAG="$GITHUB_REF_NAME"
+          fi
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-.+$ ]]; then
+            echo "::error::Pre-release version must look like v1.2.3-rc1, got '$TAG'."
+            exit 1
+          fi
+          echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+          echo "Releasing $TAG from $GITHUB_REF_NAME."
+
       - name: Reject a pre-published release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          TAG="$RELEASE_TAG"
           state=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
             --json isDraft --jq '.isDraft' 2>/dev/null || echo absent)
           if [ "$state" = "false" ]; then
@@ -86,13 +112,13 @@ jobs:
 
       - name: Package pre-release artifacts
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          TAG="$RELEASE_TAG"
           cd release
           zip -r "../dotns-abis-${TAG}.zip" abis/
 
       - name: Generate release body
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          TAG="$RELEASE_TAG"
 
           cat > release-body.md << 'ENDOFBODY'
           ## DotNS ABI Package (Pre-release)
@@ -129,6 +155,10 @@ jobs:
       - name: Create draft pre-release with artifacts
         uses: softprops/action-gh-release@v2
         with:
+          # Explicit because on workflow_dispatch there is no tag to infer; the action
+          # creates it at this run's commit.
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
           files: |
             dotns-abis-*.zip
             release/abis/*.json
@@ -142,7 +172,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
-          TAG="${GITHUB_REF_NAME}"
+          TAG="$RELEASE_TAG"
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
             --jq '.assets[].name' | sort > "$RUNNER_TEMP/actual-assets.txt"
           { cat release/expected-assets.txt; echo "dotns-abis-${TAG}.zip"; } \
@@ -157,6 +187,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          TAG="$RELEASE_TAG"
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
           echo "Published $TAG with its complete asset set."
