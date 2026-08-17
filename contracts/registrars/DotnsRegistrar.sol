@@ -136,7 +136,7 @@ contract DotnsRegistrar is
     function labelOf(uint256 tokenId) external view override returns (string memory) {
         address holder = _ownerOf(tokenId);
         if (holder == address(0)) return "";
-        return LabelUtils.stripDotTld(_readLabel(tokenId, holder));
+        return LabelUtils.stripTld(protocolRegistry.tld(), _readLabel(tokenId, holder));
     }
 
     /// @inheritdoc IDotnsRegistrar
@@ -352,7 +352,7 @@ contract DotnsRegistrar is
     /// the registry would have already broken every other call site).
     function _writeOwnerLabel(address owner, uint256 tokenId, string calldata label) private {
         _storeFactory()
-            .writeLabel(owner, bytes32(tokenId), string.concat(label, DotnsConstants.TLD));
+            .writeLabel(owner, bytes32(tokenId), string.concat(label, protocolRegistry.tld()));
     }
 
     /// @notice Quotes the friction fee required for a transfer.
@@ -404,8 +404,11 @@ contract DotnsRegistrar is
         // No label means there is no label-derived price to charge against; treat as a zero-fee
         // move (typical of gateway-cold PoP mints that have not yet claimed a `LabelStore`).
         if (bytes(fullName).length == 0) return (0, 0);
-        string memory label = LabelUtils.stripDotTld(fullName);
-        if (bytes(label).length == 0) return (0, 0);
+        // A stored full name always carries the registry TLD suffix, so an empty strip means the
+        // name is malformed for this registry (a wrong or missing suffix); fail loudly rather than
+        // mis-pricing the move as zero-fee.
+        string memory label = LabelUtils.stripTld(registry.tld(), fullName);
+        require(bytes(label).length != 0, InvalidLabel());
 
         reachFloor =
             IPopRules(registry.get(DotnsConstants.POP_RULES)).transferFloor(label, from, to);

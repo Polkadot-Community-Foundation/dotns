@@ -7,7 +7,6 @@ import {IDotnsPopController} from "../../contracts/registrars/IDotnsPopControlle
 import {IDotnsRegistry} from "../../contracts/registry/IDotnsRegistry.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {ILabelStore} from "../../contracts/store/ILabelStore.sol";
-import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 import {LabelUtils} from "../../contracts/utils/LabelUtils.sol";
 
 /// @title PopLifecycleFlow
@@ -45,7 +44,7 @@ contract PopLifecycleFlow is BaseDotns {
         assertEq(dotnsPopResolver.chatKey(fullNode), CHAT_KEY);
         // Same label mirrored in the owner's Store under the canonical store key.
         ILabelStore ownerStore = ILabelStore(storeFactory.getLabelStore(owner));
-        assertEq(ownerStore.getLabel(fullNode), string.concat(FULL_LABEL, DotnsConstants.TLD));
+        assertEq(ownerStore.getLabel(fullNode), string.concat(FULL_LABEL, protocolRegistry.tld()));
     }
 
     function test_pop_full_name_is_first_class_erc721_name() public {
@@ -96,7 +95,7 @@ contract PopLifecycleFlow is BaseDotns {
         // stays under the original owner's Store even after transfer.
         ILabelStore edStore = ILabelStore(storeFactory.getLabelStore(ed));
         assertEq(
-            edStore.getLabel(_nodeOf(FULL_LABEL)), string.concat(FULL_LABEL, DotnsConstants.TLD)
+            edStore.getLabel(_nodeOf(FULL_LABEL)), string.concat(FULL_LABEL, protocolRegistry.tld())
         );
     }
 
@@ -127,7 +126,7 @@ contract PopLifecycleFlow is BaseDotns {
         address store = storeFactory.getLabelStore(ed);
         assertTrue(store != address(0));
         assertEq(
-            ILabelStore(store).getLabel(liteNode), string.concat(LITE_LABEL, DotnsConstants.TLD)
+            ILabelStore(store).getLabel(liteNode), string.concat(LITE_LABEL, protocolRegistry.tld())
         );
         assertEq(dotnsPopResolver.chatKey(liteNode), CHAT_KEY);
         assertEq(dotnsPopController.pendingClaims(ed).length, 0);
@@ -192,7 +191,9 @@ contract PopLifecycleFlow is BaseDotns {
         address edStore = storeFactory.getLabelStore(ed);
         assertTrue(edStore != address(0));
         bytes32 node = _nodeOf(LITE_LABEL);
-        assertEq(ILabelStore(edStore).getLabel(node), string.concat(LITE_LABEL, DotnsConstants.TLD));
+        assertEq(
+            ILabelStore(edStore).getLabel(node), string.concat(LITE_LABEL, protocolRegistry.tld())
+        );
     }
 
     function test_lapsed_pending_claim_is_swept_without_deploying_store() public {

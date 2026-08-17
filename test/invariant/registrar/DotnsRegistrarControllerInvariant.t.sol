@@ -25,7 +25,8 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
             dotnsRegistrar,
             dotnsReverseResolver,
             popRules,
-            storeFactory
+            storeFactory,
+            protocolRegistry.tldNode()
         );
 
         vm.deal(address(handler), 1000 ether);

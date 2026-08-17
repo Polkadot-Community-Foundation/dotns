@@ -9,7 +9,6 @@ import {IDotnsPopController} from "../../../contracts/registrars/IDotnsPopContro
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
 import {StringUtils} from "../../../contracts/utils/StringUtils.sol";
-import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Vm} from "forge-std/Vm.sol";
 
@@ -373,7 +372,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         bytes32 node = _nodeOf(label);
         address store = storeFactory.getLabelStore(ed);
         assertTrue(store != address(0));
-        assertEq(ILabelStore(store).getLabel(node), string.concat(label, DotnsConstants.TLD));
+        assertEq(ILabelStore(store).getLabel(node), string.concat(label, protocolRegistry.tld()));
         assertEq(dotnsPopResolver.chatKey(node), chatKey);
         assertEq(dotnsPopController.pendingClaims(ed).length, 0);
     }
