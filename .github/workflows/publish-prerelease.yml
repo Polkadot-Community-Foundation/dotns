@@ -8,10 +8,28 @@ on:
 permissions:
   contents: write
 
+# Two runs for the same tag would race to attach assets to the same draft.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   beta-release:
     runs-on: ubuntu-latest
     steps:
+      - name: Reject a pre-published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          state=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft --jq '.isDraft' 2>/dev/null || echo absent)
+          if [ "$state" = "false" ]; then
+            echo "::error::Pre-release $TAG is already published and its assets are locked; use this workflow with a different version tag."
+            exit 1
+          fi
+          echo "Release $TAG is $state; assets can still be attached."
+
       - uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -50,51 +68,21 @@ jobs:
         run: |
           mkdir -p release/abis
 
-          contracts=(
-            "StoreFactory"
-            "LabelStore"
-            "UserStore"
-            "DotnsRegistrar"
-            "DotnsReverseResolver"
-            "DotnsRegistry"
-            "DotnsContentResolver"
-            "DotnsResolver"
-            "PopRules"
-            "DotnsRegistrarController"
-            "DotnsProtocolRegistry"
-            "DotnsNameEscrow"
-            "DotnsPopController"
-            "DotnsPopResolver"
-            "DotnsRoleManager"
-            "RootGatewayDispatcher"
-            "IStoreFactory"
-            "ILabelStore"
-            "IUserStore"
-            "IDotnsRegistrar"
-            "IDotnsRegistrarController"
-            "IDotnsRegistry"
-            "IDotnsReverseResolver"
-            "IDotnsContentResolver"
-            "IDotnsResolver"
-            "IPopRules"
-            "IDotnsProtocolRegistry"
-            "IDotnsNameEscrow"
-            "IDotnsPopController"
-            "IDotnsPopResolver"
-            "IDotnsController"
-            "IDotnsRoleManager"
-          )
-
-          for name in "${contracts[@]}"; do
+          while IFS= read -r name || [ -n "$name" ]; do
+            case "$name" in '' | '#'*) continue ;; esac
             abi_file="out/${name}.sol/${name}.json"
-            if [ -f "$abi_file" ]; then
-              jq '.abi' "$abi_file" > "release/abis/${name}.json"
-              echo "Extracted ${name}"
-            else
-              echo "Error: ${abi_file} not found"
+            if [ ! -f "$abi_file" ]; then
+              echo "::error::${abi_file} not found"
               exit 1
             fi
-          done
+            jq '.abi' "$abi_file" > "release/abis/${name}.json"
+            echo "Extracted ${name}"
+          done < .github/abi-contracts.txt
+
+          # Record what the build actually produced, so the post-upload check compares
+          # against it rather than against a second hand-maintained list.
+          ls -1 release/abis | sort > release/expected-assets.txt
+          echo "Extracted $(wc -l < release/expected-assets.txt) ABIs"
 
       - name: Package pre-release artifacts
         run: |
@@ -138,7 +126,7 @@ jobs:
 
           sed -i 's/^          //' release-body.md
 
-      - name: Create pre-release with artifacts
+      - name: Create draft pre-release with artifacts
         uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -148,3 +136,27 @@ jobs:
           draft: true
           prerelease: true
           generate_release_notes: true
+
+      - name: Verify draft assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          TAG="${GITHUB_REF_NAME}"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[].name' | sort > "$RUNNER_TEMP/actual-assets.txt"
+          { cat release/expected-assets.txt; echo "dotns-abis-${TAG}.zip"; } \
+            | sort > "$RUNNER_TEMP/wanted-assets.txt"
+          if ! diff -u "$RUNNER_TEMP/wanted-assets.txt" "$RUNNER_TEMP/actual-assets.txt"; then
+            echo "::error::Draft pre-release $TAG does not carry the expected asset set; leaving it unpublished."
+            exit 1
+          fi
+          echo "Verified $(wc -l < "$RUNNER_TEMP/wanted-assets.txt") assets on draft $TAG."
+
+      - name: Publish pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          echo "Published $TAG with its complete asset set."
