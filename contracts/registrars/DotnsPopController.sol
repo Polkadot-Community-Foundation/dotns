@@ -215,13 +215,7 @@ contract DotnsPopController is
         bytes32 reservedHash;
         bool hasReservation = bytes(params.reservedBaseLabel).length != 0;
         if (hasReservation) {
-            (IPopRules.PopStatus required,) = rules.classifyName(params.reservedBaseLabel);
-            require(
-                required != IPopRules.PopStatus.Reserved
-                    && rules.isBaseName(params.reservedBaseLabel),
-                InvalidBaseLabel()
-            );
-            (reservedHash,) = _validateBaseLabel(params.reservedBaseLabel);
+            (reservedHash,) = _validateReservableBaseLabel(rules, params.reservedBaseLabel);
         }
 
         _reserveLite(rules, params.lite);
@@ -245,13 +239,7 @@ contract DotnsPopController is
         onlyGateway
     {
         IPopRules rules = _popRules();
-        (IPopRules.PopStatus required,) = rules.classifyName(params.reservedBaseLabel);
-        require(
-            required != IPopRules.PopStatus.Reserved && rules.isBaseName(params.reservedBaseLabel),
-            InvalidBaseLabel()
-        );
-
-        (bytes32 reservedHash,) = _validateBaseLabel(params.reservedBaseLabel);
+        (bytes32 reservedHash,) = _validateReservableBaseLabel(rules, params.reservedBaseLabel);
         _advanceExpiredHead(reservedHash);
         _removeUserFromQueue(params.user);
         _enqueueReservation(rules, reservedHash, params.reservedBaseLabel, params.user);
@@ -812,6 +800,32 @@ contract DotnsPopController is
     {
         require(baseLabel.isSingleLabel(), InvalidBaseLabel());
         (labelhash, node) = LabelUtils.deriveNode(protocolRegistry.tldNode(), baseLabel);
+    }
+
+    /// @notice Validates a base label as reservable and returns its hashes.
+    /// @dev Shared by both reservation entrypoints so the guard cannot drift between them. Runs
+    /// three checks and reverts on the first failure, before any reservation state is mutated: the
+    /// label must classify outside the governance-reserved tier and be a base name, be a canonical
+    /// single label, and have no owner on the registrar. The last check is the fix for a
+    /// reservation queued over an already-registered name: the queue keys by stem, so such a
+    /// reservation could never be redeemed yet would lock every two-digit variant of the stem for
+    /// the full reservation window. `exists` (owner set) mirrors exactly what makes the eventual
+    /// claim's mint revert, so a label that passes here is one a claim can still register.
+    function _validateReservableBaseLabel(
+        IPopRules rules,
+        string calldata baseLabel
+    )
+        internal
+        view
+        returns (bytes32 labelhash, bytes32 node)
+    {
+        (IPopRules.PopStatus required,) = rules.classifyName(baseLabel);
+        require(
+            required != IPopRules.PopStatus.Reserved && rules.isBaseName(baseLabel),
+            InvalidBaseLabel()
+        );
+        (labelhash, node) = _validateBaseLabel(baseLabel);
+        require(!_registrar().exists(uint256(node)), BaseNameAlreadyRegistered());
     }
 
     /// @notice Reverts when a non-empty chat key is not exactly `CHAT_KEY_LENGTH` bytes.

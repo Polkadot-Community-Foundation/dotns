@@ -203,6 +203,10 @@ interface IDotnsPopController is IDotnsController {
     /// @notice Thrown when a supplied base label is not a canonical DNS label.
     error InvalidBaseLabel();
 
+    /// @notice Thrown when a reserved base label already has an owner on the registrar, so the
+    /// queued reservation could never be redeemed at mint time.
+    error BaseNameAlreadyRegistered();
+
     /// @notice Thrown when a supplied chat key is non-empty and not exactly 65 bytes long.
     /// @dev Mirrors the resolver's `InvalidChatKeyLength` so the controller surfaces a
     /// controller-local error before the mint runs.
@@ -259,8 +263,13 @@ interface IDotnsPopController is IDotnsController {
     /// @custom:emits PendingClaimStashed, with @custom:emits NameRegistered deferred to
     /// @custom:function claimLabelStore when the user settles. The base-name leg only runs
     /// when `reservedBaseLabel` is non-empty: it validates the DNS-label shape and requires a
-    /// true base label with no trailing digits (otherwise @custom:reverts InvalidBaseLabel)
-    /// before any queue mutation so a bad reservation never touches the queue, advances the
+    /// true base label with no trailing digits (otherwise @custom:reverts InvalidBaseLabel) and
+    /// with no owner on the registrar (otherwise @custom:reverts BaseNameAlreadyRegistered),
+    /// since a name that already has an owner could never be claimed. This validation runs
+    /// before both the lite mint and any queue mutation, so an already-registered
+    /// `reservedBaseLabel` aborts the whole call and the candidate receives no lite username
+    /// either; callers should validate the reserved label before attesting rather than relying
+    /// on this revert. It then advances the
     /// head past expired entries (emitting @custom:emits ReservationExpired for each one),
     /// removes the user from any prior queue position so a single user holds at most one live
     /// reservation across all labels, and enqueues a fresh entry (emitting
@@ -280,7 +289,8 @@ interface IDotnsPopController is IDotnsController {
     /// typed overload's full revert surface bubbles up byte-for-byte: gateway-only access
     /// (otherwise @custom:reverts NotGateway), lite-label shape (otherwise
     /// @custom:reverts InvalidLiteLabel), base-label shape (otherwise
-    /// @custom:reverts InvalidBaseLabel), duplicate-reservation guard (otherwise
+    /// @custom:reverts InvalidBaseLabel), already-registered base label (otherwise
+    /// @custom:reverts BaseNameAlreadyRegistered), duplicate-reservation guard (otherwise
     /// @custom:reverts AlreadyReserved), and queue capacity (otherwise
     /// @custom:reverts QueueFull). The success path likewise emits the same events as the
     /// typed call: @custom:emits LiteNameReserved and @custom:emits NameRegistered on the lite
@@ -296,7 +306,9 @@ interface IDotnsPopController is IDotnsController {
     /// gateway flow: @custom:function reserveLiteName mints the lite username first, then this
     /// function reserves the full/base label in a separate transaction so proof-size stays below
     /// per-call limits. Reverts with @custom:reverts InvalidBaseLabel when the label is empty,
-    /// non-canonical, digit-suffixed, or governance-reserved. The caller remains agnostic about
+    /// non-canonical, digit-suffixed, or governance-reserved, and with
+    /// @custom:reverts BaseNameAlreadyRegistered when the label already has an owner on the
+    /// registrar and so could never be claimed. The caller remains agnostic about
     /// backend batching; it simply exposes a small retryable primitive.
     /// @param params Reservation request; see @custom:struct BaseNameReservation.
     function reserveBaseNameOnly(BaseNameReservation calldata params) external;
