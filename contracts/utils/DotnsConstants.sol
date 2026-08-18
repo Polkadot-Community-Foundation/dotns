@@ -140,4 +140,12 @@ library DotnsConstants {
     ///      the protocol registry.
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant POP_GATEWAY = bytes32("popGateway");
+
+    /// @notice Well-known key for the pre-launch name whitelist that binds a label to the
+    ///         one address permitted to register it.
+    /// @dev Role: authority for label-bound registration grants. Both the public and PoP
+    ///      controllers resolve it here and read it at mint time; the whitelist stores the
+    ///      grants, the controllers only read them.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant NAME_WHITELIST = bytes32("nameWhitelist");
 }
