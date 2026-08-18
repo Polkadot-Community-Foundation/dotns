@@ -28,7 +28,7 @@ Pre-releases use **Publish Beta Package** with a suffixed version, `v0.5.5-rc1`.
 
 Do not create releases through the GitHub UI's release form, or with `gh release create`. Both publish immediately, and because this repository has immutable releases enabled, a published release can no longer accept assets: only its title and notes stay editable. A release made that way carries no ABIs at all. The workflow rejects an already-published version before building, so the mistake fails in seconds rather than silently shipping an empty release.
 
-If a run fails partway, re-run it from the Actions tab; the draft is updated rather than duplicated. If the version has already been published, use a different one, since its assets cannot be changed.
+If a run fails partway, re-run it from the Actions tab; the draft is updated rather than duplicated. One case needs a manual step: the upload replaces an asset of the same name but never removes others, so if the contract list changed since the failed run, the draft still carries the assets it no longer expects and the verification step will keep refusing to publish. Delete the draft and re-run. If the version has already been published, use a different one, since its assets cannot be changed.
 
 ## Economics
 

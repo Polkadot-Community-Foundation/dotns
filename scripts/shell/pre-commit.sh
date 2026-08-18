@@ -116,6 +116,15 @@ validate_git_config_file() {
   run_validation "$file" "git-config validation" git config --file "$file" --list
 }
 
+validate_abi_contracts() {
+  local file="$1"
+
+  # Each line becomes part of an artifact path in the publish workflows, so a
+  # carriage return from a CRLF save turns into out/Name\r.sol/Name\r.json and
+  # aborts the release. Reject it here instead.
+  run_validation "$file" "line-ending validation" awk '/\r/ { exit 1 }' "$file"
+}
+
 echo "pre-commit: validating repository files"
 while IFS= read -r -d '' file; do
   [ -f "$file" ] || continue
@@ -147,6 +156,9 @@ while IFS= read -r -d '' file; do
       ;;
     .gitmodules)
       validate_git_config_file "$file"
+      ;;
+    .github/abi-contracts.txt)
+      validate_abi_contracts "$file"
       ;;
   esac
 done < <(git ls-files -z)

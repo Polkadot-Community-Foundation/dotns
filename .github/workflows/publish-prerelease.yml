@@ -15,9 +15,9 @@ permissions:
   contents: write
 
 # Two runs for the same version would race to attach assets to the same draft. On a
-# dispatch `github.ref` is the branch, so key on the requested version instead.
+# dispatch `github.ref_name` is the branch, so key on the requested version instead.
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.version || github.ref }}
+  group: ${{ github.workflow }}-${{ inputs.version || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -29,6 +29,7 @@ jobs:
       # interpolating the input into the script.
       - name: Resolve release tag
         env:
+          GH_TOKEN: ${{ github.token }}
           INPUT_VERSION: ${{ inputs.version }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
@@ -36,8 +37,19 @@ jobs:
           else
             TAG="$GITHUB_REF_NAME"
           fi
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-.+$ ]]; then
+          # The suffix is restricted to characters GitHub keeps verbatim in an asset
+          # name; a space, for instance, is rewritten to a dot and would fail the
+          # asset check after a full build.
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.]+$ ]]; then
             echo "::error::Pre-release version must look like v1.2.3-rc1, got '$TAG'."
+            exit 1
+          fi
+          # A release created for an existing tag is cut at that tag's commit: GitHub
+          # ignores target_commitish when the tag is already there. The ABIs would come
+          # from this branch while the release pointed somewhere else.
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] \
+            && gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists; use a different version."
             exit 1
           fi
           echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
@@ -48,13 +60,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="$RELEASE_TAG"
-          state=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --json isDraft --jq '.isDraft' 2>/dev/null || echo absent)
-          if [ "$state" = "false" ]; then
-            echo "::error::Pre-release $TAG is already published and its assets are locked; use this workflow with a different version tag."
+          if state=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft --jq '.isDraft' 2>"$RUNNER_TEMP/gh-err.txt"); then
+            if [ "$state" = "false" ]; then
+              echo "::error::Pre-release $TAG is already published; use a different version."
+              exit 1
+            fi
+            echo "$TAG exists as a draft; assets can still be attached."
+          elif grep -qi "release not found" "$RUNNER_TEMP/gh-err.txt"; then
+            echo "No release for $TAG yet."
+          else
+            echo "::error::Could not read the state of release $TAG; refusing to continue."
+            cat "$RUNNER_TEMP/gh-err.txt"
             exit 1
           fi
-          echo "Release $TAG is $state; assets can still be attached."
 
       - uses: actions/checkout@v4
         with:
@@ -94,11 +113,15 @@ jobs:
         run: |
           mkdir -p release/abis
 
-          while IFS= read -r name || [ -n "$name" ]; do
+          # read trims stray spaces and tabs on its own. A carriage return, from a list
+          # saved with CRLF line endings, it does not: that would end up inside the
+          # artifact path below, so strip it explicitly.
+          while read -r name || [ -n "$name" ]; do
+            name="${name%$'\r'}"
             case "$name" in '' | '#'*) continue ;; esac
             abi_file="out/${name}.sol/${name}.json"
             if [ ! -f "$abi_file" ]; then
-              echo "::error::${abi_file} not found"
+              echo "::error::${abi_file} not found; check .github/abi-contracts.txt"
               exit 1
             fi
             jq '.abi' "$abi_file" > "release/abis/${name}.json"
@@ -151,6 +174,9 @@ jobs:
           ENDOFBODY
 
           sed -i 's/^          //' release-body.md
+          # The heredocs above are quoted so the ```ts fence is not treated as command
+          # substitution, which also leaves ${TAG} unexpanded. Substitute it here.
+          sed -i "s|\${TAG}|$TAG|g" release-body.md
 
       - name: Create draft pre-release with artifacts
         uses: softprops/action-gh-release@v2
@@ -178,7 +204,7 @@ jobs:
           { cat release/expected-assets.txt; echo "dotns-abis-${TAG}.zip"; } \
             | sort > "$RUNNER_TEMP/wanted-assets.txt"
           if ! diff -u "$RUNNER_TEMP/wanted-assets.txt" "$RUNNER_TEMP/actual-assets.txt"; then
-            echo "::error::Draft pre-release $TAG does not carry the expected asset set; leaving it unpublished."
+            echo "::error::Draft pre-release $TAG does not match the expected asset set; delete the draft and re-run."
             exit 1
           fi
           echo "Verified $(wc -l < "$RUNNER_TEMP/wanted-assets.txt") assets on draft $TAG."
