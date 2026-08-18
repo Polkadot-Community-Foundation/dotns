@@ -139,6 +139,7 @@ jobs:
       - name: Generate release body
         run: |
           TAG="$RELEASE_TAG"
+          ASSET_BASE="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG"
 
           cat > release-body.md << 'ENDOFBODY'
           ## DotNS ABI Package
@@ -150,14 +151,14 @@ jobs:
 
           for f in release/abis/*.json; do
             name=$(basename "$f" .json)
-            echo "          | \`${name}\` | [${name}.json](dotns-abis-${TAG}.zip) |" >> release-body.md
+            echo "          | \`${name}\` | [${name}.json]($ASSET_BASE/${name}.json) |" >> release-body.md
           done
 
           cat >> release-body.md << 'ENDOFBODY'
 
           ### Download
 
-          - **All ABIs (zip):** `dotns-abis-${TAG}.zip`
+          - **All ABIs (zip):** [dotns-abis-${TAG}.zip](${ASSET_BASE}/dotns-abis-${TAG}.zip)
           - **Individual ABIs:** Each contract ABI is also attached as a separate artifact
 
           ### Usage
@@ -171,7 +172,7 @@ jobs:
           sed -i 's/^          //' release-body.md
           # The heredocs above are quoted so the ```ts fence is not treated as command
           # substitution, which also leaves ${TAG} unexpanded. Substitute it here.
-          sed -i "s|\${TAG}|$TAG|g" release-body.md
+          sed -i "s|\${ASSET_BASE}|$ASSET_BASE|g; s|\${TAG}|$TAG|g" release-body.md
 
       - name: Create draft release with artifacts
         uses: softprops/action-gh-release@v2
