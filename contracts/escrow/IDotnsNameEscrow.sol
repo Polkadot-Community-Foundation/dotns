@@ -138,10 +138,7 @@ interface IDotnsNameEscrow {
     event CooldownUpdated(uint256 indexed currentCooldown, uint256 indexed newCooldown);
 
     /// @notice Emitted when the redeem window for future releases is updated.
-    event RedeemWindowUpdated(
-        uint256 indexed currentRedeemWindow,
-        uint256 indexed newRedeemWindow
-    );
+    event RedeemWindowUpdated(uint256 indexed currentRedeemWindow, uint256 indexed newRedeemWindow);
 
     /// @notice Emitted when a cross-tier fee is paid into the insurance fund.
     /// @param payer Original `msg.sender` whose value funded the fee.

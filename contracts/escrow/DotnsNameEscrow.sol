@@ -141,13 +141,16 @@ contract DotnsNameEscrow is
     ///      and any value above @custom:constant MAX_REDEEM_WINDOW (@custom:reverts
     ///      RedeemWindowTooLong), and emits @custom:emits RedeemWindowUpdated.
     /// @param registry Protocol registry used to resolve registrar and controller addresses.
-    /// @param cooldownSeconds Refund cooldown after release.
+    /// @param cooldownSeconds Delay after release before the deposit withdrawal may be credited.
     /// @param redeemWindowSeconds Period after release in which only the previous holder may act.
     function initialize(
         IDotnsProtocolRegistry registry,
         uint256 cooldownSeconds,
         uint256 redeemWindowSeconds
-    ) external initializer {
+    )
+        external
+        initializer
+    {
         require(address(registry) != address(0), InvalidAsset());
 
         __Ownable_init(msg.sender);
@@ -170,9 +173,7 @@ contract DotnsNameEscrow is
     }
 
     /// @inheritdoc IDotnsNameEscrow
-    function updateRedeemWindow(
-        uint256 newRedeemWindow
-    ) public override onlyOwner {
+    function updateRedeemWindow(uint256 newRedeemWindow) public override onlyOwner {
         require(newRedeemWindow != 0, InvalidRedeemWindow());
         require(
             newRedeemWindow <= MAX_REDEEM_WINDOW,
@@ -186,9 +187,12 @@ contract DotnsNameEscrow is
     }
 
     /// @inheritdoc IDotnsNameEscrow
-    function getReleasePosition(
-        uint256 tokenId
-    ) external view override returns (ReleasePosition memory position) {
+    function getReleasePosition(uint256 tokenId)
+        external
+        view
+        override
+        returns (ReleasePosition memory position)
+    {
         position = _positions[tokenId];
     }
 
@@ -385,14 +389,7 @@ contract DotnsNameEscrow is
 
         _addReleasedToken(tokenId);
 
-        emit NameReleased(
-            tokenId,
-            msg.sender,
-            asset,
-            amount,
-            availableAt,
-            redeemUntil
-        );
+        emit NameReleased(tokenId, msg.sender, asset, amount, availableAt, redeemUntil);
     }
 
     /// @inheritdoc IDotnsNameEscrow

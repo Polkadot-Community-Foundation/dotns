@@ -21,7 +21,9 @@ contract DotnsPopControllerFuzz is BaseDotns {
     // `value` to `[0, 99]` so the resulting suffix matches the `NAMEXX` contract used
     // throughout the PoP controller tests.
     function _twoDigitDecimal(uint256 value) internal pure returns (string memory s) {
-        if (value < 10) return string.concat("0", StringUtils.uintToString(value));
+        if (value < 10) {
+            return string.concat("0", StringUtils.uintToString(value));
+        }
         return StringUtils.uintToString(value);
     }
 

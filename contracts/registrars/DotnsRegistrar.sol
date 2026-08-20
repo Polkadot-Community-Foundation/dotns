@@ -270,7 +270,9 @@ contract DotnsRegistrar is
             positionSyncNeeded = position.recipient != address(0) && to != position.recipient;
         }
 
-        if (requiredFee == 0 && msg.value == 0 && !positionSyncNeeded) return from;
+        if (requiredFee == 0 && msg.value == 0 && !positionSyncNeeded) {
+            return from;
+        }
 
         IDotnsNameEscrow(payable(escrow)).chargeTransferFee{value: msg.value}(
             IDotnsNameEscrow.ChargeTransferFeeParams({

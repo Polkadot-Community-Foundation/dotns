@@ -146,7 +146,7 @@ abstract contract BaseDotns is Test {
     ///         @custom:constant MAX_COOLDOWN ceiling.
     uint256 public constant ESCROW_COOLDOWN = 15 minutes;
 
-    /// @notice Default redeem window for the freshly-deployed name escrow.
+    /// @notice Default escrow redeem window used in tests. Bounded by the escrow's
     ///         @custom:constant MAX_REDEEM_WINDOW ceiling.
     uint256 public constant ESCROW_REDEEM_WINDOW = 1 days;
 

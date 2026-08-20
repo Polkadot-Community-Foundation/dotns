@@ -64,11 +64,7 @@ contract DeployPolicy is BaseDeployer {
             "DotnsNameEscrow.sol:DotnsNameEscrow",
             abi.encodeCall(
                 DotnsNameEscrow.initialize,
-                (
-                    IDotnsProtocolRegistry(protocolRegistry),
-                    ESCROW_COOLDOWN,
-                    ESCROW_REDEEM_WINDOW
-                )
+                (IDotnsProtocolRegistry(protocolRegistry), ESCROW_COOLDOWN, ESCROW_REDEEM_WINDOW)
             ),
             "DotnsNameEscrow"
         );
