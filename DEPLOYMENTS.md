@@ -274,7 +274,7 @@ for ADDRESS in 0xAddress1 0xAddress2 0xAddress3; do
 done
 ```
 
-Both states are open view calls needing no authority: `isWhiteListed(address)` reports whether an address may call `registerReserved`, and `hasRole(WHITELIST_OPERATOR_ROLE, account)` reports whether an account holds the operator role. `$CONTROLLER` is the `DotnsRegistrarController` address for the target network, taken from the deployment manifest or the [Live addresses](#live-addresses) tables below, never hardcoded across networks.
+Both states are open view calls needing no authority: `isWhiteListed(address)` reports whether an address may call `registerReserved`, and `hasRole(WHITELIST_OPERATOR_ROLE, account)` reports whether an account holds the operator role. `$CONTROLLER` is the `DotnsRegistrarController` address for the target network, read from the protocol registry or taken from the [deployment manifest](#addresses), never hardcoded across networks.
 
 ## Deterministic addresses (CREATE3)
 
@@ -359,6 +359,8 @@ deployments/paseo-assethub/420420417.json
 deployments/paseo-local/420420420.json
 ```
 
+A manifest holds exactly one address per contract, the current one. Each deploy overwrites the entries it produces, so the file always describes the latest deployment for that network and never a history of them. Previous address sets exist only in this repository's git history. Nothing else is in there either: no implementation addresses behind the UUPS proxies, and no record of which commit was deployed.
+
 ## Troubleshooting
 
 If the adapter is not responding, confirm Docker is running and that port 8545 is free. The compose health check uses eth_chainId against http://localhost:8545.
@@ -371,113 +373,21 @@ If the deploy script succeeds, .env should be gone. Future runs should use the k
 
 If a stage fails part way through, rerun the same command. Each stage adopts any contract already at its deterministic address and skips re-initialising an adopted proxy, so the rerun resumes from where it stopped and deploys only what is missing. Later stages read the deployment manifest for wire-up, so if you edit the manifest by hand keep it consistent with what is actually on chain, or the wire-up can fail.
 
-## Live addresses
+## Addresses
 
-Every network is deployed through the same CREATE3 factory, so the contract addresses are the same on all of them. Only the TLD differs per network.
+The deployment manifest for a network is the only place in this repository that records its addresses:
+
+```text
+deployments/<network>/<chain-id>.json
+```
+
+Every network deployed through the shared CREATE3 factory lands on the same address set, so those manifests agree with each other; a chain deployed through a different factory has its own set, and a chain id alone does not identify one, since several networks report the same id. Only the TLD differs per network among the networks below.
 
 | Network | TLD |
 | --- | --- |
 | Paseo Asset Hub Previewnet | `.dot` |
 | Paseo Asset Hub Next V2 | `.paseo` |
 
-**Create3Factory**
+Each release also publishes the same addresses as `deployments.json`, attached to the release and at the root of `dotns-abis-<tag>.zip`, for consumers outside this repository. See [`RELEASE_ARTIFACTS.md`](./RELEASE_ARTIFACTS.md).
 
-```text
-0x8533c79E058c5a6489CAFeCA86dc600E029D75f5
-```
-
-**DotnsProtocolRegistry**
-
-```text
-0xD19e3D0C97CF501125a04A97405e3e6592fa846E
-```
-
-**Multicall3**
-
-```text
-0xB4468000abD87D3c56cbFBd153161223D7b109e5
-```
-
-**DotnsRegistrar**
-
-```text
-0x4f06E818Ba3d987704fd91cf3d868E4b019106Ab
-```
-
-**DotnsRegistry**
-
-```text
-0xf34054fd76BbF85f216cf9908226D5f0A72E50CA
-```
-
-**DotnsRegistrarController**
-
-```text
-0xBdaA01bD1bA67d709F2b1fF286Da0d854977EA30
-```
-
-**DotnsPopController**
-
-```text
-0xCC932348606cc1f3318cADeC5A5Cd2CA447f8a4b
-```
-
-**RootGatewayDispatcher**
-
-```text
-0xa889CCA3Fb4B07b98a11cc54C10f13dDA20bc3db
-```
-
-**PopRules**
-
-```text
-0x747B456bE03aec0b42bd85C51513730FBD45DA31
-```
-
-**DotnsResolver**
-
-```text
-0xbd1165E549DF96F083c0A16f61590927bC187009
-```
-
-**DotnsReverseResolver**
-
-```text
-0xee3883d7eB60Ee9BCD7F3bcD8f2f05302A9Cc035
-```
-
-**DotnsContentResolver**
-
-```text
-0x7F74D7CD50f5a834270E2ad395a01b01891AB37d
-```
-
-**DotnsPopResolver**
-
-```text
-0xDaC984884EcA8Fc44011f1D6C49B27828390A72B
-```
-
-**DotnsNameEscrow**
-
-```text
-0x4881Afb78e7C908cAe818168B926229D93376520
-```
-
-**StoreFactory**
-
-```text
-0x709A027F446a9e2a4BB9cb9a9c754435b19e32B7
-```
-
-**LabelStoreBeacon**
-
-```text
-0xb57Ebc2e7085616d4906D1fE49af1cE13f7dffeF
-```
-
-**UserStoreBeacon**
-
-```text
-0xb7C995601679840d36F37E86DB2d7dF30797eC5C
-```
+Prefer reading an address from the protocol registry at runtime. Every consumer contract exposes `protocolRegistry`, and the registry resolves each well-known key in `DotnsConstants`, so one known address is enough to reach the rest and the chain stays the authority.
