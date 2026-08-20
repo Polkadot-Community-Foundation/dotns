@@ -146,6 +146,10 @@ abstract contract BaseDotns is Test {
     ///         @custom:constant MAX_COOLDOWN ceiling.
     uint256 public constant ESCROW_COOLDOWN = 15 minutes;
 
+    /// @notice Default redeem window for the freshly-deployed name escrow.
+    ///         @custom:constant MAX_REDEEM_WINDOW ceiling.
+    uint256 public constant ESCROW_REDEEM_WINDOW = 1 days;
+
     /// @notice Zero hash constant.
     bytes32 public constant ZERO_HASH = bytes32(0);
 
@@ -295,7 +299,11 @@ abstract contract BaseDotns is Test {
             "DotnsNameEscrow.sol:DotnsNameEscrow",
             abi.encodeCall(
                 DotnsNameEscrow.initialize,
-                (IDotnsProtocolRegistry(protocolRegistryAddress), ESCROW_COOLDOWN)
+                (
+                    IDotnsProtocolRegistry(protocolRegistryAddress),
+                    ESCROW_COOLDOWN,
+                    ESCROW_REDEEM_WINDOW
+                )
             )
         );
         dotnsNameEscrow = DotnsNameEscrow(payable(dotnsNameEscrowAddress));
