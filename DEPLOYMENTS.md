@@ -385,7 +385,7 @@ Every network deployed through the shared CREATE3 factory lands on the same addr
 
 | Network | TLD |
 | --- | --- |
-| Paseo Asset Hub Previewnet | `.dot` |
+| Paseo Asset Hub Previewnet | `.test` |
 | Paseo Asset Hub Next V2 | `.paseo` |
 
 Each release also publishes the same addresses as `deployments.json`, attached to the release and at the root of `dotns-abis-<tag>.zip`, for consumers outside this repository. See [`RELEASE_ARTIFACTS.md`](./RELEASE_ARTIFACTS.md).
