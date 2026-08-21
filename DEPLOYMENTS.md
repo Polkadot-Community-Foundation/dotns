@@ -377,7 +377,7 @@ Every network is deployed through the same CREATE3 factory, so the contract addr
 
 | Network | TLD |
 | --- | --- |
-| Paseo Asset Hub Previewnet | `.dot` |
+| Paseo Asset Hub Previewnet | `.test` |
 | Paseo Asset Hub Next V2 | `.paseo` |
 
 **Create3Factory**
