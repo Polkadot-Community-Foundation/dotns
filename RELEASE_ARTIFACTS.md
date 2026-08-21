@@ -15,7 +15,9 @@ The first three are attached to the release individually, at the top level, with
 
 The release surface is decided in `.github/abi-contracts.txt` so a contract reaches consumers only when it is listed there.
 
-`deployments.json` and `release-manifest.json` were added after this repository had already published releases, so an older release carries only the per-contract ABIs and the zip. That is expected rather than broken, and it cannot be corrected: releases here are immutable, so no asset can be attached after publication. Treat either file being missing as "this release predates it" and fall back, or pin a release you have checked.
+**Pre-releases carry no addresses.** A pre-release is cut in order to be deployed, so at that point the recorded addresses still belong to the previous deployment of different code. Publishing them under that tag would break the one thing `version` is for, namely that a release's addresses and its ABIs came from the same release. A pre-release therefore ships the ABIs and `release-manifest.json`, and the addresses arrive with the release that follows the deployment.
+
+`deployments.json` and `release-manifest.json` were also added after this repository had already published releases, so an older release carries only the per-contract ABIs and the zip. That is expected rather than broken, and it cannot be corrected: releases here are immutable, so no asset can be attached after publication. Treat either file being missing as "this release predates it, or is a pre-release" and fall back, or pin a release you have checked.
 
 ## `deployments.json`
 
@@ -96,6 +98,13 @@ It compares the two sides as sets, so it does not check that a given key holds t
 
 That file holds exactly one address per contract, the current one. Each deploy overwrites the entries it produces, so it tracks only the latest deployment for a network and never a history of them; previous address sets exist only in this repository's git history. It also carries no implementation addresses behind the UUPS proxies, and no record of which commit was deployed.
 
-The release fails before publishing if either is missing from the draft, so a release published by this workflow always carries both.
+The release fails before publishing if an expected file is missing from the draft, so a published release always carries the set it advertises.
 
-Before cutting a release after a live deployment: read the expected-versus-actual table in the [`dotns-releases`](https://github.com/paritytech/dotns-releases) report for that network, update the manifest in this repository if any row moved, then run `deployments:verify` against the network. Addresses that moved on chain without the manifest being updated would otherwise be published as current.
+The order for a release that changes contract code:
+
+1. Cut a pre-release. It carries the ABIs but no addresses.
+2. Deploy that tag from [`dotns-releases`](https://github.com/paritytech/dotns-releases). Deploying a tag rather than a branch is what ties the addresses to the code that produced them.
+3. Record the resulting addresses in `deployments/<network>/<chain-id>.json`.
+4. Cut the release from a commit that differs from the deployed tag only by that record, and run `deployments:verify` against the network first.
+
+A release that changes no contract code needs none of this: nothing is deployed, addresses have not moved, and the existing record is still correct.

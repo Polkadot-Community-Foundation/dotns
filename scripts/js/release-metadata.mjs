@@ -130,23 +130,31 @@ function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+// `--addresses false` omits deployments.json. A pre-release is cut to be deployed, so the
+// addresses on record still belong to the previous deployment of different code; shipping them
+// under this tag would break the promise that a release's addresses and ABIs came from the same
+// release. release-manifest.json describes this release's own contents, so it is always written.
 function build(args) {
   const tag = args.tag;
   if (!tag) fail("build needs --tag");
+  const withAddresses = args.addresses !== "false";
   const outDir = args.out ? resolve(process.cwd(), args.out) : join(ROOT, "release");
   mkdirSync(outDir, { recursive: true });
 
-  const networks = {};
-  for (const [network, { chainId, path }] of committedManifests()) {
-    networks[network] = { chainId, contracts: contractsFromManifest(path) };
+  if (withAddresses) {
+    const networks = {};
+    for (const [network, { chainId, path }] of committedManifests()) {
+      networks[network] = { chainId, contracts: contractsFromManifest(path) };
+    }
+    writeJson(join(outDir, "deployments.json"), { version: tag, networks });
+    const names = Object.keys(networks);
+    log(`${tag}: ${names.length} network(s): ${names.join(", ")}`);
+  } else {
+    log(`${tag}: no addresses, this release is not deployed yet`);
   }
+
   const { contracts, abiOnly, files } = classifyContracts(readContractNames());
-
-  writeJson(join(outDir, "deployments.json"), { version: tag, networks });
   writeJson(join(outDir, "release-manifest.json"), { version: tag, contracts, abiOnly, files });
-
-  const names = Object.keys(networks);
-  log(`${tag}: ${names.length} network(s): ${names.join(", ")}`);
   log(`${contracts.length} contracts, ${abiOnly.length} ABI-only entries`);
 }
 
