@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 // Address and manifest metadata for a release.
 //
 //   build     --tag <TAG> [--out <dir>]                 write the two release files
@@ -14,7 +13,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -166,25 +165,40 @@ function validate() {
     const contracts = contractsFromManifest(path);
     log(`${network} (chain ${chainId}): ${Object.keys(contracts).length} addresses`);
   }
-  const missing = readContractNames().filter(
-    (name) => !existsSync(join(ROOT, "out", `${name}.sol`, `${name}.json`)) && !sourceExists(name),
+  const names = readContractNames();
+  const sources = trackedSourceNames();
+  const missing = names.filter(
+    (name) => !sources.has(name) && !existsSync(join(ROOT, "out", `${name}.sol`, `${name}.json`)),
   );
   if (missing.length > 0) {
     fail(`no source or build artefact for: ${missing.join(", ")}`);
   }
-  log(`${manifests.size} manifest(s) and ${readContractNames().length} listed contracts are valid`);
+  log(`${manifests.size} manifest(s) and ${names.length} listed contracts are valid`);
 }
 
-function sourceExists(name) {
+function trackedSourceNames() {
+  let tracked;
   try {
-    const found = execFileSync("git", ["ls-files", `contracts/**/${name}.sol`], {
-      cwd: ROOT,
-      encoding: "utf8",
-    });
-    return found.trim() !== "";
-  } catch {
-    return false;
+    tracked = execFileSync("git", ["ls-files", "contracts"], { cwd: ROOT, encoding: "utf8" });
+  } catch (err) {
+    fail(`could not list tracked sources: ${err.message}`);
   }
+  return new Set(
+    tracked
+      .split("\n")
+      .filter((path) => path.endsWith(".sol"))
+      .map((path) => basename(path, ".sol")),
+  );
+}
+
+// Compared per address rather than by serialising, so a manifest whose keys were reordered, or
+// whose checksum casing differs, is not announced as a move that did not happen.
+function sameAddresses(before = {}, after = {}) {
+  const labels = new Set([...Object.keys(before), ...Object.keys(after)]);
+  for (const label of labels) {
+    if ((before[label] ?? "").toLowerCase() !== (after[label] ?? "").toLowerCase()) return false;
+  }
+  return true;
 }
 
 function readDeployments(path) {
@@ -204,9 +218,7 @@ function changelog(args) {
   const previous = readDeployments(args.previous);
   const previousTag = args["previous-tag"] ?? "the previous release";
   const changed = Object.keys(current).filter(
-    (name) =>
-      previous[name] &&
-      JSON.stringify(previous[name].contracts) !== JSON.stringify(current[name].contracts),
+    (name) => previous[name] && !sameAddresses(previous[name].contracts, current[name].contracts),
   );
   const added = Object.keys(current).filter((name) => !previous[name]);
   const removed = Object.keys(previous).filter((name) => !current[name]);

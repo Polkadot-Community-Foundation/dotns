@@ -72,8 +72,6 @@ That leaves one way for a release to be out of date: a deployment moved an addre
 
 Two ways to protect yourself. Resolve addresses through the protocol registry at runtime, so the chain is the authority and the published file is only a starting point. Or check a release against a chain yourself with `deployments:verify` before relying on it.
 
-The manual step is deliberate for now, and this file stays the single source of truth for addresses either way. The next step is for a deployment to update it automatically, so recording addresses stops depending on someone remembering. Later, publishing can read the chain and refuse to publish addresses that disagree with it.
-
 ## Consuming it
 
 Prefer resolving addresses at runtime. Every DotNS contract exposes `protocolRegistry`, and `DotnsProtocolRegistry.get(key)` resolves each well-known key in `DotnsConstants`, so one address from the artifact is enough to reach the rest and the chain remains the authority. Pin the whole set only when a runtime lookup is not possible.
