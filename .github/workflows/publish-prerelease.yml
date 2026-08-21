@@ -4,14 +4,77 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+-*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Pre-release version, e.g. v0.5.5-rc1. The tag is created from the selected branch."
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+# Two runs for the same version would race to attach assets to the same draft. On a
+# dispatch `github.ref_name` is the branch, so key on the requested version instead.
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   beta-release:
     runs-on: ubuntu-latest
     steps:
+      # On workflow_dispatch the tag does not exist yet; the release step creates it
+      # from the branch this run was started on. Read through an env var rather than
+      # interpolating the input into the script.
+      - name: Resolve release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="$INPUT_VERSION"
+          else
+            TAG="$GITHUB_REF_NAME"
+          fi
+          # The suffix is restricted to characters GitHub keeps verbatim in an asset
+          # name; a space, for instance, is rewritten to a dot and would fail the
+          # asset check after a full build.
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.]+$ ]]; then
+            echo "::error::Pre-release version must look like v1.2.3-rc1, got '$TAG'."
+            exit 1
+          fi
+          # A release created for an existing tag is cut at that tag's commit: GitHub
+          # ignores target_commitish when the tag is already there. The ABIs would come
+          # from this branch while the release pointed somewhere else.
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] \
+            && gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists; use a different version."
+            exit 1
+          fi
+          echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+          echo "Releasing $TAG from $GITHUB_REF_NAME."
+
+      - name: Reject a pre-published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="$RELEASE_TAG"
+          if state=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft --jq '.isDraft' 2>"$RUNNER_TEMP/gh-err.txt"); then
+            if [ "$state" = "false" ]; then
+              echo "::error::Pre-release $TAG is already published; use a different version."
+              exit 1
+            fi
+            echo "$TAG exists as a draft; assets can still be attached."
+          elif grep -qi "release not found" "$RUNNER_TEMP/gh-err.txt"; then
+            echo "No release for $TAG yet."
+          else
+            echo "::error::Could not read the state of release $TAG; refusing to continue."
+            cat "$RUNNER_TEMP/gh-err.txt"
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -50,61 +113,36 @@ jobs:
         run: |
           mkdir -p release/abis
 
-          contracts=(
-            "StoreFactory"
-            "LabelStore"
-            "UserStore"
-            "DotnsRegistrar"
-            "DotnsReverseResolver"
-            "DotnsRegistry"
-            "DotnsContentResolver"
-            "DotnsResolver"
-            "PopRules"
-            "DotnsRegistrarController"
-            "DotnsProtocolRegistry"
-            "DotnsNameEscrow"
-            "DotnsPopController"
-            "DotnsPopResolver"
-            "DotnsRoleManager"
-            "RootGatewayDispatcher"
-            "IStoreFactory"
-            "ILabelStore"
-            "IUserStore"
-            "IDotnsRegistrar"
-            "IDotnsRegistrarController"
-            "IDotnsRegistry"
-            "IDotnsReverseResolver"
-            "IDotnsContentResolver"
-            "IDotnsResolver"
-            "IPopRules"
-            "IDotnsProtocolRegistry"
-            "IDotnsNameEscrow"
-            "IDotnsPopController"
-            "IDotnsPopResolver"
-            "IDotnsController"
-            "IDotnsRoleManager"
-          )
-
-          for name in "${contracts[@]}"; do
+          # read trims stray spaces and tabs on its own. A carriage return, from a list
+          # saved with CRLF line endings, it does not: that would end up inside the
+          # artifact path below, so strip it explicitly.
+          while read -r name || [ -n "$name" ]; do
+            name="${name%$'\r'}"
+            case "$name" in '' | '#'*) continue ;; esac
             abi_file="out/${name}.sol/${name}.json"
-            if [ -f "$abi_file" ]; then
-              jq '.abi' "$abi_file" > "release/abis/${name}.json"
-              echo "Extracted ${name}"
-            else
-              echo "Error: ${abi_file} not found"
+            if [ ! -f "$abi_file" ]; then
+              echo "::error::${abi_file} not found; check .github/abi-contracts.txt"
               exit 1
             fi
-          done
+            jq '.abi' "$abi_file" > "release/abis/${name}.json"
+            echo "Extracted ${name}"
+          done < .github/abi-contracts.txt
+
+          # Record what the build actually produced, so the post-upload check compares
+          # against it rather than against a second hand-maintained list.
+          ls -1 release/abis | sort > release/expected-assets.txt
+          echo "Extracted $(wc -l < release/expected-assets.txt) ABIs"
 
       - name: Package pre-release artifacts
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          TAG="$RELEASE_TAG"
           cd release
           zip -r "../dotns-abis-${TAG}.zip" abis/
 
       - name: Generate release body
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          TAG="$RELEASE_TAG"
+          ASSET_BASE="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG"
 
           cat > release-body.md << 'ENDOFBODY'
           ## DotNS ABI Package (Pre-release)
@@ -118,14 +156,14 @@ jobs:
 
           for f in release/abis/*.json; do
             name=$(basename "$f" .json)
-            echo "          | \`${name}\` | [${name}.json](dotns-abis-${TAG}.zip) |" >> release-body.md
+            echo "          | \`${name}\` | [${name}.json]($ASSET_BASE/${name}.json) |" >> release-body.md
           done
 
           cat >> release-body.md << 'ENDOFBODY'
 
           ### Download
 
-          - **All ABIs (zip):** `dotns-abis-${TAG}.zip`
+          - **All ABIs (zip):** [dotns-abis-${TAG}.zip](${ASSET_BASE}/dotns-abis-${TAG}.zip)
           - **Individual ABIs:** Each contract ABI is also attached as a separate artifact
 
           ### Usage
@@ -137,10 +175,17 @@ jobs:
           ENDOFBODY
 
           sed -i 's/^          //' release-body.md
+          # The heredocs above are quoted so the ```ts fence is not treated as command
+          # substitution, which also leaves ${TAG} unexpanded. Substitute it here.
+          sed -i "s|\${ASSET_BASE}|$ASSET_BASE|g; s|\${TAG}|$TAG|g" release-body.md
 
-      - name: Create pre-release with artifacts
+      - name: Create draft pre-release with artifacts
         uses: softprops/action-gh-release@v2
         with:
+          # Explicit because on workflow_dispatch there is no tag to infer; the action
+          # creates it at this run's commit.
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
           files: |
             dotns-abis-*.zip
             release/abis/*.json
@@ -148,3 +193,27 @@ jobs:
           draft: true
           prerelease: true
           generate_release_notes: true
+
+      - name: Verify draft assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          TAG="$RELEASE_TAG"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[].name' | sort > "$RUNNER_TEMP/actual-assets.txt"
+          { cat release/expected-assets.txt; echo "dotns-abis-${TAG}.zip"; } \
+            | sort > "$RUNNER_TEMP/wanted-assets.txt"
+          if ! diff -u "$RUNNER_TEMP/wanted-assets.txt" "$RUNNER_TEMP/actual-assets.txt"; then
+            echo "::error::Draft pre-release $TAG does not match the expected asset set; delete the draft and re-run."
+            exit 1
+          fi
+          echo "Verified $(wc -l < "$RUNNER_TEMP/wanted-assets.txt") assets on draft $TAG."
+
+      - name: Publish pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="$RELEASE_TAG"
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          echo "Published $TAG with its complete asset set."

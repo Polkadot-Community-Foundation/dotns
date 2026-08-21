@@ -1,0 +1,5 @@
+# The publish workflows read each line of this list into an artifact path, so a CRLF
+# checkout would look for out/Name\r.sol/Name\r.json and abort the release. Pin it to
+# LF regardless of the platform's autocrlf setting. The pre-commit hook rejects a CR
+# on the way in; this covers the way out.
+.github/abi-contracts.txt text eol=lf
