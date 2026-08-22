@@ -11,22 +11,26 @@ import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {LabelUtils} from "../utils/LabelUtils.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
+import {SystemUtils} from "../utils/SystemUtils.sol";
 
 /// @title DotnsNameWhitelist
-/// @notice Pre-launch name whitelist that binds a name to the single address permitted to
-///         register it, tracking each name from request to decision.
+/// @notice Pre-launch name whitelist. A name is Open until governance reserves it or a claim is
+///         accepted for it. Several beneficiaries may claim the same Open name, each with a
+///         reason, and governance accepts one as the winner.
 /// @dev Lives behind its own UUPS proxy with its own storage. Callers pass bare labels only; the
-///      contract derives the node from the label and the TLD held in the protocol registry, the
-///      same derivation the controllers use, so a caller can never supply a mismatched hash. Each
-///      entry keeps its label, request and decision timestamps, and status, and the node set is
-///      enumerable, so the whitelist is reviewable on-chain. Requests are user-facing; accepting,
-///      rejecting, direct granting, batch granting and revoking are operator or owner actions
-///      through the inherited @custom:contract DotnsRoleManager, with the owner appointing and
-///      removing @custom:function DotnsConstants.WHITELIST_OPERATOR_ROLE holders and keeping
-///      super-user access. The public and PoP controllers read the whitelist at mint time and
-///      never write to it. Entries are keyed by the node under the active TLD, which the
-///      deployment holds immutable for the whitelist's lifetime; a TLD change would strand
-///      existing entries under their old node.
+///      contract derives the node from the label and the TLD in the protocol registry, so a
+///      caller cannot supply a mismatched hash. Claims are keyed by the beneficiary `user`, not
+///      the submitter, so a relayer or a cross-chain sovereign account can submit on a user's
+///      behalf and the name binds to that user. All state is on-chain and queryable through views;
+///      no event indexing is required. A name holds at most `maxClaimants` live claims, which
+///      bounds the loop that clears them on resolution. Resolving a name deletes its claims,
+///      refunding their storage deposit, so only reserved or won names persist. Governance is Root
+///      or the owner. Substrate Root has no address, so the governance gates check
+///      `SystemUtils.originIsRoot`, which is true through the proxy's delegatecall frame, before
+///      reading `msg.sender`. Operators are signed role holders
+///      for day-to-day approvals; the public and PoP controllers hold only the `consume` hook.
+///      Entries are keyed by the node under the active TLD, which the deployment holds immutable
+///      for the whitelist's lifetime.
 /// @custom:security-contact admin@parity.io
 contract DotnsNameWhitelist is
     Initializable,
@@ -35,16 +39,35 @@ contract DotnsNameWhitelist is
     IDotnsNameWhitelist
 {
     using StringUtils for string;
+    using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
     /// @notice Protocol-level address registry for all DotNS contracts.
     IDotnsProtocolRegistry public protocolRegistry;
 
-    /// @notice Entries keyed by the label's namehash under the active TLD.
-    mapping(bytes32 node => Grant grant) private _grants;
+    /// @notice Live-claim cap per name, tunable by governance within
+    ///         `DotnsConstants.WHITELIST_MAX_CLAIMANTS_LIMIT`.
+    uint16 public maxClaimants;
 
-    /// @notice Nodes with a live entry, kept enumerable so the whitelist can be reviewed.
-    EnumerableSet.Bytes32Set private _grantedNodes;
+    /// @notice Cap on labels per `grantNames` call, tunable by governance within
+    ///         `DotnsConstants.WHITELIST_MAX_GRANT_BATCH_LIMIT`.
+    uint16 public maxGrantBatch;
+
+    /// @notice Reason byte cap, tunable by governance within
+    ///         `DotnsConstants.WHITELIST_MAX_REASON_LIMIT`.
+    uint256 public maxReasonBytes;
+
+    /// @notice Resolved state per name.
+    mapping(bytes32 node => NameRecord record) private _names;
+
+    /// @notice Claims per name, keyed by beneficiary.
+    mapping(bytes32 node => mapping(address user => Claim claim)) private _claims;
+
+    /// @notice Beneficiaries with a live claim per name.
+    mapping(bytes32 node => EnumerableSet.AddressSet claimants) private _claimants;
+
+    /// @notice Names holding reserved, claimed or claim-holding state, kept enumerable for review.
+    EnumerableSet.Bytes32Set private _activeNodes;
 
     /// @notice Timestamp requests start being accepted.
     uint64 private _requestOpen;
@@ -55,9 +78,21 @@ contract DotnsNameWhitelist is
     /// @dev Reserved storage space to allow for layout changes in the future.
     uint256[50] private __gap;
 
-    /// @notice Restricts a call to an operator or the owner.
-    modifier onlyOperatorOrOwner() {
-        _checkRoleOrOwner(DotnsConstants.WHITELIST_OPERATOR_ROLE);
+    /// @notice Restricts a call to Root or the owner.
+    /// @dev Checks Root first so `msg.sender`, which traps under a Root origin, is read only for a
+    ///      signed caller.
+    modifier onlyGovernance() {
+        if (!SystemUtils.originIsRoot()) {
+            _checkOwner();
+        }
+        _;
+    }
+
+    /// @notice Restricts a call to Root, the owner, or an operator.
+    modifier onlyOperatorOrGovernance() {
+        if (!SystemUtils.originIsRoot()) {
+            _checkRoleOrOwner(DotnsConstants.WHITELIST_OPERATOR_ROLE);
+        }
         _;
     }
 
@@ -77,18 +112,195 @@ contract DotnsNameWhitelist is
     }
 
     /// @notice Initialises the whitelist.
-    /// @dev Callable once through the UUPS proxy; direct calls on the implementation revert with
+    /// @dev Callable once through the UUPS proxy; direct calls on the implementation
     ///      @custom:reverts InvalidInitialization. Sets the deployer as owner and wires the
     ///      protocol registry the node derivation reads the TLD from.
     /// @param registry Protocol registry all DotNS contracts resolve through.
     function initialize(IDotnsProtocolRegistry registry) external initializer {
+        __ERC165_init();
         __Ownable_init(msg.sender);
         _dotnsRoleManagerInit();
         protocolRegistry = registry;
+        maxClaimants = DotnsConstants.WHITELIST_DEFAULT_MAX_CLAIMANTS;
+        maxGrantBatch = DotnsConstants.WHITELIST_DEFAULT_MAX_GRANT_BATCH;
+        maxReasonBytes = DotnsConstants.WHITELIST_DEFAULT_MAX_REASON_BYTES;
     }
 
     /// @inheritdoc IDotnsNameWhitelist
-    function setWindow(uint64 startsIn, uint64 duration) external override onlyOwner {
+    function setOperator(address account, bool enabled) external override onlyGovernance {
+        _setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, enabled);
+    }
+
+    /// @inheritdoc IDotnsNameWhitelist
+    function setMaxClaimants(uint16 newMax) external override onlyGovernance {
+        require(
+            newMax > 0 && newMax <= DotnsConstants.WHITELIST_MAX_CLAIMANTS_LIMIT,
+            MaxClaimantsOutOfRange()
+        );
+        maxClaimants = newMax;
+        emit MaxClaimantsSet(newMax);
+    }
+
+    /// @inheritdoc IDotnsNameWhitelist
+    function setMaxReasonBytes(uint256 newMax) external override onlyGovernance {
+        require(
+            newMax > 0 && newMax <= DotnsConstants.WHITELIST_MAX_REASON_LIMIT,
+            MaxReasonBytesOutOfRange()
+        );
+        maxReasonBytes = newMax;
+        emit MaxReasonBytesSet(newMax);
+    }
+
+    /// @inheritdoc IDotnsNameWhitelist
+    function setMaxGrantBatch(uint16 newMax) external override onlyGovernance {
+        require(
+            newMax > 0 && newMax <= DotnsConstants.WHITELIST_MAX_GRANT_BATCH_LIMIT,
+            MaxGrantBatchOutOfRange()
+        );
+        maxGrantBatch = newMax;
+        emit MaxGrantBatchSet(newMax);
+    }
+
+    /// @inheritdoc IDotnsNameWhitelist
+    function requestName(
+        string calldata label,
+        string calldata reason,
+        address user
+    )
+        external
+        override
+    {
+        require(_isWindowOpen(), WindowClosed());
+        require(user != address(0), ZeroUser());
+        require(bytes(reason).length <= maxReasonBytes, ReasonTooLong());
+        require(label.isSingleLabel(), InvalidLabel());
+
+        bytes32 node = _nodeOf(label);
+        require(_names[node].status == NameStatus.Open, NameNotOpen(node));
+        require(_claims[node][user].status == ClaimStatus.None, AlreadyClaimed(node, user));
+        require(_claimants[node].length() < maxClaimants, TooManyClaimants(node));
+
+        _claims[node][user] = Claim({
+            user: user,
+            status: ClaimStatus.Requested,
+            requestedAt: uint64(block.timestamp),
+            reason: reason
+        });
+        _claimants[node].add(user);
+        _activate(node, label);
+        emit NameRequested(node, user, label);
+    }
+
+    /// @inheritdoc IDotnsNameWhitelist
+    function accept(
+        string calldata label,
+        address user
+    )
+        external
+        override
+        onlyOperatorOrGovernance
+    {
+        bytes32 node = _nodeOf(label);
+        require(_claims[node][user].status == ClaimStatus.Requested, NotRequested(node, user));
+        emit NameAccepted(node, user, label);
+        _settle(node, user, label);
+    }
+
+    /// @inheritdoc IDotnsNameWhitelist
+    function reject(
+        string calldata label,
+        address user
+    )
+        external
+        override
+        onlyOperatorOrGovernance
+    {
+        bytes32 node = _nodeOf(label);
+        require(_claims[node][user].status == ClaimStatus.Requested, NotRequested(node, user));
+        delete _claims[node][user];
+        _claimants[node].remove(user);
+        emit NameRejected(node, user, label);
+        _deactivate(node);
+    }
+
+    /// @inheritdoc IDotnsNameWhitelist
+    function grantName(
+        string calldata label,
+        address user
+    )
+        external
+        override
+        onlyOperatorOrGovernance
+    {
+        _grant(label, user);
+    }
+
+    /// @inheritdoc IDotnsNameWhitelist
+    function grantNames(
+        string[] calldata labels,
+        address user
+    )
+        external
+        override
+        onlyOperatorOrGovernance
+    {
+        require(labels.length <= maxGrantBatch, TooManyLabels());
+        for (uint256 i = 0; i < labels.length; i++) {
+            _grant(labels[i], user);
+        }
+    }
+
+    /// @inheritdoc IDotnsNameWhitelist
+    function revokeName(string calldata label) external override onlyOperatorOrGovernance {
+        bytes32 node = _nodeOf(label);
+        NameRecord storage record = _names[node];
+        require(
+            record.status == NameStatus.Claimed || _claimants[node].length() != 0,
+            NothingToRevoke(node)
+        );
+        address winner = record.winner;
+        _clearClaimants(node, address(0), label);
+        record.status = NameStatus.Open;
+        record.winner = address(0);
+        emit NameRevoked(node, winner, label);
+        _deactivate(node);
+    }
+
+    /// @inheritdoc IDotnsNameWhitelist
+    function setReserved(string calldata label, bool reserved) external override onlyGovernance {
+        require(label.isSingleLabel(), InvalidLabel());
+        bytes32 node = _nodeOf(label);
+        NameRecord storage record = _names[node];
+        if (reserved) {
+            require(record.status == NameStatus.Open, NameNotOpen(node));
+            require(_claimants[node].length() == 0, HasClaims(node));
+            record.status = NameStatus.Reserved;
+            _activate(node, label);
+            emit NameReserved(node, label);
+        } else {
+            require(record.status == NameStatus.Reserved, NotReserved(node));
+            record.status = NameStatus.Open;
+            emit NameUnreserved(node, label);
+            _deactivate(node);
+        }
+    }
+
+    /// @inheritdoc IDotnsNameWhitelist
+    function consume(string calldata label, address registrant) external override onlyController {
+        bytes32 node = _nodeOf(label);
+        NameRecord storage record = _names[node];
+        require(
+            record.status == NameStatus.Claimed && record.winner == registrant,
+            NotWinner(registrant, node)
+        );
+        record.status = NameStatus.Open;
+        record.winner = address(0);
+        emit NameConsumed(node, registrant, label);
+        _deactivate(node);
+    }
+
+    /// @inheritdoc IDotnsNameWhitelist
+    function setWindow(uint64 startsIn, uint64 duration) external override onlyGovernance {
         require(duration > 0, BadWindow());
         uint64 openAt = uint64(block.timestamp) + startsIn;
         uint64 closeAt = openAt + duration;
@@ -98,84 +310,19 @@ contract DotnsNameWhitelist is
     }
 
     /// @inheritdoc IDotnsNameWhitelist
-    function requestName(string calldata label) external override {
-        require(_isWindowOpen(), WindowClosed());
-        bytes32 node = _validateNew(label);
-        _grants[node] = Grant({
-            grantee: msg.sender,
-            requestedAt: uint64(block.timestamp),
-            status: GrantStatus.Requested,
-            decidedAt: 0,
-            label: label
-        });
-        _grantedNodes.add(node);
-        emit NameRequested(node, msg.sender, label);
+    function statusOf(string calldata label) external view override returns (NameStatus status) {
+        return _names[_nodeOf(label)].status;
     }
 
     /// @inheritdoc IDotnsNameWhitelist
-    function accept(string calldata label) external override onlyOperatorOrOwner {
-        (bytes32 node, address grantee) = _decide(label, GrantStatus.Accepted);
-        emit NameAccepted(node, grantee, label);
+    function isReserved(string calldata label) external view override returns (bool reserved) {
+        return _names[_nodeOf(label)].status == NameStatus.Reserved;
     }
 
     /// @inheritdoc IDotnsNameWhitelist
-    function reject(string calldata label) external override onlyOperatorOrOwner {
-        (bytes32 node, address grantee) = _decide(label, GrantStatus.Rejected);
-        emit NameRejected(node, grantee, label);
-    }
-
-    /// @inheritdoc IDotnsNameWhitelist
-    function grantName(
-        string calldata label,
-        address grantee
-    )
-        external
-        override
-        onlyOperatorOrOwner
-    {
-        _grant(label, grantee);
-    }
-
-    /// @inheritdoc IDotnsNameWhitelist
-    function grantNames(
-        string[] calldata labels,
-        address grantee
-    )
-        external
-        override
-        onlyOperatorOrOwner
-    {
-        for (uint256 i = 0; i < labels.length; i++) {
-            _grant(labels[i], grantee);
-        }
-    }
-
-    /// @inheritdoc IDotnsNameWhitelist
-    function revokeName(string calldata label) external override onlyOperatorOrOwner {
-        bytes32 node = _nodeOf(label);
-        Grant storage grant = _grants[node];
-        require(grant.status != GrantStatus.None, NotGranted(node));
-        address grantee = grant.grantee;
-        _clear(node);
-        emit NameRevoked(node, grantee, label);
-    }
-
-    /// @inheritdoc IDotnsNameWhitelist
-    function consume(string calldata label, address registrant) external override onlyController {
-        bytes32 node = _nodeOf(label);
-        Grant storage grant = _grants[node];
-        require(
-            grant.status == GrantStatus.Accepted && grant.grantee == registrant,
-            NotGrantee(registrant, node)
-        );
-        _clear(node);
-        emit NameConsumed(node, registrant, label);
-    }
-
-    /// @inheritdoc IDotnsNameWhitelist
-    function granteeOf(string calldata label) external view override returns (address grantee) {
-        Grant storage grant = _grants[_nodeOf(label)];
-        return grant.status == GrantStatus.Accepted ? grant.grantee : address(0);
+    function granteeOf(string calldata label) external view override returns (address winner) {
+        NameRecord storage record = _names[_nodeOf(label)];
+        return record.status == NameStatus.Claimed ? record.winner : address(0);
     }
 
     /// @inheritdoc IDotnsNameWhitelist
@@ -188,43 +335,82 @@ contract DotnsNameWhitelist is
         override
         returns (bool granted)
     {
-        Grant storage grant = _grants[_nodeOf(label)];
+        NameRecord storage record = _names[_nodeOf(label)];
         return
-            account != address(0) && grant.status == GrantStatus.Accepted
-                && grant.grantee == account;
+            account != address(0) && record.status == NameStatus.Claimed && record.winner == account;
     }
 
     /// @inheritdoc IDotnsNameWhitelist
-    function grantOf(string calldata label) external view override returns (Grant memory grant) {
-        return _grants[_nodeOf(label)];
+    function claimOf(
+        string calldata label,
+        address user
+    )
+        external
+        view
+        override
+        returns (Claim memory claim)
+    {
+        return _claims[_nodeOf(label)][user];
     }
 
     /// @inheritdoc IDotnsNameWhitelist
-    function grantCount() external view override returns (uint256 count) {
-        return _grantedNodes.length();
+    function claimantCount(string calldata label) external view override returns (uint256 count) {
+        return _claimants[_nodeOf(label)].length();
     }
 
     /// @inheritdoc IDotnsNameWhitelist
-    function grants(
+    function claims(
+        string calldata label,
         uint256 offset,
         uint256 limit
     )
         external
         view
         override
-        returns (Grant[] memory page)
+        returns (Claim[] memory page)
     {
-        uint256 total = _grantedNodes.length();
+        bytes32 node = _nodeOf(label);
+        EnumerableSet.AddressSet storage set = _claimants[node];
+        uint256 total = set.length();
         if (offset >= total) {
-            return new Grant[](0);
+            return new Claim[](0);
         }
-
         uint256 available = total - offset;
         uint256 count = limit < available ? limit : available;
-
-        page = new Grant[](count);
+        page = new Claim[](count);
         for (uint256 i; i < count; ++i) {
-            page[i] = _grants[_grantedNodes.at(offset + i)];
+            page[i] = _claims[node][set.at(offset + i)];
+        }
+    }
+
+    /// @inheritdoc IDotnsNameWhitelist
+    function nameCount() external view override returns (uint256 count) {
+        return _activeNodes.length();
+    }
+
+    /// @inheritdoc IDotnsNameWhitelist
+    function names(
+        uint256 offset,
+        uint256 limit
+    )
+        external
+        view
+        override
+        returns (NameView[] memory page)
+    {
+        uint256 total = _activeNodes.length();
+        if (offset >= total) {
+            return new NameView[](0);
+        }
+        uint256 available = total - offset;
+        uint256 count = limit < available ? limit : available;
+        page = new NameView[](count);
+        for (uint256 i; i < count; ++i) {
+            bytes32 node = _activeNodes.at(offset + i);
+            NameRecord storage record = _names[node];
+            page[i] = NameView({
+                node: node, label: record.label, status: record.status, winner: record.winner
+            });
         }
     }
 
@@ -238,59 +424,89 @@ contract DotnsNameWhitelist is
         return _isWindowOpen();
     }
 
-    /// @notice Writes an `Accepted` entry for `grantee`, rejecting a name that already exists.
-    function _grant(string calldata label, address grantee) internal {
-        require(grantee != address(0), ZeroGrantee());
-        bytes32 node = _validateNew(label);
-        uint64 nowTimestamp = uint64(block.timestamp);
-        _grants[node] = Grant({
-            grantee: grantee,
-            requestedAt: nowTimestamp,
-            status: GrantStatus.Accepted,
-            decidedAt: nowTimestamp,
-            label: label
-        });
-        _grantedNodes.add(node);
-        emit NameAccepted(node, grantee, label);
-    }
-
-    /// @notice Moves a pending request to a terminal decision and stamps the decision time.
-    function _decide(
-        string calldata label,
-        GrantStatus decision
-    )
-        internal
-        returns (bytes32 node, address grantee)
+    /// @inheritdoc DotnsRoleManager
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(DotnsRoleManager)
+        returns (bool supported)
     {
-        node = _nodeOf(label);
-        Grant storage grant = _grants[node];
-        require(grant.status == GrantStatus.Requested, NotRequested(node));
-        grant.status = decision;
-        grant.decidedAt = uint64(block.timestamp);
-        grantee = grant.grantee;
+        return interfaceId == type(IDotnsNameWhitelist).interfaceId
+            || super.supportsInterface(interfaceId);
     }
 
-    /// @notice Validates a canonical, unused label and returns its node.
-    function _validateNew(string calldata label) internal view returns (bytes32 node) {
+    /// @notice Grants `label` to `user` directly, clearing any pending claims.
+    /// @param label Bare label to grant.
+    /// @param user Beneficiary the name binds to.
+    function _grant(string calldata label, address user) internal {
+        require(user != address(0), ZeroUser());
         require(label.isSingleLabel(), InvalidLabel());
-        node = _nodeOf(label);
-        require(_grants[node].status == GrantStatus.None, AlreadyExists(node));
+        bytes32 node = _nodeOf(label);
+        require(_names[node].status == NameStatus.Open, NameNotOpen(node));
+        emit NameAccepted(node, user, label);
+        _settle(node, user, label);
+    }
+
+    /// @notice Marks a name claimed for `winner` and clears its claims, rejecting the losers.
+    /// @param node Namehash of the label under the active TLD.
+    /// @param winner Beneficiary the name binds to.
+    /// @param label Bare label, stored for review.
+    function _settle(bytes32 node, address winner, string calldata label) internal {
+        NameRecord storage record = _names[node];
+        record.status = NameStatus.Claimed;
+        record.winner = winner;
+        _activate(node, label);
+        _clearClaimants(node, winner, label);
+    }
+
+    /// @notice Deletes every claim on a name, rejecting each claimant that is not `winner`.
+    /// @param node Namehash of the label under the active TLD.
+    /// @param winner Claimant spared a rejection event; the zero address rejects every claimant.
+    /// @param label Bare label emitted with each rejection.
+    function _clearClaimants(bytes32 node, address winner, string calldata label) internal {
+        address[] memory current = _claimants[node].values();
+        for (uint256 i; i < current.length; ++i) {
+            address claimant = current[i];
+            delete _claims[node][claimant];
+            _claimants[node].remove(claimant);
+            if (claimant != winner) {
+                emit NameRejected(node, claimant, label);
+            }
+        }
+    }
+
+    /// @notice Records a name as active and stores its label the first time it is seen.
+    /// @param node Namehash of the label under the active TLD.
+    /// @param label Bare label stored on first activation.
+    function _activate(bytes32 node, string calldata label) internal {
+        NameRecord storage record = _names[node];
+        if (bytes(record.label).length == 0) {
+            record.label = label;
+        }
+        _activeNodes.add(node);
+    }
+
+    /// @notice Drops a name from the active set once it is Open with no claims.
+    /// @param node Namehash of the label under the active TLD.
+    function _deactivate(bytes32 node) internal {
+        NameRecord storage record = _names[node];
+        if (record.status == NameStatus.Open && _claimants[node].length() == 0) {
+            _activeNodes.remove(node);
+            delete record.label;
+        }
     }
 
     /// @notice Derives the namehash of `label` under the active TLD read from the registry.
+    /// @param label Bare label to hash.
+    /// @return node Namehash of the label under the active TLD.
     function _nodeOf(string calldata label) internal view returns (bytes32 node) {
         (, node) = LabelUtils.deriveNode(protocolRegistry.tldNode(), label);
     }
 
     /// @notice Returns whether the current time is within the open window.
+    /// @return open True when the current time is within the window.
     function _isWindowOpen() internal view returns (bool open) {
         return block.timestamp >= _requestOpen && block.timestamp < _requestClose;
-    }
-
-    /// @notice Removes an entry from both the map and the enumerable set.
-    function _clear(bytes32 node) internal {
-        delete _grants[node];
-        _grantedNodes.remove(node);
     }
 
     /// @inheritdoc DotnsRoleManager
@@ -298,6 +514,6 @@ contract DotnsNameWhitelist is
         return role == DotnsConstants.WHITELIST_OPERATOR_ROLE;
     }
 
-    /// @notice Restricts upgrades to the owner.
+    /// @inheritdoc UUPSUpgradeable
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }

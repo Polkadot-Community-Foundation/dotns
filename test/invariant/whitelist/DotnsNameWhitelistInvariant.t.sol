@@ -10,8 +10,8 @@ import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 /// @title DotnsNameWhitelist invariants
-/// @notice Drives the whitelist through random lifecycle sequences and asserts the review and
-///         reservation guarantees hold at every step.
+/// @notice Drives the whitelist through random lifecycle sequences and asserts the name and claim
+///         guarantees hold at every step.
 contract DotnsNameWhitelistInvariant is BaseDotns {
     DotnsNameWhitelist internal whitelist;
     WhitelistHandler internal handler;
@@ -29,6 +29,7 @@ contract DotnsNameWhitelistInvariant is BaseDotns {
                 )
             )
         );
+        _mockOriginIsRoot(false);
         whitelist.setWindow(0, 3650 days);
         vm.stopPrank();
 
@@ -38,55 +39,61 @@ contract DotnsNameWhitelistInvariant is BaseDotns {
         }
 
         handler = new WhitelistHandler(
-            whitelist, owner, protocolRegistry.get(DotnsConstants.CONTROLLER), actors
+            whitelist,
+            owner,
+            protocolRegistry.get(DotnsConstants.CONTROLLER),
+            protocolRegistry.get(DotnsConstants.POP_CONTROLLER),
+            actors
         );
         targetContract(address(handler));
 
-        bytes4[] memory selectors = new bytes4[](6);
+        bytes4[] memory selectors = new bytes4[](8);
         selectors[0] = handler.request.selector;
         selectors[1] = handler.accept.selector;
         selectors[2] = handler.reject.selector;
         selectors[3] = handler.grant.selector;
         selectors[4] = handler.revoke.selector;
-        selectors[5] = handler.consume.selector;
+        selectors[5] = handler.setReserved.selector;
+        selectors[6] = handler.consume.selector;
+        selectors[7] = handler.tuneMaxClaimants.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
     }
 
-    /// @notice Every entry the paged getter returns is live, so `_grants` and `_grantedNodes`
-    ///         never drift apart across grant, revoke and consume.
-    function invariant_pagination_returns_only_live_entries() public view {
-        uint256 count = whitelist.grantCount();
-        IDotnsNameWhitelist.Grant[] memory page = whitelist.grants(0, count == 0 ? 1 : count);
+    /// @notice A name reports a winner exactly when it is `Claimed`.
+    function invariant_winner_iff_claimed() public view {
+        uint256 n = handler.labelCount();
+        for (uint256 i; i < n; ++i) {
+            string memory label = handler.labelAt(i);
+            bool claimed = whitelist.statusOf(label) == IDotnsNameWhitelist.NameStatus.Claimed;
+            assertEq(whitelist.granteeOf(label) != address(0), claimed);
+        }
+    }
+
+    /// @notice A claimed name holds no live claims, and no name exceeds the hard claimant ceiling.
+    /// @dev Asserts against the ceiling rather than the live `maxClaimants`, since governance may
+    ///      lower the cap below counts admitted under an earlier, higher cap.
+    function invariant_claim_bounds() public view {
+        uint256 n = handler.labelCount();
+        for (uint256 i; i < n; ++i) {
+            string memory label = handler.labelAt(i);
+            uint256 count = whitelist.claimantCount(label);
+            assertLe(count, DotnsConstants.WHITELIST_MAX_CLAIMANTS_LIMIT);
+            if (whitelist.statusOf(label) == IDotnsNameWhitelist.NameStatus.Claimed) {
+                assertEq(count, 0);
+            }
+        }
+    }
+
+    /// @notice Every active name is reserved, claimed, or holding claims.
+    function invariant_active_set_is_consistent() public view {
+        uint256 count = whitelist.nameCount();
+        IDotnsNameWhitelist.NameView[] memory page = whitelist.names(0, count == 0 ? 1 : count);
         assertEq(page.length, count);
         for (uint256 i; i < page.length; ++i) {
-            assertTrue(page[i].status != IDotnsNameWhitelist.GrantStatus.None);
-            assertTrue(page[i].grantee != address(0));
-        }
-    }
-
-    /// @notice A name reserves an address only while it is `Accepted`.
-    function invariant_granteeOf_only_when_accepted() public view {
-        uint256 seen = handler.labelsSeenCount();
-        for (uint256 i; i < seen; ++i) {
-            string memory label = handler.labelsSeen(i);
-            if (whitelist.granteeOf(label) != address(0)) {
-                assertEq(
-                    uint256(whitelist.grantOf(label).status),
-                    uint256(IDotnsNameWhitelist.GrantStatus.Accepted)
-                );
-            }
-        }
-    }
-
-    /// @notice Any live entry has a non-zero grantee and a request timestamp.
-    function invariant_live_entry_is_well_formed() public view {
-        uint256 seen = handler.labelsSeenCount();
-        for (uint256 i; i < seen; ++i) {
-            IDotnsNameWhitelist.Grant memory grant = whitelist.grantOf(handler.labelsSeen(i));
-            if (grant.status != IDotnsNameWhitelist.GrantStatus.None) {
-                assertTrue(grant.grantee != address(0));
-                assertGt(grant.requestedAt, 0);
-            }
+            IDotnsNameWhitelist.NameView memory entry = page[i];
+            bool active = entry.status != IDotnsNameWhitelist.NameStatus.Open
+                || whitelist.claimantCount(entry.label) != 0;
+            assertTrue(active);
         }
     }
 }

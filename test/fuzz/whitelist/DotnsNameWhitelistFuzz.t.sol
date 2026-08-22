@@ -5,12 +5,12 @@ import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {DotnsNameWhitelist} from "../../../contracts/whitelist/DotnsNameWhitelist.sol";
 import {IDotnsNameWhitelist} from "../../../contracts/whitelist/IDotnsNameWhitelist.sol";
 import {IDotnsProtocolRegistry} from "../../../contracts/registry/IDotnsProtocolRegistry.sol";
-import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 import {StringUtils} from "../../../contracts/utils/StringUtils.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 /// @title DotnsNameWhitelist fuzz tests
-/// @notice Exercises the grant and lifecycle paths over fuzzed labels, addresses and windows.
+/// @notice Exercises claiming, competing claims, resolution and the reason bound over fuzzed
+///         inputs.
 contract DotnsNameWhitelistFuzz is BaseDotns {
     DotnsNameWhitelist internal whitelist;
 
@@ -26,11 +26,11 @@ contract DotnsNameWhitelistFuzz is BaseDotns {
                 )
             )
         );
+        _mockOriginIsRoot(false);
         whitelist.setWindow(0, 365 days);
         vm.stopPrank();
     }
 
-    /// @notice Builds a canonical single label from a fuzz seed.
     function _label(uint256 seed) internal pure returns (string memory) {
         uint256 value = seed % 100;
         string memory suffix = value < 10
@@ -39,81 +39,82 @@ contract DotnsNameWhitelistFuzz is BaseDotns {
         return string.concat("fuzzname", suffix);
     }
 
-    function testFuzz_grantName_reserves_only_the_intended_account(
+    function testFuzz_requestName_records(uint256 seed, address user) public {
+        vm.assume(user != address(0));
+        string memory label = _label(seed);
+        vm.prank(user);
+        whitelist.requestName(label, "reason", user);
+
+        IDotnsNameWhitelist.Claim memory claim = whitelist.claimOf(label, user);
+        assertEq(claim.user, user);
+        assertEq(uint256(claim.status), uint256(IDotnsNameWhitelist.ClaimStatus.Requested));
+        assertEq(whitelist.claimantCount(label), 1);
+    }
+
+    function testFuzz_competing_claims_do_not_collide(
         uint256 seed,
-        address grantee,
-        address other
+        address first,
+        address second
     )
         public
     {
-        vm.assume(grantee != address(0));
-        vm.assume(other != address(0) && other != grantee);
+        vm.assume(first != address(0) && second != address(0) && first != second);
         string memory label = _label(seed);
-
-        vm.prank(owner);
-        whitelist.grantName(label, grantee);
-
-        assertEq(whitelist.granteeOf(label), grantee);
-        assertTrue(whitelist.isGrantedTo(label, grantee));
-        assertFalse(whitelist.isGrantedTo(label, other));
+        vm.prank(first);
+        whitelist.requestName(label, "first", first);
+        vm.prank(second);
+        whitelist.requestName(label, "second", second);
+        assertEq(whitelist.claimantCount(label), 2);
     }
 
-    function testFuzz_request_then_accept_reserves_requester(uint256 seed) public {
-        string memory label = _label(seed);
-
-        vm.prank(ed);
-        whitelist.requestName(label);
-        assertEq(whitelist.granteeOf(label), address(0));
-
-        vm.prank(owner);
-        whitelist.accept(label);
-        assertEq(whitelist.granteeOf(label), ed);
-    }
-
-    function testFuzz_reject_never_reserves(uint256 seed) public {
-        string memory label = _label(seed);
-
-        vm.prank(ed);
-        whitelist.requestName(label);
-        vm.prank(owner);
-        whitelist.reject(label);
-
-        assertEq(whitelist.granteeOf(label), address(0));
-        assertEq(
-            uint256(whitelist.grantOf(label).status),
-            uint256(IDotnsNameWhitelist.GrantStatus.Rejected)
-        );
-    }
-
-    function testFuzz_grantName_reverts_on_duplicate(uint256 seed, address a, address b) public {
-        vm.assume(a != address(0) && b != address(0) && a != b);
-        string memory label = _label(seed);
-
-        vm.prank(owner);
-        whitelist.grantName(label, a);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(IDotnsNameWhitelist.AlreadyExists.selector, _nodeOf(label))
-        );
-        vm.prank(owner);
-        whitelist.grantName(label, b);
-    }
-
-    function testFuzz_requestName_reverts_before_window_opens(
+    function testFuzz_accept_yields_single_winner(
         uint256 seed,
-        uint64 startsIn
+        address first,
+        address second
     )
         public
     {
-        startsIn = uint64(bound(uint256(startsIn), 1 days, 3650 days));
+        vm.assume(first != address(0) && second != address(0) && first != second);
         string memory label = _label(seed);
+        vm.prank(first);
+        whitelist.requestName(label, "first", first);
+        vm.prank(second);
+        whitelist.requestName(label, "second", second);
 
         vm.prank(owner);
-        whitelist.setWindow(startsIn, 1 days);
+        whitelist.accept(label, first);
 
-        vm.expectRevert(IDotnsNameWhitelist.WindowClosed.selector);
-        vm.prank(ed);
-        whitelist.requestName(label);
+        assertEq(whitelist.granteeOf(label), first);
+        assertFalse(whitelist.isGrantedTo(label, second));
+        assertEq(whitelist.claimantCount(label), 0);
+    }
+
+    function testFuzz_reject_never_reserves(uint256 seed, address user) public {
+        vm.assume(user != address(0));
+        string memory label = _label(seed);
+        vm.prank(user);
+        whitelist.requestName(label, "r", user);
+        vm.prank(owner);
+        whitelist.reject(label, user);
+
+        assertEq(whitelist.granteeOf(label), address(0));
+        assertEq(uint256(whitelist.statusOf(label)), uint256(IDotnsNameWhitelist.NameStatus.Open));
+    }
+
+    function testFuzz_reason_length_bound(uint256 seed, uint256 length) public {
+        length = bound(length, 0, 512);
+        string memory reason = string(new bytes(length));
+        string memory label = _label(seed);
+
+        if (length > whitelist.maxReasonBytes()) {
+            vm.expectRevert(IDotnsNameWhitelist.ReasonTooLong.selector);
+            vm.prank(ed);
+            whitelist.requestName(label, reason, ed);
+        } else {
+            vm.prank(ed);
+            whitelist.requestName(label, reason, ed);
+            assertEq(whitelist.claimOf(label, ed).reason, reason);
+        }
     }
 
     function testFuzz_requestName_reverts_after_window_closes(
@@ -124,13 +125,12 @@ contract DotnsNameWhitelistFuzz is BaseDotns {
     {
         duration = uint64(bound(uint256(duration), 1, 3650 days));
         string memory label = _label(seed);
-
         vm.prank(owner);
         whitelist.setWindow(0, duration);
         vm.warp(block.timestamp + duration);
 
         vm.expectRevert(IDotnsNameWhitelist.WindowClosed.selector);
         vm.prank(ed);
-        whitelist.requestName(label);
+        whitelist.requestName(label, "r", ed);
     }
 }

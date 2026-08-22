@@ -2,191 +2,322 @@
 pragma solidity ^0.8.34;
 
 /// @title IDotnsNameWhitelist
-/// @notice Interface for the pre-launch name whitelist that binds a name to the single address
-///         permitted to register it, tracking each name from request to decision.
-/// @dev The contract never accepts a caller-supplied hash. Every entry point takes the bare
-///      label and derives the node itself from the TLD held in the protocol registry, the same
-///      derivation the controllers use, so a malformed or mismatched hash cannot be smuggled in.
-///      Every entry keeps its bare label, request and decision timestamps, and status, and the
-///      node set is enumerable, so the whole whitelist is reviewable on-chain and by event log.
-///      Operator appointment and removal, and upgrades, are owner-gated through
-///      @custom:contract DotnsRoleManager.
+/// @notice Interface for the pre-launch name whitelist. A name is Open until governance either
+///         reserves it or a claim is accepted for it. Several beneficiaries may claim the same
+///         Open name, each with a reason, and governance accepts one as the winner.
+/// @dev Callers never supply a hash. Every entry point takes the bare label and derives the node
+///      from the label and the TLD in the protocol registry, so a caller cannot supply a
+///      mismatched hash. Claims are keyed by the beneficiary `user`, not the submitter, so a
+///      relayer or a cross-chain sovereign account can submit a claim on a user's behalf and the
+///      name still binds to that user. All state is on-chain and queryable through views; no event
+///      indexing is required. Governance is Root or the owner. Substrate Root has no address, so
+///      the governance gates check `originIsRoot` before reading `msg.sender`. Operators are signed
+///      role holders for day-to-day approvals; the controllers hold only the `consume` hook.
 /// @custom:security-contact admin@parity.io
 interface IDotnsNameWhitelist {
-    /// @notice Lifecycle status of a whitelist entry.
-    /// @dev `None` is the zero-value default of an absent entry, so a missing node reads as `None`
-    ///      rather than as a live status. `Accepted` is the only status the controllers admit for
-    ///      registration; `Requested` and `Rejected` do not reserve the name.
-    enum GrantStatus {
-        None,
-        Requested,
-        Accepted,
-        Rejected
+    /// @notice Status of a name.
+    /// @dev `Open` is the zero-value default: claimable, not reserved, not won. `Reserved` is
+    ///      withheld by governance. `Claimed` has a single winner.
+    enum NameStatus {
+        Open,
+        Reserved,
+        Claimed
     }
 
-    /// @notice A whitelist entry and its request-to-decision lifecycle.
-    /// @dev `grantee`, `requestedAt` and `status` co-locate in one storage slot (20 + 8 + 1
-    ///      bytes); `decidedAt` spills to the next; the dynamic `label` is stored separately.
-    /// @param grantee Address permitted to register the name once accepted.
-    /// @param requestedAt Timestamp the entry was requested.
-    /// @param status Lifecycle status; see GrantStatus.
-    /// @param decidedAt Timestamp the entry was accepted or rejected; zero while `Requested`.
-    /// @param label Bare label, kept for on-chain review.
-    struct Grant {
-        address grantee;
+    /// @notice Status of a single claim on a name.
+    /// @dev `None` is the zero-value default of an absent claim. A claim is deleted when it is
+    ///      rejected, cleared on a win, or consumed, so it never holds a terminal status.
+    enum ClaimStatus {
+        None,
+        Requested
+    }
+
+    /// @notice A claim by one beneficiary on one name.
+    /// @dev `user`, `status` and `requestedAt` co-locate in one storage slot; the dynamic `reason`
+    ///      is stored separately.
+    /// @param user Beneficiary the name would bind to if this claim wins.
+    /// @param status Claim status; see ClaimStatus.
+    /// @param requestedAt Timestamp the claim was made.
+    /// @param reason Free-text justification for the claim.
+    struct Claim {
+        address user;
+        ClaimStatus status;
         uint64 requestedAt;
-        GrantStatus status;
-        uint64 decidedAt;
+        string reason;
+    }
+
+    /// @notice A name and its resolved state, for review.
+    /// @param node Namehash of the label under the active TLD.
+    /// @param label Bare label.
+    /// @param status Name status; see NameStatus.
+    /// @param winner Winning beneficiary when `Claimed`, otherwise the zero address.
+    struct NameView {
+        bytes32 node;
+        string label;
+        NameStatus status;
+        address winner;
+    }
+
+    /// @notice Stored resolved state of a name.
+    /// @dev `status` and `winner` are ordered first so the 1-byte enum and 20-byte address share
+    ///      one storage slot; the dynamic `label` is stored separately.
+    /// @param status Name status; see NameStatus.
+    /// @param winner Winning beneficiary when `Claimed`, otherwise the zero address.
+    /// @param label Bare label, kept so reserved and claimed names are reviewable.
+    struct NameRecord {
+        NameStatus status;
+        address winner;
         string label;
     }
 
-    /// @notice Emitted when a name is requested.
-    /// @param node Namehash of the label under the active TLD.
-    /// @param grantee Address that requested the name.
-    /// @param label Bare label requested.
-    event NameRequested(bytes32 indexed node, address indexed grantee, string label);
+    /// @notice Emitted when a beneficiary claims a name.
+    event NameRequested(bytes32 indexed node, address indexed user, string label);
 
-    /// @notice Emitted when a request is accepted, including an operator direct grant.
-    /// @param node Namehash of the label under the active TLD.
-    /// @param grantee Address permitted to register the name.
-    /// @param label Bare label accepted.
-    event NameAccepted(bytes32 indexed node, address indexed grantee, string label);
+    /// @notice Emitted when a claim wins a name, including an operator direct grant.
+    event NameAccepted(bytes32 indexed node, address indexed user, string label);
 
-    /// @notice Emitted when a request is rejected.
-    /// @param node Namehash of the label under the active TLD.
-    /// @param grantee Address whose request was rejected.
-    /// @param label Bare label rejected.
-    event NameRejected(bytes32 indexed node, address indexed grantee, string label);
+    /// @notice Emitted when a claim is cleared without winning.
+    event NameRejected(bytes32 indexed node, address indexed user, string label);
 
-    /// @notice Emitted when an entry is cleared.
-    /// @param node Namehash of the label under the active TLD.
-    /// @param grantee Address whose entry was cleared.
-    /// @param label Bare label cleared.
-    event NameRevoked(bytes32 indexed node, address indexed grantee, string label);
+    /// @notice Emitted when a name is reset to Open by governance.
+    event NameRevoked(bytes32 indexed node, address indexed winner, string label);
 
-    /// @notice Emitted when a grantee registers their name and the entry is consumed.
-    /// @param node Namehash of the label under the active TLD.
-    /// @param grantee Address that registered the name.
-    /// @param label Bare label consumed.
-    event NameConsumed(bytes32 indexed node, address indexed grantee, string label);
+    /// @notice Emitted when a winner registers the name and its entry is consumed.
+    event NameConsumed(bytes32 indexed node, address indexed user, string label);
+
+    /// @notice Emitted when governance withholds a name from claiming.
+    event NameReserved(bytes32 indexed node, string label);
+
+    /// @notice Emitted when governance releases a reserved name back to Open.
+    event NameUnreserved(bytes32 indexed node, string label);
 
     /// @notice Emitted when the request window is set.
     /// @param openAt Timestamp requests start being accepted.
     /// @param closeAt Timestamp requests stop being accepted.
     event WindowSet(uint64 openAt, uint64 closeAt);
 
-    /// @notice Thrown when a grant is issued to the zero address.
-    error ZeroGrantee();
+    /// @notice Emitted when the live-claim cap is set.
+    /// @param maxClaimants New per-name claim cap.
+    event MaxClaimantsSet(uint16 maxClaimants);
+
+    /// @notice Emitted when the reason byte cap is set.
+    /// @param maxReasonBytes New reason byte cap.
+    event MaxReasonBytesSet(uint256 maxReasonBytes);
+
+    /// @notice Emitted when the grant-batch cap is set.
+    /// @param maxGrantBatch New `grantNames` batch cap.
+    event MaxGrantBatchSet(uint16 maxGrantBatch);
+
+    /// @notice Thrown when a claim names the zero-address beneficiary.
+    error ZeroUser();
 
     /// @notice Thrown when a label is not a canonical single DNS label.
     error InvalidLabel();
 
-    /// @notice Thrown when requesting or granting a name that already has a live entry.
-    /// @param node Namehash of the label under the active TLD.
-    error AlreadyExists(bytes32 node);
+    /// @notice Thrown when a reason exceeds `maxReasonBytes`.
+    error ReasonTooLong();
 
-    /// @notice Thrown when accepting or rejecting a name that is not in the `Requested` status.
+    /// @notice Thrown when a name is not Open and the action requires it.
     /// @param node Namehash of the label under the active TLD.
-    error NotRequested(bytes32 node);
+    error NameNotOpen(bytes32 node);
 
-    /// @notice Thrown when clearing a name that holds no entry.
+    /// @notice Thrown when `user` already holds a claim on the name.
     /// @param node Namehash of the label under the active TLD.
-    error NotGranted(bytes32 node);
+    /// @param user Beneficiary already holding a claim.
+    error AlreadyClaimed(bytes32 node, address user);
+
+    /// @notice Thrown when a name already holds `maxClaimants` claims.
+    /// @param node Namehash of the label under the active TLD.
+    error TooManyClaimants(bytes32 node);
+
+    /// @notice Thrown when the claim cap is set to zero or above
+    /// `DotnsConstants.WHITELIST_MAX_CLAIMANTS_LIMIT`.
+    error MaxClaimantsOutOfRange();
+
+    /// @notice Thrown when the reason cap is set to zero or above
+    /// `DotnsConstants.WHITELIST_MAX_REASON_LIMIT`.
+    error MaxReasonBytesOutOfRange();
+
+    /// @notice Thrown when the grant-batch cap is set to zero or above
+    /// `DotnsConstants.WHITELIST_MAX_GRANT_BATCH_LIMIT`.
+    error MaxGrantBatchOutOfRange();
+
+    /// @notice Thrown when a claim is not in the `Requested` status.
+    /// @param node Namehash of the label under the active TLD.
+    /// @param user Beneficiary whose claim was expected to be pending.
+    error NotRequested(bytes32 node, address user);
+
+    /// @notice Thrown when reserving a name that still holds claims.
+    /// @param node Namehash of the label under the active TLD.
+    error HasClaims(bytes32 node);
+
+    /// @notice Thrown when releasing a name that is not reserved.
+    /// @param node Namehash of the label under the active TLD.
+    error NotReserved(bytes32 node);
+
+    /// @notice Thrown when revoking a name that is not Claimed and holds no claims.
+    /// @param node Namehash of the label under the active TLD.
+    error NothingToRevoke(bytes32 node);
 
     /// @notice Thrown when `consume` is called by any address other than a registrar controller.
     /// @param caller Rejected caller.
     error NotController(address caller);
 
-    /// @notice Thrown when `consume` is called for a name not accepted for the registrant.
+    /// @notice Thrown when `consume` is called for a name not won by the registrant.
     /// @param registrant Address attempting to register the name.
     /// @param node Namehash of the label under the active TLD.
-    error NotGrantee(address registrant, bytes32 node);
+    error NotWinner(address registrant, bytes32 node);
 
     /// @notice Thrown when the request window is set with a zero duration.
     error BadWindow();
 
-    /// @notice Thrown when a request is made outside the open window.
+    /// @notice Thrown when a claim is made outside the open window.
     error WindowClosed();
 
-    /// @notice Sets the request window relative to the current time.
-    /// @dev Restricted to the owner. The window opens at `block.timestamp + startsIn` and stays
-    ///      open for `duration`, so it can never open in the past. Reverts with
-    ///      @custom:reverts BadWindow when `duration` is zero. Emits @custom:emits WindowSet with
-    ///      the resolved absolute timestamps.
-    /// @param startsIn Seconds from now until requests start being accepted.
-    /// @param duration Seconds the window stays open.
-    function setWindow(uint64 startsIn, uint64 duration) external;
+    /// @notice Thrown when `grantNames` is passed more than `maxGrantBatch` labels.
+    error TooManyLabels();
 
-    /// @notice Requests `label` for the caller.
-    /// @dev Records a `Requested` entry bound to the caller. Reverts with
-    ///      @custom:reverts WindowClosed outside the open window, with
-    ///      @custom:reverts AlreadyExists when the name already has a live entry, and with
-    ///      @custom:reverts InvalidLabel when `label` is not a canonical single label. Emits
+    /// @notice Claims `label` for `user`.
+    /// @dev Permissionless within the window; the submitter may differ from `user`. Requires the
+    ///      name Open, the window open, `user` non-zero, a canonical label, `user` without an
+    ///      existing claim, and fewer than `maxClaimants` claims on the name.
+    ///      @custom:reverts WindowClosed, @custom:reverts NameNotOpen, @custom:reverts ZeroUser,
+    ///      @custom:reverts InvalidLabel, @custom:reverts ReasonTooLong,
+    ///      @custom:reverts AlreadyClaimed, or @custom:reverts TooManyClaimants.
     ///      @custom:emits NameRequested.
-    /// @param label Bare label to request.
-    function requestName(string calldata label) external;
+    /// @param label Bare label to claim.
+    /// @param reason Free-text justification, at most `maxReasonBytes` bytes.
+    /// @param user Beneficiary the name binds to if this claim wins.
+    function requestName(string calldata label, string calldata reason, address user) external;
 
-    /// @notice Accepts the pending request on `label`.
-    /// @dev Restricted to an operator or the owner. Moves a `Requested` entry to `Accepted` and
-    ///      stamps the decision. Reverts with @custom:reverts NotRequested when the name is not
-    ///      pending. Emits @custom:emits NameAccepted.
-    /// @param label Bare label to accept.
-    function accept(string calldata label) external;
+    /// @notice Accepts `user`'s claim as the winner of `label`.
+    /// @dev Restricted to an operator, the owner, or Root. Requires `user`'s claim `Requested`.
+    /// Sets the name `Claimed` with `user` the winner and clears every claim on the name, rejecting
+    ///      the losers. @custom:reverts NotRequested. @custom:emits NameAccepted for the winner and
+    ///      @custom:emits NameRejected for each loser.
+    /// @param label Bare label to resolve.
+    /// @param user Beneficiary whose claim wins.
+    function accept(string calldata label, address user) external;
 
-    /// @notice Rejects the pending request on `label`.
-    /// @dev Restricted to an operator or the owner. Moves a `Requested` entry to `Rejected` and
-    ///      stamps the decision; the entry is kept for review. Reverts with
-    ///      @custom:reverts NotRequested when the name is not pending. Emits
-    ///      @custom:emits NameRejected.
-    /// @param label Bare label to reject.
-    function reject(string calldata label) external;
+    /// @notice Rejects `user`'s pending claim on `label` without resolving the name.
+    /// @dev Restricted to an operator, the owner, or Root. Requires the claim `Requested`.
+    /// @custom:reverts NotRequested. @custom:emits NameRejected.
+    /// @param label Bare label.
+    /// @param user Beneficiary whose claim is rejected.
+    function reject(string calldata label, address user) external;
 
-    /// @notice Grants `label` to `grantee` directly, without a prior request.
-    /// @dev Restricted to an operator or the owner, and independent of the request window by
-    ///      design, so operators can provision names whether or not requests are open. Writes an
-    ///      `Accepted` entry with the request and decision timestamps set to now, for provisioning
-    ///      names to a chosen address.
-    ///      Reverts with @custom:reverts AlreadyExists when the name already has a live entry,
-    ///      with @custom:reverts ZeroGrantee on a zero grantee, and with
-    ///      @custom:reverts InvalidLabel when `label` is not a canonical single label. Emits
-    ///      @custom:emits NameAccepted.
+    /// @notice Grants `label` to `user` directly, without a prior claim.
+    /// @dev Restricted to an operator, the owner, or Root. Requires the name Open, `user` non-zero
+    /// and a canonical label. Sets the name `Claimed` with `user` the winner and clears any pending
+    ///      claims. @custom:reverts NameNotOpen, @custom:reverts ZeroUser or
+    ///      @custom:reverts InvalidLabel. @custom:emits NameAccepted, and
+    ///      @custom:emits NameRejected for each cleared claim.
     /// @param label Bare label to grant.
-    /// @param grantee Address permitted to register the name.
-    function grantName(string calldata label, address grantee) external;
+    /// @param user Beneficiary the name binds to.
+    function grantName(string calldata label, address user) external;
 
-    /// @notice Grants several labels to one `grantee` directly.
-    /// @dev Restricted to an operator or the owner. Applies the same rules as
-    ///      @custom:function grantName to each entry.
+    /// @notice Grants several labels to one `user` directly.
+    /// @dev Restricted to an operator, the owner, or Root. Applies @custom:function grantName to
+    ///      each, at most `maxGrantBatch` labels per call.
+    ///      @custom:reverts TooManyLabels when `labels` exceeds the batch cap.
     /// @param labels Bare labels to grant.
-    /// @param grantee Address permitted to register each name.
-    function grantNames(string[] calldata labels, address grantee) external;
+    /// @param user Beneficiary each name binds to.
+    function grantNames(string[] calldata labels, address user) external;
 
-    /// @notice Clears the entry on `label`, whatever its status.
-    /// @dev Restricted to an operator or the owner. Reverts with @custom:reverts NotGranted when
-    ///      the name holds no entry. Emits @custom:emits NameRevoked.
-    /// @param label Bare label to clear.
+    /// @notice Resets `label` to Open, clearing any winner and claims.
+    /// @dev Restricted to an operator, the owner, or Root. Resolves a Claimed or claim-holding
+    /// name; a Reserved name is released through @custom:function setReserved, not here.
+    ///      @custom:reverts NothingToRevoke when the name is not Claimed and holds no claims.
+    ///      @custom:emits NameRevoked, and @custom:emits NameRejected for each cleared claim.
+    /// @param label Bare label to reset.
     function revokeName(string calldata label) external;
 
-    /// @notice Removes the accepted grant on `label` as `registrant` registers it.
-    /// @dev Restricted to the registrar controllers resolved through the protocol registry, so
-    ///      the entry is consumed exactly when its grantee registers the name. Reverts with
-    ///      @custom:reverts NotController for any other caller and @custom:reverts NotGrantee when
-    ///      `label` is not accepted for `registrant`. Emits @custom:emits NameConsumed.
+    /// @notice Reserves or releases `label`.
+    /// @dev Restricted to Root or the owner. Reserving requires the name Open with no claims;
+    /// releasing requires it `Reserved`. @custom:reverts NameNotOpen, @custom:reverts HasClaims or
+    ///      @custom:reverts NotReserved. @custom:emits NameReserved or @custom:emits
+    /// NameUnreserved. @param label Bare label.
+    /// @param reserved True to reserve, false to release.
+    function setReserved(string calldata label, bool reserved) external;
+
+    /// @notice Removes the win on `label` as `registrant` registers it.
+    /// @dev Restricted to the registrar controllers resolved through the protocol registry. Resets
+    ///      the name to Open. @custom:reverts NotController for any other caller and
+    ///      @custom:reverts NotWinner when `label` is not won by `registrant`.
+    ///      @custom:emits NameConsumed.
     /// @param label Bare label being registered.
     /// @param registrant Address registering the name.
     function consume(string calldata label, address registrant) external;
 
-    /// @notice Returns the address `label` is accepted for, or the zero address otherwise.
-    /// @dev Non-zero only for an `Accepted` entry, so a pending or rejected name does not reserve.
-    /// @param label Bare label to look up.
-    /// @return grantee Address permitted to register the name.
-    function granteeOf(string calldata label) external view returns (address grantee);
+    /// @notice Sets the request window relative to the current time.
+    /// @dev Restricted to Root or the owner. Opens at `block.timestamp + startsIn` for `duration`.
+    /// @custom:reverts BadWindow when `duration` is zero. @custom:emits WindowSet.
+    /// @param startsIn Seconds from now until requests start being accepted.
+    /// @param duration Seconds the window stays open.
+    function setWindow(uint64 startsIn, uint64 duration) external;
 
-    /// @notice Returns whether `account` holds an accepted grant for `label`.
+    /// @notice Grants or revokes the operator role for `account`.
+    /// @dev Restricted to Root or the owner. Root has no address, so governance uses this rather
+    ///      than the owner-only role-admin path. @custom:emits IAccessControl.RoleGranted on grant
+    ///      and @custom:emits IAccessControl.RoleRevoked on revoke.
+    /// @param account Address whose operator role is changed.
+    /// @param enabled True to grant, false to revoke.
+    function setOperator(address account, bool enabled) external;
+
+    /// @notice Sets the live-claim cap per name.
+    /// @dev Restricted to Root or the owner. The cap is bounded by
+    /// `DotnsConstants.WHITELIST_MAX_CLAIMANTS_LIMIT`, which bounds the resolution clear-loop.
+    /// @custom:reverts MaxClaimantsOutOfRange when `newMax` is zero or above the ceiling.
+    /// @custom:emits MaxClaimantsSet.
+    /// @param newMax New per-name claim cap.
+    function setMaxClaimants(uint16 newMax) external;
+
+    /// @notice Sets the reason byte cap.
+    /// @dev Restricted to Root or the owner, bounded by
+    /// `DotnsConstants.WHITELIST_MAX_REASON_LIMIT`. @custom:reverts MaxReasonBytesOutOfRange when
+    /// `newMax` is zero or above the ceiling. @custom:emits MaxReasonBytesSet.
+    /// @param newMax New reason byte cap.
+    function setMaxReasonBytes(uint256 newMax) external;
+
+    /// @notice Sets the cap on labels per `grantNames` call.
+    /// @dev Restricted to Root or the owner, bounded by
+    /// `DotnsConstants.WHITELIST_MAX_GRANT_BATCH_LIMIT`. @custom:reverts MaxGrantBatchOutOfRange
+    /// when `newMax` is zero or above the ceiling. @custom:emits MaxGrantBatchSet.
+    /// @param newMax New batch cap.
+    function setMaxGrantBatch(uint16 newMax) external;
+
+    /// @notice Returns the live-claim cap per name.
+    /// @return cap Current per-name claim cap.
+    function maxClaimants() external view returns (uint16 cap);
+
+    /// @notice Returns the reason byte cap.
+    /// @return cap Current reason byte cap.
+    function maxReasonBytes() external view returns (uint256 cap);
+
+    /// @notice Returns the cap on labels per `grantNames` call.
+    /// @return cap Current batch cap.
+    function maxGrantBatch() external view returns (uint16 cap);
+
+    /// @notice Returns the status of `label`.
+    /// @param label Bare label to look up.
+    /// @return status Name status; see NameStatus.
+    function statusOf(string calldata label) external view returns (NameStatus status);
+
+    /// @notice Returns whether `label` is reserved.
+    /// @param label Bare label to look up.
+    /// @return reserved True when the name is `Reserved`.
+    function isReserved(string calldata label) external view returns (bool reserved);
+
+    /// @notice Returns the winner of `label`, or the zero address when not `Claimed`.
+    /// @param label Bare label to look up.
+    /// @return winner Winning beneficiary.
+    function granteeOf(string calldata label) external view returns (address winner);
+
+    /// @notice Returns whether `account` won `label`.
     /// @dev The pair check the controllers use to admit a registrant. False for the zero address.
     /// @param label Bare label to look up.
-    /// @param account Address to test against the grant.
-    /// @return granted True when `account` is the accepted grantee.
+    /// @param account Address to test against the winner.
+    /// @return granted True when `account` is the winner.
     function isGrantedTo(
         string calldata label,
         address account
@@ -195,23 +326,42 @@ interface IDotnsNameWhitelist {
         view
         returns (bool granted);
 
-    /// @notice Returns the full entry for `label`, including status and timestamps.
+    /// @notice Returns `user`'s claim on `label`.
     /// @param label Bare label to look up.
-    /// @return grant The stored entry; a zeroed struct with `None` status when absent.
-    function grantOf(string calldata label) external view returns (Grant memory grant);
+    /// @param user Beneficiary to look up.
+    /// @return claim The stored claim; a zeroed struct with `None` status when absent.
+    function claimOf(string calldata label, address user) external view returns (Claim memory claim);
 
-    /// @notice Returns the number of entries, of any status.
-    /// @return count Entry count.
-    function grantCount() external view returns (uint256 count);
+    /// @notice Returns the number of live claims on `label`.
+    /// @param label Bare label to look up.
+    /// @return count Live claim count.
+    function claimantCount(string calldata label) external view returns (uint256 count);
 
-    /// @notice Returns a page of entries for review.
-    /// @dev Reads the canonical offset and limit window. An `offset` at or beyond
-    ///      @custom:function grantCount returns an empty page; `limit` is clamped to the
-    ///      remaining entries. Iteration order is not stable across revokes.
-    /// @param offset Index of the first entry to return.
-    /// @param limit Maximum number of entries to return.
-    /// @return page Entries in the window.
-    function grants(uint256 offset, uint256 limit) external view returns (Grant[] memory page);
+    /// @notice Returns a page of claims on `label` for review.
+    /// @dev Reads the canonical offset and limit window.
+    /// @param label Bare label to look up.
+    /// @param offset Index of the first claim.
+    /// @param limit Maximum number of claims to return.
+    /// @return page Claims in the window.
+    function claims(
+        string calldata label,
+        uint256 offset,
+        uint256 limit
+    )
+        external
+        view
+        returns (Claim[] memory page);
+
+    /// @notice Returns the number of names with reserved, claimed or claim-holding state.
+    /// @return count Active name count.
+    function nameCount() external view returns (uint256 count);
+
+    /// @notice Returns a page of active names for review.
+    /// @dev Reads the canonical offset and limit window. Iteration order is not stable.
+    /// @param offset Index of the first name.
+    /// @param limit Maximum number of names to return.
+    /// @return page Names in the window.
+    function names(uint256 offset, uint256 limit) external view returns (NameView[] memory page);
 
     /// @notice Returns the request window.
     /// @return openAt Timestamp requests start being accepted.

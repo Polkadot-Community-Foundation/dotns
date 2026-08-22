@@ -44,6 +44,29 @@ library DotnsConstants {
     ///      or change protocol configuration.
     bytes32 internal constant WHITELIST_OPERATOR_ROLE = keccak256("DOTNS_WHITELIST_OPERATOR_ROLE");
 
+    /// @notice Default per-name live-claim cap the name whitelist starts with.
+    /// @dev Governance retunes it on the whitelist within `WHITELIST_MAX_CLAIMANTS_LIMIT`.
+    uint16 internal constant WHITELIST_DEFAULT_MAX_CLAIMANTS = 64;
+
+    /// @notice Default claim-reason byte cap the name whitelist starts with.
+    /// @dev Governance retunes it on the whitelist within `WHITELIST_MAX_REASON_LIMIT`.
+    uint256 internal constant WHITELIST_DEFAULT_MAX_REASON_BYTES = 256;
+
+    /// @notice Upper bound on the whitelist live-claim cap. Caps the claim clear-loop below the
+    ///         block gas limit.
+    uint16 internal constant WHITELIST_MAX_CLAIMANTS_LIMIT = 128;
+
+    /// @notice Upper bound on the whitelist reason byte cap.
+    uint256 internal constant WHITELIST_MAX_REASON_LIMIT = 256;
+
+    /// @notice Default cap on labels granted in one `grantNames` call.
+    /// @dev Governance retunes it on the whitelist within `WHITELIST_MAX_GRANT_BATCH_LIMIT`.
+    uint16 internal constant WHITELIST_DEFAULT_MAX_GRANT_BATCH = 100;
+
+    /// @notice Upper bound on the `grantNames` batch cap. Bounds one call below the block gas
+    /// limit.
+    uint16 internal constant WHITELIST_MAX_GRANT_BATCH_LIMIT = 256;
+
     /// @notice Well-known key for the ERC721 registrar backing name ownership.
     /// @dev Role: token-of-record for registered names. Mints, burns, and tracks the
     ///      `tokenId => label` mapping consumed by the forward registry on

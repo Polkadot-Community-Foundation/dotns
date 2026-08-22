@@ -3,6 +3,8 @@ pragma solidity ^0.8.34;
 
 import {Test} from "forge-std/Test.sol";
 import {DotnsNameWhitelist} from "../../../contracts/whitelist/DotnsNameWhitelist.sol";
+import {IDotnsNameWhitelist} from "../../../contracts/whitelist/IDotnsNameWhitelist.sol";
+import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 
 /// @title WhitelistHandler
 /// @notice Drives the whitelist through its lifecycle for the invariant suite, cycling a fixed
@@ -11,21 +13,22 @@ contract WhitelistHandler is Test {
     DotnsNameWhitelist public immutable WHITELIST;
     address public immutable OWNER;
     address public immutable CONTROLLER;
+    address public immutable POP_CONTROLLER;
 
     address[] internal _actors;
     string[] internal _labels;
-    string[] public labelsSeen;
-    mapping(bytes32 node => bool tracked) internal _trackedNodes;
 
     constructor(
         DotnsNameWhitelist whitelist,
         address owner,
         address controller,
+        address popController,
         address[] memory actors
     ) {
         WHITELIST = whitelist;
         OWNER = owner;
         CONTROLLER = controller;
+        POP_CONTROLLER = popController;
         _actors = actors;
         _labels.push("alicebob");
         _labels.push("wonderla");
@@ -33,34 +36,43 @@ contract WhitelistHandler is Test {
         _labels.push("danielle");
     }
 
-    function labelsSeenCount() external view returns (uint256 count) {
-        return labelsSeen.length;
+    function labelCount() external view returns (uint256 count) {
+        return _labels.length;
+    }
+
+    function labelAt(uint256 index) external view returns (string memory label) {
+        return _labels[index];
     }
 
     function request(uint256 actorSeed, uint256 labelSeed) external {
-        string memory label = _label(labelSeed);
-        vm.prank(_actor(actorSeed));
-        try WHITELIST.requestName(label) {
-            _track(label);
-        } catch {}
+        address user = _actor(actorSeed);
+        vm.prank(user);
+        try WHITELIST.requestName(_label(labelSeed), "reason", user) {} catch {}
     }
 
     function accept(uint256 labelSeed) external {
+        string memory label = _label(labelSeed);
+        if (WHITELIST.claimantCount(label) == 0) {
+            return;
+        }
+        address user = WHITELIST.claims(label, 0, 1)[0].user;
         vm.prank(OWNER);
-        try WHITELIST.accept(_label(labelSeed)) {} catch {}
+        try WHITELIST.accept(label, user) {} catch {}
     }
 
     function reject(uint256 labelSeed) external {
+        string memory label = _label(labelSeed);
+        if (WHITELIST.claimantCount(label) == 0) {
+            return;
+        }
+        address user = WHITELIST.claims(label, 0, 1)[0].user;
         vm.prank(OWNER);
-        try WHITELIST.reject(_label(labelSeed)) {} catch {}
+        try WHITELIST.reject(label, user) {} catch {}
     }
 
     function grant(uint256 actorSeed, uint256 labelSeed) external {
-        string memory label = _label(labelSeed);
         vm.prank(OWNER);
-        try WHITELIST.grantName(label, _actor(actorSeed)) {
-            _track(label);
-        } catch {}
+        try WHITELIST.grantName(_label(labelSeed), _actor(actorSeed)) {} catch {}
     }
 
     function revoke(uint256 labelSeed) external {
@@ -68,14 +80,25 @@ contract WhitelistHandler is Test {
         try WHITELIST.revokeName(_label(labelSeed)) {} catch {}
     }
 
-    function consume(uint256 labelSeed) external {
+    function setReserved(uint256 labelSeed, bool reserved) external {
+        vm.prank(OWNER);
+        try WHITELIST.setReserved(_label(labelSeed), reserved) {} catch {}
+    }
+
+    function consume(uint256 labelSeed, bool viaPop) external {
         string memory label = _label(labelSeed);
-        address grantee = WHITELIST.granteeOf(label);
-        if (grantee == address(0)) {
+        address winner = WHITELIST.granteeOf(label);
+        if (winner == address(0)) {
             return;
         }
-        vm.prank(CONTROLLER);
-        try WHITELIST.consume(label, grantee) {} catch {}
+        vm.prank(viaPop ? POP_CONTROLLER : CONTROLLER);
+        try WHITELIST.consume(label, winner) {} catch {}
+    }
+
+    function tuneMaxClaimants(uint256 seed) external {
+        uint16 newMax = uint16(1 + (seed % DotnsConstants.WHITELIST_MAX_CLAIMANTS_LIMIT));
+        vm.prank(OWNER);
+        try WHITELIST.setMaxClaimants(newMax) {} catch {}
     }
 
     function _actor(uint256 seed) internal view returns (address actor) {
@@ -84,13 +107,5 @@ contract WhitelistHandler is Test {
 
     function _label(uint256 seed) internal view returns (string memory label) {
         return _labels[seed % _labels.length];
-    }
-
-    function _track(string memory label) internal {
-        bytes32 node = keccak256(bytes(label));
-        if (!_trackedNodes[node]) {
-            _trackedNodes[node] = true;
-            labelsSeen.push(label);
-        }
     }
 }
