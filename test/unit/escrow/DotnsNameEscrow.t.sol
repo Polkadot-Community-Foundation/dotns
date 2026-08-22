@@ -34,7 +34,7 @@ contract GhostNft is ERC721 {
 contract DotnsNameEscrowTest is BaseDotns {
     /// @notice Default label used across most tests.
     /// @dev 14-char label that classifies as NoStatus; the flat deposit equals RENT_PRICE.
-    string internal constant LABEL = "longerlabela01";
+    string internal constant LABEL = "labelnine01";
 
     /// @notice Register `label` for `nameOwner` under the NoStatus PoP tier and return its tokenId.
     function _registerNoStatus(
@@ -175,7 +175,7 @@ contract DotnsNameEscrowTest is BaseDotns {
     }
 
     function test_self_registration_seeds_funded_position() public {
-        string memory popLabel = "popfullname";
+        string memory popLabel = "selfregis";
         bytes32 node = _register(popLabel, ed, IPopRules.PopStatus.PopFull);
         uint256 tokenId = uint256(node);
 
@@ -716,7 +716,7 @@ contract DotnsNameEscrowTest is BaseDotns {
     ///      into protocol fees; the owner-side refundable position is seeded with zero
     ///      amount, so reserves must not move.
     function test_cross_payer_verified_sponsors_nostatus_pays_only_D() public {
-        string memory label = "crosspayerlabel01";
+        string memory label = "crosspayr01";
 
         _grantPopFull(leonardo);
         // ed left at default NoStatus tier.

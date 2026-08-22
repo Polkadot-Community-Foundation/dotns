@@ -12,9 +12,9 @@ pragma solidity ^0.8.34;
 ///      classification. Reservations are keyed by the digit-stripped stem so `alice` and `alice42`
 ///      share a slot.
 ///
-///      Pricing is a geometric scarcity curve on the base length: price(n) = D * 2^(9 - n) below
-///      nine characters and the base fee D at nine and above. Every caller pays the same curve for
-///      a given length; personhood buys access to the premium band, not a discount inside it.
+///      Pricing is a geometric scarcity curve on the base length: price(n) = D * 2^(9 - n),
+///      halved for each character above nine and floored at `minPrice`. Every caller pays the same
+///      curve for a given length; personhood only unlocks the premium band.
 /// @custom:security-contact admin@parity.io
 interface IPopRules {
     /// @notice Proof-of-Personhood eligibility tier.
@@ -40,6 +40,18 @@ interface IPopRules {
     /// @param oldPrice Previous wei value.
     /// @param newPrice New wei value.
     event StartingPriceUpdated(uint256 oldPrice, uint256 newPrice);
+
+    /// @notice Emitted when the price floor F is changed.
+    /// @dev Owner-only setter @custom:function updateMinPrice.
+    /// @param oldMinPrice Previous wei value.
+    /// @param newMinPrice New wei value.
+    event MinPriceUpdated(uint256 oldMinPrice, uint256 newMinPrice);
+
+    /// @notice Emitted when the public market for names shorter than nine characters is opened or
+    ///         closed.
+    /// @dev Owner-only setter @custom:function setShortNamesEnabled.
+    /// @param enabled Whether names shorter than nine characters may now be bought.
+    event ShortNamesEnabledUpdated(bool enabled);
 
     /// @notice Thrown when a name violates PoP-tier or reservation requirements.
     /// @param reason Human-readable explanation of the failure condition.
@@ -92,6 +104,24 @@ interface IPopRules {
     ///      prior and new values.
     /// @param newStartingPrice New base price in wei.
     function updateStartingPrice(uint256 newStartingPrice) external;
+
+    /// @notice Sets the price floor F, the least any name can cost on the scarcity curve.
+    /// @dev Owner-only; unauthorised callers trigger @custom:reverts OwnableUnauthorizedAccount.
+    ///      `newMinPrice` must be strictly positive and no greater than the base fee D, otherwise
+    ///      @custom:reverts PopError. A base length below nine always prices above D, so the floor
+    ///      only binds from nine characters upward. Emits @custom:emits MinPriceUpdated.
+    /// @param newMinPrice New price floor in wei.
+    function updateMinPrice(uint256 newMinPrice) external;
+
+    /// @notice Opens or closes the public market for names shorter than nine characters.
+    /// @dev Owner-only; unauthorised callers trigger @custom:reverts OwnableUnauthorizedAccount.
+    ///      While closed, which is the deploy default, @custom:function priceWithCheck and
+    ///      @custom:function priceWithoutCheck trigger @custom:reverts PopError for a base length
+    ///      below nine, so no public caller buys a short name. The gateway free grant and the
+    ///      registrar's registerReserved path do not read this flag. Emits @custom:emits
+    ///      ShortNamesEnabledUpdated.
+    /// @param enabled Whether names shorter than nine characters may be bought.
+    function setShortNamesEnabled(bool enabled) external;
 
     /// @notice Creates or refreshes a reservation entry for a PopLite-eligible stem.
     /// @dev Commit-reveal reservation path. Only an authorised controller on the registrar may
@@ -189,7 +219,7 @@ interface IPopRules {
     /// @notice Calculates price with PoP classification and reservation enforcement.
     /// @dev Reverting pricing path used by the commit-reveal controller. Price is the scarcity
     ///      curve for the label's base length and is charged to every caller, verified or not;
-    ///      personhood gates access to the premium band rather than discounting it. Non-canonical
+    ///      personhood only unlocks the premium band. Non-canonical
     ///      labels, a base stem held live by another user, a governance-reserved label, or a
     ///      `userAddress` whose personhood tier does not meet the label's required tier each
     ///      trigger @custom:reverts PopError.
@@ -230,7 +260,7 @@ interface IPopRules {
     ///      either (i) the recipient does not meet the label's required tier, or (ii) the
     ///      recipient's personhood tier is strictly below the sender's, and zero when neither
     ///      holds. Passing a name to a wallet that could never have registered it therefore costs
-    ///      what the name is worth, not the open-band floor. The two components overlap on pure
+    ///      the name's own curve price. The two components overlap on pure
     ///      tier mismatches, so the function takes their maximum rather than their sum to avoid
     ///      double-charging. Consumed by @custom:function DotnsRegistrar.quoteTransferFee.
     ///      Non-canonical labels and labels with exactly one or more than two trailing digits
@@ -257,8 +287,9 @@ interface IPopRules {
     function isBaseName(string calldata name) external pure returns (bool isBase);
 
     /// @notice Calculates registration cost for a label.
-    /// @dev Prices the label on the scarcity curve by base length: D * 2^(9 - n) for a base length
-    ///      below nine, and the base fee D at nine and above. Ignores the caller's personhood
+    /// @dev Prices the label on the scarcity curve by base length: D * 2^(9 - n) below nine,
+    ///      halved for each character from nine upward and floored at `minPrice`. Ignores the
+    ///      caller's personhood
     ///      status and reservation state. A label whose trailing-digit suffix is neither zero nor
     ///      exactly two, and any non-canonical label, trigger @custom:reverts PopError.
     /// @param name Domain label to price.

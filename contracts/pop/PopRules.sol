@@ -20,13 +20,15 @@ import {IPersonhood} from "../external/personhood/IPersonhood.sol";
 /// @title PopRules
 /// @notice Implements DotNS classification, scarcity pricing on a geometric curve, and base-name
 ///         reservations.
-/// @dev Tier shape: base lengths <= 5 are governance-reserved, base lengths 6-8 require PopFull
+/// @dev Tiers: base lengths <= 5 are governance-reserved, base lengths 6-8 require PopFull
 ///      (or PopLite when carrying exactly two trailing digits, for gateway-issued lite names),
 ///      base lengths >= 9 are open to any caller as NoStatus when they carry zero or exactly two
 ///      trailing digits. A one-digit suffix and more than two trailing digits are invalid.
 ///      Every caller pays the same curve for a given base length: price(n) = D * 2^(9 - n) below
-///      nine characters, and the base fee D at nine and above, where D is `startingPrice`.
-///      Personhood buys access to the premium band, not a discount inside it.
+///      nine characters, and D halved for each character from nine upward, never below the floor
+///      `minPrice`, where D is `startingPrice`. Personhood only unlocks the premium band. Base
+///      lengths below nine are closed to the public paid path until governance sets
+///      `shortNamesEnabled`; the gateway and registerReserved do not consult it.
 /// @custom:security-contact admin@parity.io
 contract PopRules is
     Initializable,
@@ -37,7 +39,7 @@ contract PopRules is
 {
     using StringUtils for *;
 
-    /// @notice Base fee D in wei. Base lengths >= 9 pay D; shorter base lengths pay D * 2^(9 - n).
+    /// @notice Base fee D in wei: the scarcity curve's value at nine characters.
     uint256 public startingPrice;
 
     /// @notice Active reservations keyed by digit-stripped base name.
@@ -48,6 +50,14 @@ contract PopRules is
 
     /// @notice Protocol-level address registry for all DotNS contracts.
     IDotnsProtocolRegistry public protocolRegistry;
+
+    /// @notice Price floor F in wei: the least any name can cost, so a long base length decays
+    ///         towards it rather than to zero. Never above `startingPrice`.
+    uint256 public minPrice;
+
+    /// @notice Whether the public paid path may register names shorter than nine characters.
+    ///         Closed by default; only governance opens it.
+    bool public shortNamesEnabled;
 
     // forge-lint: disable-next-line(mixed-case-variable)
     uint256[50] private __gap;
@@ -68,9 +78,11 @@ contract PopRules is
     ///      InvalidInitialization via the `initializer` modifier. Seeds `startingPrice` through
     ///      @custom:function updateStartingPrice.
     /// @param _startingPrice Base fee D in wei anchoring the scarcity curve, paid by every caller.
+    /// @param _minPrice Price floor F in wei; the least any name can cost. Must not exceed D.
     /// @param registry Protocol-level address registry used to resolve sibling contracts.
     function initialize(
         uint256 _startingPrice,
+        uint256 _minPrice,
         IDotnsProtocolRegistry registry
     )
         public
@@ -78,7 +90,10 @@ contract PopRules is
     {
         __Ownable_init(msg.sender);
         __ERC165_init();
+        // Seed values only; governance sets the live curve through @custom:function
+        // updateStartingPrice and @custom:function updateMinPrice after deployment.
         updateStartingPrice(_startingPrice);
+        updateMinPrice(_minPrice);
         protocolRegistry = registry;
     }
 
@@ -89,8 +104,23 @@ contract PopRules is
             newStartingPrice <= type(uint256).max / 512,
             PopError("Price exceeds the scarcity-curve ceiling")
         );
+        require(newStartingPrice >= minPrice, PopError("Base fee cannot fall below the floor"));
         emit StartingPriceUpdated(startingPrice, newStartingPrice);
         startingPrice = newStartingPrice;
+    }
+
+    /// @inheritdoc IPopRules
+    function updateMinPrice(uint256 newMinPrice) public override onlyOwner {
+        require(newMinPrice > 0, PopError("Floor must be greater than 0"));
+        require(newMinPrice <= startingPrice, PopError("Floor cannot exceed the base fee"));
+        emit MinPriceUpdated(minPrice, newMinPrice);
+        minPrice = newMinPrice;
+    }
+
+    /// @inheritdoc IPopRules
+    function setShortNamesEnabled(bool enabled) external override onlyOwner {
+        shortNamesEnabled = enabled;
+        emit ShortNamesEnabledUpdated(enabled);
     }
 
     /// @inheritdoc IPopRules
@@ -168,6 +198,7 @@ contract PopRules is
 
         (PopStatus requiredStatus, string memory classification, uint256 baseLength) =
             _classifyValidatedName(name);
+        _requireShortNamesOpen(baseLength);
         PopStatus userStatus = _personhoodTier(userAddress);
 
         metadata.price = _priceValidatedName(baseLength);
@@ -195,6 +226,7 @@ contract PopRules is
 
         (PopStatus requiredStatus, string memory classification, uint256 baseLength) =
             _classifyValidatedName(name);
+        _requireShortNamesOpen(baseLength);
         PopStatus userStatus = _personhoodTier(userAddress);
 
         metadata.price = _priceValidatedName(baseLength);
@@ -273,16 +305,32 @@ contract PopRules is
         return userStatus >= required;
     }
 
-    /// @notice Scarcity price for a base length: D * 2 ** (9 - n) below nine, else the base fee D.
-    /// @dev The multiplier is at most 512; @custom:function updateStartingPrice caps the base fee
-    ///      at `type(uint256).max / 512` so the checked multiplication never overflows.
+    /// @notice Scarcity price for a base length, floored at `minPrice`.
+    /// @dev Below nine the multiplier is at most 512, and @custom:function updateStartingPrice caps
+    ///      D at `type(uint256).max / 512` so the checked multiplication cannot overflow. From nine
+    ///      upward the price is D right-shifted by `n - 9`, so it only ever decreases; base lengths
+    ///      cap at 63 characters, so the shift is at most 54 and never reaches the word width. The
+    ///      floor stops a long base length costing nothing and is `updateMinPrice`-bounded to D, so
+    ///      it only binds from nine upward, never in the doubling range below nine.
     function _priceValidatedName(uint256 baseLength) internal view returns (uint256 priceValue) {
-        if (baseLength >= 9) return startingPrice;
-        return startingPrice * (2 ** (9 - baseLength));
+        uint256 curve = baseLength < 9
+            ? startingPrice * (2 ** (9 - baseLength))
+            : startingPrice >> (baseLength - 9);
+        return curve < minPrice ? minPrice : curve;
     }
 
-    /// @notice Validates the digit suffix and returns the base length, the single source pricing
-    ///         and classification both derive a name's band from.
+    /// @notice Reverts a public paid registration of a base length below nine while the short-name
+    ///         market is closed.
+    /// @dev The one gate both public price reads share. Base lengths of nine and above are always
+    ///      open. @custom:reverts PopError when a base length below nine is priced while
+    ///      `shortNamesEnabled` is false. The gateway and @custom:function registerReserved never
+    ///      reach this, so neither is gated.
+    function _requireShortNamesOpen(uint256 baseLength) private view {
+        require(shortNamesEnabled || baseLength >= 9, PopError("Short names are not for sale"));
+    }
+
+    /// @notice Validates the digit suffix and returns the base length that pricing and
+    ///         classification both use to place a name in its band.
     /// @dev A name carries no digit suffix or exactly two digits; any other count triggers
     ///      @custom:reverts PopError, so a longer suffix cannot slip a name into a shorter band.
     function _validatedBaseLength(string calldata name) internal pure returns (uint256 baseLength) {

@@ -42,11 +42,20 @@ contract PopRulesFuzzTest is BaseDotns {
     }
 
     function testFuzz_price_matches_curve(uint256 seed, uint256 length) public view {
-        length = bound(length, 3, 20);
+        length = bound(length, 3, 63);
         string memory nameLabel = _makeAlpha(seed, length);
 
-        uint256 expected = length >= 9 ? RENT_PRICE : RENT_PRICE * (2 ** (9 - length));
+        uint256 curve = length >= 9 ? RENT_PRICE >> (length - 9) : RENT_PRICE * (2 ** (9 - length));
+        uint256 expected = curve < MIN_PRICE ? MIN_PRICE : curve;
         assertEq(popRules.price(nameLabel), expected);
+    }
+
+    function testFuzz_price_is_monotonic_and_floored(uint256 seed, uint256 length) public view {
+        length = bound(length, 3, 62);
+        uint256 shorter = popRules.price(_makeAlpha(seed, length));
+        uint256 longer = popRules.price(_makeAlpha(seed, length + 1));
+        assertGe(shorter, longer, "price must not increase with length");
+        assertGe(longer, MIN_PRICE, "price must never fall below the floor");
     }
 
     function testFuzz_governance_names_always_revert(

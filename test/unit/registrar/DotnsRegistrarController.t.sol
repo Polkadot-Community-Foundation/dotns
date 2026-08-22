@@ -415,6 +415,32 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         assertEq(dotnsRegistry.owner(node), nameOwner);
     }
 
+    function test_registerReserved_bypasses_closed_short_name_gate() public {
+        vm.prank(owner);
+        popRules.setShortNamesEnabled(false);
+
+        string memory nameLabel = "reserved"; // base length 8, closed on the public path
+        address nameOwner = ed;
+
+        vm.prank(owner);
+        dotnsRegistrarController.whiteListAddress(ed, true);
+
+        vm.startPrank(ed);
+        bytes32 secret = keccak256(abi.encodePacked(nameLabel, nameOwner, "gate-closed"));
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: nameLabel, owner: nameOwner, secret: secret, reserved: true
+            });
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
+        dotnsRegistrarController.commit(commitment);
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+        dotnsRegistrarController.registerReserved(registration);
+        vm.stopPrank();
+
+        bytes32 node = _namehash(dotNode, keccak256(bytes(nameLabel)));
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(node)), nameOwner);
+    }
+
     function test_removed_from_whitelist_cannot_register_reserved() public {
         string memory nameLabel = "reserved02";
         address nameOwner = ed;

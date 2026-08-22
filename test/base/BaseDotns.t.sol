@@ -142,6 +142,11 @@ abstract contract BaseDotns is Test {
     ///      directly.
     uint256 public constant RENT_PRICE = DotnsConstants.RENT_PRICE;
 
+    /// @notice Price floor F seeded into PopRules initialisation in this base test.
+    /// @dev Aliased to @custom:constant DotnsConstants.MIN_PRICE so deploy scripts and the test
+    ///      base see the same seed; downstream test suites reference `MIN_PRICE` directly.
+    uint256 public constant MIN_PRICE = DotnsConstants.MIN_PRICE;
+
     /// @notice Default escrow cooldown used in tests. Bounded by the escrow's
     ///         @custom:constant MAX_COOLDOWN ceiling.
     uint256 public constant ESCROW_COOLDOWN = 15 minutes;
@@ -171,10 +176,10 @@ abstract contract BaseDotns is Test {
     string internal constant BASE_LABEL_C = "carolboy";
 
     // baselength >= 9 classifies as NoStatus with no suffix or exactly two trailing digits.
-    /// @notice NoStatus classification label fixture A.
-    string internal constant NOSTATUS_LABEL_A = "nostatususer01";
-    /// @notice NoStatus classification label fixture B.
-    string internal constant NOSTATUS_LABEL_B = "anothernostatus02";
+    /// @notice NoStatus classification label fixture A. Nine-character stem, so it prices at D.
+    string internal constant NOSTATUS_LABEL_A = "nostatusa01";
+    /// @notice NoStatus classification label fixture B. Nine-character stem, so it prices at D.
+    string internal constant NOSTATUS_LABEL_B = "nostatusb02";
 
     /// @notice The bare TLD label the whole suite runs against.
     /// @dev Single definition point for the fixture's TLD. Change this one line to run every test
@@ -252,10 +257,14 @@ abstract contract BaseDotns is Test {
         vm.label(dotnsContentResolverAddress, "DotnsContentResolver");
 
         address popRulesAddress = Upgrades.deployUUPSProxy(
-            "PopRules.sol:PopRules", abi.encodeCall(PopRules.initialize, (RENT_PRICE, registry))
+            "PopRules.sol:PopRules",
+            abi.encodeCall(PopRules.initialize, (RENT_PRICE, MIN_PRICE, registry))
         );
         popRules = PopRules(popRulesAddress);
         vm.label(popRulesAddress, "PopRules");
+        // Open the short-name market so the band and registration suites exercise names below nine
+        // characters. The default-closed state is covered directly in PopRules unit tests.
+        popRules.setShortNamesEnabled(true);
 
         address dotnsResolverAddress = Upgrades.deployUUPSProxy(
             "DotnsResolver.sol:DotnsResolver", abi.encodeCall(DotnsResolver.initialize, (registry))

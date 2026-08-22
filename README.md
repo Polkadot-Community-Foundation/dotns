@@ -34,25 +34,31 @@ If a run fails partway, re-run it from the Actions tab; the draft is updated rat
 
 Every price comes from one number. The base fee D is set in the native token and equals ten DOT at launch. A name's price depends only on its base length, the character count once a trailing number is set aside:
 
-price(n) = D · 2^(9 − n) for a base length n below nine, and D for n of nine or more.
+$$
+\text{price}(n) = \max\!\left(F,\; D \cdot 2^{\,9 - n}\right)
+$$
 
-The price doubles for each character below nine and flattens to D from nine upward. Short names are scarce, so they cost more, and the curve follows how the count of available names falls as they shorten. A trailing number never changes the price, because it comes off before the length is measured, so `andrew` and `andrew01` both cost 8D. A name carries no digits or exactly two; any other trailing-digit count is rejected.
+The price doubles for each character below nine and halves for each character above it, down to the floor F. Short names are scarce, so they cost more; long names are abundant, so each extra character costs less, until the floor F stops the price reaching zero. Governance configures both values: D anchors the curve at nine, F is the least a name can cost. A trailing number never changes the price, because it comes off before the length is measured, so `andrew` and `andrew01` both price as `andrew`, at 8D. A name carries no digits or exactly two; any other trailing-digit count is rejected.
 
 | Base length | Price |
 |---|---|
-| 9 or more | D |
-| 8 | 2D |
-| 7 | 4D |
 | 6 | 8D |
-| 5 | 16D |
-| 4 | 32D |
-| 3 | 64D |
+| 7 | 4D |
+| 8 | 2D |
+| 9 | D |
+| 10 | D/2 |
+| 11 | D/4 |
+| n above 9 | D / 2^(n − 9), down to the floor F |
 
 ### Bands and who pays
 
-Three bands share the one curve. Names of nine characters or more are open to anyone at the flat fee D. Names of six to eight characters are the premium band: only a verified person may register there, and they pay the curve for the length, 8D, 4D or 2D. Personhood buys access to the premium band, not a discount inside it. Names of five characters or fewer are reserved to governance; no user registers them, and governance releases them itself at the price their length sets, into the treasury it already controls.
+Three bands share the one curve. Names of nine characters or more are open to anyone at the curve price for the length, D at nine and less for each character above it. Names of six to eight characters are the premium band: only a verified person may register there, and they pay the curve for the length, 8D, 4D or 2D. Personhood only unlocks that band; the price there is the same curve everyone pays. Names of five characters or fewer are reserved to governance; no user registers them, and governance releases them itself at the price their length sets, into the treasury it already controls.
 
-Every caller pays the same curve for a given length. Each wallet gets one free name through the personhood gateway, the unpriced lane: the gateway waives the price and issues that grant per wallet, and the name can be any length. The bands above are the public curve; the gateway lane does not apply them and only refuses the governance-reserved stems of five characters or fewer. Governance releasing a reserved name charges itself that length's price, which settles in a circle into its own treasury and nets nothing.
+Names shorter than nine are closed on the public curve by default. A paid registration of a base length below nine reverts until governance opens the short-name market with a single switch; while it is off no caller buys a name shorter than nine, and while it is on the two short bands above apply, six to eight to verified persons and five or fewer to governance alone. The switch defaults off, so at launch only names of nine characters or more are for sale. It gates the public paid path alone: the personhood gateway's free grant is unpriced and issues names of any length either way, and governance's own reserved releases and the operator whitelist do not pass through it.
+
+The switch gates primary purchase, not transfer. A transferable name still moves whatever the switch reads, re-priced at its own length through the transfer floor below, so a short name registered on the public curve still transfers at its scarcity price after the market closes.
+
+Every caller pays the same curve for a given length. Each wallet gets one free name through the personhood gateway, the unpriced lane: the gateway waives the price and issues that grant per wallet, and the name can be any length. The bands above are the public curve; the gateway lane does not apply them and only refuses the governance-reserved stems of five characters or fewer. Governance releasing a reserved name charges itself that length's price, which returns to the treasury it controls and nets nothing.
 
 ### Deposits and protocol fees
 
@@ -62,13 +68,13 @@ A fee is non-refundable. Two things pay a fee instead of a deposit: a name someo
 
 ### Transfers re-price at the name's own length
 
-Moving a name re-prices it from scratch at its own length on every move. Passing a six-character name to a wallet that could never have registered it costs 8D, the name's own price, not the flat D floor. `andrew` and `andrew01` re-derive to the same 8D. The exit price equals what the name was worth to acquire, so there is no cheap way to hand a scarce name to a party who could not have earned it. A move between parties who both clear the name's band costs nothing, and the fee, when one is owed, settles into protocol fees.
+Moving a name re-prices it from scratch at its own length on every move. Passing a six-character name to a wallet that could never have registered it costs 8D, the name's own price. `andrew` and `andrew01` re-derive to the same 8D. The exit price equals what the name was worth to acquire, so there is no cheap way to hand a scarce name to a party who could not have earned it. A move between parties who both clear the name's band costs nothing, and the fee, when one is owed, settles into protocol fees.
 
 The deposit, when present, is bound to the name and rides with it on every transfer. The escrow position is rebound to the new holder rather than refunded; only releasing the name back to escrow ever unlocks the locked deposit. Transferring a funded name hands the locked deposit to the recipient along with the token.
 
 ### What governance controls
 
-Everything hangs off D. Governance can move D, but only inside a fixed band and by at most a set multiple per vote, so it can neither drop the price to zero, which would free every short name, nor raise it to an extractive level, and any change is legible several votes ahead. Governance sets how long the interval on the free grant runs, and chooses where fees go, a burn or the treasury, from that fixed pair. Nothing in that surface lets governance seize, reassign or destroy a name anyone already holds.
+Everything hangs off D. Governance sets D and the floor F to whatever values it chooses; the contracts hold them coherent and nothing more, requiring D above zero and F in the range one to D, so the curve can never invert and no name ever prices at zero. They put no ceiling on how high or low D goes, nor any limit on how fast it moves, so the economic policy is the owner's to set and any rate limit or advance notice comes from the governance process, not from these contracts. Governance also sets the floor F, opens or closes the short-name market with the switch above (while it is closed no name shorter than nine is for sale), sets how long the interval on the free grant runs, and chooses where fees go, a burn or the treasury, from that fixed pair. None of these controls lets governance seize, reassign or destroy a name anyone already holds.
 
 ### Refund and cooldown model
 

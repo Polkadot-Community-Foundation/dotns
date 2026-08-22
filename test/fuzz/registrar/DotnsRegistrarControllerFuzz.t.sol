@@ -397,9 +397,10 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         return string(abi.encodePacked("popful", _uintToAlphaFixed(salt, 2)));
     }
 
-    /// @notice Generate a label that classifies as NoStatus and carries a non-zero price.
+    /// @notice Generate a NoStatus label with a nine-character stem, so it prices at the base
+    ///         fee D on the curve.
     function _labelNoStatusPriced(uint256 salt) internal pure returns (string memory label) {
-        return string(abi.encodePacked("nostatus", _uintToAlphaFixed(salt, 2), "01"));
+        return string(abi.encodePacked("nostatu", _uintToAlphaFixed(salt, 2), "01"));
     }
 
     /// @notice Generate an 8-char PopLite-tier label (base length 6) that prices at 8D on the

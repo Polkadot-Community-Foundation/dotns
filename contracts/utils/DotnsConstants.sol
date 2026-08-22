@@ -30,14 +30,19 @@ library DotnsConstants {
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant PERSONHOOD_CONTEXT = bytes32("dotns");
 
-    /// @notice Default deploy-time NoStatus rent price passed into
-    ///         `PopRules.initialize` as `_startingPrice`.
-    /// @dev 10 DOT under revive's 18-decimal Asset Hub convention. Single
-    ///      source of truth for deploy scripts and tests so the value cannot
-    ///      drift between call sites. Live deployments rotate the runtime
-    ///      `startingPrice` on `PopRules` rather than rebuilding consumers
-    ///      against a new constant.
+    /// @notice Initial-deployment base fee D passed into `PopRules.initialize` as `_startingPrice`.
+    /// @dev Purely the value the contract is seeded with at deployment: 10 DOT under revive's
+    ///      18-decimal Asset Hub convention. Governance sets the live value through
+    ///      `PopRules.updateStartingPrice`, so this is never read after deployment and consumers
+    ///      are not rebuilt against a new constant. Single source of truth for deploy scripts and
+    ///      tests so the seed cannot drift between call sites.
     uint256 internal constant RENT_PRICE = 10 ether;
+
+    /// @notice Initial-deployment price floor F passed into `PopRules.initialize` as `_minPrice`.
+    /// @dev Purely the seed value: below `RENT_PRICE` so the curve falls above nine characters.
+    ///      Governance sets the live floor through `PopRules.updateMinPrice`; never read after
+    ///      deployment.
+    uint256 internal constant MIN_PRICE = 0.1 ether;
 
     /// @notice Operational role allowed to manage the public controller whitelist.
     /// @dev Holders can grant or revoke whitelist entries, but cannot upgrade contracts

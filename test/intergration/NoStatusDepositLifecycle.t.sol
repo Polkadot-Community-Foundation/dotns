@@ -16,7 +16,7 @@ import {IDotnsNameEscrow} from "../../contracts/escrow/IDotnsNameEscrow.sol";
 ///      unbounded number of NoStatus names over time.
 contract NoStatusDepositLifecycle is BaseDotns {
     /// @notice NoStatus label fixture (baselength >= 9 classifies as NoStatus).
-    string internal constant DEPOSIT_LABEL = "depositname01";
+    string internal constant DEPOSIT_LABEL = "depositxy01";
 
     function test_NoStatus_register_then_transfer_then_holder_claims_refund() public {
         address depositor = ed;

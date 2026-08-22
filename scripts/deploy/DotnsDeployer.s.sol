@@ -271,7 +271,11 @@ contract DotnsDeployer is BaseDeployer {
             "PopRules.sol:PopRules",
             abi.encodeCall(
                 PopRules.initialize,
-                (DotnsConstants.RENT_PRICE, IDotnsProtocolRegistry(protocolRegistryProxy))
+                (
+                    DotnsConstants.RENT_PRICE,
+                    DotnsConstants.MIN_PRICE,
+                    IDotnsProtocolRegistry(protocolRegistryProxy)
+                )
             ),
             "PopRules"
         );
