@@ -48,6 +48,9 @@ contract DotnsNameEscrow is
     ///      circulation, and keeps the cast to `uint64` in release well below saturation.
     uint256 public constant MAX_REDEEM_WINDOW = 30 days;
 
+    // TODO: Consider adding a MIN_REDEEM_WINDOW to prevent a malicious owner from setting it to 0
+    // and allowing immediate reclaim.
+
     /// @notice The protocol registry for resolving sibling contract addresses.
     IDotnsProtocolRegistry public protocolRegistry;
 
