@@ -8,6 +8,7 @@ import {DotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
 import {DotnsRegistrarController} from "../../contracts/registrars/DotnsRegistrarController.sol";
 import {DotnsPopController} from "../../contracts/registrars/DotnsPopController.sol";
 import {DotnsNameEscrow} from "../../contracts/escrow/DotnsNameEscrow.sol";
+import {DotnsNameWhitelist} from "../../contracts/whitelist/DotnsNameWhitelist.sol";
 import {IDotnsController} from "../../contracts/registrars/IDotnsController.sol";
 import {DotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
 import {DotnsProtocolRegistry} from "../../contracts/registry/DotnsProtocolRegistry.sol";
@@ -46,6 +47,7 @@ contract WireDeployments is BaseDeployer {
         address protocolRegistry;
         address multicall3;
         address nameEscrow;
+        address nameWhitelist;
         address popResolver;
         address popController;
         address rootGatewayDispatcher;
@@ -83,6 +85,7 @@ contract WireDeployments is BaseDeployer {
         addr.protocolRegistry = _readAddress("DotnsProtocolRegistry");
         addr.multicall3 = _readAddress("Multicall3");
         addr.nameEscrow = _readAddress("DotnsNameEscrow");
+        addr.nameWhitelist = _readAddress("DotnsNameWhitelist");
         addr.popResolver = _readAddress("DotnsPopResolver");
         addr.popController = _readAddress("DotnsPopController");
         addr.rootGatewayDispatcher = _readAddress("RootGatewayDispatcher");
@@ -109,6 +112,7 @@ contract WireDeployments is BaseDeployer {
         registry.set(DotnsConstants.POP_RULES, addr.popRules);
         registry.set(DotnsConstants.STORE_FACTORY, addr.storeFactory);
         registry.set(DotnsConstants.NAME_ESCROW, addr.nameEscrow);
+        registry.set(DotnsConstants.NAME_WHITELIST, addr.nameWhitelist);
         registry.set(DotnsConstants.MULTICALL3, addr.multicall3);
         registry.set(DotnsConstants.POP_CONTROLLER, addr.popController);
         registry.set(DotnsConstants.POP_RESOLVER, addr.popResolver);
@@ -126,6 +130,11 @@ contract WireDeployments is BaseDeployer {
     {
         vm.startBroadcast(owner);
         DotnsRegistrarController(addr.registrarController)
+            .setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator, true);
+        // Grant through setRole rather than the onlyGovernance setOperator: the deploy signs as
+        // the owner, and setOperator reads the revive System precompile, which is absent on the
+        // anvil reproduction chain. setRole grants the same WHITELIST_OPERATOR_ROLE.
+        DotnsNameWhitelist(addr.nameWhitelist)
             .setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator, true);
         vm.stopBroadcast();
         console.log("Whitelist operator role granted to", whitelistOperator);
@@ -160,6 +169,10 @@ contract WireDeployments is BaseDeployer {
             "NameEscrow: wrong owner"
         );
         require(
+            DotnsNameWhitelist(addr.nameWhitelist).owner() == expectedOwner,
+            "NameWhitelist: wrong owner"
+        );
+        require(
             DotnsPopController(addr.popController).owner() == expectedOwner,
             "PopController: wrong owner"
         );
@@ -191,6 +204,9 @@ contract WireDeployments is BaseDeployer {
             registry.get(DotnsConstants.STORE_FACTORY) == addr.storeFactory, "Key: storeFactory"
         );
         require(registry.get(DotnsConstants.NAME_ESCROW) == addr.nameEscrow, "Key: nameEscrow");
+        require(
+            registry.get(DotnsConstants.NAME_WHITELIST) == addr.nameWhitelist, "Key: nameWhitelist"
+        );
         require(registry.get(DotnsConstants.MULTICALL3) == addr.multicall3, "Key: multicall3");
         require(
             registry.get(DotnsConstants.POP_CONTROLLER) == addr.popController, "Key: popController"
@@ -213,6 +229,11 @@ contract WireDeployments is BaseDeployer {
             DotnsRegistrarController(addr.registrarController)
                 .hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator),
             "WhitelistOperator: role not granted"
+        );
+        require(
+            DotnsNameWhitelist(addr.nameWhitelist)
+                .hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator),
+            "NameWhitelist operator: role not granted"
         );
 
         console.log("=== Deployment verification complete ===");

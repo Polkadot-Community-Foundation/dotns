@@ -8,6 +8,7 @@ import {PopRules} from "../../contracts/pop/PopRules.sol";
 import {DotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
 import {DotnsRegistrarController} from "../../contracts/registrars/DotnsRegistrarController.sol";
 import {DotnsPopController} from "../../contracts/registrars/DotnsPopController.sol";
+import {DotnsNameWhitelist} from "../../contracts/whitelist/DotnsNameWhitelist.sol";
 import {DotnsNameEscrow} from "../../contracts/escrow/DotnsNameEscrow.sol";
 import {IDotnsController} from "../../contracts/registrars/IDotnsController.sol";
 import {DotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
@@ -61,6 +62,7 @@ contract DotnsDeployer is BaseDeployer {
     DotnsPopResolver public dotnsPopResolver;
     DotnsRegistrarController public dotnsRegistrarController;
     DotnsPopController public dotnsPopController;
+    DotnsNameWhitelist public dotnsNameWhitelist;
     DotnsNameEscrow public dotnsNameEscrow;
     DotnsProtocolRegistry public protocolRegistry;
 
@@ -80,6 +82,7 @@ contract DotnsDeployer is BaseDeployer {
         address nameEscrow;
         address popResolver;
         address popController;
+        address nameWhitelist;
     }
 
     /// @notice Deploys the full DotNS contract set, wires the protocol registry,
@@ -125,6 +128,7 @@ contract DotnsDeployer is BaseDeployer {
             _deployRegistrarController(OWNER, deployment.protocolRegistry);
         deployment.popResolver = _deployPopResolver(OWNER, deployment.protocolRegistry);
         deployment.popController = _deployPopController(OWNER, deployment.protocolRegistry);
+        deployment.nameWhitelist = _deployNameWhitelist(OWNER, deployment.protocolRegistry);
 
         _authoriseControllers(OWNER, deployment);
         _wireProtocolRegistryKeys(OWNER, deployment);
@@ -353,6 +357,24 @@ contract DotnsDeployer is BaseDeployer {
         dotnsPopController = DotnsPopController(proxy);
     }
 
+    function _deployNameWhitelist(
+        address owner,
+        address protocolRegistryProxy
+    )
+        internal
+        returns (address proxy)
+    {
+        proxy = _broadcastDeployUups(
+            owner,
+            "DotnsNameWhitelist.sol:DotnsNameWhitelist",
+            abi.encodeCall(
+                DotnsNameWhitelist.initialize, (IDotnsProtocolRegistry(protocolRegistryProxy))
+            ),
+            "DotnsNameWhitelist"
+        );
+        dotnsNameWhitelist = DotnsNameWhitelist(proxy);
+    }
+
     function _authoriseControllers(address owner, Deployment memory deployment) internal {
         vm.startBroadcast(owner);
         dotnsRegistrar.addController(IDotnsController(deployment.registrarController));
@@ -373,6 +395,7 @@ contract DotnsDeployer is BaseDeployer {
         protocolRegistry.set(DotnsConstants.NAME_ESCROW, deployment.nameEscrow);
         protocolRegistry.set(DotnsConstants.POP_CONTROLLER, deployment.popController);
         protocolRegistry.set(DotnsConstants.POP_RESOLVER, deployment.popResolver);
+        protocolRegistry.set(DotnsConstants.NAME_WHITELIST, deployment.nameWhitelist);
         vm.stopBroadcast();
         console.log("Protocol registry keys set");
     }
@@ -550,6 +573,11 @@ contract DotnsDeployer is BaseDeployer {
             address(DotnsPopResolver(deployment.popResolver).protocolRegistry()),
             expected,
             "PopResolver: not wired"
+        );
+        _assertPointer(
+            address(DotnsNameWhitelist(deployment.nameWhitelist).protocolRegistry()),
+            expected,
+            "NameWhitelist: not wired"
         );
     }
 

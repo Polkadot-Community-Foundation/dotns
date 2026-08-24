@@ -15,7 +15,7 @@ services:
       - "8545:8545"
     command:
       - "--node-rpc-url"
-      - "wss://paseo-asset-hub-next-rpc.polkadot.io"
+      - "wss://previewnet.substrate.dev/asset-hub"
       - "--rpc-port"
       - "8545"
       - "--rpc-external"
