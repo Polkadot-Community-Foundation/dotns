@@ -300,14 +300,21 @@ jobs:
             jq -rn --slurpfile e "$CANONICAL" --slurpfile a "$MANIFEST" '
               ($e[0]) as $exp | ($a[0]) as $act
               | $exp | keys_unsorted[] as $k
+              | select($k | startswith("_") | not)
               | "| \($k) | `\($exp[$k])` | `\($act[$k] // "MISSING")` | \(if $exp[$k] == $act[$k] then "match" else "MOVED" end) |"
             '
           }
 
-          # True when the deployed manifest equals the committed one. Sort keys so
-          # only value differences, never ordering, register as a mismatch.
+          # True when the deployed manifest equals the committed one. Sort keys so only value
+          # differences, never ordering, register as a mismatch. Underscore-prefixed keys are
+          # deploy metadata rather than addresses: `_seed` varies per run, and `_deployedFrom`
+          # exists only in a committed manifest, never in a fresh deploy's output. The release
+          # generator and the dotns-releases report drop the same prefix.
+          addresses() {
+            jq -S 'with_entries(select(.key | startswith("_") | not))' "$1"
+          }
           matches_canonical() {
-            diff <(jq -S . "$CANONICAL") <(jq -S . "$MANIFEST") > /dev/null
+            diff <(addresses "$CANONICAL") <(addresses "$MANIFEST") > /dev/null
           }
 
           # Record a failure (deploy-error.md already written) and stop.
