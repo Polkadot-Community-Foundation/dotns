@@ -338,6 +338,16 @@ abstract contract BaseDotns is Test {
         );
     }
 
+    /// @notice Mocks revive's System precompile originIsRoot result.
+    /// @param returnValue Value to return from `originIsRoot`.
+    function _mockOriginIsRoot(bool returnValue) internal {
+        vm.mockCall(
+            DotnsConstants.REVIVE_SYSTEM,
+            abi.encodeWithSelector(ISystem.originIsRoot.selector),
+            abi.encode(returnValue)
+        );
+    }
+
     /// @notice Computes the namehash of `parent` and `labelhash`.
     /// @dev Thin wrapper around @custom:function LabelUtils.namehashUnder so tests
     ///      do not reimplement the assembly composition.

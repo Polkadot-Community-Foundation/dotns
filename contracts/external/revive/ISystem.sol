@@ -13,4 +13,10 @@ interface ISystem {
     /// Returning true iff the immediate caller's substrate origin is `Root`.
     /// Reverts on a `RuntimeOrigin::Signed(_)` or non-Root origin.
     function callerIsRoot() external view returns (bool);
+
+    /// Returning true iff the transaction-level substrate origin is `Root`.
+    /// @dev Reads the stack origin rather than the immediate caller, so it holds through a UUPS
+    ///      proxy's delegatecall frame where `callerIsRoot` returns false. Returns false, rather
+    ///      than reverting, on a non-Root origin.
+    function originIsRoot() external view returns (bool);
 }
