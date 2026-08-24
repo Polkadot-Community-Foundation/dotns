@@ -220,7 +220,7 @@ contract DotnsNameWhitelist is
         Claim storage claim = _claims[node][user];
         require(claim.status == ClaimStatus.Requested, NotRequested(node, user));
         // Free the claimant slot either way. Keep a sticky Rejected record only for a self-filed
-        // claim, so the beneficiary cannot simply re-request; a claim filed on their behalf is
+        // claim, so the beneficiary cannot re-request; a claim filed on their behalf is
         // deleted and never binds them.
         _claimants[node].remove(user);
         if (claim.submitter == user) {
@@ -283,7 +283,7 @@ contract DotnsNameWhitelist is
         if (reserved) {
             require(record.status == NameStatus.Open, NameNotOpen(node));
             // Clear any pending claims the way a grant does, so a permissionless requestName
-            // cannot force governance to revokeName first before it can reserve.
+            // cannot force governance to revokeName before it can reserve.
             _clearClaimants(node, address(0), label);
             record.status = NameStatus.Reserved;
             _activate(node, label);
