@@ -109,8 +109,12 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
     ///      settles unwithdrawn deposits onto the pull-payment ledger, more paths reach that state,
     ///      so the assertion is stated as the property that actually matters -- the escrow is never
     ///      short -- over every actor and every ledger.
-    ///      Balance may legitimately exceed the sum: force-sent value (`selfdestruct`) is
-    ///      unaccounted-for surplus the escrow has no ledger for, which is why this is `assertGe`.
+    ///      Kept as strict equality deliberately. Relaxing it to `assertGe` would state only that
+    ///      the escrow is never short, which no longer bites: now that reclaim moves value, a bug
+    ///      that debits `tokenReserved` and forgets to credit `_pendingWithdrawals` leaves the
+    ///      balance "above" the sum and sails past a `>=` assertion. Equality is what catches value
+    ///      going missing. It holds because no handler action force-sends value to the escrow; if
+    ///      one is ever added, account for the surplus in a ghost rather than weakening this.
     ///      The time-locked refund ledger is not summed here because this handler does not drive
     ///      it; `DotnsNameEscrowInvariant.invariant_solvency` covers all four ledgers together.
     function invariant_value_conservation() public view {
@@ -124,10 +128,10 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         }
 
         uint256 escrowBalance = address(dotnsNameEscrow).balance;
-        assertGe(
+        assertEq(
             escrowBalance,
             reservedAmount + insurance + pendingTotal,
-            "Escrow balance must cover reserves + insurance + pending withdrawals"
+            "Escrow balance must equal reserves + insurance + pending withdrawals"
         );
     }
 
