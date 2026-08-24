@@ -219,7 +219,7 @@ contract PopControllerHandler is Test {
         // registration below takes the warm path; the pending-claim mechanism
         // forbids a second stash for the same user.
         vm.prank(actor);
-        try CONTROLLER.claimLabelStore() {} catch {}
+        try CONTROLLER.settlePendingClaims(actor, type(uint256).max) {} catch {}
 
         IDotnsPopController.Link memory link = IDotnsPopController.Link({
             kind: IDotnsPopController.LinkKind.LiteUsername, liteLabel: liteLabel, chatKey: ""
@@ -295,22 +295,28 @@ contract PopControllerHandler is Test {
         vm.warp(block.timestamp + (secondsForward % (30 days)));
     }
 
-    /// @notice Settles a pending claim for the picked actor.
+    /// @notice Settles the picked actor's own pending claims.
     /// @dev The actor signs the call; `pallet-revive` charges the storage
-    ///      deposit against their balance in production. Swallowed reverts
-    ///      cover the no-pending-claim and lapsed-entry branches.
+    ///      deposit against their balance in production. Settlement never reverts
+    ///      on an empty or lapsed queue, so no branch needs swallowing; the
+    ///      try/catch guards only against unrelated dispatch reverts.
     function settlePendingClaim(uint256 actorIndex) external {
         address actor = _actor(actorIndex);
         vm.prank(actor);
-        try CONTROLLER.claimLabelStore() {} catch {}
+        try CONTROLLER.settlePendingClaims(actor, type(uint256).max) {} catch {}
     }
 
-    /// @notice Permissionlessly sweeps an expired pending claim for the picked actor.
-    /// @dev Caller is the handler itself; the entrypoint is permissionless by
-    ///      design so any address can clear a stale slot.
-    function sweepPendingClaim(uint256 actorIndex) external {
+    /// @notice Settles the picked actor's pending claims from a different actor.
+    /// @dev Settlement is permissionless: any account may settle another user's
+    ///      claims and bears the cost. The settler is a distinct actor from the
+    ///      beneficiary so the third-party path is exercised alongside the
+    ///      self-settlement path above.
+    function settlePendingClaimByThirdParty(uint256 actorIndex, uint256 settlerIndex) external {
         address actor = _actor(actorIndex);
-        try CONTROLLER.expirePendingClaim(actor) {} catch {}
+        address settler = _actor(settlerIndex);
+        if (settler == actor) settler = _actor(settlerIndex + 1);
+        vm.prank(settler);
+        try CONTROLLER.settlePendingClaims(actor, type(uint256).max) {} catch {}
     }
 
     /// @notice Calls `reserveBaseName` through the typed or bytes overload.

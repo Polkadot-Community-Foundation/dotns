@@ -39,6 +39,11 @@ library DotnsConstants {
     ///      against a new constant.
     uint256 internal constant RENT_PRICE = 10 ether;
 
+    /// @notice Maximum entries a paginated view returns in a single page.
+    /// @dev Shared ceiling for paginated reads: a view clamps its returned array to this figure,
+    ///      and callers page through larger sets with `offset`.
+    uint256 internal constant MAX_PAGE_SIZE = 200;
+
     /// @notice Operational role allowed to manage the public controller whitelist.
     /// @dev Holders can grant or revoke whitelist entries, but cannot upgrade contracts
     ///      or change protocol configuration.

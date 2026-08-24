@@ -465,13 +465,9 @@ abstract contract BaseDotns is Test {
                 reservedBaseLabel: reservedBaseLabel
             })
         );
-        IDotnsPopController.PendingClaim[] memory pending = dotnsPopController.pendingClaims(user);
-        if (
-            pending.length != 0
-                && pending[0].mintedAt + dotnsPopController.reservationDuration() > block.timestamp
-        ) {
+        if (dotnsPopController.pendingClaimCountOf(user) != 0) {
             vm.prank(user);
-            dotnsPopController.claimLabelStore();
+            dotnsPopController.settlePendingClaims(user, type(uint256).max);
         }
     }
 
