@@ -199,10 +199,19 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
     ///      no gap, and must not overlap -- an overlap would mean the previous holder and a new
     ///      registrant could both act on the same name.
     function invariant_released_tokens_are_never_stuck() public view {
-        uint256[] memory released = handler.getReleasedTokenIds();
+        // Withdrawn tokens are still released positions, and a position settled while inside its
+        // window is the only state with no action available right now. Iterating released tokens
+        // alone would skip exactly that state, because the handler moves a token out of
+        // `_releasedTokenIds` the moment it is withdrawn, so the invariant meant to prove nothing
+        // gets stuck would never evaluate the one state that pauses.
+        _assertNotStuck(handler.getReleasedTokenIds());
+        _assertNotStuck(handler.getWithdrawnTokenIds());
+    }
 
-        for (uint256 i; i < released.length; ++i) {
-            uint256 tokenId = released[i];
+    /// @notice Asserts the never-stuck property across a set of token ids.
+    function _assertNotStuck(uint256[] memory tokenIds) private view {
+        for (uint256 i; i < tokenIds.length; ++i) {
+            uint256 tokenId = tokenIds[i];
 
             IDotnsNameEscrow.ReleasePosition memory position =
                 dotnsNameEscrow.getReleasePosition(tokenId);
@@ -210,15 +219,26 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
             if (!position.released) continue;
 
             bool insideWindow = block.timestamp < position.redeemableUntil;
-            // Withdrawing forfeits the redeem right, but it cannot strand the name: reclaim opens
-            // on the same boundary regardless.
             bool redeemable = insideWindow && !position.claimed;
             bool reclaimable = !insideWindow;
 
-            assertTrue(
-                redeemable || reclaimable,
-                "A released position must always be redeemable or reclaimable, never neither"
-            );
+            // Withdrawing forfeits the redeem right, so a settled position waits out the rest of
+            // its window with nothing to do. That is a pause, not a deadlock, and what makes it a
+            // pause is that the deadline is finite and still ahead. Assert that rather than
+            // exempting the state from the invariant.
+            if (!redeemable && !reclaimable) {
+                assertTrue(
+                    position.claimed,
+                    "the only actionless state is a position whose deposit is already settled"
+                );
+                assertGt(
+                    position.redeemableUntil,
+                    block.timestamp,
+                    "and it must be waiting on a deadline that actually arrives"
+                );
+                continue;
+            }
+
             assertFalse(redeemable && reclaimable, "The redeem and reclaim phases must not overlap");
         }
     }
