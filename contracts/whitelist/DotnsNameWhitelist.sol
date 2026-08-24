@@ -184,11 +184,12 @@ contract DotnsNameWhitelist is
             user: user,
             status: ClaimStatus.Requested,
             requestedAt: uint64(block.timestamp),
+            submitter: msg.sender,
             reason: reason
         });
         _claimants[node].add(user);
         _activate(node, label);
-        emit NameRequested(node, user, label);
+        emit NameRequested(node, user, label, reason);
     }
 
     /// @inheritdoc IDotnsNameWhitelist
@@ -216,9 +217,17 @@ contract DotnsNameWhitelist is
         onlyOperatorOrGovernance
     {
         bytes32 node = _nodeOf(label);
-        require(_claims[node][user].status == ClaimStatus.Requested, NotRequested(node, user));
-        delete _claims[node][user];
+        Claim storage claim = _claims[node][user];
+        require(claim.status == ClaimStatus.Requested, NotRequested(node, user));
+        // Free the claimant slot either way. Keep a sticky Rejected record only for a self-filed
+        // claim, so the beneficiary cannot simply re-request; a claim filed on their behalf is
+        // deleted and never binds them.
         _claimants[node].remove(user);
+        if (claim.submitter == user) {
+            claim.status = ClaimStatus.Rejected;
+        } else {
+            delete _claims[node][user];
+        }
         emit NameRejected(node, user, label);
         _deactivate(node);
     }
@@ -251,7 +260,7 @@ contract DotnsNameWhitelist is
     }
 
     /// @inheritdoc IDotnsNameWhitelist
-    function revokeName(string calldata label) external override onlyOperatorOrGovernance {
+    function revokeName(string calldata label) external override onlyGovernance {
         bytes32 node = _nodeOf(label);
         NameRecord storage record = _names[node];
         require(
@@ -273,7 +282,9 @@ contract DotnsNameWhitelist is
         NameRecord storage record = _names[node];
         if (reserved) {
             require(record.status == NameStatus.Open, NameNotOpen(node));
-            require(_claimants[node].length() == 0, HasClaims(node));
+            // Clear any pending claims the way a grant does, so a permissionless requestName
+            // cannot force governance to revokeName first before it can reserve.
+            _clearClaimants(node, address(0), label);
             record.status = NameStatus.Reserved;
             _activate(node, label);
             emit NameReserved(node, label);

@@ -25,24 +25,28 @@ interface IDotnsNameWhitelist {
     }
 
     /// @notice Status of a single claim on a name.
-    /// @dev `None` is the zero-value default of an absent claim. A claim is deleted when it is
-    ///      rejected, cleared on a win, or consumed, so it never holds a terminal status.
+    /// @dev `None` is the zero-value default of an absent claim. `Rejected` is sticky: it is kept
+    ///      only when the beneficiary filed the claim themselves, so they cannot re-request; a
+    ///      claim filed on their behalf is deleted on rejection and does not bind them.
     enum ClaimStatus {
         None,
-        Requested
+        Requested,
+        Rejected
     }
 
     /// @notice A claim by one beneficiary on one name.
-    /// @dev `user`, `status` and `requestedAt` co-locate in one storage slot; the dynamic `reason`
-    ///      is stored separately.
+    /// @dev `user`, `status` and `requestedAt` co-locate in one storage slot; `submitter` takes the
+    ///      next, and the dynamic `reason` is stored separately.
     /// @param user Beneficiary the name would bind to if this claim wins.
     /// @param status Claim status; see ClaimStatus.
     /// @param requestedAt Timestamp the claim was made.
+    /// @param submitter Address that filed the claim, which may differ from the beneficiary.
     /// @param reason Free-text justification for the claim.
     struct Claim {
         address user;
         ClaimStatus status;
         uint64 requestedAt;
+        address submitter;
         string reason;
     }
 
@@ -71,7 +75,7 @@ interface IDotnsNameWhitelist {
     }
 
     /// @notice Emitted when a beneficiary claims a name.
-    event NameRequested(bytes32 indexed node, address indexed user, string label);
+    event NameRequested(bytes32 indexed node, address indexed user, string label, string reason);
 
     /// @notice Emitted when a claim wins a name, including an operator direct grant.
     event NameAccepted(bytes32 indexed node, address indexed user, string label);
@@ -146,10 +150,6 @@ interface IDotnsNameWhitelist {
     /// @param node Namehash of the label under the active TLD.
     /// @param user Beneficiary whose claim was expected to be pending.
     error NotRequested(bytes32 node, address user);
-
-    /// @notice Thrown when reserving a name that still holds claims.
-    /// @param node Namehash of the label under the active TLD.
-    error HasClaims(bytes32 node);
 
     /// @notice Thrown when releasing a name that is not reserved.
     /// @param node Namehash of the label under the active TLD.
@@ -233,9 +233,9 @@ interface IDotnsNameWhitelist {
     function revokeName(string calldata label) external;
 
     /// @notice Reserves or releases `label`.
-    /// @dev Restricted to Root or the owner. Reserving requires the name Open with no claims;
-    /// releasing requires it `Reserved`. @custom:reverts NameNotOpen, @custom:reverts HasClaims or
-    ///      @custom:reverts NotReserved. @custom:emits NameReserved or @custom:emits
+    /// @dev Restricted to Root or the owner. Reserving requires the name Open and clears any
+    /// pending claims, rejecting each; releasing requires it `Reserved`. @custom:reverts
+    /// NameNotOpen or @custom:reverts NotReserved. @custom:emits NameReserved or @custom:emits
     /// NameUnreserved. @param label Bare label.
     /// @param reserved True to reserve, false to release.
     function setReserved(string calldata label, bool reserved) external;

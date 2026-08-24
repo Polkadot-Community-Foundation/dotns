@@ -57,12 +57,13 @@ contract DotnsNameWhitelistTests is BaseDotns {
     function test_requestName_records_and_emits() public {
         bytes32 node = _nodeOf(BASE_LABEL_A);
         vm.expectEmit(true, true, false, true, address(whitelist));
-        emit IDotnsNameWhitelist.NameRequested(node, ed, BASE_LABEL_A);
+        emit IDotnsNameWhitelist.NameRequested(node, ed, BASE_LABEL_A, REASON);
         _request(ed, BASE_LABEL_A);
 
         IDotnsNameWhitelist.Claim memory claim = whitelist.claimOf(BASE_LABEL_A, ed);
         assertEq(uint256(claim.status), uint256(IDotnsNameWhitelist.ClaimStatus.Requested));
         assertEq(claim.user, ed);
+        assertEq(claim.submitter, ed);
         assertEq(claim.requestedAt, uint64(block.timestamp));
         assertEq(claim.reason, REASON);
         assertEq(whitelist.claimantCount(BASE_LABEL_A), 1);
@@ -195,6 +196,44 @@ contract DotnsNameWhitelistTests is BaseDotns {
         );
     }
 
+    function test_reject_self_filed_is_sticky() public {
+        _request(ed, BASE_LABEL_A);
+        vm.prank(operator);
+        whitelist.reject(BASE_LABEL_A, ed);
+
+        assertEq(
+            uint256(whitelist.claimOf(BASE_LABEL_A, ed).status),
+            uint256(IDotnsNameWhitelist.ClaimStatus.Rejected)
+        );
+        assertEq(whitelist.claimantCount(BASE_LABEL_A), 0);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IDotnsNameWhitelist.AlreadyClaimed.selector, _nodeOf(BASE_LABEL_A), ed
+            )
+        );
+        _request(ed, BASE_LABEL_A);
+    }
+
+    function test_reject_on_behalf_does_not_bind() public {
+        vm.prank(tiago);
+        whitelist.requestName(BASE_LABEL_A, REASON, ed);
+        assertEq(whitelist.claimOf(BASE_LABEL_A, ed).submitter, tiago);
+
+        vm.prank(operator);
+        whitelist.reject(BASE_LABEL_A, ed);
+        assertEq(
+            uint256(whitelist.claimOf(BASE_LABEL_A, ed).status),
+            uint256(IDotnsNameWhitelist.ClaimStatus.None)
+        );
+
+        _request(ed, BASE_LABEL_A);
+        assertEq(
+            uint256(whitelist.claimOf(BASE_LABEL_A, ed).status),
+            uint256(IDotnsNameWhitelist.ClaimStatus.Requested)
+        );
+    }
+
     function test_grantName_direct() public {
         bytes32 node = _nodeOf(BASE_LABEL_A);
         vm.expectEmit(true, true, false, true, address(whitelist));
@@ -260,12 +299,21 @@ contract DotnsNameWhitelistTests is BaseDotns {
         bytes32 node = _nodeOf(BASE_LABEL_A);
         vm.expectEmit(true, true, false, true, address(whitelist));
         emit IDotnsNameWhitelist.NameRevoked(node, ed, BASE_LABEL_A);
-        vm.prank(operator);
+        vm.prank(owner);
         whitelist.revokeName(BASE_LABEL_A);
         assertEq(
             uint256(whitelist.statusOf(BASE_LABEL_A)), uint256(IDotnsNameWhitelist.NameStatus.Open)
         );
         assertEq(whitelist.nameCount(), 0);
+    }
+
+    function test_revokeName_rejects_operator() public {
+        _grant(ed, BASE_LABEL_A);
+        vm.prank(operator);
+        vm.expectRevert(
+            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, operator)
+        );
+        whitelist.revokeName(BASE_LABEL_A);
     }
 
     function test_revokeName_reverts_when_nothing_to_revoke() public {
@@ -274,14 +322,14 @@ contract DotnsNameWhitelistTests is BaseDotns {
                 IDotnsNameWhitelist.NothingToRevoke.selector, _nodeOf(BASE_LABEL_A)
             )
         );
-        vm.prank(operator);
+        vm.prank(owner);
         whitelist.revokeName(BASE_LABEL_A);
     }
 
     function test_revokeName_clears_open_name_with_claims() public {
         _request(ed, BASE_LABEL_A);
         _request(tiago, BASE_LABEL_A);
-        vm.prank(operator);
+        vm.prank(owner);
         whitelist.revokeName(BASE_LABEL_A);
         assertEq(whitelist.claimantCount(BASE_LABEL_A), 0);
         assertEq(whitelist.nameCount(), 0);
@@ -295,7 +343,7 @@ contract DotnsNameWhitelistTests is BaseDotns {
                 IDotnsNameWhitelist.NothingToRevoke.selector, _nodeOf(BASE_LABEL_A)
             )
         );
-        vm.prank(operator);
+        vm.prank(owner);
         whitelist.revokeName(BASE_LABEL_A);
         assertTrue(whitelist.isReserved(BASE_LABEL_A));
     }
@@ -316,13 +364,20 @@ contract DotnsNameWhitelistTests is BaseDotns {
         assertEq(whitelist.nameCount(), 0);
     }
 
-    function test_setReserved_reverts_with_claims() public {
+    function test_setReserved_clears_pending_claims() public {
+        bytes32 node = _nodeOf(BASE_LABEL_A);
         _request(ed, BASE_LABEL_A);
-        vm.expectRevert(
-            abi.encodeWithSelector(IDotnsNameWhitelist.HasClaims.selector, _nodeOf(BASE_LABEL_A))
-        );
+        vm.expectEmit(true, true, false, true, address(whitelist));
+        emit IDotnsNameWhitelist.NameRejected(node, ed, BASE_LABEL_A);
         vm.prank(owner);
         whitelist.setReserved(BASE_LABEL_A, true);
+
+        assertTrue(whitelist.isReserved(BASE_LABEL_A));
+        assertEq(whitelist.claimantCount(BASE_LABEL_A), 0);
+        assertEq(
+            uint256(whitelist.claimOf(BASE_LABEL_A, ed).status),
+            uint256(IDotnsNameWhitelist.ClaimStatus.None)
+        );
     }
 
     function test_setReserved_release_reverts_when_not_reserved() public {
