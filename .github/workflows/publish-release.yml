@@ -127,7 +127,7 @@ jobs:
 
           # Record what the build actually produced, so the post-upload check compares
           # against it rather than against a second hand-maintained list.
-          ls -1 release/abis | sort > release/expected-assets.txt
+          find release/abis -maxdepth 1 -type f -printf '%f\n' | sort > release/expected-assets.txt
           echo "Extracted $(wc -l < release/expected-assets.txt) ABIs"
 
       # Addresses come from the committed deployment manifests, the same files the
