@@ -6,11 +6,12 @@ import {BaseDeployer} from "./BaseDeployer.s.sol";
 
 import {DotnsRegistrarController} from "../../contracts/registrars/DotnsRegistrarController.sol";
 import {DotnsNameEscrow} from "../../contracts/escrow/DotnsNameEscrow.sol";
+import {DotnsNameWhitelist} from "../../contracts/whitelist/DotnsNameWhitelist.sol";
 import {IDotnsProtocolRegistry} from "../../contracts/registry/IDotnsProtocolRegistry.sol";
 
 /// @title DeployPolicy
-/// @notice Third stage. Deploys the name escrow and the commit-reveal
-///         controller, both of which bind to the protocol registry populated
+/// @notice Third stage. Deploys the name escrow, the pre-launch name whitelist, and the
+///         commit-reveal controller, all of which bind to the protocol registry populated
 ///         by `DeployCore`.
 /// @custom:security-contact admin@parity.io
 contract DeployPolicy is BaseDeployer {
@@ -26,6 +27,7 @@ contract DeployPolicy is BaseDeployer {
 
         address protocolRegistry = _readAddress("DotnsProtocolRegistry");
         _deployNameEscrow(owner, protocolRegistry);
+        _deployNameWhitelist(owner, protocolRegistry);
         _deployRegistrarController(owner, protocolRegistry);
 
         saveDeployments();
@@ -66,6 +68,23 @@ contract DeployPolicy is BaseDeployer {
                 (IDotnsProtocolRegistry(protocolRegistry), ESCROW_COOLDOWN)
             ),
             "DotnsNameEscrow"
+        );
+    }
+
+    function _deployNameWhitelist(
+        address owner,
+        address protocolRegistry
+    )
+        internal
+        returns (address proxy)
+    {
+        proxy = _broadcastDeployUups(
+            owner,
+            "DotnsNameWhitelist.sol:DotnsNameWhitelist",
+            abi.encodeCall(
+                DotnsNameWhitelist.initialize, (IDotnsProtocolRegistry(protocolRegistry))
+            ),
+            "DotnsNameWhitelist"
         );
     }
 }
