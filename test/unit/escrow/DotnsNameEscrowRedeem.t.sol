@@ -242,6 +242,39 @@ contract DotnsNameEscrowRedeemTest is BaseDotns {
         dotnsNameEscrow.redeem(tokenId);
     }
 
+    /// @dev The mirror of the case above, and the reason `claimed` is only set when value actually
+    ///      moves. A free registration has nothing to withdraw, so `withdraw` pays the holder
+    ///      nothing, if it still flagged the position claimed it would silently forfeit their
+    ///      right to recover their own name for no consideration whatsoever. `withdraw` is also the
+    ///      step the old contract required before a name could be recycled, so it is a call holders
+    ///      have every reason to make.
+    function test_zero_amount_withdrawal_does_not_forfeit_the_redeem_right() public {
+        uint256 tokenId = _registerAt(FREE_LABEL, ed, IPopRules.PopStatus.PopFull);
+        assertEq(_positionOf(tokenId).amount, 0, "this case needs a zero-amount position");
+
+        _approveAndRelease(tokenId, ed);
+
+        vm.warp(block.timestamp + ESCROW_COOLDOWN + 1);
+        uint256 balanceBefore = ed.balance;
+        vm.prank(ed);
+        dotnsNameEscrow.withdraw(tokenId);
+
+        assertEq(ed.balance, balanceBefore, "there was nothing to pay out");
+        assertEq(dotnsNameEscrow.pendingWithdrawal(ed), 0, "and nothing to credit");
+        assertFalse(
+            _positionOf(tokenId).claimed,
+            "a settlement that moved no value must not flag the position claimed"
+        );
+
+        // Still inside the window, and still ed's name to recover.
+        vm.prank(ed);
+        dotnsNameEscrow.redeem(tokenId);
+
+        assertEq(
+            dotnsRegistrar.ownerOf(tokenId), ed, "ed recovers the name they were never paid for"
+        );
+    }
+
     // --------------------------------------------------------------------------------------
     // reclaim: permissionless once the window elapses
     // --------------------------------------------------------------------------------------
