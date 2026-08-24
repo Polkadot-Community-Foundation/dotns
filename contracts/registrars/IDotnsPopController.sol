@@ -564,6 +564,17 @@ interface IDotnsPopController is IDotnsController {
         external
         returns (uint256 settledCount, bool moreRemaining);
 
+    /// @notice Settles the caller's own pending claims into their `LabelStore`.
+    /// @dev Convenience for a user settling their own store: equivalent to
+    /// @custom:function settlePendingClaims with `msg.sender` and a bounded batch. The caller
+    /// deploys and pays for their store on the first write. Settles at most one bounded batch so
+    /// the call cannot exceed the block gas limit; `moreRemaining` reports whether the caller
+    /// still holds unsettled entries, in which case they call again. Emits the same
+    /// @custom:emits PendingClaimSettled and @custom:emits NameRegistered as
+    /// @custom:function settlePendingClaims.
+    /// @return moreRemaining Whether the caller still holds unsettled entries.
+    function claimLabelStore() external returns (bool moreRemaining);
+
     /// @notice Lists the lite-person names currently owned by `user`.
     /// @dev Reads the user's `LabelStore` labels and pending claims, keeps the lite-person
     /// shaped ones, and re-checks each against `registrar.ownerOf` so a name transferred away

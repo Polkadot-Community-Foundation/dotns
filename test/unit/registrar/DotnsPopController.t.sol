@@ -1033,6 +1033,27 @@ contract DotnsPopControllerTests is BaseDotns {
         assertEq(dotnsPopController.pendingClaimCountOf(ed), 0);
     }
 
+    function test_claimLabelStore_settles_callers_own_pending_claim() public {
+        _grantPopFull(ed);
+        _gatewayReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
+            })
+        );
+
+        vm.prank(ed);
+        bool moreRemaining = dotnsPopController.claimLabelStore();
+        assertFalse(moreRemaining);
+
+        address store = storeFactory.getLabelStore(ed);
+        assertTrue(store != address(0));
+        assertEq(
+            ILabelStore(store).getLabel(_nodeOf(LITE_LABEL_A)),
+            string.concat(LITE_LABEL_A, protocolRegistry.tld())
+        );
+        assertEq(dotnsPopController.pendingClaimCountOf(ed), 0);
+    }
+
     function test_settle_deploys_store_when_user_has_none() public {
         _grantPopFull(ed);
 

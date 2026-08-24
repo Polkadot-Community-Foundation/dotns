@@ -375,6 +375,11 @@ contract DotnsPopController is
     }
 
     /// @inheritdoc IDotnsPopController
+    function claimLabelStore() external override returns (bool moreRemaining) {
+        (, moreRemaining) = _settlePending(msg.sender, DotnsConstants.MAX_PAGE_SIZE);
+    }
+
+    /// @inheritdoc IDotnsPopController
     function settlePendingClaims(
         address user,
         uint256 limit
@@ -383,27 +388,39 @@ contract DotnsPopController is
         override
         returns (uint256 settledCount, bool moreRemaining)
     {
+        return _settlePending(user, limit);
+    }
+
+    /// @notice Shared settlement loop behind @custom:function claimLabelStore and
+    /// @custom:function settlePendingClaims.
+    /// @dev Settles up to `limit` of the user's pending claims, deploying the store on the first
+    /// write, and removes the user from the enumeration set once their queue empties.
+    function _settlePending(
+        address user,
+        uint256 limit
+    )
+        internal
+        returns (uint256 settledCount, bool moreRemaining)
+    {
         IStoreFactory factory = _storeFactory();
         address store = factory.getLabelStore(user);
 
         PendingClaim[] storage queue = _pendingClaimQueue[user];
-        // Always settle the entry at the front, then swap the tail into its slot and pop, so the
-        // loop touches exactly `settledCount` entries and stays bounded by `limit`. Order is not
-        // preserved, which the read side does not rely on.
-        while (settledCount < limit && queue.length != 0) {
-            // Remove the entry before the external write (deploy + store label), so a store or
-            // factory that ever gained a callback could not re-enter onto an un-popped queue.
-            string memory label = queue[0].label;
-            uint256 last = queue.length - 1;
-            if (last != 0) {
-                queue[0] = queue[last];
-            }
+        uint256 remaining = queue.length;
+        settledCount = limit < remaining ? limit : remaining;
+
+        // Settle from the tail: read the last entry, pop it, then write. Popping the tail removes
+        // an entry with no storage copy, unlike a swap-from-front. Settlement order does not
+        // matter to the reads. The pop runs before the external write (deploy + store label), so a
+        // store or factory that ever gained a callback could not re-enter onto an un-popped queue.
+        for (uint256 i; i < settledCount; ++i) {
+            --remaining;
+            string memory label = queue[remaining].label;
             queue.pop();
             store = _settlePendingLabel(factory, store, user, label);
-            ++settledCount;
         }
 
-        moreRemaining = queue.length != 0;
+        moreRemaining = remaining != 0;
         if (!moreRemaining) {
             _pendingClaimUsers.remove(user);
         }
