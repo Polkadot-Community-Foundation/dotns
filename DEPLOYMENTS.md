@@ -416,6 +416,12 @@ Every network is deployed through the same CREATE3 factory, so the contract addr
 0xBdaA01bD1bA67d709F2b1fF286Da0d854977EA30
 ```
 
+**DotnsNameWhitelist**
+
+```text
+0x420166cD67Ca0233094E492a4BbA67045eD7C38C
+```
+
 **DotnsPopController**
 
 ```text
