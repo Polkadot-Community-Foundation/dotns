@@ -131,7 +131,11 @@ contract WireDeployments is BaseDeployer {
         vm.startBroadcast(owner);
         DotnsRegistrarController(addr.registrarController)
             .setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator, true);
-        DotnsNameWhitelist(addr.nameWhitelist).setOperator(whitelistOperator, true);
+        // Grant through setRole rather than the onlyGovernance setOperator: the deploy signs as
+        // the owner, and setOperator reads the revive System precompile, which is absent on the
+        // anvil reproduction chain. setRole grants the same WHITELIST_OPERATOR_ROLE.
+        DotnsNameWhitelist(addr.nameWhitelist)
+            .setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator, true);
         vm.stopBroadcast();
         console.log("Whitelist operator role granted to", whitelistOperator);
     }
