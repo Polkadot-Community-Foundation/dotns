@@ -181,6 +181,44 @@ bun run deploy:testnet
 
 If ACCOUNT_PASSWORD is not set and the process has a TTY, the runner prompts once for the keystore password and passes it to every stage.
 
+## Upgrading a proxy that gained a new configuration value
+
+An upgrade that adds a governance-tunable storage value must seed it in the **same transaction** as the implementation swap. A bare `upgradeTo` leaves the new slot at zero, and a proxy running with an unseeded policy value is a live misconfiguration, not a pending chore.
+
+UUPS supports this directly: `upgradeToAndCall` performs the post-upgrade call as a delegatecall from the proxy context, so `msg.sender` is preserved and an `onlyOwner` setter is callable as part of the upgrade.
+
+### DotnsNameEscrow: `redeemWindow`
+
+The escrow's redeem window is the period after a `release` in which only the previous holder may act — they alone may `redeem` the name back, and `available` reports `false` so nobody wastes a commitment on it. Once it elapses, `reclaim` is permissionless. It is a separate value from `cooldown` and defaults to `ESCROW_REDEEM_WINDOW` (1 day) on a fresh deploy.
+
+Upgrade an existing escrow proxy like this, not with a bare `upgradeTo`:
+
+```bash
+# 1 day, matching the ESCROW_REDEEM_WINDOW deploy constant
+cast send "$ESCROW_PROXY" \
+  'upgradeToAndCall(address,bytes)' \
+  "$NEW_IMPL" \
+  "$(cast calldata 'updateRedeemWindow(uint256)' 86400)" \
+  --account "$DEPLOYER" --rpc-url "$RPC_URL"
+```
+
+Verify before considering the upgrade done:
+
+```bash
+cast call "$ESCROW_PROXY" 'redeemWindow()(uint256)' --rpc-url "$RPC_URL"   # expect 86400
+```
+
+If the window is left at zero, `release` reverts with `InvalidRedeemWindow` for **every** name on that deployment. That is deliberate: the alternative would be stamping `redeemableUntil` at the current timestamp, which silently opens permissionless reclaim the instant a name is released and hands the name to whoever is watching. A loud failure on `release` is recoverable with one owner transaction; a silent one is not.
+
+To recover a proxy already upgraded without seeding, call the setter directly — no second upgrade is needed:
+
+```bash
+cast send "$ESCROW_PROXY" 'updateRedeemWindow(uint256)' 86400 \
+  --account "$DEPLOYER" --rpc-url "$RPC_URL"
+```
+
+Bounds: non-zero and at most `MAX_REDEEM_WINDOW` (30 days). Changing the window later affects only releases recorded after the change; positions already released keep the `redeemableUntil` snapshot taken at their release time.
+
 ## Deployment pipeline
 
 The fresh-deploy pipeline is split across five stages:
