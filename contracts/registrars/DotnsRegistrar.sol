@@ -114,7 +114,12 @@ contract DotnsRegistrar is
         IDotnsNameEscrow.ReleasePosition memory position =
             IDotnsNameEscrow(payable(escrow)).getReleasePosition(id);
 
-        return block.timestamp >= position.redeemableUntil;
+        // `released` is part of the predicate, not a redundant check. Availability here means
+        // "reclaim would succeed", and reclaim requires the position to be released as well as out
+        // of its window. The escrow's `onERC721Received` rejects unsolicited transfers so custody
+        // without a released position should be unreachable, but reporting a name registrable on
+        // the strength of a zero `redeemableUntil` alone would be wrong.
+        return position.released && block.timestamp >= position.redeemableUntil;
     }
 
     /// @inheritdoc IDotnsRegistrar
