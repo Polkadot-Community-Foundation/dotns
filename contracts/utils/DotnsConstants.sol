@@ -134,6 +134,14 @@ library DotnsConstants {
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant POP_RESOLVER = bytes32("popResolver");
 
+    /// @notice Well-known key for the read-only lens over PoP identity data.
+    /// @dev Role: off-chain query surface. Composes the account name listings, the per-name
+    ///      record, and the account summary from the controller, registrar, store factory, PoP
+    ///      resolver, and PopRules. Holds no authority and is consumed by clients, not by other
+    ///      contracts.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant POP_LENS = bytes32("popLens");
+
     /// @notice Well-known key for the name escrow holding refundable deposits and
     ///         driving the release lifecycle for registered names.
     /// @dev Role: custodial vault for registration deposits and the state machine

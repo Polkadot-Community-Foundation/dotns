@@ -13,6 +13,8 @@ import {
     DotnsPopController,
     IDotnsPopController
 } from "../../contracts/registrars/DotnsPopController.sol";
+import {DotnsPopLens} from "../../contracts/registrars/DotnsPopLens.sol";
+import {IDotnsPopLens} from "../../contracts/registrars/IDotnsPopLens.sol";
 import {RootGatewayDispatcher} from "../../contracts/registrars/RootGatewayDispatcher.sol";
 import {IDotnsController} from "../../contracts/registrars/IDotnsController.sol";
 import {DotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
@@ -84,6 +86,9 @@ abstract contract BaseDotns is Test {
 
     /// @notice Deployed PoP controller instance (gateway-driven lite/full issuance).
     DotnsPopController public dotnsPopController;
+
+    /// @notice Deployed PoP lens instance (read-only view over PoP identity data).
+    DotnsPopLens public dotnsPopLens;
 
     /// @notice Test stand-in for the Root gateway dispatcher.
     /// @dev Registered on the protocol registry under the PoP gateway key
@@ -315,6 +320,12 @@ abstract contract BaseDotns is Test {
         // Stand-in for the Root gateway dispatcher. Dedicated dispatcher
         // coverage lives in test/unit/registrar/RootGatewayDispatcher.t.sol.
         protocolRegistry.set(DotnsConstants.POP_GATEWAY, popGateway);
+
+        // Deploy the read-only lens last, once every sibling key it resolves
+        // (POP_CONTROLLER, REGISTRAR, STORE_FACTORY, POP_RESOLVER, POP_RULES) is
+        // set on the registry.
+        dotnsPopLens = new DotnsPopLens(registry);
+        vm.label(address(dotnsPopLens), "DotnsPopLens");
 
         vm.stopPrank();
         vm.warp(block.timestamp + 365 days);

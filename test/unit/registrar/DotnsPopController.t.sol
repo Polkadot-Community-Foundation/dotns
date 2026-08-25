@@ -3,6 +3,7 @@ pragma solidity ^0.8.34;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IDotnsPopController} from "../../../contracts/registrars/IDotnsPopController.sol";
+import {IDotnsPopLens} from "../../../contracts/registrars/IDotnsPopLens.sol";
 import {IDotnsRegistrar} from "../../../contracts/registrars/IDotnsRegistrar.sol";
 import {
     IDotnsRegistrarController
@@ -1707,38 +1708,36 @@ contract DotnsPopControllerTests is BaseDotns {
             })
         );
 
-        IDotnsPopController.Name[] memory edLite =
-            dotnsPopController.liteNamesOf(ed, 0, type(uint256).max);
+        IDotnsPopLens.Name[] memory edLite = dotnsPopLens.liteNamesOf(ed, 0, type(uint256).max);
         assertEq(edLite.length, 1);
         assertEq(edLite[0].node, _nodeOf(LITE_LABEL_A));
         assertEq(edLite[0].label, LITE_LABEL_A);
         assertTrue(edLite[0].settled);
         assertEq(edLite[0].deadline, 0);
 
-        IDotnsPopController.Name[] memory edFull =
-            dotnsPopController.fullNamesOf(ed, 0, type(uint256).max);
+        IDotnsPopLens.Name[] memory edFull = dotnsPopLens.fullNamesOf(ed, 0, type(uint256).max);
         assertEq(edFull.length, 1);
         assertEq(edFull[0].node, _nodeOf(BASE_LABEL_A));
         assertEq(edFull[0].label, BASE_LABEL_A);
         assertTrue(edFull[0].settled);
 
-        assertEq(dotnsPopController.liteNameCountOf(ed), 1);
-        assertEq(dotnsPopController.fullNameCountOf(ed), 1);
+        assertEq(dotnsPopLens.liteNameCountOf(ed), 1);
+        assertEq(dotnsPopLens.fullNameCountOf(ed), 1);
 
-        IDotnsPopController.Name[] memory leoLite =
-            dotnsPopController.liteNamesOf(leonardo, 0, type(uint256).max);
+        IDotnsPopLens.Name[] memory leoLite =
+            dotnsPopLens.liteNamesOf(leonardo, 0, type(uint256).max);
         assertEq(leoLite.length, 1);
         assertEq(leoLite[0].node, _nodeOf(LITE_LABEL_C));
         assertEq(leoLite[0].label, LITE_LABEL_C);
         assertFalse(leoLite[0].settled);
         assertGt(leoLite[0].deadline, 0);
-        assertEq(dotnsPopController.liteNameCountOf(leonardo), 1);
-        assertEq(dotnsPopController.fullNameCountOf(leonardo), 0);
+        assertEq(dotnsPopLens.liteNameCountOf(leonardo), 1);
+        assertEq(dotnsPopLens.fullNameCountOf(leonardo), 0);
 
-        assertEq(dotnsPopController.liteNamesOf(tiago, 0, type(uint256).max).length, 0);
-        assertEq(dotnsPopController.fullNamesOf(tiago, 0, type(uint256).max).length, 0);
-        assertEq(dotnsPopController.liteNameCountOf(tiago), 0);
-        assertEq(dotnsPopController.fullNameCountOf(tiago), 0);
+        assertEq(dotnsPopLens.liteNamesOf(tiago, 0, type(uint256).max).length, 0);
+        assertEq(dotnsPopLens.fullNamesOf(tiago, 0, type(uint256).max).length, 0);
+        assertEq(dotnsPopLens.liteNameCountOf(tiago), 0);
+        assertEq(dotnsPopLens.fullNameCountOf(tiago), 0);
     }
 
     function test_liteNamesOf_pagination_slices_and_clamps() public {
@@ -1750,20 +1749,20 @@ contract DotnsPopControllerTests is BaseDotns {
             })
         );
 
-        assertEq(dotnsPopController.liteNameCountOf(ed), 2);
+        assertEq(dotnsPopLens.liteNameCountOf(ed), 2);
 
-        IDotnsPopController.Name[] memory first = dotnsPopController.liteNamesOf(ed, 0, 1);
+        IDotnsPopLens.Name[] memory first = dotnsPopLens.liteNamesOf(ed, 0, 1);
         assertEq(first.length, 1);
-        IDotnsPopController.Name[] memory second = dotnsPopController.liteNamesOf(ed, 1, 1);
+        IDotnsPopLens.Name[] memory second = dotnsPopLens.liteNamesOf(ed, 1, 1);
         assertEq(second.length, 1);
         assertTrue(first[0].node != second[0].node);
 
-        assertEq(dotnsPopController.liteNamesOf(ed, 2, 1).length, 0);
+        assertEq(dotnsPopLens.liteNamesOf(ed, 2, 1).length, 0);
 
         // A limit above the internal page ceiling is clamped rather than reverting; the account
         // holds fewer names than the ceiling, so the full set still comes back.
-        IDotnsPopController.Name[] memory clamped =
-            dotnsPopController.liteNamesOf(ed, 0, DotnsConstants.MAX_PAGE_SIZE + 1);
+        IDotnsPopLens.Name[] memory clamped =
+            dotnsPopLens.liteNamesOf(ed, 0, DotnsConstants.MAX_PAGE_SIZE + 1);
         assertEq(clamped.length, 2);
     }
 
@@ -1775,13 +1774,12 @@ contract DotnsPopControllerTests is BaseDotns {
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0x01), "");
         _reservePop(tiago, LITE_LABEL_C, _validChatKey(0x02), "");
 
-        IDotnsPopController.Name[] memory edLite =
-            dotnsPopController.liteNamesOf(ed, 0, type(uint256).max);
+        IDotnsPopLens.Name[] memory edLite = dotnsPopLens.liteNamesOf(ed, 0, type(uint256).max);
         assertEq(edLite.length, 1);
         assertFalse(_namesContainNode(edLite, _nodeOf(LITE_LABEL_C)));
 
-        IDotnsPopController.Name[] memory tiagoLite =
-            dotnsPopController.liteNamesOf(tiago, 0, type(uint256).max);
+        IDotnsPopLens.Name[] memory tiagoLite =
+            dotnsPopLens.liteNamesOf(tiago, 0, type(uint256).max);
         assertEq(tiagoLite.length, 1);
         assertFalse(_namesContainNode(tiagoLite, _nodeOf(LITE_LABEL_A)));
     }
@@ -1797,7 +1795,7 @@ contract DotnsPopControllerTests is BaseDotns {
         );
 
         bytes32 fullNode = _nodeOf(BASE_LABEL_A);
-        IDotnsPopController.NameDetail memory full = dotnsPopController.nameDetail(BASE_LABEL_A);
+        IDotnsPopLens.NameDetail memory full = dotnsPopLens.nameDetail(BASE_LABEL_A);
         assertEq(full.node, fullNode);
         assertEq(full.label, BASE_LABEL_A);
         assertEq(full.owner, ed);
@@ -1810,28 +1808,27 @@ contract DotnsPopControllerTests is BaseDotns {
         assertEq(full.fullClaim, bytes32(0));
 
         // Holding the lite label lets nameDetail recover the promoted full node.
-        IDotnsPopController.NameDetail memory lite = dotnsPopController.nameDetail(LITE_LABEL_A);
+        IDotnsPopLens.NameDetail memory lite = dotnsPopLens.nameDetail(LITE_LABEL_A);
         assertEq(lite.fullClaim, fullNode);
 
         // A settled lite name that was never promoted carries no full claim, and the by-node
         // overload leaves it zero.
         _grantPopFull(leonardo);
         _reservePop(leonardo, LITE_LABEL_C, _validChatKey(0xbb), "");
-        IDotnsPopController.NameDetail memory coldByNode =
-            dotnsPopController.nameDetailByNode(_nodeOf(LITE_LABEL_C));
+        IDotnsPopLens.NameDetail memory coldByNode =
+            dotnsPopLens.nameDetailByNode(_nodeOf(LITE_LABEL_C));
         assertTrue(coldByNode.exists);
         assertEq(coldByNode.fullClaim, bytes32(0));
 
         // Unknown name and node never revert and return a zeroed record.
-        IDotnsPopController.NameDetail memory unknownName =
-            dotnsPopController.nameDetail("nothingxx");
+        IDotnsPopLens.NameDetail memory unknownName = dotnsPopLens.nameDetail("nothingxx");
         assertFalse(unknownName.exists);
         assertEq(unknownName.owner, address(0));
         assertEq(bytes(unknownName.label).length, 0);
         assertEq(unknownName.fullClaim, bytes32(0));
 
-        IDotnsPopController.NameDetail memory unknownNode =
-            dotnsPopController.nameDetailByNode(bytes32(uint256(0xdead)));
+        IDotnsPopLens.NameDetail memory unknownNode =
+            dotnsPopLens.nameDetailByNode(bytes32(uint256(0xdead)));
         assertFalse(unknownNode.exists);
         assertEq(unknownNode.owner, address(0));
         assertEq(unknownNode.fullClaim, bytes32(0));
@@ -1846,19 +1843,19 @@ contract DotnsPopControllerTests is BaseDotns {
                 liteLabel: LITE_LABEL_C, user: leonardo, chatKey: _validChatKey(0x01)
             })
         );
-        IDotnsPopController.PopProfile memory cold = dotnsPopController.profileOf(leonardo);
+        IDotnsPopLens.PopProfile memory cold = dotnsPopLens.profileOf(leonardo);
         assertFalse(cold.hasLabelStore);
         assertEq(cold.pendingClaimCount, 1);
         assertEq(cold.reservationLabelhash, bytes32(0));
 
         _grantPopFull(ed);
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0x02), BASE_LABEL_A);
-        IDotnsPopController.PopProfile memory warm = dotnsPopController.profileOf(ed);
+        IDotnsPopLens.PopProfile memory warm = dotnsPopLens.profileOf(ed);
         assertTrue(warm.hasLabelStore);
         assertEq(warm.pendingClaimCount, 0);
         assertEq(warm.reservationLabelhash, keccak256(bytes(BASE_LABEL_A)));
 
-        IDotnsPopController.PopProfile memory empty = dotnsPopController.profileOf(tiago);
+        IDotnsPopLens.PopProfile memory empty = dotnsPopLens.profileOf(tiago);
         assertFalse(empty.hasLabelStore);
         assertEq(empty.pendingClaimCount, 0);
         assertEq(empty.reservationLabelhash, bytes32(0));
@@ -1877,7 +1874,7 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function _namesContainNode(
-        IDotnsPopController.Name[] memory names,
+        IDotnsPopLens.Name[] memory names,
         bytes32 node
     )
         internal

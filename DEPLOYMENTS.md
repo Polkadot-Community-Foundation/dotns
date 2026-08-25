@@ -422,6 +422,12 @@ Every network is deployed through the same CREATE3 factory, so the contract addr
 0xCC932348606cc1f3318cADeC5A5Cd2CA447f8a4b
 ```
 
+**DotnsPopLens**
+
+```text
+0xfe5A45f7fD58D1A6FE09455DB799405b1dcE9411
+```
+
 **RootGatewayDispatcher**
 
 ```text

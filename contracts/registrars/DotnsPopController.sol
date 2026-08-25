@@ -138,7 +138,7 @@ contract DotnsPopController is
     /// @notice Duration (in seconds) after which a reservation entry is considered expired.
     /// @dev Mirrors `pallet_resources::UsernameReservationDuration`. Configurable by
     /// governance via `setReservationDuration`.
-    uint64 public reservationDuration;
+    uint64 public override reservationDuration;
 
     /// @notice Enumeration set of users holding at least one pending claim.
     /// @dev Membership equals the set of users with a non-empty queue. Used by
@@ -569,64 +569,6 @@ contract DotnsPopController is
     }
 
     /// @inheritdoc IDotnsPopController
-    function liteNamesOf(
-        address user,
-        uint256 offset,
-        uint256 limit
-    )
-        external
-        view
-        override
-        returns (Name[] memory names)
-    {
-        return _pageNames(user, offset, limit, true);
-    }
-
-    /// @inheritdoc IDotnsPopController
-    function fullNamesOf(
-        address user,
-        uint256 offset,
-        uint256 limit
-    )
-        external
-        view
-        override
-        returns (Name[] memory names)
-    {
-        return _pageNames(user, offset, limit, false);
-    }
-
-    /// @inheritdoc IDotnsPopController
-    function liteNameCountOf(address user) external view override returns (uint256 count) {
-        return _countNames(user, true);
-    }
-
-    /// @inheritdoc IDotnsPopController
-    function fullNameCountOf(address user) external view override returns (uint256 count) {
-        return _countNames(user, false);
-    }
-
-    /// @inheritdoc IDotnsPopController
-    function nameDetail(string calldata name) external view override returns (NameDetail memory) {
-        (bytes32 labelhash, bytes32 node) = LabelUtils.deriveNode(protocolRegistry.tldNode(), name);
-        NameDetail memory detail = _detail(node);
-        // Holding the label means holding its labelhash, so the lite-to-full link resolves here.
-        detail.fullClaim = _popResolver().fullClaim(labelhash);
-        return detail;
-    }
-
-    /// @inheritdoc IDotnsPopController
-    function nameDetailByNode(bytes32 node) external view override returns (NameDetail memory) {
-        NameDetail memory detail = _detail(node);
-        // The node cannot be inverted to a labelhash, so `fullClaim` resolves only when the label
-        // is independently recoverable (a settled name whose label the registrar returns).
-        if (bytes(detail.label).length != 0) {
-            detail.fullClaim = _popResolver().fullClaim(LabelUtils.labelhashMemory(detail.label));
-        }
-        return detail;
-    }
-
-    /// @inheritdoc IDotnsPopController
     function reservedBaseLabelOf(bytes32 labelhash)
         external
         view
@@ -634,13 +576,6 @@ contract DotnsPopController is
         returns (string memory baseLabel)
     {
         return _reservedBaseLabel[labelhash];
-    }
-
-    /// @inheritdoc IDotnsPopController
-    function profileOf(address user) external view override returns (PopProfile memory profile) {
-        profile.hasLabelStore = _storeFactory().getLabelStore(user) != address(0);
-        profile.pendingClaimCount = _pendingClaimQueue[user].length;
-        profile.reservationLabelhash = _userReservations[user].labelhash;
     }
 
     /// @inheritdoc ERC165Upgradeable
@@ -745,151 +680,6 @@ contract DotnsPopController is
     /// @notice Returns whether a queue entry is expired relative to `block.timestamp`.
     function _isExpired(uint64 joinedAt) internal view returns (bool) {
         return joinedAt + reservationDuration < block.timestamp;
-    }
-
-    /// @notice Whether `label` belongs in the lite listing (`wantLite`) or the full listing.
-    /// @dev A lite-person label is a single label with two trailing digits; a full-person label
-    /// is any other single label. The two sets are disjoint and together cover every single
-    /// label, so one predicate drives both listings.
-    function _matchesShape(string memory label, bool wantLite) internal pure returns (bool) {
-        bool lite = label.isLitePersonLabelMemory();
-        return wantLite ? lite : (!lite && label.isSingleLabelMemory());
-    }
-
-    /// @notice Counts the names currently owned by `user` that match the requested shape.
-    /// @dev Walks the user's `LabelStore` (settled names) then their pending queue, keeping
-    /// only shape matches still owned by `user` on the registrar. A pending entry already
-    /// written into the store by a sibling flow is skipped so it is not counted twice.
-    function _countNames(address user, bool wantLite) internal view returns (uint256 count) {
-        IDotnsRegistrar registrar = _registrar();
-        bytes32 tldNode = protocolRegistry.tldNode();
-        address store = _storeFactory().getLabelStore(user);
-
-        if (store != address(0)) {
-            ILabelStore labelStore = ILabelStore(store);
-            uint256 stored = labelStore.getLabelCount();
-            for (uint256 i; i < stored; ++i) {
-                bytes32 node = labelStore.getLabelhashAt(i);
-                if (!_ownedBy(registrar, node, user)) continue;
-                if (_matchesShape(registrar.labelOf(uint256(node)), wantLite)) ++count;
-            }
-        }
-
-        PendingClaim[] storage queue = _pendingClaimQueue[user];
-        uint256 pending = queue.length;
-        for (uint256 j; j < pending; ++j) {
-            string memory label = queue[j].label;
-            if (!_matchesShape(label, wantLite)) continue;
-            bytes32 node = LabelUtils.namehashUnder(tldNode, LabelUtils.labelhashMemory(label));
-            if (store != address(0) && ILabelStore(store).isLocked(node)) continue;
-            if (_ownedBy(registrar, node, user)) ++count;
-        }
-    }
-
-    /// @notice Returns a page of `user`'s owned names matching the requested shape.
-    /// @dev Same ownership-verified walk as @custom:function _countNames, in the same order
-    /// (store then pending), skipping the first `offset` matches and returning up to `limit`
-    /// entries. `limit` is clamped to `DotnsConstants.MAX_PAGE_SIZE` to bound the memory and the
-    /// scan.
-    function _pageNames(
-        address user,
-        uint256 offset,
-        uint256 limit,
-        bool wantLite
-    )
-        internal
-        view
-        returns (Name[] memory names)
-    {
-        if (limit > DotnsConstants.MAX_PAGE_SIZE) limit = DotnsConstants.MAX_PAGE_SIZE;
-        Name[] memory page = new Name[](limit);
-        if (limit == 0) return page;
-
-        IDotnsRegistrar registrar = _registrar();
-        bytes32 tldNode = protocolRegistry.tldNode();
-        address store = _storeFactory().getLabelStore(user);
-
-        uint256 filled;
-        uint256 seen;
-
-        if (store != address(0)) {
-            ILabelStore labelStore = ILabelStore(store);
-            uint256 stored = labelStore.getLabelCount();
-            for (uint256 i; i < stored && filled < limit; ++i) {
-                bytes32 node = labelStore.getLabelhashAt(i);
-                if (!_ownedBy(registrar, node, user)) continue;
-                string memory label = registrar.labelOf(uint256(node));
-                if (!_matchesShape(label, wantLite)) continue;
-                if (seen++ < offset) continue;
-                page[filled++] = Name({node: node, label: label, settled: true, deadline: 0});
-            }
-        }
-
-        PendingClaim[] storage queue = _pendingClaimQueue[user];
-        uint256 pending = queue.length;
-        uint64 duration = reservationDuration;
-        for (uint256 j; j < pending && filled < limit; ++j) {
-            string memory label = queue[j].label;
-            if (!_matchesShape(label, wantLite)) continue;
-            bytes32 node = LabelUtils.namehashUnder(tldNode, LabelUtils.labelhashMemory(label));
-            if (store != address(0) && ILabelStore(store).isLocked(node)) continue;
-            if (!_ownedBy(registrar, node, user)) continue;
-            if (seen++ < offset) continue;
-            page[filled++] = Name({
-                node: node, label: label, settled: false, deadline: queue[j].mintedAt + duration
-            });
-        }
-
-        if (filled == limit) return page;
-        names = new Name[](filled);
-        for (uint256 k; k < filled; ++k) {
-            names[k] = page[k];
-        }
-    }
-
-    /// @notice Whether `node` is a minted name currently owned by `user`.
-    /// @dev Guards the `ownerOf` call with `exists` so a missing token returns false rather than
-    /// reverting, keeping the listing reads total.
-    function _ownedBy(
-        IDotnsRegistrar registrar,
-        bytes32 node,
-        address user
-    )
-        internal
-        view
-        returns (bool)
-    {
-        return registrar.exists(uint256(node)) && registrar.ownerOf(uint256(node)) == user;
-    }
-
-    /// @notice Gathers a name's record from the registrar, PoP resolver, and PopRules.
-    /// @dev Reads defensively so an unminted or unsettled name yields zeroed fields instead of
-    /// reverting. `fullClaim` is left for the caller because it needs the labelhash, which is
-    /// recoverable from the label string but not from the node alone. `tier` classifies the
-    /// label shape and is skipped for an empty label.
-    function _detail(bytes32 node) internal view returns (NameDetail memory detail) {
-        detail.node = node;
-        IDotnsRegistrar registrar = _registrar();
-        if (registrar.exists(uint256(node))) {
-            address owner = registrar.ownerOf(uint256(node));
-            detail.exists = true;
-            detail.owner = owner;
-            detail.label = registrar.labelOf(uint256(node));
-            address store = _storeFactory().getLabelStore(owner);
-            detail.settled = store != address(0) && ILabelStore(store).isLocked(node);
-        }
-        if (bytes(detail.label).length != 0) {
-            // Every mint path validates the label, so a stored label always classifies; the
-            // try keeps this read total even if a future path ever stores a non-canonical label.
-            try _popRules().classifyName(detail.label) returns (
-                IPopRules.PopStatus tier, string memory
-            ) {
-                detail.tier = tier;
-            } catch {}
-        }
-        IDotnsPopResolver resolver = _popResolver();
-        detail.chatKey = resolver.chatKey(node);
-        detail.liteLink = resolver.liteLink(node);
     }
 
     /// @notice Appends a new reservation entry to the tail of the queue for `labelhash`.
