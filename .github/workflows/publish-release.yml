@@ -130,13 +130,21 @@ jobs:
           find release/abis -maxdepth 1 -type f -printf '%f\n' | sort > release/expected-assets.txt
           echo "Extracted $(wc -l < release/expected-assets.txt) ABIs"
 
+      # Addresses come from the committed deployment manifests, the same files the
+      # deployment pipeline in dotns-releases measures a live deploy against. A consumer
+      # that only has the release needs them to reach any contract at all.
+      - name: Generate deployments and release manifest
+        run: bun scripts/js/release-metadata.mjs build --tag "$RELEASE_TAG" --out release
+
       - name: Package release artifacts
         run: |
           TAG="$RELEASE_TAG"
           cd release
-          zip -r "../dotns-abis-${TAG}.zip" abis/
+          zip -r "../dotns-abis-${TAG}.zip" abis/ deployments.json release-manifest.json
 
       - name: Generate release body
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           TAG="$RELEASE_TAG"
           ASSET_BASE="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG"
@@ -174,6 +182,34 @@ jobs:
           # substitution, which also leaves ${TAG} unexpanded. Substitute it here.
           sed -i "s|\${ASSET_BASE}|$ASSET_BASE|g; s|\${TAG}|$TAG|g" release-body.md
 
+          # Networks and chain ids only. The addresses stay in the asset, so the body
+          # cannot become another copy of them. Chain ids are not unique across networks,
+          # which is why the table is keyed by network.
+          {
+            echo ""
+            echo "### Deployments"
+            echo ""
+            echo "| Network | Chain id |"
+            echo "|---------|---------:|"
+            jq -r '.networks | to_entries[] | "| \(.key) | \(.value.chainId) |"' release/deployments.json
+            echo ""
+            echo "- **Addresses:** [deployments.json]($ASSET_BASE/deployments.json)"
+            echo "- **Release contents:** [release-manifest.json]($ASSET_BASE/release-manifest.json)"
+          } >> release-body.md
+
+          # `gh release view` with no tag resolves through /releases/latest, which skips
+          # drafts, so this is the previously published release and never the draft this run
+          # is about to create.
+          PREV=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)
+          if [ -n "$PREV" ] && gh release download "$PREV" --repo "$GITHUB_REPOSITORY" \
+            --pattern deployments.json --dir prev >/dev/null 2>&1; then
+            bun scripts/js/release-metadata.mjs changelog --current release/deployments.json \
+              --previous prev/deployments.json --previous-tag "$PREV" >> release-body.md
+          else
+            bun scripts/js/release-metadata.mjs changelog \
+              --current release/deployments.json >> release-body.md
+          fi
+
       - name: Create draft release with artifacts
         uses: softprops/action-gh-release@v2
         with:
@@ -184,6 +220,8 @@ jobs:
           files: |
             dotns-abis-*.zip
             release/abis/*.json
+            release/deployments.json
+            release/release-manifest.json
           body_path: release-body.md
           draft: true
           prerelease: false
@@ -197,8 +235,11 @@ jobs:
           TAG="$RELEASE_TAG"
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
             --jq '.assets[].name' | sort > "$RUNNER_TEMP/actual-assets.txt"
-          { cat release/expected-assets.txt; echo "dotns-abis-${TAG}.zip"; } \
-            | sort > "$RUNNER_TEMP/wanted-assets.txt"
+          { cat release/expected-assets.txt
+            echo "dotns-abis-${TAG}.zip"
+            echo "deployments.json"
+            echo "release-manifest.json"
+          } | sort > "$RUNNER_TEMP/wanted-assets.txt"
           if ! diff -u "$RUNNER_TEMP/wanted-assets.txt" "$RUNNER_TEMP/actual-assets.txt"; then
             echo "::error::Draft release $TAG does not match the expected asset set; delete the draft and re-run."
             exit 1

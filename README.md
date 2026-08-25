@@ -16,13 +16,13 @@ DotNS is a naming system for Polkadot. An account can register a .dot name, rece
 
 ## Deployment and operations
 
-Current network addresses and deployment notes are listed in [DEPLOYMENTS.md](./DEPLOYMENTS.md).
+Deployment notes are in [DEPLOYMENTS.md](./DEPLOYMENTS.md). Network addresses are recorded in `deployments/<network>/<chain-id>.json` and published with each release.
 
 ### Cutting a release
 
-A release publishes the contract ABIs as GitHub release assets. It does not deploy anything; deploying contracts to a network is a separate process, described in [DEPLOYMENTS.md](./DEPLOYMENTS.md).
+A release publishes the contract ABIs and the deployed addresses as GitHub release assets, described in [RELEASE_ARTIFACTS.md](./RELEASE_ARTIFACTS.md). It does not deploy anything; deploying contracts to a network is a separate process, described in [DEPLOYMENTS.md](./DEPLOYMENTS.md).
 
-Run **Publish Release Package** from the Actions tab, pick the branch to release from, and enter the version (`v0.5.5`). The workflow does the rest: it builds, tests, extracts the ABIs listed in [.github/abi-contracts.txt](./.github/abi-contracts.txt), creates the release as a draft with every asset attached, verifies the set against what the build produced, and only then publishes. Pushing a matching tag runs the same workflow, so `git tag v0.5.5 && git push origin v0.5.5` remains equivalent.
+Run **Publish Release Package** from the Actions tab, pick the branch to release from, and enter the version (`v0.5.5`). The workflow does the rest: it builds, tests, extracts the ABIs listed in [.github/abi-contracts.txt](./.github/abi-contracts.txt), generates the address and manifest files, creates the release as a draft with every asset attached, verifies the set against what the build produced, and only then publishes. Pushing a matching tag runs the same workflow, so `git tag v0.5.5 && git push origin v0.5.5` remains equivalent.
 
 Pre-releases use **Publish Beta Package** with a suffixed version, `v0.5.5-rc1`. The version is the release identity; the `version` field in `package.json` is unrelated and nothing reads it.
 
@@ -214,7 +214,7 @@ UserStore is the user-claimed half. The bound owner is the only writer and prior
 
 ### Deployments
 
-Current network addresses are listed in [DEPLOYMENTS.md](./DEPLOYMENTS.md).
+Addresses are recorded per network in `deployments/<network>/<chain-id>.json`, and published with each release as `deployments.json`. See [DEPLOYMENTS.md](./DEPLOYMENTS.md) for how a deployment is run and [RELEASE_ARTIFACTS.md](./RELEASE_ARTIFACTS.md) for what a release contains.
 
 ### Build and test
 
