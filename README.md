@@ -88,16 +88,16 @@ Releasing a name starts two independent clocks, and the distinction between them
 | `withdrawAvailableAt` | release + `cooldown` (15 minutes at launch, ≤ 1 hour) | When the holder may credit the deposit to themselves via `withdraw` |
 | `redeemableUntil` | release + `redeemWindow` (1 day at launch, ≤ 30 days) | When the holder's exclusive claim on the name ends and `reclaim` opens to anyone |
 
-Both are snapshotted at release time, so a governance change never moves the goalposts on a name already in flight. `redeemWindow` is tuned through `updateRedeemWindow` under the same gate as the upgrade authority.
+Both are snapshotted at release time, so a governance change never changes the clocks on a name already released. `redeemWindow` is tuned through `updateRedeemWindow` under the same gate as the upgrade authority.
 
-Inside the redeem window the name belongs to its previous holder. They alone may act on it, and `DotnsRegistrar.available` reports **false** so no client advertises the name as free and no registrant burns a commit-reveal cycle on a registration that cannot succeed. Their options are exclusive:
+Inside the redeem window the name belongs to its previous holder. They alone may act on it, and `DotnsRegistrar.available` reports **false** so no client advertises the name as free and no registrant burns a commit-reveal cycle on a registration that cannot succeed. The two are mutually exclusive:
 
 - **`redeem`** returns the NFT and moves no value. The position keeps its recipient, asset and amount, so the deposit stays locked and the name lands back in its exact pre-release state, releasable again later on a fresh pair of clocks. This is the undo for an accidental release.
-- **`withdraw`** credits the deposit and forfeits the right to redeem. A holder who has been paid for the name cannot also take it back; otherwise they would hold a NoStatus name that no deposit backs, and the Sybil bound of one D per live NoStatus name would not hold.
+- **`withdraw`** credits the deposit and forfeits the right to redeem. A holder who has been paid for the name cannot also take it back; otherwise they would hold a NoStatus name that no deposit backs, and the Sybil bound of one D per live NoStatus name would break.
 
 Once `redeemableUntil` is reached, `reclaim` is permissionless through the ordinary commit-reveal path, **whether or not the previous holder ever withdrew**. If the position still holds value, reclaim settles it: the amount is credited to the previous holder's pull-payment balance and stays claimable through `claimWithdrawal` with no deadline. The value follows the departing holder; the name does not wait for them.
 
-That last point is the whole reason the window exists. Reclaim used to require the previous holder to have withdrawn first, which meant a holder who released a name and never came back removed the label from circulation permanently. For the zero-amount positions seeded by free PopFull and PopLite registrations there is nothing to withdraw, so never withdrawing was the default rather than the exception. Bounding the wait with a clock replaces a dependency on someone else's action with one that elapses on its own.
+That is why the window is bounded rather than open-ended: reclaim cannot depend on the previous holder acting. Free PopFull and PopLite registrations seed zero-amount positions, so for those names there is nothing to withdraw and no incentive to act.
 
 Clients wanting the exact moment a released name becomes registrable should read `redeemableUntil` from `getReleasePosition` rather than polling `available`.
 
