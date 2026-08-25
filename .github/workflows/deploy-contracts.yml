@@ -3,10 +3,12 @@ name: Deploy Contracts and Verify artifacts
 on:
   pull_request:
     branches: [master]
-    paths: ["contracts/**", "scripts/**", "**.sol", "package.json", "bun.lock"]
+    paths:
+      ["contracts/**", "scripts/**", "deployments/**", "**.sol", "package.json", "bun.lock"]
   push:
     branches: [master]
-    paths: ["contracts/**", "scripts/**", "**.sol", "package.json", "bun.lock"]
+    paths:
+      ["contracts/**", "scripts/**", "deployments/**", "**.sol", "package.json", "bun.lock"]
 
 permissions:
   contents: read
@@ -23,12 +25,13 @@ jobs:
 
     # Shared across steps. ACCOUNT_* is anvil test account 7 (public test keys,
     # never valid on a real network) used to run the pipeline. FACTORY_DEPLOYER is
-    # the public address of the single-purpose factory key; PINNED_FACTORY is its
-    # nonce-0 CREATE address and the one recorded in every manifest. CANONICAL is
-    # the committed manifest that seeds DEPLOYMENTS.md; MANIFEST is the file this
-    # CI deploy writes. PRIVATE_KEY is deliberately absent here: it is set only on
-    # the first deploy to import the keystore, and must not reach the resume run,
-    # which reuses the already-imported account.
+    # the public address of the single-purpose factory key. CANONICAL is the
+    # committed manifest, the address set this deploy has to reproduce; MANIFEST is
+    # the file this CI deploy writes. PINNED_FACTORY is read out of CANONICAL after
+    # checkout rather than repeated here, so the expectation cannot drift from the
+    # manifest it is meant to describe. PRIVATE_KEY is deliberately absent: it is set
+    # only on the first deploy to import the keystore, and must not reach the resume
+    # run, which reuses the already-imported account.
     env:
       ACCOUNT_NAME: anvil-default-7
       ACCOUNT_PASSWORD: anvil-default-password
@@ -38,7 +41,6 @@ jobs:
       DOTNS_TLD: dot
       WHITELIST_OPERATOR: "0x14dC79964da2C08b23698B3D3cc7Ca32193d9955"
       FACTORY_DEPLOYER: "0xd498F7BC5bB3cBdd0068c3deEbbd814b69C3F164"
-      PINNED_FACTORY: "0x8533c79E058c5a6489CAFeCA86dc600E029D75f5"
       CANONICAL: deployments/paseo-assethub/420420417.json
       MANIFEST: deployments/paseo-local/420420420.json
 
@@ -48,6 +50,16 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 1
+
+      - name: Resolve the pinned factory address
+        run: |
+          FACTORY=$(jq -r '.Create3Factory // empty' "$CANONICAL")
+          if [[ ! "$FACTORY" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::$CANONICAL has no usable Create3Factory entry."
+            exit 1
+          fi
+          echo "PINNED_FACTORY=$FACTORY" >> "$GITHUB_ENV"
+          echo "Expecting the factory at $FACTORY, per $CANONICAL."
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -267,10 +279,10 @@ jobs:
       # This CI deploy reproduces the published address set. The canonical factory
       # was deployed above, and every DotNS address is a pure function of that
       # factory plus a fixed salt, so the freshly deployed manifest must equal the
-      # committed manifest that seeds DEPLOYMENTS.md. Assert that, print the
-      # expected-vs-actual table, then rerun the pipeline to prove the deploy is
-      # resumable: a rerun adopts every contract and still lands on the same set.
-      - name: Verify addresses match DEPLOYMENTS.md
+      # committed manifest. Assert that, print the expected-vs-actual table, then
+      # rerun the pipeline to prove the deploy is resumable: a rerun adopts every
+      # contract and still lands on the same set.
+      - name: Verify addresses match the committed manifest
         id: verify_addresses
         if: steps.verify.outcome == 'success'
         run: |
@@ -279,7 +291,7 @@ jobs:
           # Markdown expected-vs-actual table: expected = committed manifest,
           # actual = this CI deployment. Any row whose addresses differ is MOVED.
           emit_table() {
-            echo "### Deployed addresses vs DEPLOYMENTS.md"
+            echo "### Deployed addresses vs the committed manifest"
             echo ""
             echo "Expected is the committed manifest; actual is this CI deployment of the same pipeline."
             echo ""
@@ -288,14 +300,21 @@ jobs:
             jq -rn --slurpfile e "$CANONICAL" --slurpfile a "$MANIFEST" '
               ($e[0]) as $exp | ($a[0]) as $act
               | $exp | keys_unsorted[] as $k
+              | select($k | startswith("_") | not)
               | "| \($k) | `\($exp[$k])` | `\($act[$k] // "MISSING")` | \(if $exp[$k] == $act[$k] then "match" else "MOVED" end) |"
             '
           }
 
-          # True when the deployed manifest equals the committed one. Sort keys so
-          # only value differences, never ordering, register as a mismatch.
+          # True when the deployed manifest equals the committed one. Sort keys so only value
+          # differences, never ordering, register as a mismatch. Underscore-prefixed keys are
+          # deploy metadata rather than addresses: `_seed` varies per run, and `_deployedFrom`
+          # exists only in a committed manifest, never in a fresh deploy's output. The release
+          # generator and the dotns-releases report drop the same prefix.
+          addresses() {
+            jq -S 'with_entries(select(.key | startswith("_") | not))' "$1"
+          }
           matches_canonical() {
-            diff <(jq -S . "$CANONICAL") <(jq -S . "$MANIFEST") > /dev/null
+            diff <(addresses "$CANONICAL") <(addresses "$MANIFEST") > /dev/null
           }
 
           # Record a failure (deploy-error.md already written) and stop.
@@ -312,15 +331,15 @@ jobs:
 
           if ! matches_canonical; then
             {
-              echo "### Deployed addresses do not match DEPLOYMENTS.md"
+              echo "### Deployed addresses do not match the committed manifest"
               echo ""
               echo "The pipeline no longer reproduces the published set. Rows marked MOVED"
-              echo "below differ from the committed manifest; regenerate DEPLOYMENTS.md and"
-              echo "the manifest, or restore the salt or label that moved."
+              echo "below differ from the committed manifest; update it, or restore the"
+              echo "salt or label that moved."
               echo ""
               cat table.md
             } > deploy-error.md
-            fail "Failed - addresses differ from DEPLOYMENTS.md"
+            fail "Failed - addresses differ from the committed manifest"
           fi
 
           # Resume: rerun the same pinned pipeline. It must adopt every contract
@@ -344,7 +363,7 @@ jobs:
             {
               echo "### Resume moved addresses"
               echo ""
-              echo "The rerun no longer matches DEPLOYMENTS.md, so a resumed deploy would"
+              echo "The rerun no longer matches the committed manifest, so a resumed deploy would"
               echo "relocate contracts."
               echo ""
               emit_table
@@ -355,7 +374,7 @@ jobs:
           # Surface the table under the passing row too, so the address set is on
           # record every run, not only on failure.
           cp table.md deploy-error.md
-          echo "result=Reproduces DEPLOYMENTS.md; resume verified" >> "$GITHUB_OUTPUT"
+          echo "result=Reproduces the committed manifest; resume verified" >> "$GITHUB_OUTPUT"
           echo "has_details=true" >> "$GITHUB_OUTPUT"
 
       - name: Set final result
