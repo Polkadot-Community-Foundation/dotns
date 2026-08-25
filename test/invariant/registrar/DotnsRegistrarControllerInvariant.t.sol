@@ -101,22 +101,24 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         assertEq(address(dotnsRegistrarController).balance, 0, "Controller must not hold funds");
     }
 
-    /// @notice The escrow always holds at least the value it owes across every ledger.
-    /// @dev Previously asserted strict equality against reserves + insurance + pending withdrawals
-    ///      while iterating only the first five actors and omitting the time-locked refund ledger
-    ///      entirely. Both were latent: any refund entry, or a sixth actor holding a pending
-    ///      balance, made the equality wrong for reasons unrelated to solvency. Now that reclaim
-    ///      settles unwithdrawn deposits onto the pull-payment ledger, more paths reach that state,
-    ///      so the assertion is stated as the property that actually matters -- the escrow is never
-    ///      short -- over every actor and every ledger.
-    ///      Kept as strict equality deliberately. Relaxing it to `assertGe` would state only that
-    ///      the escrow is never short, which no longer bites: now that reclaim moves value, a bug
-    ///      that debits `tokenReserved` and forgets to credit `_pendingWithdrawals` leaves the
-    ///      balance "above" the sum and sails past a `>=` assertion. Equality is what catches value
-    ///      going missing. It holds because no handler action force-sends value to the escrow; if
-    ///      one is ever added, account for the surplus in a ghost rather than weakening this.
-    ///      The time-locked refund ledger is not summed here because this handler does not drive
-    ///      it; `DotnsNameEscrowInvariant.invariant_solvency` covers all four ledgers together.
+    /// @notice Every unit of native value the escrow holds is accounted for by exactly one ledger.
+    /// @dev The escrow's balance is the sum of three obligations: `tokenReserved`, the deposits
+    ///      held against live positions; `insuranceFund`, the accumulated cross-tier fees; and
+    ///      `_pendingWithdrawals`, the amounts credited to recipients and awaiting collection.
+    ///      Value only ever moves between these three, never into or out of the set, so their total
+    ///      tracks the balance exactly.
+    ///      A shortfall means the escrow cannot pay what it owes. A surplus means it holds value
+    ///      that belongs to nobody -- an amount debited from one ledger that never landed in
+    ///      another, permanently out of reach of whoever was owed it. Both are failures, which is
+    ///      why this is an equality.
+    ///      Pending withdrawals are summed across the whole actor set; a partial sum would report a
+    ///      surplus that is not real.
+    ///      Native value reaching the escrow from outside these flows -- force-sent via
+    ///      `selfdestruct`, or dealt directly to the address -- is owed to nobody and belongs to no
+    ///      ledger. No handler action does this. One that did would need to track the surplus
+    ///      separately for the equality to hold.
+    ///      The time-locked refund ledger is not part of this sum because this handler never
+    ///      credits it. `DotnsNameEscrowInvariant.invariant_solvency` covers all four ledgers.
     function invariant_value_conservation() public view {
         uint256 reservedAmount = dotnsNameEscrow.reserves(address(0));
         uint256 insurance = dotnsNameEscrow.insuranceFund();
