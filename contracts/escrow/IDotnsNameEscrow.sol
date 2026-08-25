@@ -454,6 +454,14 @@ interface IDotnsNameEscrow {
     ///      upgraded proxy never runs with an unseeded window.
     function updateRedeemWindow(uint256 newRedeemWindow) external;
 
+    /// @notice Delay after release before the deposit withdrawal may be credited.
+    /// @return duration Current cooldown in seconds.
+    function cooldown() external view returns (uint256 duration);
+
+    /// @notice Period after release during which only the previous holder may act.
+    /// @return duration Current redeem window in seconds.
+    function redeemWindow() external view returns (uint256 duration);
+
     /// @notice Pulls a single time-locked refund entry.
     /// @dev Caller must be the entry's recipient (@custom:reverts NotRefundRecipient otherwise),
     ///      the entry must exist (@custom:reverts NoSuchRefundEntry on a deleted or unknown id),
