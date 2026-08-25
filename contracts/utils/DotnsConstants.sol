@@ -39,6 +39,11 @@ library DotnsConstants {
     ///      against a new constant.
     uint256 internal constant RENT_PRICE = 10 ether;
 
+    /// @notice Maximum entries a paginated view returns in a single page.
+    /// @dev Shared ceiling for paginated reads: a view clamps its returned array to this figure,
+    ///      and callers page through larger sets with `offset`.
+    uint256 internal constant MAX_PAGE_SIZE = 200;
+
     /// @notice Operational role allowed to manage the public controller whitelist.
     /// @dev Holders can grant or revoke whitelist entries, but cannot upgrade contracts
     ///      or change protocol configuration.
@@ -128,6 +133,14 @@ library DotnsConstants {
     ///      Writer is the `POP_CONTROLLER`, not the node owner.
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant POP_RESOLVER = bytes32("popResolver");
+
+    /// @notice Well-known key for the read-only lens over PoP identity data.
+    /// @dev Role: off-chain query surface. Composes the account name listings, the per-name
+    ///      record, and the account summary from the controller, registrar, store factory, PoP
+    ///      resolver, and PopRules. Holds no authority and is consumed by clients, not by other
+    ///      contracts.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant POP_LENS = bytes32("popLens");
 
     /// @notice Well-known key for the name escrow holding refundable deposits and
     ///         driving the release lifecycle for registered names.

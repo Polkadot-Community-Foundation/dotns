@@ -38,7 +38,7 @@ contract DotnsPopControllerInvariant is BaseDotns {
         selectors[4] = handler.claim.selector;
         selectors[5] = handler.reLink.selector;
         selectors[6] = handler.settlePendingClaim.selector;
-        selectors[7] = handler.sweepPendingClaim.selector;
+        selectors[7] = handler.settlePendingClaimByThirdParty.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
     }
 
@@ -183,7 +183,7 @@ contract DotnsPopControllerInvariant is BaseDotns {
 
         for (uint256 i = 0; i < enumerated.length; i++) {
             assertGt(
-                dotnsPopController.pendingClaims(enumerated[i]).length,
+                dotnsPopController.pendingClaimCountOf(enumerated[i]),
                 0,
                 "enumerated user has no pending claim"
             );
@@ -192,7 +192,7 @@ contract DotnsPopControllerInvariant is BaseDotns {
         uint256 seen = handler.pendingClaimActorsSeenCount();
         for (uint256 i = 0; i < seen; i++) {
             address actor = handler.pendingClaimActorsSeen(i);
-            if (dotnsPopController.pendingClaims(actor).length == 0) continue;
+            if (dotnsPopController.pendingClaimCountOf(actor) == 0) continue;
             bool found;
             for (uint256 j = 0; j < enumerated.length; j++) {
                 if (enumerated[j] == actor) {
@@ -205,8 +205,9 @@ contract DotnsPopControllerInvariant is BaseDotns {
     }
 
     /// @notice A user with a deployed `LabelStore` cannot simultaneously hold a
-    ///         pending claim: settlement deploys the store and clears the
-    ///         entry in the same call, expiry clears without deploying.
+    ///         pending claim: every settlement in this suite drains the whole
+    ///         queue and deploys the store in the same call, and a warm user's
+    ///         later gateway mints write straight into the store without stashing.
     function invariant_pending_claim_and_label_store_are_mutually_exclusive() public view {
         IStoreFactory factory = IStoreFactory(address(storeFactory));
         uint256 seen = handler.pendingClaimActorsSeenCount();
@@ -214,7 +215,7 @@ contract DotnsPopControllerInvariant is BaseDotns {
             address actor = handler.pendingClaimActorsSeen(i);
             if (factory.getLabelStore(actor) == address(0)) continue;
             assertEq(
-                dotnsPopController.pendingClaims(actor).length,
+                dotnsPopController.pendingClaimCountOf(actor),
                 0,
                 "actor has both store and pending claim"
             );
@@ -230,30 +231,35 @@ contract DotnsPopControllerInvariant is BaseDotns {
         assertEq(page.length, count, "count != enumeration length");
     }
 
-    /// @notice An expired pending-claim entry can always be swept. Asserts that
-    ///         for every tracked actor whose `mintedAt` has lapsed past
-    ///         `reservationDuration`, a permissionless `expirePendingClaim`
-    ///         clears the entry without revert.
-    /// @dev Cannot mutate state inside an invariant assertion, so the property
-    ///      is asserted indirectly: if the entry is past its deadline, the
-    ///      handler has had opportunities to sweep it during the run; under a
-    ///      sufficient depth the post-state must show such entries cleared.
-    ///      A stronger formulation would require a depth-bounded sweep
-    ///      guarantee, which is out of scope for view-only invariants.
-    function invariant_no_stuck_lapsed_pending_claims() public view {
-        uint64 duration = dotnsPopController.reservationDuration();
-        if (duration == 0) return;
-        uint256 seen = handler.pendingClaimActorsSeenCount();
-        for (uint256 i = 0; i < seen; i++) {
-            address actor = handler.pendingClaimActorsSeen(i);
+    /// @notice Settlement writes labels and never strands a minted name. Every
+    ///         minted token is either settled, with its label readable in the
+    ///         owner's store, or still staged in the owner's pending queue.
+    ///         Age never drops an entry, so a minted name is never left in
+    ///         neither place.
+    /// @dev The stranded case the old model allowed, a lapsed entry swept out of
+    ///      the queue with nothing written, is now unreachable: settlement always
+    ///      writes the label regardless of the reservation deadline.
+    function invariant_settled_names_written_and_never_stranded() public view {
+        uint256 n = handler.mintedLiteTokenCount();
+        for (uint256 i = 0; i < n; i++) {
+            uint256 tokenId = handler.mintedLiteTokenIds(i);
+            if (!dotnsRegistrar.exists(tokenId)) continue;
+
+            // A settled name reads its label back from the owner's store.
+            if (bytes(dotnsRegistrar.labelOf(tokenId)).length != 0) continue;
+
+            // Otherwise the name must still be staged in its owner's pending queue.
+            address nameOwner = dotnsRegistrar.ownerOf(tokenId);
             IDotnsPopController.PendingClaim[] memory pending =
-                dotnsPopController.pendingClaims(actor);
+                dotnsPopController.pendingClaims(nameOwner, 0, type(uint256).max);
+            bool staged;
             for (uint256 j = 0; j < pending.length; j++) {
-                uint256 deadline = uint256(pending[j].mintedAt) + uint256(duration);
-                assertLe(
-                    block.timestamp, deadline + uint256(duration), "lapsed entry stuck past grace"
-                );
+                if (_nodeOf(pending[j].label) == bytes32(tokenId)) {
+                    staged = true;
+                    break;
+                }
             }
+            assertTrue(staged, "minted name neither settled nor staged");
         }
     }
 }

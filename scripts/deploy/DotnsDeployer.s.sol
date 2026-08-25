@@ -82,6 +82,7 @@ contract DotnsDeployer is BaseDeployer {
         address nameEscrow;
         address popResolver;
         address popController;
+        address popLens;
         address nameWhitelist;
     }
 
@@ -128,6 +129,7 @@ contract DotnsDeployer is BaseDeployer {
             _deployRegistrarController(OWNER, deployment.protocolRegistry);
         deployment.popResolver = _deployPopResolver(OWNER, deployment.protocolRegistry);
         deployment.popController = _deployPopController(OWNER, deployment.protocolRegistry);
+        deployment.popLens = _deployPopLens(OWNER, deployment.protocolRegistry);
         deployment.nameWhitelist = _deployNameWhitelist(OWNER, deployment.protocolRegistry);
 
         _authoriseControllers(OWNER, deployment);
@@ -357,6 +359,21 @@ contract DotnsDeployer is BaseDeployer {
         dotnsPopController = DotnsPopController(proxy);
     }
 
+    function _deployPopLens(
+        address owner,
+        address protocolRegistryProxy
+    )
+        internal
+        returns (address lens)
+    {
+        lens = _broadcastDeployCreate3(
+            owner,
+            "DotnsPopLens.sol:DotnsPopLens",
+            abi.encode(protocolRegistryProxy),
+            "DotnsPopLens"
+        );
+    }
+
     function _deployNameWhitelist(
         address owner,
         address protocolRegistryProxy
@@ -395,6 +412,7 @@ contract DotnsDeployer is BaseDeployer {
         protocolRegistry.set(DotnsConstants.NAME_ESCROW, deployment.nameEscrow);
         protocolRegistry.set(DotnsConstants.POP_CONTROLLER, deployment.popController);
         protocolRegistry.set(DotnsConstants.POP_RESOLVER, deployment.popResolver);
+        protocolRegistry.set(DotnsConstants.POP_LENS, deployment.popLens);
         protocolRegistry.set(DotnsConstants.NAME_WHITELIST, deployment.nameWhitelist);
         vm.stopBroadcast();
         console.log("Protocol registry keys set");
@@ -516,6 +534,7 @@ contract DotnsDeployer is BaseDeployer {
         _assertKey(DotnsConstants.NAME_ESCROW, deployment.nameEscrow, "Key: nameEscrow");
         _assertKey(DotnsConstants.POP_CONTROLLER, deployment.popController, "Key: popController");
         _assertKey(DotnsConstants.POP_RESOLVER, deployment.popResolver, "Key: popResolver");
+        _assertKey(DotnsConstants.POP_LENS, deployment.popLens, "Key: popLens");
     }
 
     function _assertKey(bytes32 key, address expected, string memory label) internal view {

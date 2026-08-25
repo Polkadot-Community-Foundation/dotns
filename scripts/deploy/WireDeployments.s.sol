@@ -50,6 +50,7 @@ contract WireDeployments is BaseDeployer {
         address nameWhitelist;
         address popResolver;
         address popController;
+        address popLens;
         address rootGatewayDispatcher;
     }
 
@@ -88,6 +89,7 @@ contract WireDeployments is BaseDeployer {
         addr.nameWhitelist = _readAddress("DotnsNameWhitelist");
         addr.popResolver = _readAddress("DotnsPopResolver");
         addr.popController = _readAddress("DotnsPopController");
+        addr.popLens = _readAddress("DotnsPopLens");
         addr.rootGatewayDispatcher = _readAddress("RootGatewayDispatcher");
     }
 
@@ -116,6 +118,7 @@ contract WireDeployments is BaseDeployer {
         registry.set(DotnsConstants.MULTICALL3, addr.multicall3);
         registry.set(DotnsConstants.POP_CONTROLLER, addr.popController);
         registry.set(DotnsConstants.POP_RESOLVER, addr.popResolver);
+        registry.set(DotnsConstants.POP_LENS, addr.popLens);
         registry.set(DotnsConstants.POP_GATEWAY, addr.rootGatewayDispatcher);
         vm.stopBroadcast();
         console.log("Protocol registry keys set");
@@ -212,6 +215,7 @@ contract WireDeployments is BaseDeployer {
             registry.get(DotnsConstants.POP_CONTROLLER) == addr.popController, "Key: popController"
         );
         require(registry.get(DotnsConstants.POP_RESOLVER) == addr.popResolver, "Key: popResolver");
+        require(registry.get(DotnsConstants.POP_LENS) == addr.popLens, "Key: popLens");
         require(
             registry.get(DotnsConstants.POP_GATEWAY) == addr.rootGatewayDispatcher,
             "Key: popGateway"
