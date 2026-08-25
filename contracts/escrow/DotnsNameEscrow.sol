@@ -110,9 +110,9 @@ contract DotnsNameEscrow is
     ///      `__gap`, so the layout of everything above is untouched.
     uint256 public redeemWindow;
 
-    /// @dev Reserved storage space to allow for layout changes in the future.
-    /// @dev Reduced from 50 to 49 when `redeemWindow` was appended above, keeping the total
-    ///      storage footprint of this contract unchanged.
+    /// @dev Reserved storage space to allow for layout changes in the future. A new variable
+    /// appended above must shrink this array by the same number of slots so the contract's total
+    /// storage footprint stays fixed.
     uint256[49] private __gap;
 
     /// @notice Restricts calls to the configured registrar controller.
