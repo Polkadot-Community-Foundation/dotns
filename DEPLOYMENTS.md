@@ -249,6 +249,7 @@ At minimum, confirm:
 - The escrow address is present.
 - StoreFactory and both store beacons are present.
 - The RootGatewayDispatcher is present on environments that use the root-dispatch path.
+- Confirm the escrow's redeem window is non-zero(ideally >= 86400 i.e. 1 day), since a zero leaves release reverting with InvalidRedeemWindow for every name on the deployment. We want to make sure that any accidental releases have enough time to reedem their name back.
 
 Then run the relevant tests again against the freshly deployed network assumptions:
 
