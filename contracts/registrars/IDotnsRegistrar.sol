@@ -56,7 +56,7 @@ interface IDotnsRegistrar is IERC721 {
 
     /// @notice Returns whether a registration call may proceed for `id`.
     /// @dev Signals two distinct paths to the controller. Returns `true` when the owner slot is
-    /// empty (a fresh @custom:function register call may mint) AND when the current owner is
+    /// empty (a fresh @custom:function register call may mint) OR when the current owner is
     /// the configured escrow and the released position's redeem window has elapsed (the
     /// controller must then route through @custom:function IDotnsNameEscrow.reclaim instead of
     /// @custom:function register, because `register` calls `_mint` which rejects existing
