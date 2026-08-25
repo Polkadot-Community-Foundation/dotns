@@ -7,6 +7,7 @@ import {BaseDeployer} from "./BaseDeployer.s.sol";
 import {DotnsRegistrarController} from "../../contracts/registrars/DotnsRegistrarController.sol";
 import {DotnsNameEscrow} from "../../contracts/escrow/DotnsNameEscrow.sol";
 import {IDotnsProtocolRegistry} from "../../contracts/registry/IDotnsProtocolRegistry.sol";
+import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 
 /// @title DeployPolicy
 /// @notice Third stage. Deploys the name escrow and the commit-reveal
@@ -16,8 +17,6 @@ import {IDotnsProtocolRegistry} from "../../contracts/registry/IDotnsProtocolReg
 contract DeployPolicy is BaseDeployer {
     uint64 public constant MIN_COMMITMENT_AGE = 6 seconds;
     uint64 public constant MAX_COMMITMENT_AGE = 1 days;
-    uint256 public constant ESCROW_COOLDOWN = 15 minutes;
-    uint256 public constant ESCROW_REDEEM_WINDOW = 1 days;
 
     function run() external {
         address owner = msg.sender;
@@ -64,7 +63,11 @@ contract DeployPolicy is BaseDeployer {
             "DotnsNameEscrow.sol:DotnsNameEscrow",
             abi.encodeCall(
                 DotnsNameEscrow.initialize,
-                (IDotnsProtocolRegistry(protocolRegistry), ESCROW_COOLDOWN, ESCROW_REDEEM_WINDOW)
+                (
+                    IDotnsProtocolRegistry(protocolRegistry),
+                    DotnsConstants.ESCROW_COOLDOWN,
+                    DotnsConstants.ESCROW_REDEEM_WINDOW
+                )
             ),
             "DotnsNameEscrow"
         );

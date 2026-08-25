@@ -144,11 +144,11 @@ abstract contract BaseDotns is Test {
 
     /// @notice Default escrow cooldown used in tests. Bounded by the escrow's
     ///         @custom:constant MAX_COOLDOWN ceiling.
-    uint256 public constant ESCROW_COOLDOWN = 15 minutes;
+    uint256 public constant ESCROW_COOLDOWN = DotnsConstants.ESCROW_COOLDOWN;
 
     /// @notice Default escrow redeem window used in tests. Bounded by the escrow's
     ///         @custom:constant MAX_REDEEM_WINDOW ceiling.
-    uint256 public constant ESCROW_REDEEM_WINDOW = 1 days;
+    uint256 public constant ESCROW_REDEEM_WINDOW = DotnsConstants.ESCROW_REDEEM_WINDOW;
 
     /// @notice Zero hash constant.
     bytes32 public constant ZERO_HASH = bytes32(0);

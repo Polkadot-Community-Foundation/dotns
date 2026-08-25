@@ -39,6 +39,18 @@ library DotnsConstants {
     ///      against a new constant.
     uint256 internal constant RENT_PRICE = 10 ether;
 
+    /// @notice Default release cooldown seeded on `DotnsNameEscrow.initialize`.
+    /// @dev Single source of truth for deploy scripts and tests so the value cannot drift between
+    ///      call sites. Bounded on-chain by `DotnsNameEscrow.MAX_COOLDOWN`. Live deployments rotate
+    ///      the runtime value via `updateCooldown` rather than rebuilding consumers.
+    uint256 internal constant ESCROW_COOLDOWN = 15 minutes;
+
+    /// @notice Default redeem window seeded on `DotnsNameEscrow.initialize`.
+    /// @dev Single source of truth for deploy scripts and tests. Bounded on-chain by
+    ///      `DotnsNameEscrow.MAX_REDEEM_WINDOW`. Live deployments rotate the runtime value via
+    ///      `updateRedeemWindow`.
+    uint256 internal constant ESCROW_REDEEM_WINDOW = 1 days;
+
     /// @notice Operational role allowed to manage the public controller whitelist.
     /// @dev Holders can grant or revoke whitelist entries, but cannot upgrade contracts
     ///      or change protocol configuration.

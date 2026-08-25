@@ -21,11 +21,6 @@ contract EscrowHandler is Test {
     bytes32 private constant DOT_NODE =
         0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
 
-    /// @notice Escrow cooldown period used by handler-driven flows; mirrors the
-    ///         test base and the deploy script so warps to clear the cooldown stay
-    ///         consistent with the escrow's enforced upper bound.
-    uint256 private constant ESCROW_COOLDOWN = 15 minutes;
-
     /// @notice The registrar controller under test.
     DotnsRegistrarController public controller;
 
