@@ -718,6 +718,16 @@ contract DotnsNameEscrow is
         // name whenever they have no reason to: a zero-amount position has nothing to collect, so
         // "never withdraws" is the default rather than the exception. The window bounds the wait
         // instead, and reclaim settles any unwithdrawn value rather than holding it hostage.
+        //
+        // Lifecycle state only. `reclaim` also settles the deposit, which can in principle revert
+        // `InsufficientFunds` when the reserved balance plus the insurance fund cannot cover the
+        // amount owed, so a true answer here is a claim about the window rather than a guarantee
+        // that the call is funded. The two coincide because `tokenReserved` is by construction the
+        // exact sum of live position amounts: only `deposit` credits it, and only `_settleDeposit`
+        // debits it, by exactly the amount it zeroes. `invariant_reserves_match_positions` holds
+        // that construction, and `invariant_reclaimable_positions_are_fundable` asserts the
+        // implication directly, so a change that broke the coincidence would fail the suite rather
+        // than surface as a name advertised and then unregisterable.
         reclaimable = position.released && block.timestamp >= position.redeemableUntil;
     }
 

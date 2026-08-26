@@ -217,7 +217,28 @@ cast send "$ESCROW_PROXY" 'updateRedeemWindow(uint256)' 86400 \
   --account "$DEPLOYER" --rpc-url "$RPC_URL"
 ```
 
-Bounds: non-zero and at most `MAX_REDEEM_WINDOW` (30 days). Changing the window later affects only releases recorded after the change; positions already released keep the `redeemableUntil` snapshot taken at their release time.
+Bounds: at least `MIN_REDEEM_WINDOW` (1 day) and at most `MAX_REDEEM_WINDOW` (30 days). Changing the window later affects only releases recorded after the change; positions already released keep the `redeemableUntil` snapshot taken at their release time.
+
+### The window does not apply to names already in escrow
+
+Seeding `redeemWindow` covers every release *after* the upgrade. It does nothing for names already sitting in escrow when the upgrade lands, and operators should understand what happens to those.
+
+A position released under the old contract has no `redeemableUntil` — the field reads as zero from previously unused padding. So the moment the upgrade lands:
+
+- the name is **immediately reclaimable by anyone**, with no redeem grace at all
+- `available` reports it registrable straight away
+- its previous holder **cannot** `redeem` it, because the redeem window is already behind them
+
+No value is lost: reclaim settles the deposit onto the previous holder's pull-payment balance, so they are made whole whether or not they ever withdrew. And these are names that were **stuck** before the upgrade, so becoming claimable is the fix working. But the previous holder gets no chance to change their mind, which is the one guarantee the upgrade cannot apply retroactively.
+
+Enumerate the affected set before upgrading, so the outcome is a decision rather than a surprise:
+
+```bash
+cast call "$ESCROW_PROXY" 'releasedTokenCount()(uint256)' --rpc-url "$RPC_URL"
+cast call "$ESCROW_PROXY" 'releasedTokens(uint256,uint256)(uint256[])' 0 200 --rpc-url "$RPC_URL"
+```
+
+If that set is non-empty and any of it matters, the options are to let the holders reclaim or withdraw before the upgrade, or to notify them that the grace period will not cover their name.
 
 ## Deployment pipeline
 
