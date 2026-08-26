@@ -64,7 +64,7 @@ Every caller pays the same curve for a given length. Each wallet gets one free n
 
 Registering a name under your own key locks a refundable deposit equal to the name's price. The deposit is bound to the name rather than the depositor, so it travels with the token on every transfer and unlocks only when the current holder releases the name back to escrow. Holding many names ties up capital on the same curve, and the cost rises with scarcity because the price does.
 
-A fee is non-refundable. Two things pay a fee instead of a deposit: a name someone else pays for, and a transfer. Fees flow into one protocol fee pot that only accumulates. Governance can route the pot to one of a fixed pair, a burn or the on-chain treasury, and to nowhere else. A holder's own deposit is their money held in trust and is never swept into fees.
+A fee is non-refundable. Two things pay a fee instead of a deposit: a name someone else pays for, and a transfer. Fees flow into one protocol fee pot in the escrow that only accumulates. A holder's own deposit is their money held in trust and is never swept into fees.
 
 ### Transfers re-price at the name's own length
 
@@ -74,7 +74,7 @@ The deposit, when present, is bound to the name and rides with it on every trans
 
 ### What governance controls
 
-Everything hangs off D. Governance sets D and the floor F to whatever values it chooses; the contracts hold them coherent and nothing more, requiring D above zero and F in the range one to D, so the curve can never invert and no name ever prices at zero. They put no ceiling on how high or low D goes, nor any limit on how fast it moves, so the economic policy is the owner's to set and any rate limit or advance notice comes from the governance process, not from these contracts. Governance also sets the floor F, opens or closes the short-name market with the switch above (while it is closed no name shorter than nine is for sale), sets how long the interval on the free grant runs, and chooses where fees go, a burn or the treasury, from that fixed pair. None of these controls lets governance seize, reassign or destroy a name anyone already holds.
+Everything hangs off D. Governance sets D and the floor F to whatever values it chooses; the contracts hold them coherent and nothing more, requiring D above zero and F in the range one to D, so the curve can never invert and no name ever prices at zero. They put no ceiling on how high or low D goes, nor any limit on how fast it moves, so the economic policy is the owner's to set and any rate limit or advance notice comes from the governance process, not from these contracts. Governance also sets the floor F, opens or closes the short-name market with the switch above (while it is closed no name shorter than nine is for sale), and sets how long the interval on the free grant runs. None of these controls lets governance seize, reassign or destroy a name anyone already holds.
 
 ### Refund and cooldown model
 
