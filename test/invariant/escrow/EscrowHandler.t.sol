@@ -71,6 +71,9 @@ contract EscrowHandler is Test {
     /// @notice List of actor addresses used for testing.
     address[] public actors;
 
+    /// @notice Membership set backing the `actors` list, keeping it free of duplicates.
+    mapping(address actor => bool present) private _isActor;
+
     /// @notice Counter for generating unique labels.
     uint256 public labelNonce;
 
@@ -92,8 +95,14 @@ contract EscrowHandler is Test {
     }
 
     /// @notice Adds an actor address.
+    /// @dev Idempotent. `totalPendingWithdrawals` sums a per-actor ledger across `actors`, so a
+    ///      repeated address would count the same balance twice and break a solvency assertion for
+    ///      a reason unrelated to solvency.
     /// @param actor The actor address to add.
     function addActor(address actor) external {
+        if (_isActor[actor]) return;
+
+        _isActor[actor] = true;
         actors.push(actor);
     }
 
