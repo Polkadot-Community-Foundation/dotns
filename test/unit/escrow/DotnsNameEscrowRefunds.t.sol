@@ -67,7 +67,11 @@ contract DotnsNameEscrowRefundsTest is BaseDotns {
         DotnsNameEscrowRefundHarness impl = new DotnsNameEscrowRefundHarness();
         bytes memory initData = abi.encodeCall(
             DotnsNameEscrow.initialize,
-            (IDotnsProtocolRegistry(address(protocolRegistry)), 1 hours, ESCROW_REDEEM_WINDOW)
+            (
+                IDotnsProtocolRegistry(address(protocolRegistry)),
+                DEFAULT_COOLDOWN,
+                ESCROW_REDEEM_WINDOW
+            )
         );
         address proxy = address(new ERC1967Proxy(address(impl), initData));
         harness = DotnsNameEscrowRefundHarness(payable(proxy));
