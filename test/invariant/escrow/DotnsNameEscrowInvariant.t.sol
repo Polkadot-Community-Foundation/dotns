@@ -210,6 +210,8 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
 
     /// @notice Asserts the never-stuck property across a set of token ids.
     function _assertNotStuck(uint256[] memory tokenIds) private view {
+        uint256 maxWindow = dotnsNameEscrow.MAX_REDEEM_WINDOW();
+
         for (uint256 i; i < tokenIds.length; ++i) {
             uint256 tokenId = tokenIds[i];
 
@@ -218,28 +220,36 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
 
             if (!position.released) continue;
 
-            bool insideWindow = block.timestamp < position.redeemableUntil;
-            bool redeemable = insideWindow && !position.claimed;
-            bool reclaimable = !insideWindow;
+            // A release always stamps a deadline. Without one the position would sit released with
+            // nothing to wait for, which is the shape of the deadlock this invariant exists to
+            // rule out.
+            assertNotEq(position.redeemableUntil, 0, "a released position must carry a deadline");
 
-            // Withdrawing forfeits the redeem right, so a settled position waits out the rest of
-            // its window with nothing to do. That is a pause, not a deadlock, and what makes it a
-            // pause is that the deadline is finite and still ahead. Assert that rather than
-            // exempting the state from the invariant.
-            if (!redeemable && !reclaimable) {
-                assertTrue(
-                    position.claimed,
-                    "the only actionless state is a position whose deposit is already settled"
-                );
-                assertGt(
-                    position.redeemableUntil,
-                    block.timestamp,
-                    "and it must be waiting on a deadline that actually arrives"
-                );
-                continue;
-            }
+            // And the wait is bounded by policy: no position can be parked further out than the
+            // longest window the owner is allowed to configure.
+            assertLe(
+                position.redeemableUntil,
+                block.timestamp + maxWindow,
+                "the wait must not exceed the maximum configurable window"
+            );
 
-            assertFalse(redeemable && reclaimable, "The redeem and reclaim phases must not overlap");
+            // The escrow's own answer, checked against the property restated independently from
+            // the position's fields. Comparing two locally-derived expressions would hold by
+            // construction and assert nothing.
+            assertEq(
+                dotnsNameEscrow.isReclaimable(tokenId),
+                block.timestamp >= position.redeemableUntil,
+                "a released position is reclaimable exactly once its deadline has passed"
+            );
+
+            // Two contracts, one answer. The registrar advertises a name held by the escrow as
+            // registrable exactly when the escrow would let it be reclaimed, so a client can never
+            // be sent through a commit-reveal cycle that cannot succeed.
+            assertEq(
+                dotnsRegistrar.available(tokenId),
+                dotnsNameEscrow.isReclaimable(tokenId),
+                "availability must agree with reclaimability"
+            );
         }
     }
 }
