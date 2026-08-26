@@ -86,7 +86,7 @@ Releasing a name starts two independent clocks, and the distinction between them
 | Clock | Length | What it gates |
 |---|---|---|
 | `withdrawAvailableAt` | release + `cooldown` (15 minutes at launch, ≤ 1 hour) | When the holder may credit the deposit to themselves via `withdraw` |
-| `redeemableUntil` | release + `redeemWindow` (1 day at launch, ≤ 30 days) | When the holder's exclusive claim on the name ends and `reclaim` opens to anyone |
+| `redeemableUntil` | release + `redeemWindow` (1 day at launch, governance may set 1 to 30 days) | When the holder's exclusive claim on the name ends and `reclaim` opens to anyone |
 
 Both are snapshotted at release time, so a governance change never changes the clocks on a name already released. `redeemWindow` is tuned through `updateRedeemWindow` under the same gate as the upgrade authority.
 

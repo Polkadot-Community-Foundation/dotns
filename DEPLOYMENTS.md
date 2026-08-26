@@ -208,7 +208,7 @@ Verify before considering the upgrade done:
 cast call "$ESCROW_PROXY" 'redeemWindow()(uint256)' --rpc-url "$RPC_URL"   # expect 86400
 ```
 
-If the window is left at zero, `release` reverts with `InvalidRedeemWindow` for **every** name on that deployment. That is deliberate: the alternative would be stamping `redeemableUntil` at the current timestamp, which silently opens permissionless reclaim the instant a name is released and hands the name to whoever is watching. A loud failure on `release` is recoverable with one owner transaction; a silent one is not.
+If the window is left at zero, `release` reverts with `RedeemWindowNotConfigured` for **every** name on that deployment. That is deliberate: the alternative would be stamping `redeemableUntil` at the current timestamp, which silently opens permissionless reclaim the instant a name is released and hands the name to whoever is watching. A loud failure on `release` is recoverable with one owner transaction; a silent one is not.
 
 To recover a proxy already upgraded without seeding, call the setter directly — no second upgrade is needed:
 
@@ -270,7 +270,11 @@ At minimum, confirm:
 - The escrow address is present.
 - StoreFactory and both store beacons are present.
 - The RootGatewayDispatcher is present on environments that use the root-dispatch path.
-- Confirm the escrow's redeem window is non-zero(ideally >= 86400 i.e. 1 day), since a zero leaves release reverting with InvalidRedeemWindow for every name on the deployment. We want to make sure that any accidental releases have enough time to reedem their name back.
+- The escrow's redeem window is non-zero. A zero leaves `release` reverting with `RedeemWindowNotConfigured` for every name on the deployment, so a holder who releases a name by accident has no chance to redeem it back. Any value the setter accepted is already at least `MIN_REDEEM_WINDOW` (1 day), so this check is only ever confirming that the window was configured at all, which is exactly what a proxy upgraded without seeding it would fail.
+
+```bash
+cast call "$ESCROW_PROXY" 'redeemWindow()(uint256)' --rpc-url "$RPC_URL"   # expect 86400 at launch
+```
 
 Then run the relevant tests again against the freshly deployed network assumptions:
 
