@@ -7,6 +7,9 @@ import {BaseDeployer} from "./BaseDeployer.s.sol";
 import {DotnsResolver} from "../../contracts/resolvers/DotnsResolver.sol";
 import {DotnsContentResolver} from "../../contracts/resolvers/DotnsContentResolver.sol";
 import {PopRules} from "../../contracts/pop/PopRules.sol";
+import {DotnsScarcityPricing} from "../../contracts/pop/DotnsScarcityPricing.sol";
+import {DotnsCostModelRegistry} from "../../contracts/pop/DotnsCostModelRegistry.sol";
+import {IDotnsPricing} from "../../contracts/pop/IDotnsPricing.sol";
 import {IDotnsProtocolRegistry} from "../../contracts/registry/IDotnsProtocolRegistry.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 
@@ -27,6 +30,7 @@ contract DeployRecords is BaseDeployer {
 
         _deployResolver(owner, protocolRegistry);
         _deployContentResolver(owner, protocolRegistry);
+        _deployCostModelStack(owner);
         _deployPopRules(owner, protocolRegistry);
 
         saveDeployments();
@@ -66,6 +70,29 @@ contract DeployRecords is BaseDeployer {
         );
     }
 
+    /// @notice Deploys the scarcity model and the cost-model registry, then registers the model
+    ///         so the registry serves it as the current version.
+    /// @dev The `COST_MODEL` protocol-registry key points at the registry, not the model; the wire
+    ///      stage sets that key.
+    function _deployCostModelStack(address owner) internal returns (address registry) {
+        address model = _broadcastDeployCreate3(
+            owner,
+            "DotnsScarcityPricing.sol:DotnsScarcityPricing",
+            abi.encode(DotnsConstants.RENT_PRICE, DotnsConstants.MIN_PRICE),
+            "DotnsScarcityPricing"
+        );
+        registry = _broadcastDeployCreate3(
+            owner,
+            "DotnsCostModelRegistry.sol:DotnsCostModelRegistry",
+            abi.encode(owner),
+            "DotnsCostModelRegistry"
+        );
+
+        vm.startBroadcast(owner);
+        DotnsCostModelRegistry(registry).register(IDotnsPricing(model));
+        vm.stopBroadcast();
+    }
+
     function _deployPopRules(
         address owner,
         address protocolRegistry
@@ -76,14 +103,7 @@ contract DeployRecords is BaseDeployer {
         proxy = _broadcastDeployUups(
             owner,
             "PopRules.sol:PopRules",
-            abi.encodeCall(
-                PopRules.initialize,
-                (
-                    DotnsConstants.RENT_PRICE,
-                    DotnsConstants.MIN_PRICE,
-                    IDotnsProtocolRegistry(protocolRegistry)
-                )
-            ),
+            abi.encodeCall(PopRules.initialize, (IDotnsProtocolRegistry(protocolRegistry))),
             "PopRules"
         );
     }

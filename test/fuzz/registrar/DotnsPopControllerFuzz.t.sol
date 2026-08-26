@@ -77,7 +77,12 @@ contract DotnsPopControllerFuzz is BaseDotns {
         bytes32 secret = keccak256(abi.encodePacked(fullLabel, ed, block.timestamp));
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: fullLabel, owner: ed, secret: secret, reserved: true
+                label: fullLabel,
+                owner: ed,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
 

@@ -12,9 +12,9 @@ pragma solidity ^0.8.34;
 ///      classification. Reservations are keyed by the digit-stripped stem so `alice` and `alice42`
 ///      share a slot.
 ///
-///      Pricing is a geometric scarcity curve on the base length: price(n) = D * 2^(9 - n),
-///      halved for each character above nine and floored at `minPrice`. Every caller pays the same
-///      curve for a given length; personhood only unlocks the premium band.
+///      Amounts come from the cost model registered under `DotnsConstants.COST_MODEL`, which owns
+///      the curve; only the base length crosses that seam. Every caller pays the same amount for a
+///      given length; personhood only unlocks the premium band.
 /// @custom:security-contact admin@parity.io
 interface IPopRules {
     /// @notice Proof-of-Personhood eligibility tier.
@@ -33,19 +33,6 @@ interface IPopRules {
     /// @param owner Address obtaining the reservation right.
     /// @param expires UNIX timestamp when the reservation expires.
     event BaseNameReserved(string indexed baseName, address indexed owner, uint64 expires);
-
-    /// @notice Emitted when the base fee D is changed.
-    /// @dev Owner-only setter @custom:function updateStartingPrice; the new value is the base of
-    /// the scarcity curve consumed by `_priceValidatedName` on the next pricing read.
-    /// @param oldPrice Previous wei value.
-    /// @param newPrice New wei value.
-    event StartingPriceUpdated(uint256 oldPrice, uint256 newPrice);
-
-    /// @notice Emitted when the price floor F is changed.
-    /// @dev Owner-only setter @custom:function updateMinPrice.
-    /// @param oldMinPrice Previous wei value.
-    /// @param newMinPrice New wei value.
-    event MinPriceUpdated(uint256 oldMinPrice, uint256 newMinPrice);
 
     /// @notice Emitted when the public market for names shorter than nine characters is opened or
     ///         closed.
@@ -95,23 +82,6 @@ interface IPopRules {
         external
         pure
         returns (PopStatus requirement, string memory message);
-
-    /// @notice Updates the base fee D that anchors the scarcity curve.
-    /// @dev Owner-only; unauthorised callers trigger @custom:reverts
-    ///      OwnableUnauthorizedAccount. `newStartingPrice` must be strictly positive, otherwise
-    ///      @custom:reverts PopError. The new value anchors the curve in `_priceValidatedName` on
-    ///      the next pricing read; no redeploy. Emits @custom:emits StartingPriceUpdated with the
-    ///      prior and new values.
-    /// @param newStartingPrice New base price in wei.
-    function updateStartingPrice(uint256 newStartingPrice) external;
-
-    /// @notice Sets the price floor F, the least any name can cost on the scarcity curve.
-    /// @dev Owner-only; unauthorised callers trigger @custom:reverts OwnableUnauthorizedAccount.
-    ///      `newMinPrice` must be strictly positive and no greater than the base fee D, otherwise
-    ///      @custom:reverts PopError. A base length below nine always prices above D, so the floor
-    ///      only binds from nine characters upward. Emits @custom:emits MinPriceUpdated.
-    /// @param newMinPrice New price floor in wei.
-    function updateMinPrice(uint256 newMinPrice) external;
 
     /// @notice Opens or closes the public market for names shorter than nine characters.
     /// @dev Owner-only; unauthorised callers trigger @custom:reverts OwnableUnauthorizedAccount.
@@ -234,6 +204,27 @@ interface IPopRules {
         view
         returns (PriceWithMeta memory metadata);
 
+    /// @notice Calculates price at a specific cost-model version with PoP classification and
+    ///         reservation enforcement.
+    /// @dev The versioned counterpart of @custom:function priceWithCheck: identical classification,
+    ///      tier gating, and reservation rules, but the amount comes from the model registered for
+    ///      `pricingVersionValue` rather than the current one. The commit-reveal controller prices
+    ///      a reveal at the version bound into its commitment, so a model change between commit and
+    ///      reveal does not move the amount. @custom:reverts UnknownVersion when the version was
+    ///      never registered.
+    /// @param name Domain label.
+    /// @param userAddress Registering user for the given label.
+    /// @param pricingVersionValue Cost-model version to price against.
+    /// @return metadata Price with PoP requirements and classification.
+    function priceWithCheckAtVersion(
+        string calldata name,
+        address userAddress,
+        uint256 pricingVersionValue
+    )
+        external
+        view
+        returns (PriceWithMeta memory metadata);
+
     /// @notice Calculates price with PoP classification and reservation metadata, without
     /// reverting on conflicts.
     /// @dev Non-reverting counterpart to `priceWithCheck`: surfaces the same fields, but reports
@@ -249,6 +240,25 @@ interface IPopRules {
     function priceWithoutCheck(
         string calldata name,
         address userAddress
+    )
+        external
+        view
+        returns (PriceWithMeta memory metadata);
+
+    /// @notice Calculates price at a specific cost-model version with PoP classification and
+    ///         reservation metadata, without reverting on conflicts.
+    /// @dev The versioned counterpart of @custom:function priceWithoutCheck: same non-reverting
+    ///      preview behaviour, but the amount comes from the model registered for
+    ///      `pricingVersionValue`. @custom:reverts UnknownVersion when the version was never
+    ///      registered.
+    /// @param name Domain label.
+    /// @param userAddress Registering user for the given label.
+    /// @param pricingVersionValue Cost-model version to price against.
+    /// @return metadata Price with PoP requirements and classification.
+    function priceWithoutCheckAtVersion(
+        string calldata name,
+        address userAddress,
+        uint256 pricingVersionValue
     )
         external
         view
@@ -287,12 +297,19 @@ interface IPopRules {
     function isBaseName(string calldata name) external pure returns (bool isBase);
 
     /// @notice Calculates registration cost for a label.
-    /// @dev Prices the label on the scarcity curve by base length: D * 2^(9 - n) below nine,
-    ///      halved for each character from nine upward and floored at `minPrice`. Ignores the
-    ///      caller's personhood
-    ///      status and reservation state. A label whose trailing-digit suffix is neither zero nor
-    ///      exactly two, and any non-canonical label, trigger @custom:reverts PopError.
+    /// @dev Prices the label by its base length through the cost model registered under
+    ///      `DotnsConstants.COST_MODEL`. Ignores the caller's personhood status and reservation
+    ///      state. A label whose trailing-digit suffix is neither zero nor exactly two, and any
+    ///      non-canonical label, trigger @custom:reverts PopError.
     /// @param name Domain label to price.
     /// @return cost Registration cost in wei.
     function price(string calldata name) external view returns (uint256 cost);
+
+    /// @notice Returns the current cost-model version.
+    /// @dev The current version held by the registry under `DotnsConstants.COST_MODEL`. The
+    ///      commit-reveal controller binds it into a commitment and prices the reveal at that
+    ///      version, so a model change between commit and reveal leaves the committed amount
+    ///      unchanged. @custom:reverts PopError when no registry is configured.
+    /// @return modelVersion Identifier of the current cost model and its parameters.
+    function pricingVersion() external view returns (uint256 modelVersion);
 }

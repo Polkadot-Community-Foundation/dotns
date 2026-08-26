@@ -28,7 +28,12 @@ contract BasicDotnsIntegrationReverts is BaseDotns {
         bytes32 secret = keccak256(abi.encodePacked(nameLabel, registrant, block.timestamp));
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: nameLabel, owner: registrant, secret: secret, reserved: true
+                label: nameLabel,
+                owner: registrant,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);

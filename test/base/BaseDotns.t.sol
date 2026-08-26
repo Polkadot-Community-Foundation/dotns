@@ -4,6 +4,9 @@ pragma solidity ^0.8.34;
 import {Test} from "forge-std/Test.sol";
 
 import {PopRules, IPopRules} from "../../contracts/pop/PopRules.sol";
+import {DotnsScarcityPricing} from "../../contracts/pop/DotnsScarcityPricing.sol";
+import {DotnsCostModelRegistry} from "../../contracts/pop/DotnsCostModelRegistry.sol";
+import {IDotnsPricing} from "../../contracts/pop/IDotnsPricing.sol";
 import {DotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
 import {
     DotnsRegistrarController,
@@ -60,6 +63,12 @@ abstract contract BaseDotns is Test {
 
     /// @notice Deployed PoP oracle instance.
     PopRules public popRules;
+
+    /// @notice Deployed scarcity pricing model seeding the cost-model registry.
+    DotnsScarcityPricing public scarcityPricing;
+
+    /// @notice Deployed cost-model registry resolved by PopRules under `COST_MODEL`.
+    DotnsCostModelRegistry public costModelRegistry;
 
     /// @notice Deployed DotNS registrar instance.
     DotnsRegistrar public dotnsRegistrar;
@@ -256,9 +265,14 @@ abstract contract BaseDotns is Test {
         dotnsContentResolver = DotnsContentResolver(dotnsContentResolverAddress);
         vm.label(dotnsContentResolverAddress, "DotnsContentResolver");
 
+        scarcityPricing = new DotnsScarcityPricing(RENT_PRICE, MIN_PRICE);
+        vm.label(address(scarcityPricing), "DotnsScarcityPricing");
+        costModelRegistry = new DotnsCostModelRegistry(owner);
+        vm.label(address(costModelRegistry), "DotnsCostModelRegistry");
+        costModelRegistry.register(IDotnsPricing(address(scarcityPricing)));
+
         address popRulesAddress = Upgrades.deployUUPSProxy(
-            "PopRules.sol:PopRules",
-            abi.encodeCall(PopRules.initialize, (RENT_PRICE, MIN_PRICE, registry))
+            "PopRules.sol:PopRules", abi.encodeCall(PopRules.initialize, (registry))
         );
         popRules = PopRules(popRulesAddress);
         vm.label(popRulesAddress, "PopRules");
@@ -315,6 +329,7 @@ abstract contract BaseDotns is Test {
         protocolRegistry.set(DotnsConstants.REGISTRY, dotnsRegistryAddress);
         protocolRegistry.set(DotnsConstants.REVERSE_RESOLVER, dotnsReverseResolverAddress);
         protocolRegistry.set(DotnsConstants.POP_RULES, popRulesAddress);
+        protocolRegistry.set(DotnsConstants.COST_MODEL, address(costModelRegistry));
         protocolRegistry.set(DotnsConstants.STORE_FACTORY, address(storeFactory));
         protocolRegistry.set(DotnsConstants.RESOLVER, dotnsResolverAddress);
         protocolRegistry.set(DotnsConstants.CONTENT_RESOLVER, dotnsContentResolverAddress);
@@ -689,7 +704,12 @@ abstract contract BaseDotns is Test {
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: nameOwner, secret: secret, reserved: reserveName
+                label: label,
+                owner: nameOwner,
+                secret: secret,
+                reserved: reserveName,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);

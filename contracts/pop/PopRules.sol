@@ -11,6 +11,7 @@ import {
 } from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {IPopRules} from "./IPopRules.sol";
+import {IDotnsCostModelRegistry} from "./IDotnsCostModelRegistry.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {IDotnsController} from "../registrars/IDotnsController.sol";
 import {DotnsRegistrar} from "../registrars/DotnsRegistrar.sol";
@@ -18,17 +19,17 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 import {IPersonhood} from "../external/personhood/IPersonhood.sol";
 
 /// @title PopRules
-/// @notice Implements DotNS classification, scarcity pricing on a geometric curve, and base-name
-///         reservations.
+/// @notice Implements DotNS classification, cost-model-driven pricing, and base-name reservations.
 /// @dev Tiers: base lengths <= 5 are governance-reserved, base lengths 6-8 require PopFull
 ///      (or PopLite when carrying exactly two trailing digits, for gateway-issued lite names),
 ///      base lengths >= 9 are open to any caller as NoStatus when they carry zero or exactly two
 ///      trailing digits. A one-digit suffix and more than two trailing digits are invalid.
-///      Every caller pays the same curve for a given base length: price(n) = D * 2^(9 - n) below
-///      nine characters, and D halved for each character from nine upward, never below the floor
-///      `minPrice`, where D is `startingPrice`. Personhood only unlocks the premium band. Base
-///      lengths below nine are closed to the public paid path until governance sets
-///      `shortNamesEnabled`; the gateway and registerReserved do not consult it.
+///      Every caller pays the same amount for a given base length. The amount comes from the cost
+///      model registered under `DotnsConstants.COST_MODEL`, which owns the curve; this contract
+///      passes it only the base length and keeps the classification, reservation, and tier rules.
+///      Personhood only unlocks the premium band. Base lengths below nine are closed to the public
+///      paid path until governance sets `shortNamesEnabled`; the gateway and registerReserved do
+///      not consult it.
 /// @custom:security-contact admin@parity.io
 contract PopRules is
     Initializable,
@@ -39,9 +40,6 @@ contract PopRules is
 {
     using StringUtils for *;
 
-    /// @notice Base fee D in wei: the scarcity curve's value at nine characters.
-    uint256 public startingPrice;
-
     /// @notice Active reservations keyed by digit-stripped base name.
     mapping(string baseName => Reservation reservation) public reservations;
 
@@ -50,10 +48,6 @@ contract PopRules is
 
     /// @notice Protocol-level address registry for all DotNS contracts.
     IDotnsProtocolRegistry public protocolRegistry;
-
-    /// @notice Price floor F in wei: the least any name can cost, so a long base length decays
-    ///         towards it rather than to zero. Never above `startingPrice`.
-    uint256 public minPrice;
 
     /// @notice Whether the public paid path may register names shorter than nine characters.
     ///         Closed by default; only governance opens it.
@@ -75,46 +69,13 @@ contract PopRules is
 
     /// @notice Initialises the oracle (public entry point).
     /// @dev Runs once behind the proxy; subsequent calls trigger @custom:reverts
-    ///      InvalidInitialization via the `initializer` modifier. Seeds `startingPrice` through
-    ///      @custom:function updateStartingPrice.
-    /// @param _startingPrice Base fee D in wei anchoring the scarcity curve, paid by every caller.
-    /// @param _minPrice Price floor F in wei; the least any name can cost. Must not exceed D.
+    ///      InvalidInitialization via the `initializer` modifier. Amounts come from the cost model
+    ///      registered under `DotnsConstants.COST_MODEL`, so no price is seeded here.
     /// @param registry Protocol-level address registry used to resolve sibling contracts.
-    function initialize(
-        uint256 _startingPrice,
-        uint256 _minPrice,
-        IDotnsProtocolRegistry registry
-    )
-        public
-        initializer
-    {
+    function initialize(IDotnsProtocolRegistry registry) public initializer {
         __Ownable_init(msg.sender);
         __ERC165_init();
-        // Seed values only; governance sets the live curve through @custom:function
-        // updateStartingPrice and @custom:function updateMinPrice after deployment.
-        updateStartingPrice(_startingPrice);
-        updateMinPrice(_minPrice);
         protocolRegistry = registry;
-    }
-
-    /// @inheritdoc IPopRules
-    function updateStartingPrice(uint256 newStartingPrice) public override onlyOwner {
-        require(newStartingPrice > 0, PopError("Price must be greater than 0"));
-        require(
-            newStartingPrice <= type(uint256).max / 512,
-            PopError("Price exceeds the scarcity-curve ceiling")
-        );
-        require(newStartingPrice >= minPrice, PopError("Base fee cannot fall below the floor"));
-        emit StartingPriceUpdated(startingPrice, newStartingPrice);
-        startingPrice = newStartingPrice;
-    }
-
-    /// @inheritdoc IPopRules
-    function updateMinPrice(uint256 newMinPrice) public override onlyOwner {
-        require(newMinPrice > 0, PopError("Floor must be greater than 0"));
-        require(newMinPrice <= startingPrice, PopError("Floor cannot exceed the base fee"));
-        emit MinPriceUpdated(minPrice, newMinPrice);
-        minPrice = newMinPrice;
     }
 
     /// @inheritdoc IPopRules
@@ -193,23 +154,21 @@ contract PopRules is
         override
         returns (PriceWithMeta memory metadata)
     {
-        _requireCanonicalLabel(name);
-        _enforceReservationRules(name, userAddress);
+        return _priceWithCheck(name, userAddress, false, 0);
+    }
 
-        (PopStatus requiredStatus, string memory classification, uint256 baseLength) =
-            _classifyValidatedName(name);
-        _requireShortNamesOpen(baseLength);
-        PopStatus userStatus = _personhoodTier(userAddress);
-
-        metadata.price = _priceValidatedName(baseLength);
-        metadata.status = requiredStatus;
-        metadata.userStatus = userStatus;
-        metadata.message = classification;
-
-        require(requiredStatus != PopStatus.Reserved, PopError(classification));
-        require(_meetsReach(requiredStatus, userStatus), PopError(classification));
-
-        return metadata;
+    /// @inheritdoc IPopRules
+    function priceWithCheckAtVersion(
+        string calldata name,
+        address userAddress,
+        uint256 pricingVersionValue
+    )
+        external
+        view
+        override
+        returns (PriceWithMeta memory metadata)
+    {
+        return _priceWithCheck(name, userAddress, true, pricingVersionValue);
     }
 
     /// @inheritdoc IPopRules
@@ -222,6 +181,72 @@ contract PopRules is
         override
         returns (PriceWithMeta memory metadata)
     {
+        return _priceWithoutCheck(name, userAddress, false, 0);
+    }
+
+    /// @inheritdoc IPopRules
+    function priceWithoutCheckAtVersion(
+        string calldata name,
+        address userAddress,
+        uint256 pricingVersionValue
+    )
+        external
+        view
+        override
+        returns (PriceWithMeta memory metadata)
+    {
+        return _priceWithoutCheck(name, userAddress, true, pricingVersionValue);
+    }
+
+    /// @notice Shared body for the reservation-enforcing pricing reads.
+    /// @dev `atVersion` selects the amount source: the current model when false, the model for
+    ///      `pricingVersionValue` when true. Classification, tier gating, and reservation rules are
+    ///      the same on both paths, so they live here once.
+    function _priceWithCheck(
+        string calldata name,
+        address userAddress,
+        bool atVersion,
+        uint256 pricingVersionValue
+    )
+        internal
+        view
+        returns (PriceWithMeta memory metadata)
+    {
+        _requireCanonicalLabel(name);
+        _enforceReservationRules(name, userAddress);
+
+        (PopStatus requiredStatus, string memory classification, uint256 baseLength) =
+            _classifyValidatedName(name);
+        _requireShortNamesOpen(baseLength);
+        PopStatus userStatus = _personhoodTier(userAddress);
+
+        metadata.price = atVersion
+            ? _priceValidatedNameAtVersion(pricingVersionValue, baseLength)
+            : _priceValidatedName(baseLength);
+        metadata.status = requiredStatus;
+        metadata.userStatus = userStatus;
+        metadata.message = classification;
+
+        require(requiredStatus != PopStatus.Reserved, PopError(classification));
+        require(_meetsReach(requiredStatus, userStatus), PopError(classification));
+
+        return metadata;
+    }
+
+    /// @notice Shared body for the non-reverting pricing reads.
+    /// @dev Mirror of @custom:function _priceWithCheck for the front-end preview path: reports a
+    ///      contested reservation through `metadata` rather than reverting. `atVersion` selects the
+    ///      amount source in the same way.
+    function _priceWithoutCheck(
+        string calldata name,
+        address userAddress,
+        bool atVersion,
+        uint256 pricingVersionValue
+    )
+        internal
+        view
+        returns (PriceWithMeta memory metadata)
+    {
         _requireCanonicalLabel(name);
 
         (PopStatus requiredStatus, string memory classification, uint256 baseLength) =
@@ -229,7 +254,9 @@ contract PopRules is
         _requireShortNamesOpen(baseLength);
         PopStatus userStatus = _personhoodTier(userAddress);
 
-        metadata.price = _priceValidatedName(baseLength);
+        metadata.price = atVersion
+            ? _priceValidatedNameAtVersion(pricingVersionValue, baseLength)
+            : _priceValidatedName(baseLength);
         metadata.status = requiredStatus;
         metadata.userStatus = userStatus;
         metadata.message = classification;
@@ -249,6 +276,11 @@ contract PopRules is
     function price(string calldata name) external view override returns (uint256) {
         _requireCanonicalLabel(name);
         return _priceValidatedName(_validatedBaseLength(name));
+    }
+
+    /// @inheritdoc IPopRules
+    function pricingVersion() external view override returns (uint256 modelVersion) {
+        return _costModelRegistry().currentVersion();
     }
 
     /// @inheritdoc IPopRules
@@ -305,18 +337,36 @@ contract PopRules is
         return userStatus >= required;
     }
 
-    /// @notice Scarcity price for a base length, floored at `minPrice`.
-    /// @dev Below nine the multiplier is at most 512, and @custom:function updateStartingPrice caps
-    ///      D at `type(uint256).max / 512` so the checked multiplication cannot overflow. From nine
-    ///      upward the price is D right-shifted by `n - 9`, so it only ever decreases; base lengths
-    ///      cap at 63 characters, so the shift is at most 54 and never reaches the word width. The
-    ///      floor stops a long base length costing nothing and is `updateMinPrice`-bounded to D, so
-    ///      it only binds from nine upward, never in the doubling range below nine.
+    /// @notice Amount for a base length at the current cost-model version.
+    /// @dev The cost-model registry owns the curve; this contract passes it only the base length.
+    ///      The call is a view because it runs on the ERC721 transfer floor read through
+    ///      @custom:function transferFloor.
     function _priceValidatedName(uint256 baseLength) internal view returns (uint256 priceValue) {
-        uint256 curve = baseLength < 9
-            ? startingPrice * (2 ** (9 - baseLength))
-            : startingPrice >> (baseLength - 9);
-        return curve < minPrice ? minPrice : curve;
+        return _costModelRegistry().priceForBaseLength(baseLength);
+    }
+
+    /// @notice Amount for a base length at a specific cost-model version.
+    /// @dev Prices an in-flight registration at the version it committed to, so a model change
+    ///      between commit and reveal does not move its cost. @custom:reverts UnknownVersion (from
+    ///      the registry) when the version was never registered.
+    function _priceValidatedNameAtVersion(
+        uint256 pricingVersionValue,
+        uint256 baseLength
+    )
+        internal
+        view
+        returns (uint256 priceValue)
+    {
+        return _costModelRegistry().priceForBaseLengthAtVersion(pricingVersionValue, baseLength);
+    }
+
+    /// @notice Resolves the cost-model registry registered under `DotnsConstants.COST_MODEL`.
+    /// @dev @custom:reverts PopError when no registry is configured, so a pricing read fails closed
+    ///      rather than resolving through the zero address.
+    function _costModelRegistry() private view returns (IDotnsCostModelRegistry registry) {
+        address configured = protocolRegistry.get(DotnsConstants.COST_MODEL);
+        require(configured != address(0), PopError("Cost model not configured"));
+        return IDotnsCostModelRegistry(configured);
     }
 
     /// @notice Reverts a public paid registration of a base length below nine while the short-name

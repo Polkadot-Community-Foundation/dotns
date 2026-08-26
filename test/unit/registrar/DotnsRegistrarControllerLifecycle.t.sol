@@ -47,7 +47,12 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         bytes32 secret = keccak256("new-owner-reclaim");
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: newOwner, secret: secret, reserved: true
+                label: label,
+                owner: newOwner,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
         vm.prank(newOwner);
@@ -84,7 +89,9 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
                 label: label,
                 owner: nameOwner,
                 secret: keccak256(abi.encodePacked(label, nameOwner, payer)),
-                reserved: true
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
@@ -126,7 +133,9 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
                 label: label,
                 owner: nameOwner,
                 secret: keccak256(abi.encodePacked(label, nameOwner, payer, "short")),
-                reserved: true
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
@@ -155,7 +164,9 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
                 label: label,
                 owner: nameOwner,
                 secret: keccak256(abi.encodePacked(label, nameOwner, payer, "ins")),
-                reserved: true
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
@@ -190,7 +201,9 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
                 label: label,
                 owner: nameOwner,
                 secret: keccak256(abi.encodePacked(label, nameOwner, "popfull")),
-                reserved: true
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
         vm.prank(nameOwner);
@@ -243,7 +256,9 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
                 label: label,
                 owner: address(probe),
                 secret: keccak256("probe-reclaim"),
-                reserved: true
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
         vm.prank(address(probe));
@@ -277,7 +292,12 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         bytes32 secret = keccak256("seed-reserved");
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: nameOwner, secret: secret, reserved: true
+                label: label,
+                owner: nameOwner,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
         dotnsRegistrarController.commit(commitment);
@@ -288,7 +308,12 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         bytes32 secondSecret = keccak256("seed-reserved-2");
         IDotnsRegistrarController.Registration memory secondRegistration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: nameOwner, secret: secondSecret, reserved: true
+                label: label,
+                owner: nameOwner,
+                secret: secondSecret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         vm.startPrank(owner);
@@ -331,7 +356,9 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
                 label: label,
                 owner: registrant,
                 secret: keccak256("eoa-overpay-happy"),
-                reserved: true
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
         vm.prank(registrant);
@@ -374,7 +401,9 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
                 label: label,
                 owner: address(receiver),
                 secret: keccak256("accepting-contract-overpay"),
-                reserved: true
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
         vm.prank(address(receiver));
@@ -422,7 +451,9 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
                 label: label,
                 owner: address(receiver),
                 secret: keccak256("contract-overpay"),
-                reserved: true
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
         vm.prank(address(receiver));
@@ -464,7 +495,9 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
             label: replayLabel,
             owner: address(attacker),
             secret: keccak256("reentry-replay"),
-            reserved: true
+            reserved: true,
+            maxPrice: type(uint256).max,
+            pricingVersion: popRules.pricingVersion()
         });
         attacker.arm(replay);
 
@@ -473,7 +506,9 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
                 label: label,
                 owner: address(attacker),
                 secret: keccak256("reentrant-overpay"),
-                reserved: true
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
         vm.prank(address(attacker));
@@ -523,7 +558,9 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
             label: replayLabel,
             owner: address(attacker),
             secret: keccak256("reentry"),
-            reserved: true
+            reserved: true,
+            maxPrice: type(uint256).max,
+            pricingVersion: popRules.pricingVersion()
         });
         bytes32 replayCommitment = dotnsRegistrarController.makeCommitment(replay);
         vm.prank(address(attacker));
@@ -535,7 +572,9 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
             label: label,
             owner: address(attacker),
             secret: keccak256("outer-reclaim"),
-            reserved: true
+            reserved: true,
+            maxPrice: type(uint256).max,
+            pricingVersion: popRules.pricingVersion()
         });
         bytes32 outerCommitment = dotnsRegistrarController.makeCommitment(outer);
         vm.prank(address(attacker));

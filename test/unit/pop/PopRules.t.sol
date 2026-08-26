@@ -2,8 +2,13 @@
 pragma solidity ^0.8.34;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
-import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
+import {PopRules, IPopRules} from "../../../contracts/pop/PopRules.sol";
 import {IDotnsController} from "../../../contracts/registrars/IDotnsController.sol";
+import {
+    DotnsProtocolRegistry,
+    IDotnsProtocolRegistry
+} from "../../../contracts/registry/DotnsProtocolRegistry.sol";
+import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 import {
     OwnableUpgradeable
 } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -211,90 +216,50 @@ contract PopRulesTests is BaseDotns {
         popRules.setShortNamesEnabled(false);
     }
 
-    function test_updateMinPrice_sets_floor_and_emits() public {
-        vm.expectEmit(address(popRules));
-        emit IPopRules.MinPriceUpdated(MIN_PRICE, 1 ether);
-        vm.prank(owner);
-        popRules.updateMinPrice(1 ether);
-        assertEq(popRules.minPrice(), 1 ether);
+    function test_price_matches_model() public view {
+        string memory label = "thisisaverylongname";
+        uint256 baseLength = bytes(label).length;
+        assertEq(popRules.price(label), scarcityPricing.priceForBaseLength(baseLength));
+        assertEq(popRules.price(label), costModelRegistry.priceForBaseLength(baseLength));
     }
 
-    function test_updateMinPrice_reverts_for_zero() public {
-        vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(IPopRules.PopError.selector, "Floor must be greater than 0")
+    function test_priceWithCheck_matches_model() public view {
+        string memory label = "longnamehere";
+        IPopRules.PriceWithMeta memory metadata = popRules.priceWithCheck(label, ed);
+        assertEq(metadata.price, scarcityPricing.priceForBaseLength(bytes(label).length));
+    }
+
+    function test_transferFloor_matches_model() public {
+        // A PopFull sender handing a NoStatus name to a NoStatus recipient pays the name's own
+        // curve price, which is the model amount for its base length.
+        string memory label = "longnamehere";
+        _grantPopFull(ed);
+        uint256 floor = popRules.transferFloor(label, ed, leonardo);
+        assertEq(floor, scarcityPricing.priceForBaseLength(bytes(label).length));
+    }
+
+    function test_pricingVersion_matches_registry() public view {
+        assertEq(popRules.pricingVersion(), costModelRegistry.currentVersion());
+        assertEq(popRules.pricingVersion(), scarcityPricing.version());
+    }
+
+    function test_price_reverts_when_cost_model_unconfigured() public {
+        // A PopRules bound to a registry with no COST_MODEL key fails closed on any pricing read.
+        vm.startPrank(owner);
+        address freshRegistry = Upgrades.deployUUPSProxy(
+            "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
+            abi.encodeCall(DotnsProtocolRegistry.initialize, (TLD_LABEL))
         );
-        popRules.updateMinPrice(0);
-    }
-
-    function test_updateMinPrice_reverts_above_base_fee() public {
-        vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(IPopRules.PopError.selector, "Floor cannot exceed the base fee")
+        address freshPopRules = Upgrades.deployUUPSProxy(
+            "PopRules.sol:PopRules",
+            abi.encodeCall(PopRules.initialize, (IDotnsProtocolRegistry(freshRegistry)))
         );
-        popRules.updateMinPrice(RENT_PRICE + 1);
-    }
+        vm.stopPrank();
 
-    function test_updateMinPrice_only_owner() public {
-        vm.prank(ed);
         vm.expectRevert(
-            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, ed)
+            abi.encodeWithSelector(IPopRules.PopError.selector, "Cost model not configured")
         );
-        popRules.updateMinPrice(1 ether);
-    }
-
-    function test_updateStartingPrice_cannot_fall_below_floor() public {
-        vm.prank(owner);
-        popRules.updateMinPrice(1 ether);
-        vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPopRules.PopError.selector, "Base fee cannot fall below the floor"
-            )
-        );
-        popRules.updateStartingPrice(0.5 ether);
-    }
-
-    function test_lowering_floor_extends_the_decay() public {
-        // Governance drops the floor to one wei, so the long-name price falls below the seeded
-        // floor.
-        vm.prank(owner);
-        popRules.updateMinPrice(1);
-        assertEq(popRules.price("thisisaverylongname"), RENT_PRICE >> 10);
-    }
-
-    function test_updateStartingPrice_sets_and_emits() public {
-        vm.expectEmit(address(popRules));
-        emit IPopRules.StartingPriceUpdated(RENT_PRICE, 20 ether);
-        vm.prank(owner);
-        popRules.updateStartingPrice(20 ether);
-        assertEq(popRules.startingPrice(), 20 ether);
-    }
-
-    function test_updateStartingPrice_reverts_for_zero() public {
-        vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(IPopRules.PopError.selector, "Price must be greater than 0")
-        );
-        popRules.updateStartingPrice(0);
-    }
-
-    function test_updateStartingPrice_reverts_above_ceiling() public {
-        vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPopRules.PopError.selector, "Price exceeds the scarcity-curve ceiling"
-            )
-        );
-        popRules.updateStartingPrice(type(uint256).max / 512 + 1);
-    }
-
-    function test_updateStartingPrice_only_owner() public {
-        vm.prank(ed);
-        vm.expectRevert(
-            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, ed)
-        );
-        popRules.updateStartingPrice(20 ether);
+        PopRules(freshPopRules).price("longnamehere");
     }
 
     function test_reserveBaseNameForPop_reverts_for_non_controller() public {

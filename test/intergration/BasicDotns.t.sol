@@ -233,7 +233,12 @@ contract BasicDotnsIntegration is BaseDotns {
         bytes32 secret = keccak256(abi.encodePacked(giftedName, victim, block.timestamp, payer));
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: giftedName, owner: victim, secret: secret, reserved: true
+                label: giftedName,
+                owner: victim,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);

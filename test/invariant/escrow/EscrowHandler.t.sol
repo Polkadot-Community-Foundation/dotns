@@ -115,7 +115,12 @@ contract EscrowHandler is Test {
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: actor, secret: secret, reserved: true
+                label: label,
+                owner: actor,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = controller.makeCommitment(registration);
@@ -187,7 +192,12 @@ contract EscrowHandler is Test {
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: ownerAddr, secret: secret, reserved: true
+                label: label,
+                owner: ownerAddr,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = controller.makeCommitment(registration);
@@ -399,7 +409,12 @@ contract EscrowHandler is Test {
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: actor, secret: secret, reserved: true
+                label: label,
+                owner: actor,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = controller.makeCommitment(registration);

@@ -168,7 +168,12 @@ contract RegistrarControllerHandler is Test {
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: actor, secret: secret, reserved: reserved
+                label: label,
+                owner: actor,
+                secret: secret,
+                reserved: reserved,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = controller.makeCommitment(registration);
@@ -214,7 +219,12 @@ contract RegistrarControllerHandler is Test {
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: actor, secret: secret, reserved: true
+                label: label,
+                owner: actor,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = controller.makeCommitment(registration);
@@ -247,7 +257,12 @@ contract RegistrarControllerHandler is Test {
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: actor, secret: secret, reserved: reserved
+                label: label,
+                owner: actor,
+                secret: secret,
+                reserved: reserved,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = controller.makeCommitment(registration);

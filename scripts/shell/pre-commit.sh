@@ -125,6 +125,22 @@ validate_abi_contracts() {
   run_validation "$file" "line-ending validation" awk '/\r/ { exit 1 }' "$file"
 }
 
+# Rejects decorative separator comments: a comment whose content is a run of
+# rule characters, such as a line of dashes or equals under a heading. Prose
+# and bullet lists are untouched because they carry words, not a bare run.
+_reject_separator_comments() {
+  if grep -nE '^[[:space:]]*(//+|/\*|\*|#)[[:space:]]*[-=*_~#]{6,}|^[[:space:]]*/{6,}[[:space:]]*$' "$1" >&2; then
+    return 1
+  fi
+  return 0
+}
+
+validate_no_separator_comments() {
+  local file="$1"
+
+  run_validation "$file" "decorative-separator check" _reject_separator_comments "$file"
+}
+
 echo "pre-commit: validating repository files"
 while IFS= read -r -d '' file; do
   [ -f "$file" ] || continue
@@ -159,6 +175,14 @@ while IFS= read -r -d '' file; do
       ;;
     .github/abi-contracts.txt)
       validate_abi_contracts "$file"
+      ;;
+  esac
+
+  case "$file" in
+    lib/*|node_modules/*)
+      ;;
+    *.sol|*.ts|*.tsx|*.js|*.cjs|*.mjs|*.sh|*.bash|*.py)
+      validate_no_separator_comments "$file"
       ;;
   esac
 done < <(git ls-files -z)

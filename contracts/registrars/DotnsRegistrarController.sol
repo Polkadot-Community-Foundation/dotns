@@ -130,7 +130,12 @@ contract DotnsRegistrarController is
     {
         commitment = keccak256(
             abi.encode(
-                registration.label, registration.owner, registration.secret, registration.reserved
+                registration.label,
+                registration.owner,
+                registration.secret,
+                registration.reserved,
+                registration.maxPrice,
+                registration.pricingVersion
             )
         );
     }
@@ -179,9 +184,13 @@ contract DotnsRegistrarController is
         bool isDirect = msg.sender == registration.owner;
         IPopRules.PriceWithMeta memory priced;
         if (isDirect) {
-            priced = rules.priceWithCheck(registration.label, registration.owner);
+            priced = rules.priceWithCheckAtVersion(
+                registration.label, registration.owner, registration.pricingVersion
+            );
         } else {
-            priced = rules.priceWithoutCheck(registration.label, registration.owner);
+            priced = rules.priceWithoutCheckAtVersion(
+                registration.label, registration.owner, registration.pricingVersion
+            );
             if (priced.status == IPopRules.PopStatus.Reserved) {
                 (IPopRules.PopStatus required,) = rules.classifyName(registration.label);
                 if (required == IPopRules.PopStatus.Reserved) {
@@ -196,6 +205,10 @@ contract DotnsRegistrarController is
         }
 
         uint256 totalCharged = priced.price;
+        require(
+            totalCharged <= registration.maxPrice,
+            PriceExceedsMax(registration.label, totalCharged, registration.maxPrice)
+        );
         require(msg.value >= totalCharged, InsufficientValue());
 
         IDotnsReverseResolver reverse;

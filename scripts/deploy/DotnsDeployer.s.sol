@@ -5,6 +5,10 @@ import {console} from "forge-std/Script.sol";
 import {BaseDeployer} from "./BaseDeployer.s.sol";
 
 import {PopRules} from "../../contracts/pop/PopRules.sol";
+import {DotnsScarcityPricing} from "../../contracts/pop/DotnsScarcityPricing.sol";
+import {DotnsCostModelRegistry} from "../../contracts/pop/DotnsCostModelRegistry.sol";
+import {IDotnsPricing} from "../../contracts/pop/IDotnsPricing.sol";
+import {IDotnsCostModelRegistry} from "../../contracts/pop/IDotnsCostModelRegistry.sol";
 import {DotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
 import {DotnsRegistrarController} from "../../contracts/registrars/DotnsRegistrarController.sol";
 import {DotnsPopController} from "../../contracts/registrars/DotnsPopController.sol";
@@ -77,6 +81,8 @@ contract DotnsDeployer is BaseDeployer {
         address contentResolver;
         address resolver;
         address popRules;
+        address costModel;
+        address costModelRegistry;
         address registrarController;
         address protocolRegistry;
         address nameEscrow;
@@ -122,6 +128,7 @@ contract DotnsDeployer is BaseDeployer {
         deployment.registry = _deployRegistry(OWNER, deployment.protocolRegistry);
         deployment.contentResolver = _deployContentResolver(OWNER, deployment.protocolRegistry);
         deployment.resolver = _deployResolver(OWNER, deployment.protocolRegistry);
+        (deployment.costModel, deployment.costModelRegistry) = _deployCostModelStack(OWNER);
         deployment.popRules = _deployPopRules(OWNER, deployment.protocolRegistry);
         deployment.nameEscrow = _deployNameEscrow(OWNER, deployment.protocolRegistry);
         deployment.registrarController =
@@ -263,6 +270,28 @@ contract DotnsDeployer is BaseDeployer {
         dotnsResolver = DotnsResolver(proxy);
     }
 
+    function _deployCostModelStack(address owner)
+        internal
+        returns (address model, address registry)
+    {
+        model = _broadcastDeployCreate3(
+            owner,
+            "DotnsScarcityPricing.sol:DotnsScarcityPricing",
+            abi.encode(DotnsConstants.RENT_PRICE, DotnsConstants.MIN_PRICE),
+            "DotnsScarcityPricing"
+        );
+        registry = _broadcastDeployCreate3(
+            owner,
+            "DotnsCostModelRegistry.sol:DotnsCostModelRegistry",
+            abi.encode(owner),
+            "DotnsCostModelRegistry"
+        );
+
+        vm.startBroadcast(owner);
+        DotnsCostModelRegistry(registry).register(IDotnsPricing(model));
+        vm.stopBroadcast();
+    }
+
     function _deployPopRules(
         address owner,
         address protocolRegistryProxy
@@ -273,14 +302,7 @@ contract DotnsDeployer is BaseDeployer {
         proxy = _broadcastDeployUups(
             owner,
             "PopRules.sol:PopRules",
-            abi.encodeCall(
-                PopRules.initialize,
-                (
-                    DotnsConstants.RENT_PRICE,
-                    DotnsConstants.MIN_PRICE,
-                    IDotnsProtocolRegistry(protocolRegistryProxy)
-                )
-            ),
+            abi.encodeCall(PopRules.initialize, (IDotnsProtocolRegistry(protocolRegistryProxy))),
             "PopRules"
         );
         popRules = PopRules(proxy);
@@ -394,6 +416,9 @@ contract DotnsDeployer is BaseDeployer {
         protocolRegistry.set(DotnsConstants.REVERSE_RESOLVER, deployment.reverseResolver);
         protocolRegistry.set(DotnsConstants.RESOLVER, deployment.resolver);
         protocolRegistry.set(DotnsConstants.CONTENT_RESOLVER, deployment.contentResolver);
+        // Point at the cost-model registry before PopRules so no pricing read resolves an unset
+        // key.
+        protocolRegistry.set(DotnsConstants.COST_MODEL, deployment.costModelRegistry);
         protocolRegistry.set(DotnsConstants.POP_RULES, deployment.popRules);
         protocolRegistry.set(DotnsConstants.STORE_FACTORY, deployment.storeFactory);
         protocolRegistry.set(DotnsConstants.NAME_ESCROW, deployment.nameEscrow);
@@ -433,6 +458,11 @@ contract DotnsDeployer is BaseDeployer {
         _verifyWhitelistOperator(deployment, whitelistOperator);
 
         require(DotnsRegistry(deployment.registry).recordExists(bytes32(0)), "Root record missing");
+        require(
+            IDotnsCostModelRegistry(deployment.costModelRegistry).priceForBaseLength(9)
+                == DotnsConstants.RENT_PRICE,
+            "CostModel: pivot price mismatch"
+        );
         console.log("=== Deployment verification complete ===");
     }
 
@@ -516,6 +546,7 @@ contract DotnsDeployer is BaseDeployer {
             DotnsConstants.CONTENT_RESOLVER, deployment.contentResolver, "Key: contentResolver"
         );
         _assertKey(DotnsConstants.POP_RULES, deployment.popRules, "Key: popRules");
+        _assertKey(DotnsConstants.COST_MODEL, deployment.costModelRegistry, "Key: costModel");
         _assertKey(DotnsConstants.STORE_FACTORY, deployment.storeFactory, "Key: storeFactory");
         _assertKey(DotnsConstants.NAME_ESCROW, deployment.nameEscrow, "Key: nameEscrow");
         _assertKey(DotnsConstants.POP_CONTROLLER, deployment.popController, "Key: popController");

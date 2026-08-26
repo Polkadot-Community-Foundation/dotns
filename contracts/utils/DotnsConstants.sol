@@ -30,19 +30,25 @@ library DotnsConstants {
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant PERSONHOOD_CONTEXT = bytes32("dotns");
 
-    /// @notice Initial-deployment base fee D passed into `PopRules.initialize` as `_startingPrice`.
-    /// @dev Purely the value the contract is seeded with at deployment: 10 DOT under revive's
-    ///      18-decimal Asset Hub convention. Governance sets the live value through
-    ///      `PopRules.updateStartingPrice`, so this is never read after deployment and consumers
-    ///      are not rebuilt against a new constant. Single source of truth for deploy scripts and
-    ///      tests so the seed cannot drift between call sites.
+    /// @notice Base fee D passed into the `DotnsScarcityPricing` constructor.
+    /// @dev The curve's value at nine characters: 10 DOT under revive's 18-decimal Asset Hub
+    ///      convention. A new curve is a fresh model deployment registered under
+    ///      @custom:constant COST_MODEL, so this constant seeds the model rather than being read
+    ///      afterwards. Single source of truth for deploy scripts and tests so the seed cannot
+    ///      drift between call sites.
     uint256 internal constant RENT_PRICE = 10 ether;
 
-    /// @notice Initial-deployment price floor F passed into `PopRules.initialize` as `_minPrice`.
-    /// @dev Purely the seed value: below `RENT_PRICE` so the curve falls above nine characters.
-    ///      Governance sets the live floor through `PopRules.updateMinPrice`; never read after
-    ///      deployment.
+    /// @notice Price floor F passed into the `DotnsScarcityPricing` constructor.
+    /// @dev Below `RENT_PRICE` so the curve falls above nine characters. Seeds the model
+    ///      constructor; a new floor is a fresh model deployment.
     uint256 internal constant MIN_PRICE = 0.1 ether;
+
+    /// @notice Well-known key for the cost model pricing registrations by base length.
+    /// @dev Role: single authority for the wei amount a registration costs. `PopRules` resolves
+    ///      it here on every pricing read, so swapping the curve is one `set` on the protocol
+    ///      registry without redeploying `PopRules` or its consumers.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant COST_MODEL = bytes32("costModel");
 
     /// @notice Operational role allowed to manage the public controller whitelist.
     /// @dev Holders can grant or revoke whitelist entries, but cannot upgrade contracts

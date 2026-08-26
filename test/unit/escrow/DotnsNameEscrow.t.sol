@@ -442,14 +442,14 @@ contract DotnsNameEscrowTest is BaseDotns {
         // protocol fees and the deposit travels with the NFT. There is no transfer-time refund:
         // `position.recipient` rebinds to the new holder, the locked deposit follows, and only
         // the new holder can later release into escrow. Promoting `ed` to PopFull before the
-        // transfer forces `PopRules.transferFloor` to return `startingPrice` while the position
+        // transfer forces `PopRules.transferFloor` to return the base fee D while the position
         // still carries the original `RENT_PRICE` deposit, so both legs of `chargeTransferFee`
         // run in one call.
         uint256 tokenId = _registerNoStatus(LABEL, ed);
 
         _grantPopFull(ed);
 
-        uint256 startingPrice = popRules.startingPrice();
+        uint256 startingPrice = popRules.price(LABEL);
         uint256 quotedFee = dotnsRegistrar.quoteTransferFee(tokenId, leonardo);
         assertEq(quotedFee, startingPrice, "PopFull holder downgrading to NoStatus pays D");
 
@@ -505,7 +505,7 @@ contract DotnsNameEscrowTest is BaseDotns {
         uint256 protocolFeesBefore = dotnsNameEscrow.protocolFees();
         uint256 refundCountBefore = dotnsNameEscrow.pendingRefundCount(ed);
 
-        uint256 fee = popRules.startingPrice();
+        uint256 fee = popRules.price(LABEL);
         vm.deal(address(dotnsRegistrar), fee);
         vm.prank(address(dotnsRegistrar));
         dotnsNameEscrow.chargeTransferFee{value: fee}(
@@ -692,7 +692,12 @@ contract DotnsNameEscrowTest is BaseDotns {
         bytes32 secret = keccak256(abi.encodePacked(label, nameOwner, block.timestamp, payer));
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: nameOwner, secret: secret, reserved: true
+                label: label,
+                owner: nameOwner,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
