@@ -106,20 +106,11 @@ contract DotnsRegistrar is
         address escrow = protocolRegistry.get(DotnsConstants.NAME_ESCROW);
         if (holder != escrow) return false;
 
-        // Escrow custody on its own no longer means registrable. While a released position is
-        // inside its redeem window the name still belongs to its previous holder, and reclaim
-        // would revert with NotReclaimable. Reporting it available there would advertise the name
-        // as free and send registrants through an entire commit-reveal cycle that cannot succeed,
-        // so availability tracks the window rather than custody.
-        IDotnsNameEscrow.ReleasePosition memory position =
-            IDotnsNameEscrow(payable(escrow)).getReleasePosition(id);
-
-        // `released` is part of the predicate, not a redundant check. Availability here means
-        // "reclaim would succeed", and reclaim requires the position to be released as well as out
-        // of its window. The escrow's `onERC721Received` rejects unsolicited transfers so custody
-        // without a released position should be unreachable, but reporting a name registrable on
-        // the strength of a zero `redeemableUntil` alone would be wrong.
-        return position.released && block.timestamp >= position.redeemableUntil;
+        // Escrow custody on its own does not mean registrable: a released name inside its redeem
+        // window still belongs to its previous holder. The escrow owns that lifecycle and is asked
+        // directly, so availability here and reclaimability there cannot drift apart and start
+        // advertising names whose registration would revert.
+        return IDotnsNameEscrow(payable(escrow)).isReclaimable(id);
     }
 
     /// @inheritdoc IDotnsRegistrar

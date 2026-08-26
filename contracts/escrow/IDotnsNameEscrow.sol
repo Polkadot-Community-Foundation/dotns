@@ -417,6 +417,17 @@ interface IDotnsNameEscrow {
     /// @param newOwner Address of the new registrant taking over the name.
     function reclaim(uint256 tokenId, address newOwner) external;
 
+    /// @notice Returns whether a token may currently be reclaimed out of escrow custody.
+    /// @dev True once the position is released and its redeem window has elapsed. Whether the
+    ///      deposit was ever withdrawn makes no difference: @custom:function reclaim settles any
+    ///      outstanding amount as part of the transfer.
+    ///      Both @custom:function reclaim and @custom:function IDotnsRegistrar.available derive
+    ///      their answer from `isReclaimable`, so a name is advertised as registrable exactly when
+    ///      registering it would succeed. Consumers should call `isReclaimable` rather than
+    ///      rebuilding the condition from @custom:function getReleasePosition.
+    /// @return reclaimable True when @custom:function reclaim would succeed for `tokenId`.
+    function isReclaimable(uint256 tokenId) external view returns (bool reclaimable);
+
     /// @notice Returns a released token to its previous holder during the redeem window.
     /// @dev The undo for an accidental release, and the reason the redeem window exists. Only the
     ///      position recipient may call this (@custom:reverts NotRefundRecipient otherwise), the

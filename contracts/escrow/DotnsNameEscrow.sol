@@ -681,18 +681,9 @@ contract DotnsNameEscrow is
         onlyController
         nonReentrant
     {
+        require(isReclaimable(tokenId), NotReclaimable(tokenId));
+
         ReleasePosition storage position = _positions[tokenId];
-
-        // The gate is the elapsed redeem window, not the `claimed` flag. Gating on `claimed` made
-        // recyclability depend on the previous holder choosing to withdraw, which strands the name
-        // forever whenever they have no reason to: a zero-amount position has nothing to collect,
-        // so "never withdraws" is the default rather than the exception. The window bounds the
-        // wait instead, and any unwithdrawn value is settled below rather than held hostage.
-        require(
-            position.released && block.timestamp >= position.redeemableUntil,
-            NotReclaimable(tokenId)
-        );
-
         address previousRecipient = position.recipient;
 
         // Settle before deleting: the departing holder keeps their claim on the deposit even though
@@ -706,6 +697,20 @@ contract DotnsNameEscrow is
         _registrar().safeTransferFrom(address(this), newOwner, tokenId);
 
         emit NameReclaimed(tokenId, previousRecipient, newOwner);
+    }
+
+    /// @inheritdoc IDotnsNameEscrow
+    /// @dev `public` rather than `external` so `reclaim` can gate on it without a self-call, which
+    ///      is what keeps the condition in one place instead of two.
+    function isReclaimable(uint256 tokenId) public view override returns (bool reclaimable) {
+        ReleasePosition storage position = _positions[tokenId];
+
+        // The gate is the elapsed redeem window, not the `claimed` flag. Gating on `claimed` would
+        // make recyclability depend on the previous holder choosing to withdraw, which strands the
+        // name whenever they have no reason to: a zero-amount position has nothing to collect, so
+        // "never withdraws" is the default rather than the exception. The window bounds the wait
+        // instead, and reclaim settles any unwithdrawn value rather than holding it hostage.
+        reclaimable = position.released && block.timestamp >= position.redeemableUntil;
     }
 
     /// @inheritdoc IDotnsNameEscrow
