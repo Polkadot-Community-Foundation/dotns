@@ -79,6 +79,40 @@ contract DotnsNameEscrowRedeemTest is BaseDotns {
         );
     }
 
+    /// @dev The event carries both clocks, and `redeemableUntil` is what clients watch to know when
+    ///      a released name becomes registrable. An indexer reading a wrong value here would
+    ///      advertise the name at the wrong moment, so the emitted timestamp is asserted rather
+    ///      than only the stored one.
+    function test_release_emits_both_clocks_on_NameReleased() public {
+        uint256 tokenId = _registerAt(FUNDED_LABEL, ed, IPopRules.PopStatus.NoStatus);
+
+        IDotnsNameEscrow.ReleasePosition memory before = _positionOf(tokenId);
+        uint256 releasedAt = block.timestamp;
+
+        vm.startPrank(ed);
+        dotnsRegistrar.approve(address(dotnsNameEscrow), tokenId);
+
+        vm.expectEmit(true, true, true, true, address(dotnsNameEscrow));
+        emit IDotnsNameEscrow.NameReleased(
+            tokenId,
+            ed,
+            before.asset,
+            before.amount,
+            releasedAt + ESCROW_COOLDOWN,
+            releasedAt + ESCROW_REDEEM_WINDOW
+        );
+        dotnsNameEscrow.release(tokenId);
+        vm.stopPrank();
+
+        // The emitted deadline and the stored one must be the same value; a client acting on the
+        // event must not reach a different conclusion from one reading state directly.
+        assertEq(
+            _positionOf(tokenId).redeemableUntil,
+            releasedAt + ESCROW_REDEEM_WINDOW,
+            "the stored deadline matches the emitted one"
+        );
+    }
+
     function test_release_reverts_when_redeem_window_is_unseeded() public {
         uint256 tokenId = _registerAt(FUNDED_LABEL, ed, IPopRules.PopStatus.NoStatus);
 
