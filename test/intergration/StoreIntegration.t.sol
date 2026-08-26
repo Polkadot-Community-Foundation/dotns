@@ -66,7 +66,7 @@ contract StoreIntegrationTest is BaseDotns {
         );
 
         vm.prank(ed);
-        dotnsPopController.claimLabelStore();
+        dotnsPopController.settlePendingClaims(ed, type(uint256).max);
 
         address storeAddr = storeFactory.getLabelStore(ed);
         assertTrue(storeAddr != address(0));

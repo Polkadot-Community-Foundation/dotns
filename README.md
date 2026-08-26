@@ -16,13 +16,13 @@ DotNS is a naming system for Polkadot. An account can register a .dot name, rece
 
 ## Deployment and operations
 
-Current network addresses and deployment notes are listed in [DEPLOYMENTS.md](./DEPLOYMENTS.md).
+Deployment notes are in [DEPLOYMENTS.md](./DEPLOYMENTS.md). Network addresses are recorded in `deployments/<network>/<chain-id>.json` and published with each release.
 
 ### Cutting a release
 
-A release publishes the contract ABIs as GitHub release assets. It does not deploy anything; deploying contracts to a network is a separate process, described in [DEPLOYMENTS.md](./DEPLOYMENTS.md).
+A release publishes the contract ABIs and the deployed addresses as GitHub release assets, described in [RELEASE_ARTIFACTS.md](./RELEASE_ARTIFACTS.md). It does not deploy anything; deploying contracts to a network is a separate process, described in [DEPLOYMENTS.md](./DEPLOYMENTS.md).
 
-Run **Publish Release Package** from the Actions tab, pick the branch to release from, and enter the version (`v0.5.5`). The workflow does the rest: it builds, tests, extracts the ABIs listed in [.github/abi-contracts.txt](./.github/abi-contracts.txt), creates the release as a draft with every asset attached, verifies the set against what the build produced, and only then publishes. Pushing a matching tag runs the same workflow, so `git tag v0.5.5 && git push origin v0.5.5` remains equivalent.
+Run **Publish Release Package** from the Actions tab, pick the branch to release from, and enter the version (`v0.5.5`). The workflow does the rest: it builds, tests, extracts the ABIs listed in [.github/abi-contracts.txt](./.github/abi-contracts.txt), generates the address and manifest files, creates the release as a draft with every asset attached, verifies the set against what the build produced, and only then publishes. Pushing a matching tag runs the same workflow, so `git tag v0.5.5 && git push origin v0.5.5` remains equivalent.
 
 Pre-releases use **Publish Beta Package** with a suffixed version, `v0.5.5-rc1`. The version is the release identity; the `version` field in `package.json` is unrelated and nothing reads it.
 
@@ -123,9 +123,9 @@ Each base label carries a head/tail-indexed reservation queue with a capacity of
 
 #### Early testnet quirk: LabelStore deployment
 
-Pop-gateway issuances mint the name and persist its label, but LabelStore deployment is deferred for users who have not yet interacted with the protocol from their own address. The current pallet-revive runtime does not let substrate Root deploy contracts on behalf of an account it does not control, so the per-user LabelStore cannot be created at the moment the gateway writes. The controller stamps a pending-claim entry instead, and the user calls claimLabelStore once from their own address to settle the store. The pending-claim entries have a bounded TTL (expirePendingClaim is permissionless) so the slot frees itself if a user never claims. When the runtime supports root-origin contract deployment, the deferred path collapses to a no-op and the issuance flow becomes one transaction end-to-end. This is a runtime limitation, not a protocol design choice.
+Pop-gateway issuances mint the name and persist its label, but LabelStore deployment is deferred for users who have not yet interacted with the protocol from their own address. The current pallet-revive runtime does not let substrate Root deploy contracts on behalf of an account it does not control, so the per-user LabelStore cannot be created at the moment the gateway writes. The controller stamps a pending-claim entry instead, and settlement writes the label into the owner's store, deploying the store on the first write. Settlement is permissionless via settlePendingClaims: the owner settles their own store, or after the claim window anyone settles a given owner's entry and pays the cost. Settlement always writes the label rather than dropping the entry, so a pending name is never stranded. When the runtime supports root-origin contract deployment, the deferred path collapses to a no-op and the issuance flow becomes one transaction end-to-end. This is a runtime limitation, not a protocol design choice.
 
-Operational consequence for transfers: the registrar derives the transfer-floor price by reading the label from the sender's LabelStore. A gateway-issued name held by a user who has not yet called claimLabelStore has no readable label on the sender side, so `_quoteTransferFee` returns zero regardless of the recipient's tier. Until the holder settles their LabelStore, a downward transfer (for example PopFull to NoStatus) does not charge the cross-tier friction it would otherwise owe. Clients that consume gateway-issued names should treat claimLabelStore as a prerequisite for accurate transfer-time pricing, not just for label discovery.
+Operational consequence for transfers: the registrar derives the transfer-floor price by reading the label from the sender's LabelStore. A gateway-issued name whose pending claim is not yet settled has no readable label on the sender side, so `_quoteTransferFee` returns zero regardless of the recipient's tier. Until the name is settled into a LabelStore, a downward transfer (for example PopFull to NoStatus) does not charge the cross-tier friction it would otherwise owe. Clients that consume gateway-issued names should treat settlement as a prerequisite for accurate transfer-time pricing, not just for label discovery.
 
 ### RootGatewayDispatcher
 
@@ -236,7 +236,7 @@ UserStore is the user-claimed half. The bound owner is the only writer and prior
 
 ### Deployments
 
-Current network addresses are listed in [DEPLOYMENTS.md](./DEPLOYMENTS.md).
+Addresses are recorded per network in `deployments/<network>/<chain-id>.json`, and published with each release as `deployments.json`. See [DEPLOYMENTS.md](./DEPLOYMENTS.md) for how a deployment is run and [RELEASE_ARTIFACTS.md](./RELEASE_ARTIFACTS.md) for what a release contains.
 
 ### Build and test
 

@@ -237,7 +237,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
                 })
             );
             vm.prank(ed);
-            dotnsPopController.claimLabelStore();
+            dotnsPopController.settlePendingClaims(ed, type(uint256).max);
             link = IDotnsPopController.Link({
                 kind: IDotnsPopController.LinkKind.LiteUsername,
                 liteLabel: LITE_LABEL_A_DOTTED,
@@ -343,7 +343,8 @@ contract DotnsPopControllerFuzz is BaseDotns {
             IDotnsPopController.LiteRegistration({liteLabel: label, user: ed, chatKey: chatKey})
         );
 
-        IDotnsPopController.PendingClaim[] memory pending = dotnsPopController.pendingClaims(ed);
+        IDotnsPopController.PendingClaim[] memory pending =
+            dotnsPopController.pendingClaims(ed, 0, type(uint256).max);
         assertEq(pending[0].label, label);
         assertGt(pending[0].mintedAt, 0);
         assertEq(storeFactory.getLabelStore(ed), address(0));
@@ -353,7 +354,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         assertEq(dotnsPopResolver.chatKey(node), chatKey);
     }
 
-    function testFuzz_claimLabelStore_settles_label_and_chat_key_exactly(
+    function testFuzz_settle_settles_label_and_chat_key_exactly(
         uint8 suffix,
         bytes1 keySeed
     )
@@ -369,17 +370,17 @@ contract DotnsPopControllerFuzz is BaseDotns {
         );
 
         vm.prank(ed);
-        dotnsPopController.claimLabelStore();
+        dotnsPopController.settlePendingClaims(ed, type(uint256).max);
 
         bytes32 node = _nodeOf(label);
         address store = storeFactory.getLabelStore(ed);
         assertTrue(store != address(0));
         assertEq(ILabelStore(store).getLabel(node), string.concat(label, protocolRegistry.tld()));
         assertEq(dotnsPopResolver.chatKey(node), chatKey);
-        assertEq(dotnsPopController.pendingClaims(ed).length, 0);
+        assertEq(dotnsPopController.pendingClaimCountOf(ed), 0);
     }
 
-    function testFuzz_pendingClaim_expiry_boundary_admits_or_lapses(
+    function testFuzz_settle_writes_label_regardless_of_age(
         uint64 duration,
         uint64 elapsed
     )
@@ -402,23 +403,23 @@ contract DotnsPopControllerFuzz is BaseDotns {
             })
         );
 
-        uint64 mintedAt = dotnsPopController.pendingClaims(ed)[0].mintedAt;
+        uint64 mintedAt = dotnsPopController.pendingClaims(ed, 0, 1)[0].mintedAt;
         vm.warp(uint256(mintedAt) + uint256(elapsed));
 
-        if (elapsed <= duration) {
-            vm.expectRevert(
-                abi.encodeWithSelector(IDotnsPopController.PendingClaimNotExpired.selector, ed)
-            );
-            dotnsPopController.expirePendingClaim(ed);
-            vm.prank(ed);
-            dotnsPopController.claimLabelStore();
-            assertTrue(storeFactory.getLabelStore(ed) != address(0));
-        } else {
-            vm.expectRevert(abi.encodeWithSelector(IDotnsPopController.NoPendingClaim.selector, ed));
-            vm.prank(ed);
-            dotnsPopController.claimLabelStore();
-            dotnsPopController.expirePendingClaim(ed);
-            assertEq(storeFactory.getLabelStore(ed), address(0));
-        }
+        // Stores always settle: settlement writes the label into the store whether or not the
+        // reservation deadline has passed, so age never strands a claim.
+        vm.prank(ed);
+        (uint256 settledCount, bool moreRemaining) =
+            dotnsPopController.settlePendingClaims(ed, type(uint256).max);
+        assertEq(settledCount, 1);
+        assertFalse(moreRemaining);
+
+        bytes32 node = _nodeOf(LITE_LABEL_A);
+        address store = storeFactory.getLabelStore(ed);
+        assertTrue(store != address(0));
+        assertEq(
+            ILabelStore(store).getLabel(node), string.concat(LITE_LABEL_A, protocolRegistry.tld())
+        );
+        assertEq(dotnsPopController.pendingClaimCountOf(ed), 0);
     }
 }

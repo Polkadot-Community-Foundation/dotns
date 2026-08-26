@@ -31,6 +31,7 @@ contract DeployPopSystem is BaseDeployer {
         _deployPopResolver(owner, protocolRegistry);
         address popController = _deployPopController(owner, protocolRegistry);
         _deployGatewayDispatcher(owner, popController);
+        _deployPopLens(owner, protocolRegistry);
 
         saveDeployments();
 
@@ -93,6 +94,26 @@ contract DeployPopSystem is BaseDeployer {
             "RootGatewayDispatcher.sol:RootGatewayDispatcher",
             abi.encode(popController),
             "RootGatewayDispatcher"
+        );
+    }
+
+    /// @notice Deploys the read-only PoP lens bound to the protocol registry and records it on
+    ///         the manifest for the wire-up stage to register.
+    /// @dev A plain CREATE3 deployment, like the dispatcher: the lens holds no state beyond the
+    ///      registry it resolves siblings through, so it needs no proxy. Registry registration is
+    ///      the wire-up stage's job.
+    /// @param owner Broadcasting account.
+    /// @param protocolRegistry Protocol registry the lens reads through.
+    /// @return lens Address of the deployed lens.
+    function _deployPopLens(
+        address owner,
+        address protocolRegistry
+    )
+        internal
+        returns (address lens)
+    {
+        lens = _broadcastDeployCreate3(
+            owner, "DotnsPopLens.sol:DotnsPopLens", abi.encode(protocolRegistry), "DotnsPopLens"
         );
     }
 }

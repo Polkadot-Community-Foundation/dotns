@@ -83,6 +83,15 @@ interface IPopRules {
         pure
         returns (PopStatus requirement, string memory message);
 
+    /// @notice Returns the personhood tier recorded for an account.
+    /// @dev Reads the account's dotns-scoped tier from the personhood precompile and maps it to a
+    ///      `PopStatus`. This is the direct account-tier read; the same tier otherwise surfaces
+    ///      only as the `userStatus` field of a pricing query. Never returns `Reserved`, so the
+    ///      result is one of `NoStatus`, `PopLite`, or `PopFull`.
+    /// @param account Address whose tier is read.
+    /// @return tier The account's personhood tier.
+    function personhoodOf(address account) external view returns (PopStatus tier);
+
     /// @notice Updates the spam-deterrent starting price for NoStatus pricing.
     /// @dev Owner-only; unauthorised callers trigger @custom:reverts
     ///      OwnableUnauthorizedAccount. `newStartingPrice` must be strictly positive, otherwise

@@ -50,11 +50,38 @@ library DotnsConstants {
     ///      `DotnsNameEscrow.MAX_REDEEM_WINDOW`. Live deployments rotate the runtime value via
     ///      `updateRedeemWindow`.
     uint256 internal constant ESCROW_REDEEM_WINDOW = 1 days;
+    /// @notice Maximum entries a paginated view returns in a single page.
+    /// @dev Shared ceiling for paginated reads: a view clamps its returned array to this figure,
+    ///      and callers page through larger sets with `offset`.
+    uint256 internal constant MAX_PAGE_SIZE = 200;
 
     /// @notice Operational role allowed to manage the public controller whitelist.
     /// @dev Holders can grant or revoke whitelist entries, but cannot upgrade contracts
     ///      or change protocol configuration.
     bytes32 internal constant WHITELIST_OPERATOR_ROLE = keccak256("DOTNS_WHITELIST_OPERATOR_ROLE");
+
+    /// @notice Default per-name live-claim cap the name whitelist starts with.
+    /// @dev Governance retunes it on the whitelist within `WHITELIST_MAX_CLAIMANTS_LIMIT`.
+    uint16 internal constant WHITELIST_DEFAULT_MAX_CLAIMANTS = 64;
+
+    /// @notice Default claim-reason byte cap the name whitelist starts with.
+    /// @dev Governance retunes it on the whitelist within `WHITELIST_MAX_REASON_LIMIT`.
+    uint256 internal constant WHITELIST_DEFAULT_MAX_REASON_BYTES = 256;
+
+    /// @notice Upper bound on the whitelist live-claim cap. Caps the claim clear-loop below the
+    ///         block gas limit.
+    uint16 internal constant WHITELIST_MAX_CLAIMANTS_LIMIT = 128;
+
+    /// @notice Upper bound on the whitelist reason byte cap.
+    uint256 internal constant WHITELIST_MAX_REASON_LIMIT = 256;
+
+    /// @notice Default cap on labels granted in one `grantNames` call.
+    /// @dev Governance retunes it on the whitelist within `WHITELIST_MAX_GRANT_BATCH_LIMIT`.
+    uint16 internal constant WHITELIST_DEFAULT_MAX_GRANT_BATCH = 100;
+
+    /// @notice Upper bound on the `grantNames` batch cap. Bounds one call below the block gas
+    /// limit.
+    uint16 internal constant WHITELIST_MAX_GRANT_BATCH_LIMIT = 256;
 
     /// @notice Well-known key for the ERC721 registrar backing name ownership.
     /// @dev Role: token-of-record for registered names. Mints, burns, and tracks the
@@ -118,6 +145,14 @@ library DotnsConstants {
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant POP_RESOLVER = bytes32("popResolver");
 
+    /// @notice Well-known key for the read-only lens over PoP identity data.
+    /// @dev Role: off-chain query surface. Composes the account name listings, the per-name
+    ///      record, and the account summary from the controller, registrar, store factory, PoP
+    ///      resolver, and PopRules. Holds no authority and is consumed by clients, not by other
+    ///      contracts.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant POP_LENS = bytes32("popLens");
+
     /// @notice Well-known key for the name escrow holding refundable deposits and
     ///         driving the release lifecycle for registered names.
     /// @dev Role: custodial vault for registration deposits and the state machine
@@ -152,4 +187,12 @@ library DotnsConstants {
     ///      the protocol registry.
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant POP_GATEWAY = bytes32("popGateway");
+
+    /// @notice Well-known key for the pre-launch name whitelist that binds a label to the
+    ///         one address permitted to register it.
+    /// @dev Role: authority for label-bound registration grants. Both the public and PoP
+    ///      controllers resolve it here and read it at mint time; the whitelist stores the
+    ///      grants, the controllers only read them.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant NAME_WHITELIST = bytes32("nameWhitelist");
 }
