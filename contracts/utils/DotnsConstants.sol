@@ -39,6 +39,17 @@ library DotnsConstants {
     ///      against a new constant.
     uint256 internal constant RENT_PRICE = 10 ether;
 
+    /// @notice Default release cooldown seeded on `DotnsNameEscrow.initialize`.
+    /// @dev Single source of truth for deploy scripts and tests so the value cannot drift between
+    ///      call sites. Bounded on-chain by `DotnsNameEscrow.MAX_COOLDOWN`. Live deployments rotate
+    ///      the runtime value via `updateCooldown` rather than rebuilding consumers.
+    uint256 internal constant ESCROW_COOLDOWN = 15 minutes;
+
+    /// @notice Default redeem window seeded on `DotnsNameEscrow.initialize`.
+    /// @dev Single source of truth for deploy scripts and tests. Bounded on-chain by
+    ///      `DotnsNameEscrow.MAX_REDEEM_WINDOW`. Live deployments rotate the runtime value via
+    ///      `updateRedeemWindow`.
+    uint256 internal constant ESCROW_REDEEM_WINDOW = 1 days;
     /// @notice Maximum entries a paginated view returns in a single page.
     /// @dev Shared ceiling for paginated reads: a view clamps its returned array to this figure,
     ///      and callers page through larger sets with `offset`.

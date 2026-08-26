@@ -73,11 +73,33 @@ The friction is constant and additive across downward hops. Every step that cros
 The escrow maintains two separate pull-payment ledgers. The split is deliberate: one ledger is for immediate overpayment withdrawals, and the other is for refunds that must wait behind a cooldown.
 
 - **Overpayment ledger.** No cooldown. Used only as the fallback when a direct registration overpayment cannot be returned to the sender inline.
-- **Refund ledger.** Every refund has its own cooldown clock. Used for the deposit unlocked when a holder releases a funded name back to escrow, and for transfer-fee overpayments. Transfers never credit the refund ledger because the position rides with the name; only release-and-withdraw does.
+- **Refund ledger.** Every refund has its own cooldown clock. Used for transfer-fee overpayments. Transfers never credit the refund ledger because the position rides with the name.
 
-Only registrations try to return surplus immediately. Every other refund path waits behind its own cooldown. The cooldown is bounded to minutes: it is the window between release and reclaim during which the original payer has an uncontested chance to pull their refund before the controller hands the name out again, not a long-lived lock. Governance can tune it within that band.
+Only registrations try to return surplus immediately. Every other refund path waits behind a clock. The deposit unlocked by releasing a funded name is credited to the overpayment ledger rather than the refund ledger: the delay comes from the position's own `withdrawAvailableAt` stamp, so once `withdraw` lands the credit is immediately pullable. The cooldown is bounded to minutes and governance can tune it within that band.
 
 Clients can enumerate pending refunds through the escrow's public refund views. Pagination is capped so refund discovery remains bounded.
+
+### Release lifecycle
+
+Releasing a name starts two independent clocks, and the distinction between them is what makes a released name both recoverable and recyclable.
+
+| Clock | Length | What it gates |
+|---|---|---|
+| `withdrawAvailableAt` | release + `cooldown` (15 minutes at launch, ≤ 1 hour) | When the holder may credit the deposit to themselves via `withdraw` |
+| `redeemableUntil` | release + `redeemWindow` (1 day at launch, governance may set 1 to 30 days) | When the holder's exclusive claim on the name ends and `reclaim` opens to anyone |
+
+Both are snapshotted at release time, so a governance change never changes the clocks on a name already released. `redeemWindow` is tuned through `updateRedeemWindow` under the same gate as the upgrade authority.
+
+Inside the redeem window the name belongs to its previous holder. They alone may act on it, and `DotnsRegistrar.available` reports **false** so no client advertises the name as free and no registrant burns a commit-reveal cycle on a registration that cannot succeed. The two are mutually exclusive:
+
+- **`redeem`** returns the NFT and moves no value. The position keeps its recipient, asset and amount, so the deposit stays locked and the name lands back in its exact pre-release state, releasable again later on a fresh pair of clocks. This is the undo for an accidental release.
+- **`withdraw`** credits the deposit and forfeits the right to redeem. A holder who has been paid for the name cannot also take it back; otherwise they would hold a NoStatus name that no deposit backs, and the Sybil bound of one D per live NoStatus name would break.
+
+Once `redeemableUntil` is reached, `reclaim` is permissionless through the ordinary commit-reveal path, **whether or not the previous holder ever withdrew**. If the position still holds value, reclaim settles it: the amount is credited to the previous holder's pull-payment balance and stays claimable through `claimWithdrawal` with no deadline. The value follows the departing holder; the name does not wait for them.
+
+That is why the window is bounded rather than open-ended: reclaim cannot depend on the previous holder acting. Free PopFull and PopLite registrations seed zero-amount positions, so for those names there is nothing to withdraw and no incentive to act.
+
+Clients wanting the exact moment a released name becomes registrable should read `redeemableUntil` from `getReleasePosition` rather than polling `available`.
 
 ## Contracts
 

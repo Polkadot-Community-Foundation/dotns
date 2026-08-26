@@ -215,7 +215,9 @@ library StringUtils {
     {
         if (end <= start) return false;
         if (end - start > MAX_DNS_LABEL_OCTETS) return false;
-        if (label[start] == bytes1(0x2d) || label[end - 1] == bytes1(0x2d)) return false;
+        if (label[start] == bytes1(0x2d) || label[end - 1] == bytes1(0x2d)) {
+            return false;
+        }
 
         for (uint256 i = start; i < end; ++i) {
             bytes1 char = label[i];

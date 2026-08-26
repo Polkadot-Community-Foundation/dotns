@@ -102,7 +102,15 @@ contract DotnsRegistrar is
     function available(uint256 id) public view override returns (bool isAvailable) {
         address holder = _ownerOf(id);
         if (holder == address(0)) return true;
-        return holder == protocolRegistry.get(DotnsConstants.NAME_ESCROW);
+
+        address escrow = protocolRegistry.get(DotnsConstants.NAME_ESCROW);
+        if (holder != escrow) return false;
+
+        // Escrow custody on its own does not mean registrable: a released name inside its redeem
+        // window still belongs to its previous holder. The escrow owns that lifecycle and is asked
+        // directly, so availability here and reclaimability there cannot drift apart and start
+        // advertising names whose registration would revert.
+        return IDotnsNameEscrow(payable(escrow)).isReclaimable(id);
     }
 
     /// @inheritdoc IDotnsRegistrar
@@ -270,7 +278,9 @@ contract DotnsRegistrar is
             positionSyncNeeded = position.recipient != address(0) && to != position.recipient;
         }
 
-        if (requiredFee == 0 && msg.value == 0 && !positionSyncNeeded) return from;
+        if (requiredFee == 0 && msg.value == 0 && !positionSyncNeeded) {
+            return from;
+        }
 
         IDotnsNameEscrow(payable(escrow)).chargeTransferFee{value: msg.value}(
             IDotnsNameEscrow.ChargeTransferFeeParams({
