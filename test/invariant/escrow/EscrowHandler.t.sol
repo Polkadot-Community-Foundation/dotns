@@ -322,6 +322,13 @@ contract EscrowHandler is Test {
         escrow.withdraw(tokenId);
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
+        // A zero-amount position settles nothing: no value moves, and the position stays released
+        // and unwithdrawn, so its holder can still redeem it for the rest of the window. Filing it
+        // as withdrawn would take it out of `_releasedTokenIds` and hide it from `redeemReleased`,
+        // leaving redeem-after-a-zero-amount-withdraw unreachable for the fuzzer. Leave it in the
+        // released set so that path stays explorable.
+        if (owed == 0) return;
+
         // Update ghost state after the inner call so a revert leaves accounting intact.
         _withdrawnTokenIds.push(tokenId);
         _removeReleased(index);
