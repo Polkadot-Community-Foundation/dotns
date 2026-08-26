@@ -195,10 +195,17 @@ interface IDotnsNameEscrow {
     /// @param maxAllowed Upper bound enforced by the contract.
     error CooldownTooLong(uint256 supplied, uint256 maxAllowed);
 
-    /// @notice Thrown when the configured redeem window is invalid.
-    /// @dev Also thrown by `release` when the window has never been seeded, which fails the release
-    ///      closed rather than collapsing the holder's exclusive redeem phase to zero length.
+    /// @notice Thrown by `release` when the redeem window has never been seeded.
+    /// @dev Fails the release closed rather than collapsing the holder's exclusive redeem phase to
+    ///      zero length, which would hand the name to whoever is watching the moment it is
+    ///      released. Reachable only on a proxy upgraded without seeding the window.
     error InvalidRedeemWindow();
+
+    /// @notice Thrown when the supplied redeem window is below the contract's configured lower
+    /// bound.
+    /// @param supplied Redeem window value the caller asked for.
+    /// @param minAllowed Lower bound enforced by the contract.
+    error RedeemWindowTooShort(uint256 supplied, uint256 minAllowed);
 
     /// @notice Thrown when the supplied redeem window exceeds the contract's configured upper
     /// bound.
@@ -456,11 +463,13 @@ interface IDotnsNameEscrow {
     /// @notice Updates the redeem window for future releases.
     /// @dev Owner-only. Affects only releases recorded after this call; positions already released
     ///      keep the `redeemableUntil` snapshot taken at their release time. `newRedeemWindow` must
-    ///      be non-zero, otherwise @custom:reverts InvalidRedeemWindow, and must not exceed the
-    ///      contract's `MAX_REDEEM_WINDOW` upper bound, otherwise @custom:reverts
-    ///      RedeemWindowTooLong; the bound limits how long policy can hold a released name out of
-    ///      circulation and protects the `uint64` cast in release from truncation. Emits
-    ///      @custom:emits RedeemWindowUpdated with the prior and new values.
+    ///      fall within `MIN_REDEEM_WINDOW` and `MAX_REDEEM_WINDOW` inclusive, otherwise
+    ///      @custom:reverts RedeemWindowTooShort or @custom:reverts RedeemWindowTooLong. The floor
+    ///      keeps the window long enough to be worth having, so no setting the owner can choose
+    ///      leaves a holder without a usable chance to recover an accidental release; the ceiling
+    ///      limits how long a released name can be held out of circulation and protects the
+    ///      `uint64` cast in release from truncation. Emits @custom:emits RedeemWindowUpdated with
+    ///      the prior and new values.
     ///      This is also the post-upgrade seeding hook: pair it with `upgradeToAndCall` so an
     ///      upgraded proxy never runs with an unseeded window.
     function updateRedeemWindow(uint256 newRedeemWindow) external;

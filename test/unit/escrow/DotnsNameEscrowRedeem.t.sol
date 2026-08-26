@@ -420,9 +420,39 @@ contract DotnsNameEscrowRedeemTest is BaseDotns {
     }
 
     function test_revert_updateRedeemWindow_on_zero() public {
+        uint256 min = dotnsNameEscrow.MIN_REDEEM_WINDOW();
+
         vm.prank(owner);
-        vm.expectRevert(IDotnsNameEscrow.InvalidRedeemWindow.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsNameEscrow.RedeemWindowTooShort.selector, 0, min)
+        );
         dotnsNameEscrow.updateRedeemWindow(0);
+    }
+
+    function test_revert_updateRedeemWindow_below_the_floor() public {
+        uint256 min = dotnsNameEscrow.MIN_REDEEM_WINDOW();
+
+        vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsNameEscrow.RedeemWindowTooShort.selector, min - 1, min)
+        );
+        dotnsNameEscrow.updateRedeemWindow(min - 1);
+    }
+
+    /// @dev Both bounds are inclusive, so the extremes must be settable rather than one-off
+    ///      rejected. A floor that rejected its own value would leave the deploy default
+    ///      unreachable through the setter.
+    function test_updateRedeemWindow_accepts_both_bounds() public {
+        uint256 min = dotnsNameEscrow.MIN_REDEEM_WINDOW();
+        uint256 max = dotnsNameEscrow.MAX_REDEEM_WINDOW();
+
+        vm.prank(owner);
+        dotnsNameEscrow.updateRedeemWindow(min);
+        assertEq(dotnsNameEscrow.redeemWindow(), min, "the floor itself is settable");
+
+        vm.prank(owner);
+        dotnsNameEscrow.updateRedeemWindow(max);
+        assertEq(dotnsNameEscrow.redeemWindow(), max, "the ceiling itself is settable");
     }
 
     function test_revert_updateRedeemWindow_above_the_ceiling() public {

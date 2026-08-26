@@ -48,8 +48,13 @@ contract DotnsNameEscrow is
     ///      circulation, and keeps the cast to `uint64` in release well below saturation.
     uint256 public constant MAX_REDEEM_WINDOW = 30 days;
 
-    // TODO: Consider adding a MIN_REDEEM_WINDOW to prevent a malicious owner from setting it to 0
-    // and allowing immediate reclaim.
+    /// @notice Lower bound on the configurable redeem window.
+    /// @dev A window short enough to elapse before its holder can plausibly notice the release
+    ///      offers no protection at all, and one of zero length turns every release into an
+    ///      immediate hand-off to whoever is watching. The floor keeps the window long enough to
+    ///      span a holder being asleep or away for a day, so the guarantee survives any setting
+    ///      the owner is able to choose.
+    uint256 public constant MIN_REDEEM_WINDOW = 1 days;
 
     /// @notice The protocol registry for resolving sibling contract addresses.
     IDotnsProtocolRegistry public protocolRegistry;
@@ -140,9 +145,9 @@ contract DotnsNameEscrow is
     ///      InvalidCooldown) and any value above @custom:constant MAX_COOLDOWN (@custom:reverts
     ///      CooldownTooLong), and emits @custom:emits CooldownUpdated as part of seeding the
     ///      initial cooldown. `redeemWindowSeconds` is forwarded to @custom:function
-    ///      updateRedeemWindow, which rejects a zero value (@custom:reverts InvalidRedeemWindow)
-    ///      and any value above @custom:constant MAX_REDEEM_WINDOW (@custom:reverts
-    ///      RedeemWindowTooLong), and emits @custom:emits RedeemWindowUpdated.
+    ///      updateRedeemWindow, which rejects any value below @custom:constant MIN_REDEEM_WINDOW
+    ///      (@custom:reverts RedeemWindowTooShort) or above @custom:constant MAX_REDEEM_WINDOW
+    ///      (@custom:reverts RedeemWindowTooLong), and emits @custom:emits RedeemWindowUpdated.
     /// @param registry Protocol registry used to resolve registrar and controller addresses.
     /// @param cooldownSeconds Delay after release before the deposit withdrawal may be credited.
     /// @param redeemWindowSeconds Period after release in which only the previous holder may act.
@@ -177,7 +182,10 @@ contract DotnsNameEscrow is
 
     /// @inheritdoc IDotnsNameEscrow
     function updateRedeemWindow(uint256 newRedeemWindow) public override onlyOwner {
-        require(newRedeemWindow != 0, InvalidRedeemWindow());
+        require(
+            newRedeemWindow >= MIN_REDEEM_WINDOW,
+            RedeemWindowTooShort(newRedeemWindow, MIN_REDEEM_WINDOW)
+        );
         require(
             newRedeemWindow <= MAX_REDEEM_WINDOW,
             RedeemWindowTooLong(newRedeemWindow, MAX_REDEEM_WINDOW)
