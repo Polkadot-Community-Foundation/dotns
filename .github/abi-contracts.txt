@@ -27,6 +27,7 @@ DotnsPopController
 DotnsPopResolver
 DotnsRoleManager
 RootGatewayDispatcher
+DotnsNameWhitelist
 
 IStoreFactory
 ILabelStore
@@ -44,3 +45,4 @@ IDotnsPopController
 IDotnsPopResolver
 IDotnsController
 IDotnsRoleManager
+IDotnsNameWhitelist

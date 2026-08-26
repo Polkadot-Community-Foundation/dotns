@@ -101,18 +101,33 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         assertEq(address(dotnsRegistrarController).balance, 0, "Controller must not hold funds");
     }
 
+    /// @notice Every unit of native value the escrow holds is accounted for by exactly one ledger.
+    /// @dev The escrow's balance is the sum of three obligations: `tokenReserved`, the deposits
+    ///      held against live positions; `protocolFees`, the accumulated cross-tier fees; and
+    ///      `_pendingWithdrawals`, the amounts credited to recipients and awaiting collection.
+    ///      Value only ever moves between these three, never into or out of the set, so their total
+    ///      tracks the balance exactly.
+    ///      A shortfall means the escrow cannot pay what it owes. A surplus means it holds value
+    ///      that belongs to nobody -- an amount debited from one ledger that never landed in
+    ///      another, permanently out of reach of whoever was owed it. Both are failures, which is
+    ///      why this is an equality.
+    ///      Pending withdrawals are summed across the whole actor set; a partial sum would report a
+    ///      surplus that is not real.
+    ///      Native value reaching the escrow from outside these flows -- force-sent via
+    ///      `selfdestruct`, or dealt directly to the address -- is owed to nobody and belongs to no
+    ///      ledger. No handler action does this. One that did would need to track the surplus
+    ///      separately for the equality to hold.
+    ///      The time-locked refund ledger is not part of this sum because this handler never
+    ///      credits it. `DotnsNameEscrowInvariant.invariant_solvency` covers all four ledgers.
     function invariant_value_conservation() public view {
         // Escrow balance equals reserves + protocol fees + pending withdrawals.
         uint256 reservedAmount = dotnsNameEscrow.reserves(address(0));
         uint256 protocolFees = dotnsNameEscrow.protocolFees();
 
+        address[] memory actorList = handler.getActors();
         uint256 pendingTotal;
-        for (uint256 i; i < 5; ++i) {
-            try handler.actors(i) returns (address actor) {
-                pendingTotal += dotnsNameEscrow.pendingWithdrawal(actor);
-            } catch {
-                break;
-            }
+        for (uint256 i; i < actorList.length; ++i) {
+            pendingTotal += dotnsNameEscrow.pendingWithdrawal(actorList[i]);
         }
 
         uint256 escrowBalance = address(dotnsNameEscrow).balance;

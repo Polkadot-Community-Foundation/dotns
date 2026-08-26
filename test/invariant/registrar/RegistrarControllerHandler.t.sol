@@ -47,8 +47,18 @@ contract RegistrarControllerHandler is Test {
     /// @notice Actor pool the handler cycles through.
     address[] public actors;
 
+    /// @notice Returns the full actor list.
+    /// @dev Exists so invariants can sum a per-actor ledger across every actor rather than probing
+    ///      `actors(i)` up to a hardcoded index and silently ignoring the rest.
+    function getActors() external view returns (address[] memory list) {
+        list = actors;
+    }
+
     /// @notice Tracks the PoP status assigned to each registered actor.
     mapping(address actor => IPopRules.PopStatus status) public actorStatus;
+
+    /// @notice Membership set backing the `actors` list, keeping it free of duplicates.
+    mapping(address actor => bool present) private _isActor;
 
     /// @notice Labels successfully registered through the handler.
     string[] internal _registeredLabels;
@@ -122,10 +132,17 @@ contract RegistrarControllerHandler is Test {
     }
 
     /// @notice Adds an actor with a specific PoP status.
+    /// @dev Idempotent on the actor list. Invariants sum per-actor ledger balances across `actors`,
+    ///      so a repeated address would count the same balance twice and break a conservation
+    ///      equality for a reason that has nothing to do with solvency. Re-adding an existing actor
+    ///      still updates their status.
     /// @param actor The actor address.
     /// @param status The PoP status to assign.
     function addActor(address actor, IPopRules.PopStatus status) external {
-        actors.push(actor);
+        if (!_isActor[actor]) {
+            _isActor[actor] = true;
+            actors.push(actor);
+        }
         actorStatus[actor] = status;
 
         if (status != IPopRules.PopStatus.NoStatus) {

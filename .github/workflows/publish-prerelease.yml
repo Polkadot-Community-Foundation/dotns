@@ -133,13 +133,23 @@ jobs:
           find release/abis -maxdepth 1 -type f -printf '%f\n' | sort > release/expected-assets.txt
           echo "Extracted $(wc -l < release/expected-assets.txt) ABIs"
 
+      # No addresses: a pre-release is cut to be deployed, so the recorded addresses still
+      # belong to the previous deployment of different code. Publishing them under this tag
+      # would break the promise that a release's addresses and ABIs come from the same release.
+      - name: Generate release manifest
+        run: |
+          bun scripts/js/release-metadata.mjs build --tag "$RELEASE_TAG" --out release \
+            --addresses false
+
       - name: Package pre-release artifacts
         run: |
           TAG="$RELEASE_TAG"
           cd release
-          zip -r "../dotns-abis-${TAG}.zip" abis/
+          zip -r "../dotns-abis-${TAG}.zip" abis/ release-manifest.json
 
       - name: Generate release body
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           TAG="$RELEASE_TAG"
           ASSET_BASE="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG"
@@ -179,6 +189,16 @@ jobs:
           # substitution, which also leaves ${TAG} unexpanded. Substitute it here.
           sed -i "s|\${ASSET_BASE}|$ASSET_BASE|g; s|\${TAG}|$TAG|g" release-body.md
 
+          {
+            echo ""
+            echo "### Deployments"
+            echo ""
+            echo "No addresses are published with a pre-release: this code is not deployed yet."
+            echo "Deploy this tag, then cut the release, which carries the addresses it produced."
+            echo ""
+            echo "- **Release contents:** [release-manifest.json]($ASSET_BASE/release-manifest.json)"
+          } >> release-body.md
+
       - name: Create draft pre-release with artifacts
         uses: softprops/action-gh-release@v2
         with:
@@ -189,6 +209,7 @@ jobs:
           files: |
             dotns-abis-*.zip
             release/abis/*.json
+            release/release-manifest.json
           body_path: release-body.md
           draft: true
           prerelease: true
@@ -202,8 +223,10 @@ jobs:
           TAG="$RELEASE_TAG"
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
             --jq '.assets[].name' | sort > "$RUNNER_TEMP/actual-assets.txt"
-          { cat release/expected-assets.txt; echo "dotns-abis-${TAG}.zip"; } \
-            | sort > "$RUNNER_TEMP/wanted-assets.txt"
+          { cat release/expected-assets.txt
+            echo "dotns-abis-${TAG}.zip"
+            echo "release-manifest.json"
+          } | sort > "$RUNNER_TEMP/wanted-assets.txt"
           if ! diff -u "$RUNNER_TEMP/wanted-assets.txt" "$RUNNER_TEMP/actual-assets.txt"; then
             echo "::error::Draft pre-release $TAG does not match the expected asset set; delete the draft and re-run."
             exit 1

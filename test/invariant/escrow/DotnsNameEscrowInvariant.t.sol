@@ -29,7 +29,7 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
 
         targetContract(address(handler));
 
-        bytes4[] memory selectors = new bytes4[](10);
+        bytes4[] memory selectors = new bytes4[](12);
         selectors[0] = handler.commitRegisterAndDeposit.selector;
         selectors[1] = handler.registerCrossTier.selector;
         selectors[2] = handler.releaseToken.selector;
@@ -40,6 +40,10 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
         selectors[7] = handler.transferDeposited.selector;
         selectors[8] = handler.transferPayable.selector;
         selectors[9] = handler.advanceTime.selector;
+        // The two halves of the redeem window. Without both, the fuzzer can only reach reclaim by
+        // way of a withdrawal, which is precisely the assumption the reclaim deadlock rested on.
+        selectors[10] = handler.redeemReleased.selector;
+        selectors[11] = handler.reRegisterReleased.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
 
         excludeContract(address(dotnsRegistrarController));
@@ -169,9 +173,12 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
         }
     }
 
-    /// @notice Every withdrawn-but-not-reclaimed token must be held by escrow and available.
-    /// @dev Under the custody model, withdrawn tokens stay in escrow custody until a new
-    ///      registrant reclaims them. They must remain `available()` for re-registration.
+    /// @notice Every withdrawn-but-not-reclaimed token must be held by escrow, and available
+    ///         exactly when its redeem window has elapsed.
+    /// @dev Withdrawn tokens stay in escrow custody until a new registrant reclaims them. Custody
+    ///      alone no longer implies availability: withdrawing does not shorten the previous
+    ///      holder's redeem window, so a withdrawn position can still be inside it. Availability
+    ///      is therefore asserted against the window rather than unconditionally.
     function invariant_withdrawn_tokens_are_in_escrow_custody_and_available() public view {
         uint256[] memory withdrawn = handler.getWithdrawnTokenIds();
 
@@ -183,8 +190,110 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
                 address(dotnsNameEscrow),
                 "Withdrawn token must be held by escrow"
             );
-            assertTrue(
-                dotnsRegistrar.available(tokenId), "Withdrawn token must be available for reclaim"
+
+            IDotnsNameEscrow.ReleasePosition memory position =
+                dotnsNameEscrow.getReleasePosition(tokenId);
+
+            assertEq(
+                dotnsRegistrar.available(tokenId),
+                position.released && block.timestamp >= position.redeemableUntil,
+                "Withdrawn token is available exactly once its redeem window has elapsed"
+            );
+        }
+    }
+
+    /// @notice No released token can ever be stuck: it is always either redeemable or reclaimable.
+    /// @dev This is the property the bug violated, stated directly. Under the old
+    ///      `released && claimed` reclaim gate a released position whose holder never withdrew was
+    ///      neither redeemable (no such call existed) nor reclaimable (the flag was never set), so
+    ///      the name left circulation permanently. The two phases must tile the whole timeline with
+    ///      no gap, and must not overlap -- an overlap would mean the previous holder and a new
+    ///      registrant could both act on the same name.
+    function invariant_released_tokens_are_never_stuck() public view {
+        // Withdrawn tokens are still released positions, and a position settled while inside its
+        // window is the only state with no action available right now. Iterating released tokens
+        // alone would skip exactly that state, because the handler moves a token out of
+        // `_releasedTokenIds` the moment it is withdrawn, so the invariant meant to prove nothing
+        // gets stuck would never evaluate the one state that pauses.
+        _assertNotStuck(handler.getReleasedTokenIds());
+        _assertNotStuck(handler.getWithdrawnTokenIds());
+    }
+
+    /// @notice Anything the escrow reports reclaimable can actually be paid out when reclaimed.
+    /// @dev Lifecycle state only. `reclaim` also settles the deposit and can revert
+    ///     `InsufficientFunds` when the reserved balance cannot cover the amount owed, so a true
+    ///     answer is a claim about the window rather than a guarantee that the call is funded. The
+    ///     two coincide because `tokenReserved` is by construction the
+    ///     exact sum of live position amounts: only `deposit` credits it, and only `_settleDeposit`
+    ///     debits
+    ///     it, by exactly the amount it zeroes. `invariant_reserves_match_positions` holds that
+    ///     construction and `invariant_reclaimable_positions_are_fundable` asserts the implication,
+    ///     so a change breaking the coincidence fails the suite rather than surfacing as a name
+    ///     advertised and then unregisterable.
+    function invariant_reclaimable_positions_are_fundable() public view {
+        _assertFundable(handler.getReleasedTokenIds());
+        _assertFundable(handler.getWithdrawnTokenIds());
+    }
+
+    /// @notice Asserts settlement solvency for every reclaimable token in a set.
+    function _assertFundable(uint256[] memory tokenIds) private view {
+        for (uint256 i; i < tokenIds.length; ++i) {
+            uint256 tokenId = tokenIds[i];
+
+            if (!dotnsNameEscrow.isReclaimable(tokenId)) continue;
+
+            IDotnsNameEscrow.ReleasePosition memory position =
+                dotnsNameEscrow.getReleasePosition(tokenId);
+
+            assertLe(
+                position.amount,
+                dotnsNameEscrow.reserves(position.asset),
+                "a reclaimable position must be settleable from reserves"
+            );
+        }
+    }
+
+    /// @notice Asserts the never-stuck property across a set of token ids.
+    function _assertNotStuck(uint256[] memory tokenIds) private view {
+        uint256 maxWindow = dotnsNameEscrow.MAX_REDEEM_WINDOW();
+
+        for (uint256 i; i < tokenIds.length; ++i) {
+            uint256 tokenId = tokenIds[i];
+
+            IDotnsNameEscrow.ReleasePosition memory position =
+                dotnsNameEscrow.getReleasePosition(tokenId);
+
+            if (!position.released) continue;
+
+            // A release always stamps a deadline. Without one the position would sit released with
+            // nothing to wait for, which is the shape of the deadlock this invariant exists to
+            // rule out.
+            assertNotEq(position.redeemableUntil, 0, "a released position must carry a deadline");
+
+            // And the wait is bounded by policy: no position can be parked further out than the
+            // longest window the owner is allowed to configure.
+            assertLe(
+                position.redeemableUntil,
+                block.timestamp + maxWindow,
+                "the wait must not exceed the maximum configurable window"
+            );
+
+            // The escrow's own answer, checked against the property restated independently from
+            // the position's fields. Comparing two locally-derived expressions would hold by
+            // construction and assert nothing.
+            assertEq(
+                dotnsNameEscrow.isReclaimable(tokenId),
+                block.timestamp >= position.redeemableUntil,
+                "a released position is reclaimable exactly once its deadline has passed"
+            );
+
+            // Two contracts, one answer. The registrar advertises a name held by the escrow as
+            // registrable exactly when the escrow would let it be reclaimed, so a client can never
+            // be sent through a commit-reveal cycle that cannot succeed.
+            assertEq(
+                dotnsRegistrar.available(tokenId),
+                dotnsNameEscrow.isReclaimable(tokenId),
+                "availability must agree with reclaimability"
             );
         }
     }

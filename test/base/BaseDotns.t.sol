@@ -16,6 +16,8 @@ import {
     DotnsPopController,
     IDotnsPopController
 } from "../../contracts/registrars/DotnsPopController.sol";
+import {DotnsPopLens} from "../../contracts/registrars/DotnsPopLens.sol";
+import {IDotnsPopLens} from "../../contracts/registrars/IDotnsPopLens.sol";
 import {RootGatewayDispatcher} from "../../contracts/registrars/RootGatewayDispatcher.sol";
 import {IDotnsController} from "../../contracts/registrars/IDotnsController.sol";
 import {DotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
@@ -94,6 +96,9 @@ abstract contract BaseDotns is Test {
     /// @notice Deployed PoP controller instance (gateway-driven lite/full issuance).
     DotnsPopController public dotnsPopController;
 
+    /// @notice Deployed PoP lens instance (read-only view over PoP identity data).
+    DotnsPopLens public dotnsPopLens;
+
     /// @notice Test stand-in for the Root gateway dispatcher.
     /// @dev Registered on the protocol registry under the PoP gateway key
     ///      during setUp. Tests that exercise gated PoP entrypoints prank as
@@ -158,7 +163,11 @@ abstract contract BaseDotns is Test {
 
     /// @notice Default escrow cooldown used in tests. Bounded by the escrow's
     ///         @custom:constant MAX_COOLDOWN ceiling.
-    uint256 public constant ESCROW_COOLDOWN = 15 minutes;
+    uint256 public constant ESCROW_COOLDOWN = DotnsConstants.ESCROW_COOLDOWN;
+
+    /// @notice Default escrow redeem window used in tests. Bounded by the escrow's
+    ///         @custom:constant MAX_REDEEM_WINDOW ceiling.
+    uint256 public constant ESCROW_REDEEM_WINDOW = DotnsConstants.ESCROW_REDEEM_WINDOW;
 
     /// @notice Zero hash constant.
     bytes32 public constant ZERO_HASH = bytes32(0);
@@ -318,7 +327,11 @@ abstract contract BaseDotns is Test {
             "DotnsNameEscrow.sol:DotnsNameEscrow",
             abi.encodeCall(
                 DotnsNameEscrow.initialize,
-                (IDotnsProtocolRegistry(protocolRegistryAddress), ESCROW_COOLDOWN)
+                (
+                    IDotnsProtocolRegistry(protocolRegistryAddress),
+                    ESCROW_COOLDOWN,
+                    ESCROW_REDEEM_WINDOW
+                )
             )
         );
         dotnsNameEscrow = DotnsNameEscrow(payable(dotnsNameEscrowAddress));
@@ -339,6 +352,12 @@ abstract contract BaseDotns is Test {
         // Stand-in for the Root gateway dispatcher. Dedicated dispatcher
         // coverage lives in test/unit/registrar/RootGatewayDispatcher.t.sol.
         protocolRegistry.set(DotnsConstants.POP_GATEWAY, popGateway);
+
+        // Deploy the read-only lens last, once every sibling key it resolves
+        // (POP_CONTROLLER, REGISTRAR, STORE_FACTORY, POP_RESOLVER, POP_RULES) is
+        // set on the registry.
+        dotnsPopLens = new DotnsPopLens(registry);
+        vm.label(address(dotnsPopLens), "DotnsPopLens");
 
         vm.stopPrank();
         vm.warp(block.timestamp + 365 days);
@@ -499,13 +518,9 @@ abstract contract BaseDotns is Test {
                 reservedBaseLabel: reservedBaseLabel
             })
         );
-        IDotnsPopController.PendingClaim[] memory pending = dotnsPopController.pendingClaims(user);
-        if (
-            pending.length != 0
-                && pending[0].mintedAt + dotnsPopController.reservationDuration() > block.timestamp
-        ) {
+        if (dotnsPopController.pendingClaimCountOf(user) != 0) {
             vm.prank(user);
-            dotnsPopController.claimLabelStore();
+            dotnsPopController.settlePendingClaims(user, type(uint256).max);
         }
     }
 

@@ -310,6 +310,11 @@ contract PopRules is
         return reachComponent > downgradeComponent ? reachComponent : downgradeComponent;
     }
 
+    /// @inheritdoc IPopRules
+    function personhoodOf(address account) external view override returns (PopStatus tier) {
+        return _personhoodTier(account);
+    }
+
     /// @notice Reads `account`'s dotns-scoped personhood tier from the alias-accounts
     ///         precompile and translates it into a `PopStatus`.
     /// @dev Single source of truth so callers cannot read the precompile directly and

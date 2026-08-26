@@ -93,6 +93,15 @@ interface IPopRules {
     /// @param enabled Whether names shorter than nine characters may be bought.
     function setShortNamesEnabled(bool enabled) external;
 
+    /// @notice Returns the personhood tier recorded for an account.
+    /// @dev Reads the account's dotns-scoped tier from the personhood precompile and maps it to a
+    ///      `PopStatus`. This is the direct account-tier read; the same tier otherwise surfaces
+    ///      only as the `userStatus` field of a pricing query. Never returns `Reserved`, so the
+    ///      result is one of `NoStatus`, `PopLite`, or `PopFull`.
+    /// @param account Address whose tier is read.
+    /// @return tier The account's personhood tier.
+    function personhoodOf(address account) external view returns (PopStatus tier);
+
     /// @notice Creates or refreshes a reservation entry for a PopLite-eligible stem.
     /// @dev Commit-reveal reservation path. Only an authorised controller on the registrar may
     ///      call this, otherwise @custom:reverts NotRegistry. The caller passes the

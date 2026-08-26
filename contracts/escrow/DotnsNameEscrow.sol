@@ -35,18 +35,35 @@ contract DotnsNameEscrow is
     uint256 public constant MAX_REFUND_PAGE_SIZE = 200;
 
     /// @notice Upper bound on the configurable release-cooldown.
-    /// @dev The cooldown gates only the release-to-reclaim window, not the long-lived deposit lock,
-    ///      so it is intentionally kept short. Capping at one hour also keeps the cast to `uint64`
-    ///      well below the saturation point at every plausible block timestamp.
+    /// @dev The cooldown gates only the release-to-withdraw delay, not the long-lived deposit lock
+    ///      and not the reclaim boundary (see `redeemWindow`), so it is intentionally kept short.
+    ///      Capping at one hour also keeps the cast to `uint64` well below the saturation point at
+    ///      every plausible block timestamp.
     uint256 public constant MAX_COOLDOWN = 1 hours;
+
+    /// @notice Upper bound on the configurable redeem window.
+    /// @dev The redeem window is a different quantity from the cooldown: it is the period after
+    ///      release in which only the previous holder may act, and it gates reclaim rather than
+    ///      withdrawal. The bound limits how long policy can hold a released name out of
+    ///      circulation, and keeps the cast to `uint64` in release well below saturation.
+    uint256 public constant MAX_REDEEM_WINDOW = 30 days;
+
+    /// @notice Lower bound on the configurable redeem window.
+    /// @dev A window short enough to elapse before its holder can plausibly notice the release
+    ///      offers no protection at all, and one of zero length turns every release into an
+    ///      immediate hand-off to whoever is watching. The floor keeps the window long enough to
+    ///      span a holder being asleep or away for a day, so the guarantee survives any setting
+    ///      the owner is able to choose.
+    uint256 public constant MIN_REDEEM_WINDOW = 1 days;
 
     /// @notice The protocol registry for resolving sibling contract addresses.
     IDotnsProtocolRegistry public protocolRegistry;
 
-    /// @notice Cooldown period after release during which refunds can be
-    ///         claimed but not yet reclaimed.
-    /// @dev Forces a delay between `release` and `reclaim` so the original payer has an
-    ///      uncontested window to pull their refund before the controller hands the name out again.
+    /// @notice Delay after release before the deposit withdrawal may be credited.
+    /// @dev Forces a delay between `release` and `withdraw`. It does not bound reclaim: the
+    ///      release-to-reclaim boundary is `redeemWindow`, a separate and longer quantity. Also
+    ///      supplies the per-entry clock for time-locked refund credits, which is why raising it
+    ///      would slow every refund path and not just the deposit one.
     uint256 public cooldown;
 
     /// @notice Total amount of a specific asset reserved across all positions.
@@ -89,8 +106,18 @@ contract DotnsNameEscrow is
     /// @notice Monotonic counter assigning entryIds to new refund credits.
     uint256 private _nextEntryId;
 
-    /// @dev Reserved storage space to allow for layout changes in the future.
-    uint256[50] private __gap;
+    /// @notice Period after release during which only the previous holder may act.
+    /// @dev Distinct from `cooldown`. Inside this window the holder may `redeem` the name back
+    ///      and nobody else may take it (`available` reports false); once it elapses `reclaim`
+    ///      becomes permissionless and any unwithdrawn deposit is credited to the recipient
+    ///      rather than stranded. Appended after the pre-existing variables and paid for out of
+    ///      `__gap`, so the layout of everything above is untouched.
+    uint256 public redeemWindow;
+
+    /// @dev Reserved storage space to allow for layout changes in the future. A new variable
+    /// appended above must shrink this array by the same number of slots so the contract's total
+    /// storage footprint stays fixed.
+    uint256[49] private __gap;
 
     /// @notice Restricts calls to the configured registrar controller.
     modifier onlyController() {
@@ -116,12 +143,17 @@ contract DotnsNameEscrow is
     ///      @custom:function updateCooldown, which rejects a zero value (@custom:reverts
     ///      InvalidCooldown) and any value above @custom:constant MAX_COOLDOWN (@custom:reverts
     ///      CooldownTooLong), and emits @custom:emits CooldownUpdated as part of seeding the
-    ///      initial cooldown.
+    ///      initial cooldown. `redeemWindowSeconds` is forwarded to @custom:function
+    ///      updateRedeemWindow, which rejects any value below @custom:constant MIN_REDEEM_WINDOW
+    ///      (@custom:reverts RedeemWindowTooShort) or above @custom:constant MAX_REDEEM_WINDOW
+    ///      (@custom:reverts RedeemWindowTooLong), and emits @custom:emits RedeemWindowUpdated.
     /// @param registry Protocol registry used to resolve registrar and controller addresses.
-    /// @param cooldownSeconds Refund cooldown after release.
+    /// @param cooldownSeconds Delay after release before the deposit withdrawal may be credited.
+    /// @param redeemWindowSeconds Period after release in which only the previous holder may act.
     function initialize(
         IDotnsProtocolRegistry registry,
-        uint256 cooldownSeconds
+        uint256 cooldownSeconds,
+        uint256 redeemWindowSeconds
     )
         external
         initializer
@@ -133,6 +165,7 @@ contract DotnsNameEscrow is
 
         protocolRegistry = registry;
         updateCooldown(cooldownSeconds);
+        updateRedeemWindow(redeemWindowSeconds);
     }
 
     /// @inheritdoc IDotnsNameEscrow
@@ -144,6 +177,23 @@ contract DotnsNameEscrow is
         cooldown = newCooldown;
 
         emit CooldownUpdated(currentCooldown, newCooldown);
+    }
+
+    /// @inheritdoc IDotnsNameEscrow
+    function updateRedeemWindow(uint256 newRedeemWindow) public override onlyOwner {
+        require(
+            newRedeemWindow >= MIN_REDEEM_WINDOW,
+            RedeemWindowTooShort(newRedeemWindow, MIN_REDEEM_WINDOW)
+        );
+        require(
+            newRedeemWindow <= MAX_REDEEM_WINDOW,
+            RedeemWindowTooLong(newRedeemWindow, MAX_REDEEM_WINDOW)
+        );
+
+        uint256 currentRedeemWindow = redeemWindow;
+        redeemWindow = newRedeemWindow;
+
+        emit RedeemWindowUpdated(currentRedeemWindow, newRedeemWindow);
     }
 
     /// @inheritdoc IDotnsNameEscrow
@@ -322,22 +372,33 @@ contract DotnsNameEscrow is
 
         require(approvedForEscrow, EscrowNotApproved(tokenId));
 
+        // Fail closed on an unseeded window rather than stamping `redeemableUntil` at the current
+        // timestamp, which would collapse the holder's exclusive redeem phase to zero length and
+        // open permissionless reclaim the instant the name is released. Only reachable on a proxy
+        // upgraded without pairing the upgrade with `updateRedeemWindow`.
+        uint256 currentRedeemWindow = redeemWindow;
+        require(currentRedeemWindow != 0, RedeemWindowNotConfigured());
+
         // Snapshot the position fields once into stack locals so the trailing event emit reuses
-        // them without three extra warm SLOADs after the state mutation. The cast to `uint64` is
-        // safe because `cooldown` is bounded by @custom:constant MAX_COOLDOWN.
+        // them without three extra warm SLOADs after the state mutation. Both casts to `uint64` are
+        // safe because `cooldown` and `redeemWindow` are bounded by @custom:constant MAX_COOLDOWN
+        // and @custom:constant MAX_REDEEM_WINDOW respectively.
         address asset = position.asset;
         uint256 amount = position.amount;
         // forge-lint: disable-next-line(unsafe-typecast)
         uint64 availableAt = uint64(block.timestamp + cooldown);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint64 redeemUntil = uint64(block.timestamp + currentRedeemWindow);
 
         position.withdrawAvailableAt = availableAt;
+        position.redeemableUntil = redeemUntil;
         position.released = true;
 
         registrar.safeTransferFrom(currentOwner, address(this), tokenId);
 
         _addReleasedToken(tokenId);
 
-        emit NameReleased(tokenId, msg.sender, asset, amount, availableAt);
+        emit NameReleased(tokenId, msg.sender, asset, amount, availableAt, redeemUntil);
     }
 
     /// @inheritdoc IDotnsNameEscrow
@@ -352,11 +413,41 @@ contract DotnsNameEscrow is
             WithdrawalTooEarly(tokenId, position.withdrawAvailableAt, block.timestamp)
         );
 
+        _settleDeposit(position, tokenId, msg.sender);
+    }
+
+    /// @notice Moves a position's outstanding deposit onto the recipient's pull-payment balance.
+    /// @dev Shared by @custom:function withdraw, where the recipient pulls the deposit themselves,
+    ///      and by @custom:function reclaim, where a third party takes the name and the deposit is
+    ///      settled on the departing holder's behalf. Both credit the same ledger and neither
+    ///      transfers value, so the accounting is identical and lives here once. The per-asset
+    ///      `tokenReserved` pool backs the refund in full, and @custom:reverts InsufficientFunds
+    ///      when it cannot cover the amount owed. Emits @custom:emits RefundWithdrawn.
+    ///      A zero-amount position is a no-op: it writes nothing and emits nothing, which keeps the
+    ///      free-registration lifecycle free of meaningless ledger entries and events.
+    /// @param position Storage pointer to the position being settled.
+    /// @param recipient Address credited with the deposit. Always the position recipient.
+    function _settleDeposit(
+        ReleasePosition storage position,
+        uint256 tokenId,
+        address recipient
+    )
+        private
+    {
         uint256 owed = position.amount;
         address asset = position.asset;
-        // `position.recipient == msg.sender` was just enforced above, so reuse the local in place
-        // of an extra warm SLOAD.
-        address recipient = msg.sender;
+
+        // Nothing to settle: return before touching `claimed`. That flag is what `redeem` reads to
+        // decide whether the holder has already been paid for the name, so setting it here would
+        // make a zero-amount `withdraw`, which pays nothing and emits nothing, silently forfeit
+        // the holder's right to recover their own name for no consideration at all. Free PopFull
+        // and PopLite registrations seed exactly these positions, and `withdraw` is the step the
+        // old contract required before a name could be recycled, so that is a path holders will
+        // take.
+        if (owed == 0) return;
+
+        // Effects: from here the deposit really is being handed over, so the flag is set.
+        position.claimed = true;
 
         // The per-asset reserve backs every refundable deposit; protocol fees are non-refundable
         // and never cover a refund.
@@ -364,8 +455,6 @@ contract DotnsNameEscrow is
             tokenReserved[asset] >= owed, InsufficientFunds(tokenId, owed, tokenReserved[asset])
         );
 
-        // Effects: mutate state only after all checks have passed.
-        position.claimed = true;
         position.amount = 0;
         tokenReserved[asset] -= owed;
 
@@ -580,11 +669,15 @@ contract DotnsNameEscrow is
         onlyController
         nonReentrant
     {
+        require(isReclaimable(tokenId), NotReclaimable(tokenId));
+
         ReleasePosition storage position = _positions[tokenId];
-
-        require(position.released && position.claimed, NotReclaimable(tokenId));
-
         address previousRecipient = position.recipient;
+
+        // Settle before deleting: the departing holder keeps their claim on the deposit even though
+        // they are losing the name. `_settleDeposit` is a no-op for a zero-amount position and for
+        // one already withdrawn, so the common paths cost nothing extra.
+        _settleDeposit(position, tokenId, previousRecipient);
 
         delete _positions[tokenId];
         _removeReleasedToken(tokenId);
@@ -592,6 +685,57 @@ contract DotnsNameEscrow is
         _registrar().safeTransferFrom(address(this), newOwner, tokenId);
 
         emit NameReclaimed(tokenId, previousRecipient, newOwner);
+    }
+
+    /// @inheritdoc IDotnsNameEscrow
+    /// @dev `public` rather than `external` so `reclaim` can gate on it without a self-call, which
+    ///      is what keeps the condition in one place instead of two.
+    function isReclaimable(uint256 tokenId) public view override returns (bool reclaimable) {
+        ReleasePosition storage position = _positions[tokenId];
+
+        // The gate is the elapsed redeem window, not the `claimed` flag. Gating on `claimed` would
+        // make recyclability depend on the previous holder choosing to withdraw, which strands the
+        // name whenever they have no reason to: a zero-amount position has nothing to collect, so
+        // "never withdraws" is the default rather than the exception. The window bounds the wait
+        // instead, and reclaim settles any unwithdrawn value rather than holding it hostage.
+        //
+        // Lifecycle state only. `reclaim` also settles the deposit, which can in principle revert
+        // `InsufficientFunds` when the reserved balance cannot cover the amount owed, so a true
+        // answer here is a claim about the window rather than a guarantee
+        // that the call is funded. The two coincide because `tokenReserved` is by construction the
+        // exact sum of live position amounts: only `deposit` credits it, and only `_settleDeposit`
+        // debits it, by exactly the amount it zeroes. `invariant_reserves_match_positions` holds
+        // that construction, and `invariant_reclaimable_positions_are_fundable` asserts the
+        // implication directly, so a change that broke the coincidence would fail the suite rather
+        // than surface as a name advertised and then unregisterable.
+        reclaimable = position.released && block.timestamp >= position.redeemableUntil;
+    }
+
+    /// @inheritdoc IDotnsNameEscrow
+    function redeem(uint256 tokenId) external override nonReentrant {
+        ReleasePosition storage position = _positions[tokenId];
+
+        require(position.recipient == msg.sender, NotRefundRecipient(msg.sender, tokenId));
+        // One error for the whole state predicate: unreleased, already withdrawn, or past the
+        // window are all simply "not redeemable" from the caller's point of view, and collapsing
+        // them avoids leaking a three-way state machine into the revert surface.
+        require(
+            position.released && !position.claimed && block.timestamp < position.redeemableUntil,
+            NotRedeemable(tokenId)
+        );
+
+        // Restore the pre-release state and nothing more. Recipient, asset and amount are left
+        // untouched so the deposit stays locked against the name; clearing the clocks means a later
+        // release starts a fresh pair rather than inheriting stale deadlines.
+        position.released = false;
+        position.withdrawAvailableAt = 0;
+        position.redeemableUntil = 0;
+
+        _removeReleasedToken(tokenId);
+
+        _registrar().safeTransferFrom(address(this), msg.sender, tokenId);
+
+        emit NameRedeemed(tokenId, msg.sender);
     }
 
     /// @inheritdoc IERC721Receiver
