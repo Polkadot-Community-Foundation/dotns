@@ -124,7 +124,7 @@ contract DotnsNameEscrowRedeemTest is BaseDotns {
 
         vm.startPrank(ed);
         dotnsRegistrar.approve(address(dotnsNameEscrow), tokenId);
-        vm.expectRevert(IDotnsNameEscrow.InvalidRedeemWindow.selector);
+        vm.expectRevert(IDotnsNameEscrow.RedeemWindowNotConfigured.selector);
         dotnsNameEscrow.release(tokenId);
         vm.stopPrank();
     }

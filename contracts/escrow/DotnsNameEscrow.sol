@@ -379,7 +379,7 @@ contract DotnsNameEscrow is
         // open permissionless reclaim the instant the name is released. Only reachable on a proxy
         // upgraded without pairing the upgrade with `updateRedeemWindow`.
         uint256 currentRedeemWindow = redeemWindow;
-        require(currentRedeemWindow != 0, InvalidRedeemWindow());
+        require(currentRedeemWindow != 0, RedeemWindowNotConfigured());
 
         // Snapshot the position fields once into stack locals so the trailing event emit reuses
         // them without three extra warm SLOADs after the state mutation. Both casts to `uint64` are

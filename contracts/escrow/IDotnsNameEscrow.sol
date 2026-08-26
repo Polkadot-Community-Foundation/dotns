@@ -196,10 +196,12 @@ interface IDotnsNameEscrow {
     error CooldownTooLong(uint256 supplied, uint256 maxAllowed);
 
     /// @notice Thrown by `release` when the redeem window has never been seeded.
-    /// @dev Fails the release closed rather than collapsing the holder's exclusive redeem phase to
-    ///      zero length, which would hand the name to whoever is watching the moment it is
-    ///      released. Reachable only on a proxy upgraded without seeding the window.
-    error InvalidRedeemWindow();
+    /// @dev A configuration fault rather than a bad argument: the caller supplied nothing, and the
+    ///      deployment is missing a policy value. Fails the release closed rather than collapsing
+    ///      the holder's exclusive redeem phase to zero length, which would hand the name to
+    ///      whoever is watching the moment it is released. Cleared by calling
+    ///      @custom:function updateRedeemWindow.
+    error RedeemWindowNotConfigured();
 
     /// @notice Thrown when the supplied redeem window is below the contract's configured lower
     /// bound.
@@ -374,7 +376,7 @@ interface IDotnsNameEscrow {
     ///      opens the deposit withdrawal; `redeemableUntil` (release + `redeemWindow`) closes the
     ///      holder's exclusive redeem phase and opens permissionless reclaim. Both are snapshots
     ///      so later policy changes never move an in-flight position. A release attempted while
-    ///      `redeemWindow` is unseeded triggers @custom:reverts InvalidRedeemWindow.
+    ///      `redeemWindow` is unseeded triggers @custom:reverts RedeemWindowNotConfigured.
     function release(uint256 tokenId) external;
 
     /// @notice Credits the refundable deposit for a released token to the recipient's pending
