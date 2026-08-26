@@ -185,7 +185,7 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
 
             assertEq(
                 dotnsRegistrar.available(tokenId),
-                block.timestamp >= position.redeemableUntil,
+                position.released && block.timestamp >= position.redeemableUntil,
                 "Withdrawn token is available exactly once its redeem window has elapsed"
             );
         }
