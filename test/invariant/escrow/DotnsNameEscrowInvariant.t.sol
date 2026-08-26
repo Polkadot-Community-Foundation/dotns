@@ -208,6 +208,42 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
         _assertNotStuck(handler.getWithdrawnTokenIds());
     }
 
+    /// @notice Anything the escrow reports reclaimable can actually be paid out when reclaimed.
+    /// @dev Lifecycle state only. `reclaim` also settles the deposit and can revert
+    ///     `InsufficientFunds` when the reserved balance plus the insurance fund cannot cover the
+    ///     amount owed, so a true answer is a claim about the window rather than a guarantee that
+    ///     the call is funded. The two coincide because `tokenReserved` is by construction the
+    ///     exact sum of live position amounts: only `deposit` credits it, and only `_settleDeposit`
+    ///     debits
+    ///     it, by exactly the amount it zeroes. `invariant_reserves_match_positions` holds that
+    ///     construction and `invariant_reclaimable_positions_are_fundable` asserts the implication,
+    ///     so a change breaking the coincidence fails the suite rather than surfacing as a name
+    ///     advertised and then unregisterable.
+    function invariant_reclaimable_positions_are_fundable() public view {
+        _assertFundable(handler.getReleasedTokenIds());
+        _assertFundable(handler.getWithdrawnTokenIds());
+    }
+
+    /// @notice Asserts settlement solvency for every reclaimable token in a set.
+    function _assertFundable(uint256[] memory tokenIds) private view {
+        uint256 insurance = dotnsNameEscrow.insuranceFund();
+
+        for (uint256 i; i < tokenIds.length; ++i) {
+            uint256 tokenId = tokenIds[i];
+
+            if (!dotnsNameEscrow.isReclaimable(tokenId)) continue;
+
+            IDotnsNameEscrow.ReleasePosition memory position =
+                dotnsNameEscrow.getReleasePosition(tokenId);
+
+            assertLe(
+                position.amount,
+                dotnsNameEscrow.reserves(position.asset) + insurance,
+                "a reclaimable position must be settleable from reserves plus insurance"
+            );
+        }
+    }
+
     /// @notice Asserts the never-stuck property across a set of token ids.
     function _assertNotStuck(uint256[] memory tokenIds) private view {
         uint256 maxWindow = dotnsNameEscrow.MAX_REDEEM_WINDOW();
