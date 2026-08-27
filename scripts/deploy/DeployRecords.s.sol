@@ -88,9 +88,15 @@ contract DeployRecords is BaseDeployer {
             "DotnsCostModelRegistry"
         );
 
-        vm.startBroadcast(owner);
-        DotnsCostModelRegistry(registry).register(IDotnsPricing(model));
-        vm.stopBroadcast();
+        // Idempotent for pipeline resume: re-running against an already-deployed
+        // chain finds this version registered, so register only when it is absent
+        // rather than reverting with AlreadyRegistered.
+        IDotnsPricing pricing = IDotnsPricing(model);
+        if (address(DotnsCostModelRegistry(registry).modelOf(pricing.version())) == address(0)) {
+            vm.startBroadcast(owner);
+            DotnsCostModelRegistry(registry).register(pricing);
+            vm.stopBroadcast();
+        }
     }
 
     function _deployPopRules(
