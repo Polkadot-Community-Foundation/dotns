@@ -21,6 +21,7 @@ import {
   buildGenesis,
   collectAccounts,
   findMissingImplementations,
+  BEACON_IMPL_SLOT,
 } from "./extract-genesis.mjs";
 
 // =============================================================================
@@ -285,4 +286,41 @@ test("buildGenesis throws when a proxy implementation is absent", () => {
     () => buildGenesis(state, MANIFEST),
     /proxy\/proxies with no implementation/
   );
+});
+
+test("a beacon whose implementation is absent is fatal", () => {
+  // The previewnet regression was a beacon, not an EIP-1967 proxy. A beacon keeps its
+  // implementation in slot 1, so a guard that reads only the EIP-1967 slot cannot see this.
+  const state = fixture();
+  delete state.accounts[STORE_IMPL];
+  assert.throws(() => buildGenesis(state, MANIFEST), /no implementation/);
+});
+
+test("an EOA pointer in slot 1 of a non-beacon is not an error", () => {
+  // Slot 1 holds an ordinary field on anything that is not a beacon, and a pointer-shaped
+  // word there is usually an owner or operator. Flagging those would break every build.
+  const accounts = [
+    {
+      address: FACTORY,
+      balance: "0x0",
+      nonce: 1,
+      code: "0xfe06",
+      storage: { [BEACON_IMPL_SLOT]: word(OWNER_EOA) },
+    },
+  ];
+  assert.deepEqual(findMissingImplementations(accounts), []);
+  assert.deepEqual(
+    findMissingImplementations(accounts, new Set([FACTORY])),
+    [{ proxy: FACTORY, impl: OWNER_EOA }],
+    "named as a beacon, the same word IS a missing implementation"
+  );
+});
+
+test("the artifact records its TLD, so a rename cannot hide it", () => {
+  const withTld = buildGenesis(fixture(), MANIFEST, () => {}, "test");
+  assert.equal(withTld.tld, "test");
+  assert.ok(Array.isArray(withTld.accounts));
+
+  const without = buildGenesis(fixture(), MANIFEST);
+  assert.ok(!("tld" in without), "omitted rather than null when not supplied");
 });

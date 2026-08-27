@@ -302,7 +302,8 @@ ANVIL_PID=""
 node "$SCRIPT_DIR/extract-genesis.mjs" \
     --state "$ANVIL_STATE" \
     --deployments "$DEPLOYMENT_FILE" \
-    --output "$GENESIS_OUT"
+    --output "$GENESIS_OUT" \
+    --tld "$DOTNS_TLD"
 
 rm -f "$ANVIL_STATE"
 

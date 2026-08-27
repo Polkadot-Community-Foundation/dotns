@@ -34,6 +34,10 @@ import { resolve } from "path";
 export const EIP1967_IMPL_SLOT =
   "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
 
+// An UpgradeableBeacon is not a proxy and does not use the EIP-1967 slot: Ownable puts
+// _owner in slot 0 and the beacon puts _implementation in slot 1.
+export const BEACON_IMPL_SLOT = "0x" + "0".repeat(63) + "1";
+
 const ZERO_ADDR = "0x" + "0".repeat(40);
 
 // =============================================================================
@@ -128,24 +132,33 @@ export function collectAccounts(stateAccounts, contractEntries, log = () => {}) 
 }
 
 /**
- * Proxies whose EIP-1967 implementation slot points somewhere the genesis does not carry.
+ * Accounts whose implementation pointer targets something the genesis does not carry.
  *
- * Deliberately a DIFFERENT predicate from the one that built the account set:
- * referencedContracts only follows a pointer when the target already has code in the dump,
- * so an implementation that failed to deploy is dropped silently and the dangling check —
- * filtering on the same "has code" condition — cannot see the hole either. A proxy with a
- * non-zero impl slot and no implementation behind it is exactly the previewnet failure this
- * file exists to prevent, so it is asserted on its own terms: slot set, target present.
+ * A different predicate from the one that built the account set: referencedContracts only
+ * follows a pointer whose target already has code, so an implementation that failed to
+ * deploy is dropped silently and nothing downstream notices.
+ *
+ * Checks the EIP-1967 slot on every account, and slot 1 on the beacons named in `beacons`.
+ * Beacons need naming because slot 1 holds an ordinary field on anything else, and a
+ * pointer-shaped word there is usually an EOA — an owner or an operator — which is not a
+ * missing implementation. The original previewnet failure was a beacon, so covering only
+ * EIP-1967 would leave exactly that case unguarded.
  */
-export function findMissingImplementations(accounts) {
+export function findMissingImplementations(accounts, beacons = new Set()) {
   const present = new Set(accounts.map((a) => normalizeAddr(a.address)));
   const broken = [];
   for (const acct of accounts) {
-    const word = acct.storage?.[EIP1967_IMPL_SLOT];
-    if (!word) continue;
-    const impl = addressFromWord(word);
-    if (!impl || present.has(impl)) continue;
-    broken.push({ proxy: normalizeAddr(acct.address), impl });
+    const address = normalizeAddr(acct.address);
+    const slots = beacons.has(address)
+      ? [EIP1967_IMPL_SLOT, BEACON_IMPL_SLOT]
+      : [EIP1967_IMPL_SLOT];
+    for (const slot of slots) {
+      const word = acct.storage?.[slot];
+      if (!word) continue;
+      const impl = addressFromWord(word);
+      if (!impl || present.has(impl)) continue;
+      broken.push({ proxy: address, impl });
+    }
   }
   return broken;
 }
@@ -154,7 +167,7 @@ export function findMissingImplementations(accounts) {
  * Build the pallet-revive genesis accounts from an anvil state dump.
  * `deployments` is the dotns manifest: a flat `{ name: address }` map.
  */
-export function buildGenesis(stateData, deployments, log = () => {}) {
+export function buildGenesis(stateData, deployments, log = () => {}, tld) {
   // dotns multi-stage deploy writes a flat `{ name: addr, _seed: 0x0 }` manifest
   // (single-shot DotnsDeployer used to nest under `.contracts`). Underscore-prefixed
   // keys are metadata, not contracts: `_seed` from BaseDeployer's vm.serializeAddress,
@@ -238,7 +251,13 @@ export function buildGenesis(stateData, deployments, log = () => {}) {
     });
   }
 
-  const brokenProxies = findMissingImplementations(genesisAccounts);
+  // Beacons are recognised by manifest name; both real ones end in "Beacon".
+  const beacons = new Set(
+    contractEntries
+      .filter(([name]) => name.endsWith("Beacon"))
+      .map(([, address]) => normalizeAddr(address))
+  );
+  const brokenProxies = findMissingImplementations(genesisAccounts, beacons);
   if (brokenProxies.length > 0) {
     const detail = brokenProxies
       .map((b) => `  ${b.proxy} -> implementation ${b.impl} is not in the genesis`)
@@ -263,7 +282,9 @@ export function buildGenesis(stateData, deployments, log = () => {}) {
     );
   }
 
-  return { accounts: genesisAccounts };
+  // The TLD is in the filename as documentation; it is in here so a consumer can assert it.
+  // A rename defeats a filename, and the registry this genesis carries only suits one TLD.
+  return tld ? { tld, accounts: genesisAccounts } : { accounts: genesisAccounts };
 }
 
 // =============================================================================
@@ -284,13 +305,17 @@ function main() {
   const statePath = getArg(args, "state");
   const deploymentsPath = getArg(args, "deployments");
   const outputPath = getArg(args, "output");
+  const tld = getArg(args, "tld");
 
   const stateData = JSON.parse(readFileSync(statePath, "utf8"));
   const deployments = JSON.parse(readFileSync(deploymentsPath, "utf8"));
 
   console.log(`Reading manifest ${deploymentsPath}`);
-  const genesisConfig = buildGenesis(stateData, deployments, (msg) =>
-    console.log(msg)
+  const genesisConfig = buildGenesis(
+    stateData,
+    deployments,
+    (msg) => console.log(msg),
+    tld
   );
 
   writeFileSync(outputPath, JSON.stringify(genesisConfig, null, 2));
