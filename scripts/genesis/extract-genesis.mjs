@@ -249,6 +249,20 @@ export function buildGenesis(stateData, deployments, log = () => {}) {
     );
   }
 
+  // The manifest is what consumers resolve against, so assert the output covers all of it.
+  // Holds by construction today, since the loop throws on anything named it cannot extract —
+  // checked anyway because it is the guarantee the artifact is judged on.
+  const extracted = new Set(genesisAccounts.map((a) => normalizeAddr(a.address)));
+  const missing = contractEntries
+    .filter(([, address]) => !extracted.has(normalizeAddr(address)))
+    .map(([name, address]) => `  ${name} @ ${normalizeAddr(address)}`);
+  if (missing.length > 0) {
+    throw new Error(
+      `Genesis is missing ${missing.length} contract(s) named in the manifest:\n` +
+        missing.join("\n")
+    );
+  }
+
   return { accounts: genesisAccounts };
 }
 
