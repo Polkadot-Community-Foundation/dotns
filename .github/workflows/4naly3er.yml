@@ -36,17 +36,7 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - uses: foundry-rs/foundry-toolchain@v1
-        with:
-          # Pinned, was `stable`. foundry v1.8.0 (2026-08-27) breaks this repo two ways:
-          #   * its linter aborts on test/invariant/registrar/DotnsPopControllerInvariant.t.sol
-          #     (SIGABRT, `native_members: type Elementary(Bytes) should be wrapped in Ref`),
-          #     and lints run inside `forge build`, so every build fails
-          #   * `forge doc` emits a Vocs project instead of mdBook, so no book.toml and the
-          #     Documentation workflow's mdbook step has nothing to build
-          # solc compiles fine and 1.7.1 does both correctly, so these are upstream regressions.
-          # Both must be handled before unpinning.
-          version: v1.7.1
+      - uses: ./.github/actions/setup-foundry
 
       - uses: actions/setup-python@v5
         with:
