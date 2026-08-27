@@ -100,13 +100,6 @@ multiline_func_header = "all"
 
 [lint]
 exclude_lints = ["mixed-case-variable"]
-# forge 1.8.0's linter aborts on this file (SIGABRT, not a diagnostic):
-#   native_members: type Elementary(Bytes) should be wrapped in Ref
-#   solar/crates/sema/src/builtins/members.rs:14
-# solc compiles it fine and 1.7.1 lints it fine, so it is an upstream regression, not
-# invalid Solidity. Lints run during `forge build`, so without this every workflow that
-# builds fails. Drop this line once foundry fixes it.
-ignore = ["test/invariant/registrar/DotnsPopControllerInvariant.t.sol"]
 
 [rpc_endpoints]
 paseo_local = "http://127.0.0.1:8545"
