@@ -56,9 +56,7 @@ jobs:
 
       - id: foundry_toolchain
         continue-on-error: true
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
+        uses: ./.github/actions/setup-foundry
       - name: Retry Foundry install on transient failure
         if: steps.foundry_toolchain.outcome == 'failure'
         run: |

@@ -23,6 +23,10 @@ concurrency:
 jobs:
   beta-release:
     runs-on: ubuntu-latest
+    # Baked into the genesis registry, so it decides which networks the artifact suits.
+    # Job-level: five steps name the file derived from it and must not disagree.
+    env:
+      DOTNS_TLD: test
     steps:
       # On workflow_dispatch the tag does not exist yet; the release step creates it
       # from the branch this run was started on. Read through an env var rather than
@@ -79,9 +83,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
+      - uses: ./.github/actions/setup-foundry
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -108,6 +110,21 @@ jobs:
         env:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
         run: forge test -vv
+
+      # pallet-revive genesis, built from the code this tag ships. Unlike deployments.json
+      # below — which is withheld from a pre-release because it records a *previous* live
+      # deployment of different code — this genesis is a fresh deploy of exactly this commit,
+      # so its addresses and its ABIs do come from the same release.
+      #
+      # Present on pre-releases as well as releases so the asset sets do not diverge, and so
+      # this step is exercised before a real release depends on it.
+      - name: Build pallet-revive genesis
+        env:
+          FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
+          FACTORY_DEPLOYER_KEY: ${{ secrets.FACTORY_DEPLOYER_KEY }}
+          DOTNS_ADMIN_KEY: ${{ secrets.DOTNS_ADMIN_KEY }}
+          DOTNS_ADMIN_MNEMONIC: ${{ secrets.DOTNS_ADMIN_MNEMONIC }}
+        run: bash scripts/genesis/build-genesis.sh release
 
       - name: Extract ABIs
         run: |
@@ -145,7 +162,8 @@ jobs:
         run: |
           TAG="$RELEASE_TAG"
           cd release
-          zip -r "../dotns-abis-${TAG}.zip" abis/ release-manifest.json
+          zip -r "../dotns-abis-${TAG}.zip" abis/ release-manifest.json \
+            "dotns-genesis-${DOTNS_TLD}.json"
 
       - name: Generate release body
         env:
@@ -193,10 +211,16 @@ jobs:
             echo ""
             echo "### Deployments"
             echo ""
-            echo "No addresses are published with a pre-release: this code is not deployed yet."
-            echo "Deploy this tag, then cut the release, which carries the addresses it produced."
+            echo "No **live** addresses are published with a pre-release: this code is not"
+            echo "deployed yet, so there is no deployment to record. Deploy this tag, then cut"
+            echo "the release, which carries the addresses it produced."
+            echo ""
+            echo "The genesis attached here is different: it is built by deploying this very"
+            echo "commit to a throwaway chain, so it carries **this commit's own addresses**,"
+            echo "not the previous live deployment's."
             echo ""
             echo "- **Release contents:** [release-manifest.json]($ASSET_BASE/release-manifest.json)"
+            echo "- [dotns-genesis-${DOTNS_TLD}.json]($ASSET_BASE/dotns-genesis-${DOTNS_TLD}.json) — pallet-revive genesis, \`.${DOTNS_TLD}\` TLD, for ${DOTNS_TLD} networks only."
           } >> release-body.md
 
       - name: Create draft pre-release with artifacts
@@ -210,6 +234,7 @@ jobs:
             dotns-abis-*.zip
             release/abis/*.json
             release/release-manifest.json
+            release/dotns-genesis-${{ env.DOTNS_TLD }}.json
           body_path: release-body.md
           draft: true
           prerelease: true
@@ -226,6 +251,7 @@ jobs:
           { cat release/expected-assets.txt
             echo "dotns-abis-${TAG}.zip"
             echo "release-manifest.json"
+            echo "dotns-genesis-${DOTNS_TLD}.json"
           } | sort > "$RUNNER_TEMP/wanted-assets.txt"
           if ! diff -u "$RUNNER_TEMP/wanted-assets.txt" "$RUNNER_TEMP/actual-assets.txt"; then
             echo "::error::Draft pre-release $TAG does not match the expected asset set; delete the draft and re-run."

@@ -1,0 +1,15 @@
+name: Setup Foundry
+description: Installs the foundry version this repo is known to build with.
+
+# One place for the version, so unpinning is one edit and not ten.
+#
+# Pinned at v1.7.1 because v1.8.0 breaks two things here: its linter aborts on
+# DotnsPopControllerInvariant.t.sol, which kills `forge build` everywhere, and `forge doc`
+# moved to Vocs, so deploy-docs.yml's mdbook step finds no book.toml. Fix both before unpinning.
+
+runs:
+  using: composite
+  steps:
+    - uses: foundry-rs/foundry-toolchain@v1
+      with:
+        version: v1.7.1
