@@ -760,7 +760,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         uint256 tokenId = _tokenIdForLabel(nameLabel);
 
         IDotnsNameEscrow.ReleasePosition memory before = dotnsNameEscrow.getReleasePosition(tokenId);
-        assertEq(before.amount, RENT_PRICE, "NoStatus mint must seed RENT_PRICE deposit");
+        assertEq(before.amount, BASE_DEPOSIT, "NoStatus mint must seed BASE_DEPOSIT deposit");
         assertEq(before.recipient, ed, "deposit recipient must be original registrant at mint");
 
         uint256 transferFee = dotnsRegistrar.quoteTransferFee(tokenId, leonardo);
@@ -774,7 +774,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         dotnsRegistrar.transferFrom{value: 0}(ed, leonardo, tokenId);
 
         IDotnsNameEscrow.ReleasePosition memory after_ = dotnsNameEscrow.getReleasePosition(tokenId);
-        assertEq(after_.amount, RENT_PRICE, "deposit amount must travel with the NFT");
+        assertEq(after_.amount, BASE_DEPOSIT, "deposit amount must travel with the NFT");
         assertEq(
             after_.recipient, leonardo, "position must rebind to the new holder, not be deleted"
         );
@@ -821,7 +821,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         IDotnsNameEscrow.ReleasePosition memory between =
             dotnsNameEscrow.getReleasePosition(tokenId);
-        assertEq(between.amount, RENT_PRICE, "deposit must travel through the first hop");
+        assertEq(between.amount, BASE_DEPOSIT, "deposit must travel through the first hop");
         assertEq(between.recipient, leonardo, "position recipient rebinds to leonardo on outbound");
 
         // Return leg leonardo back to ed rebinds the position back to ed.
@@ -829,7 +829,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         dotnsRegistrar.transferFrom{value: 0}(leonardo, ed, tokenId);
 
         IDotnsNameEscrow.ReleasePosition memory after_ = dotnsNameEscrow.getReleasePosition(tokenId);
-        assertEq(after_.amount, RENT_PRICE, "deposit must travel through the return hop");
+        assertEq(after_.amount, BASE_DEPOSIT, "deposit must travel through the return hop");
         assertEq(after_.recipient, ed, "position recipient rebinds back to ed on the return leg");
 
         assertEq(
@@ -956,7 +956,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         _commitRegistrationAndWaitMinimumAge(registration);
 
         // Governance registers a pricier model mid-window, moving the current version.
-        DotnsScarcityPricing pricierModel = new DotnsScarcityPricing(RENT_PRICE * 2, MIN_PRICE);
+        DotnsScarcityPricing pricierModel = new DotnsScarcityPricing(BASE_DEPOSIT * 2, MIN_PRICE);
         vm.prank(owner);
         costModelRegistry.register(IDotnsPricing(address(pricierModel)));
         assertTrue(popRules.pricingVersion() != committedVersion);
@@ -989,7 +989,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
                 wrongVersion
             )
         );
-        dotnsRegistrarController.register{value: RENT_PRICE}(registration);
+        dotnsRegistrarController.register{value: BASE_DEPOSIT}(registration);
     }
 
     function test_reveal_prices_at_committed_version_across_current_moves() public {
@@ -997,7 +997,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         address nameOwner = ed;
 
         // Register a second model and commit under it as the current version.
-        DotnsScarcityPricing modelV2 = new DotnsScarcityPricing(RENT_PRICE * 2, MIN_PRICE);
+        DotnsScarcityPricing modelV2 = new DotnsScarcityPricing(BASE_DEPOSIT * 2, MIN_PRICE);
         vm.prank(owner);
         costModelRegistry.register(IDotnsPricing(address(modelV2)));
         uint256 committedVersion = costModelRegistry.currentVersion();
@@ -1009,7 +1009,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         // Move current forward to a third model, then revert it back to the first registered
         // version, which the harness seeds with the flat launch model.
-        DotnsScarcityPricing modelV3 = new DotnsScarcityPricing(RENT_PRICE * 4, MIN_PRICE);
+        DotnsScarcityPricing modelV3 = new DotnsScarcityPricing(BASE_DEPOSIT * 4, MIN_PRICE);
         uint256 firstVersion = flatPricing.version();
         vm.prank(owner);
         costModelRegistry.register(IDotnsPricing(address(modelV3)));

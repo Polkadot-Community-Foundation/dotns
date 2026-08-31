@@ -46,7 +46,7 @@ contract PopRulesFuzzTest is BaseDotns {
         string memory nameLabel = _makeAlpha(seed, length);
 
         // The launch model prices every length at the flat deposit.
-        assertEq(popRules.price(nameLabel), RENT_PRICE);
+        assertEq(popRules.price(nameLabel), BASE_DEPOSIT);
     }
 
     function testFuzz_price_is_monotonic_and_floored(uint256 seed, uint256 length) public view {

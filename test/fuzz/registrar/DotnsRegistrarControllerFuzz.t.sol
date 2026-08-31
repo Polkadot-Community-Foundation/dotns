@@ -275,7 +275,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
             _commitFor(nameLabel, depositor, false);
 
         uint256 ownerPrice = popRules.priceWithCheck(nameLabel, depositor).price;
-        assertEq(ownerPrice, RENT_PRICE, "NoStatus price baseline must match RENT_PRICE");
+        assertEq(ownerPrice, BASE_DEPOSIT, "NoStatus price baseline must match BASE_DEPOSIT");
 
         vm.prank(depositor);
         dotnsRegistrarController.register{value: ownerPrice}(registration);
@@ -285,7 +285,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         uint256 tokenId = uint256(node);
 
         IDotnsNameEscrow.ReleasePosition memory atMint = dotnsNameEscrow.getReleasePosition(tokenId);
-        assertEq(atMint.amount, RENT_PRICE, "position must hold full deposit after register");
+        assertEq(atMint.amount, BASE_DEPOSIT, "position must hold full deposit after register");
         assertEq(atMint.recipient, depositor, "position recipient must be the depositor at mint");
 
         uint256 reservesBefore = dotnsNameEscrow.reserves(address(0));
@@ -301,7 +301,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
 
         IDotnsNameEscrow.ReleasePosition memory afterTransfer =
             dotnsNameEscrow.getReleasePosition(tokenId);
-        assertEq(afterTransfer.amount, RENT_PRICE, "deposit amount must travel with the NFT");
+        assertEq(afterTransfer.amount, BASE_DEPOSIT, "deposit amount must travel with the NFT");
         assertEq(
             afterTransfer.recipient,
             recipientSeed,

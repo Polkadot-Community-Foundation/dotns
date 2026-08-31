@@ -84,14 +84,14 @@ contract PopRulesTests is BaseDotns {
     function test_verified_person_pays_the_deposit_for_premium() public {
         _grantPopFull(ed);
 
-        assertEq(popRules.priceWithCheck("alicebob", ed).price, RENT_PRICE);
-        assertEq(popRules.priceWithCheck("lights", ed).price, RENT_PRICE);
+        assertEq(popRules.priceWithCheck("alicebob", ed).price, BASE_DEPOSIT);
+        assertEq(popRules.priceWithCheck("lights", ed).price, BASE_DEPOSIT);
     }
 
     function test_transfer_reprices_at_own_length() public {
         _grantPopFull(leonardo);
 
-        assertEq(popRules.transferFloor("lights", leonardo, tiago), RENT_PRICE);
+        assertEq(popRules.transferFloor("lights", leonardo, tiago), BASE_DEPOSIT);
         assertEq(popRules.transferFloor("lights", leonardo, leonardo), 0);
     }
 
@@ -118,7 +118,7 @@ contract PopRulesTests is BaseDotns {
 
         assertEq(uint256(priceMetadata.status), uint256(IPopRules.PopStatus.PopLite));
         assertEq(uint256(priceMetadata.userStatus), uint256(IPopRules.PopStatus.PopFull));
-        assertEq(priceMetadata.price, RENT_PRICE);
+        assertEq(priceMetadata.price, BASE_DEPOSIT);
     }
 
     function test_poplite_user_can_access_nostatus_name() public {
@@ -128,7 +128,7 @@ contract PopRulesTests is BaseDotns {
 
         assertEq(uint256(priceMetadata.status), uint256(IPopRules.PopStatus.NoStatus));
         assertEq(uint256(priceMetadata.userStatus), uint256(IPopRules.PopStatus.PopLite));
-        assertEq(priceMetadata.price, RENT_PRICE);
+        assertEq(priceMetadata.price, BASE_DEPOSIT);
     }
 
     function test_base_reservation_blocks_others() public {
@@ -189,7 +189,7 @@ contract PopRulesTests is BaseDotns {
         popRules.setShortNamesEnabled(false);
         _grantPopLite(ed);
         // longnamehere is 12 characters, so the switch never gates it.
-        assertEq(popRules.priceWithCheck("longnamehere", ed).price, RENT_PRICE);
+        assertEq(popRules.priceWithCheck("longnamehere", ed).price, BASE_DEPOSIT);
     }
 
     function test_enabling_short_names_opens_the_market() public {
@@ -198,7 +198,7 @@ contract PopRulesTests is BaseDotns {
         _grantPopFull(ed);
         vm.prank(owner);
         popRules.setShortNamesEnabled(true);
-        assertEq(popRules.priceWithCheck("alicebob", ed).price, RENT_PRICE);
+        assertEq(popRules.priceWithCheck("alicebob", ed).price, BASE_DEPOSIT);
     }
 
     function test_setShortNamesEnabled_emits() public {

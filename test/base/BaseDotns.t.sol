@@ -154,12 +154,11 @@ abstract contract BaseDotns is Test {
 
     /// @notice Deployed name escrow instance.
     DotnsNameEscrow public dotnsNameEscrow;
-    /// @notice Rent price applied to PoP NoStatus users for spam resistance.
-    /// @dev This value is passed into PopRules initialisation in this base test.
-    /// @dev Aliased to @custom:constant DotnsConstants.RENT_PRICE so deploy scripts and the test
-    ///      base see the same value; downstream test suites reference `RENT_PRICE`
+    /// @notice Base deposit the flat launch model charges for every admitted name.
+    /// @dev Aliased to @custom:constant DotnsConstants.BASE_DEPOSIT so deploy scripts and the test
+    ///      base see the same value; downstream test suites reference `BASE_DEPOSIT`
     ///      directly.
-    uint256 public constant RENT_PRICE = DotnsConstants.RENT_PRICE;
+    uint256 public constant BASE_DEPOSIT = DotnsConstants.BASE_DEPOSIT;
 
     /// @notice Price floor F seeded into PopRules initialisation in this base test.
     /// @dev Aliased to @custom:constant DotnsConstants.MIN_PRICE so deploy scripts and the test
@@ -279,9 +278,9 @@ abstract contract BaseDotns is Test {
         dotnsContentResolver = DotnsContentResolver(dotnsContentResolverAddress);
         vm.label(dotnsContentResolverAddress, "DotnsContentResolver");
 
-        flatPricing = new DotnsFlatPricing(RENT_PRICE);
+        flatPricing = new DotnsFlatPricing(BASE_DEPOSIT);
         vm.label(address(flatPricing), "DotnsFlatPricing");
-        scarcityPricing = new DotnsScarcityPricing(RENT_PRICE, MIN_PRICE);
+        scarcityPricing = new DotnsScarcityPricing(BASE_DEPOSIT, MIN_PRICE);
         vm.label(address(scarcityPricing), "DotnsScarcityPricing");
         costModelRegistry = new DotnsCostModelRegistry(owner);
         vm.label(address(costModelRegistry), "DotnsCostModelRegistry");

@@ -73,13 +73,13 @@ contract DeployRecords is BaseDeployer {
     /// @notice Deploys the flat launch model and the cost-model registry, then registers the model
     ///         so the registry serves it as the current version.
     /// @dev The `COST_MODEL` protocol-registry key points at the registry, not the model; the wire
-    ///      stage sets that key. The flat model prices every admitted name at `RENT_PRICE`;
+    ///      stage sets that key. The flat model prices every admitted name at `BASE_DEPOSIT`;
     ///      `DotnsScarcityPricing` is held as a later candidate and is not registered here.
     function _deployCostModelStack(address owner) internal returns (address registry) {
         address model = _broadcastDeployCreate3(
             owner,
             "DotnsFlatPricing.sol:DotnsFlatPricing",
-            abi.encode(DotnsConstants.RENT_PRICE),
+            abi.encode(DotnsConstants.BASE_DEPOSIT),
             "DotnsFlatPricing"
         );
         registry = _broadcastDeployCreate3(

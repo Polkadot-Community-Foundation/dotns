@@ -34,12 +34,11 @@ library DotnsConstants {
     /// @dev 10 DOT under revive's 18-decimal Asset Hub convention. A new amount is a fresh model
     ///      deployment registered under @custom:constant COST_MODEL, so this constant seeds the
     ///      model rather than being read afterwards. Single source of truth for deploy scripts and
-    ///      tests so the seed cannot drift between call sites. Also the base fee of the
-    ///      `DotnsScarcityPricing` candidate.
-    uint256 internal constant RENT_PRICE = 10 ether;
+    ///      tests so the seed cannot drift between call sites.
+    uint256 internal constant BASE_DEPOSIT = 10 ether;
 
     /// @notice Price floor F passed into the `DotnsScarcityPricing` candidate's constructor.
-    /// @dev Below `RENT_PRICE` so that curve falls above nine characters. Seeds the candidate
+    /// @dev Below `BASE_DEPOSIT` so that curve falls above nine characters. Seeds the candidate
     ///      constructor; a new floor is a fresh model deployment.
     uint256 internal constant MIN_PRICE = 0.1 ether;
 

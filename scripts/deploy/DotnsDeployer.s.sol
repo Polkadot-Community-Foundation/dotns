@@ -287,7 +287,7 @@ contract DotnsDeployer is BaseDeployer {
         model = _broadcastDeployCreate3(
             owner,
             "DotnsFlatPricing.sol:DotnsFlatPricing",
-            abi.encode(DotnsConstants.RENT_PRICE),
+            abi.encode(DotnsConstants.BASE_DEPOSIT),
             "DotnsFlatPricing"
         );
         registry = _broadcastDeployCreate3(
@@ -496,7 +496,7 @@ contract DotnsDeployer is BaseDeployer {
         require(DotnsRegistry(deployment.registry).recordExists(bytes32(0)), "Root record missing");
         require(
             IDotnsCostModelRegistry(deployment.costModelRegistry).priceForBaseLength(9)
-                == DotnsConstants.RENT_PRICE,
+                == DotnsConstants.BASE_DEPOSIT,
             "CostModel: launch price mismatch"
         );
         console.log("=== Deployment verification complete ===");
