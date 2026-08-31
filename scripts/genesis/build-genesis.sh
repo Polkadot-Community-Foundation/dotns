@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# =============================================================================
 # DotNS pallet-revive genesis builder
 #
 # Deploys the full DotNS contract set to a local anvil, then extracts the
@@ -22,7 +21,6 @@ set -euo pipefail
 #
 # Requires: forge, anvil, cast (foundry), node >= 18, jq — all already present
 # in the release workflow. Run it after `forge build`, from the repo root.
-# =============================================================================
 
 OUT="${1:-./release}"
 mkdir -p "$OUT"

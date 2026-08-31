@@ -56,21 +56,32 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
     }
 
     /// @notice Escrow native balance must always cover the full liability set: tracked
-    /// reserves, the insurance fund, unclaimed pull-payment balances, and the time-locked
+    /// reserves, the protocol fees, unclaimed pull-payment balances, and the time-locked
     /// refund-ledger entries credited by the refund-on-leave path. Under the deposit-binds-
     /// to-depositor model these four flows are economically distinct; solvency is only
     /// meaningful against their sum.
     function invariant_solvency() public view {
         uint256 escrowBalance = address(dotnsNameEscrow).balance;
         uint256 reservedAmount = dotnsNameEscrow.reserves(address(0));
-        uint256 insurance = dotnsNameEscrow.insuranceFund();
+        uint256 protocolFees = dotnsNameEscrow.protocolFees();
         uint256 pending = handler.totalPendingWithdrawals();
         uint256 refundEntries = handler.totalPendingRefundEntries();
 
         assertGe(
             escrowBalance,
-            reservedAmount + insurance + pending + refundEntries,
-            "Escrow balance must cover reserves + insurance + pending withdrawals + refund entries"
+            reservedAmount + protocolFees + pending + refundEntries,
+            "Escrow balance must cover reserves + protocol fees + pending withdrawals + refund entries"
+        );
+    }
+
+    /// @notice The handler's mirror of protocol-fee inflows must equal the escrow's on-chain
+    ///         protocol-fee balance. Protocol fees only ever accrue, so every inflow the handler
+    ///         tracks (cross-tier register and payable transfer) must sum to exactly the balance.
+    function invariant_protocol_fees_match_tracked_inflows() public view {
+        assertEq(
+            handler.ghost_protocolFeesPaidIn(),
+            dotnsNameEscrow.protocolFees(),
+            "Tracked protocol-fee inflows must equal on-chain protocol fees"
         );
     }
 
@@ -210,9 +221,9 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
 
     /// @notice Anything the escrow reports reclaimable can actually be paid out when reclaimed.
     /// @dev Lifecycle state only. `reclaim` also settles the deposit and can revert
-    ///     `InsufficientFunds` when the reserved balance plus the insurance fund cannot cover the
-    ///     amount owed, so a true answer is a claim about the window rather than a guarantee that
-    ///     the call is funded. The two coincide because `tokenReserved` is by construction the
+    ///     `InsufficientFunds` when the reserved balance cannot cover the amount owed, so a true
+    ///     answer is a claim about the window rather than a guarantee that the call is funded. The
+    ///     two coincide because `tokenReserved` is by construction the
     ///     exact sum of live position amounts: only `deposit` credits it, and only `_settleDeposit`
     ///     debits
     ///     it, by exactly the amount it zeroes. `invariant_reserves_match_positions` holds that
@@ -226,8 +237,6 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
 
     /// @notice Asserts settlement solvency for every reclaimable token in a set.
     function _assertFundable(uint256[] memory tokenIds) private view {
-        uint256 insurance = dotnsNameEscrow.insuranceFund();
-
         for (uint256 i; i < tokenIds.length; ++i) {
             uint256 tokenId = tokenIds[i];
 
@@ -238,8 +247,8 @@ contract DotnsNameEscrowInvariantTest is BaseDotns {
 
             assertLe(
                 position.amount,
-                dotnsNameEscrow.reserves(position.asset) + insurance,
-                "a reclaimable position must be settleable from reserves plus insurance"
+                dotnsNameEscrow.reserves(position.asset),
+                "a reclaimable position must be settleable from reserves"
             );
         }
     }

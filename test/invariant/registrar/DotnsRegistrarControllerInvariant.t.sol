@@ -103,7 +103,7 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
 
     /// @notice Every unit of native value the escrow holds is accounted for by exactly one ledger.
     /// @dev The escrow's balance is the sum of three obligations: `tokenReserved`, the deposits
-    ///      held against live positions; `insuranceFund`, the accumulated cross-tier fees; and
+    ///      held against live positions; `protocolFees`, the accumulated cross-tier fees; and
     ///      `_pendingWithdrawals`, the amounts credited to recipients and awaiting collection.
     ///      Value only ever moves between these three, never into or out of the set, so their total
     ///      tracks the balance exactly.
@@ -120,8 +120,9 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
     ///      The time-locked refund ledger is not part of this sum because this handler never
     ///      credits it. `DotnsNameEscrowInvariant.invariant_solvency` covers all four ledgers.
     function invariant_value_conservation() public view {
+        // Escrow balance equals reserves + protocol fees + pending withdrawals.
         uint256 reservedAmount = dotnsNameEscrow.reserves(address(0));
-        uint256 insurance = dotnsNameEscrow.insuranceFund();
+        uint256 protocolFees = dotnsNameEscrow.protocolFees();
 
         address[] memory actorList = handler.getActors();
         uint256 pendingTotal;
@@ -132,8 +133,8 @@ contract DotnsRegistrarControllerInvariantTest is BaseDotns {
         uint256 escrowBalance = address(dotnsNameEscrow).balance;
         assertEq(
             escrowBalance,
-            reservedAmount + insurance + pendingTotal,
-            "Escrow balance must equal reserves + insurance + pending withdrawals"
+            reservedAmount + protocolFees + pendingTotal,
+            "Escrow balance must equal reserves + protocol fees + pending withdrawals"
         );
     }
 

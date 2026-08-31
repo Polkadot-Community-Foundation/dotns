@@ -7,6 +7,9 @@ import {BaseDeployer} from "./BaseDeployer.s.sol";
 import {DotnsResolver} from "../../contracts/resolvers/DotnsResolver.sol";
 import {DotnsContentResolver} from "../../contracts/resolvers/DotnsContentResolver.sol";
 import {PopRules} from "../../contracts/pop/PopRules.sol";
+import {DotnsFlatPricing} from "../../contracts/pop/DotnsFlatPricing.sol";
+import {DotnsCostModelRegistry} from "../../contracts/pop/DotnsCostModelRegistry.sol";
+import {IDotnsPricing} from "../../contracts/pop/IDotnsPricing.sol";
 import {IDotnsProtocolRegistry} from "../../contracts/registry/IDotnsProtocolRegistry.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 
@@ -27,6 +30,7 @@ contract DeployRecords is BaseDeployer {
 
         _deployResolver(owner, protocolRegistry);
         _deployContentResolver(owner, protocolRegistry);
+        _deployCostModelStack(owner);
         _deployPopRules(owner, protocolRegistry);
 
         saveDeployments();
@@ -66,6 +70,36 @@ contract DeployRecords is BaseDeployer {
         );
     }
 
+    /// @notice Deploys the flat launch model and the cost-model registry, then registers the model
+    ///         so the registry serves it as the current version.
+    /// @dev The `COST_MODEL` protocol-registry key points at the registry, not the model; the wire
+    ///      stage sets that key. The flat model prices every admitted name at `BASE_DEPOSIT`;
+    ///      `DotnsScarcityPricing` is held as a later candidate and is not registered here.
+    function _deployCostModelStack(address owner) internal returns (address registry) {
+        address model = _broadcastDeployCreate3(
+            owner,
+            "DotnsFlatPricing.sol:DotnsFlatPricing",
+            abi.encode(DotnsConstants.BASE_DEPOSIT),
+            "DotnsFlatPricing"
+        );
+        registry = _broadcastDeployCreate3(
+            owner,
+            "DotnsCostModelRegistry.sol:DotnsCostModelRegistry",
+            abi.encode(owner),
+            "DotnsCostModelRegistry"
+        );
+
+        // Idempotent for pipeline resume: re-running against an already-deployed
+        // chain finds this version registered, so register only when it is absent
+        // rather than reverting with AlreadyRegistered.
+        IDotnsPricing pricing = IDotnsPricing(model);
+        if (address(DotnsCostModelRegistry(registry).modelOf(pricing.version())) == address(0)) {
+            vm.startBroadcast(owner);
+            DotnsCostModelRegistry(registry).register(pricing);
+            vm.stopBroadcast();
+        }
+    }
+
     function _deployPopRules(
         address owner,
         address protocolRegistry
@@ -76,10 +110,7 @@ contract DeployRecords is BaseDeployer {
         proxy = _broadcastDeployUups(
             owner,
             "PopRules.sol:PopRules",
-            abi.encodeCall(
-                PopRules.initialize,
-                (DotnsConstants.RENT_PRICE, IDotnsProtocolRegistry(protocolRegistry))
-            ),
+            abi.encodeCall(PopRules.initialize, (IDotnsProtocolRegistry(protocolRegistry))),
             "PopRules"
         );
     }

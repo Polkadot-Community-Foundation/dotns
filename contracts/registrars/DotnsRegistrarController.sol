@@ -10,6 +10,7 @@ import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/Reentrancy
 import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
 import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
 import {IPopRules} from "../pop/IPopRules.sol";
+import {IDotnsCostModelRegistry} from "../pop/IDotnsCostModelRegistry.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
 import {IDotnsNameEscrow} from "../escrow/IDotnsNameEscrow.sol";
@@ -53,6 +54,13 @@ contract DotnsRegistrarController is
     /// @notice Stores Mapping of commitment hashes to timestamp committed.
     mapping(bytes32 hash => uint256 timestamp) public commitments;
 
+    /// @notice Cost-model version stamped on a commitment at commit time.
+    /// @dev Recorded from the registry's current version when `commit` runs, so the reveal can bind
+    ///      a registration to the version that was current then. A caller cannot commit against an
+    ///      arbitrary earlier, cheaper version: the reveal rejects a `pricingVersion` that differs
+    ///      from this stamp.
+    mapping(bytes32 hash => uint256 version) public committedPricingVersion;
+
     /// @notice Whitelist for addresses allowed to call `registerReserved`.
     mapping(address user => bool isWhiteListed) public whiteList;
 
@@ -60,7 +68,7 @@ contract DotnsRegistrarController is
     IDotnsProtocolRegistry public protocolRegistry;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
-    uint256[50] private __gap;
+    uint256[49] private __gap;
 
     /// @notice Restricts calls to whitelisted addresses or the owner.
     /// @dev Used to gate `registerReserved`, which allows registering reserved names without
@@ -130,7 +138,12 @@ contract DotnsRegistrarController is
     {
         commitment = keccak256(
             abi.encode(
-                registration.label, registration.owner, registration.secret, registration.reserved
+                registration.label,
+                registration.owner,
+                registration.secret,
+                registration.reserved,
+                registration.maxPrice,
+                registration.pricingVersion
             )
         );
     }
@@ -144,7 +157,17 @@ contract DotnsRegistrarController is
         );
 
         commitments[commitment] = block.timestamp;
+        committedPricingVersion[commitment] = _currentPricingVersion();
         emit NameCommitted(commitment);
+    }
+
+    /// @notice Reads the cost model's current version through the protocol registry.
+    /// @dev Resolved at commit time so the stamp binds the version live then, not at reveal.
+    /// @return pricingVersion The current cost-model version.
+    function _currentPricingVersion() internal view returns (uint256 pricingVersion) {
+        return
+            IDotnsCostModelRegistry(protocolRegistry.get(DotnsConstants.COST_MODEL))
+                .currentVersion();
     }
 
     /// @inheritdoc IDotnsRegistrarController
@@ -179,25 +202,33 @@ contract DotnsRegistrarController is
         bool isDirect = msg.sender == registration.owner;
         IPopRules.PriceWithMeta memory priced;
         if (isDirect) {
-            priced = rules.priceWithCheck(registration.label, registration.owner);
+            priced = rules.priceWithCheckAtVersion(
+                registration.label, registration.owner, registration.pricingVersion
+            );
         } else {
-            priced = rules.priceWithoutCheck(registration.label, registration.owner);
+            priced = rules.priceWithoutCheckAtVersion(
+                registration.label, registration.owner, registration.pricingVersion
+            );
             if (priced.status == IPopRules.PopStatus.Reserved) {
                 (IPopRules.PopStatus required,) = rules.classifyName(registration.label);
                 if (required == IPopRules.PopStatus.Reserved) {
-                    revert GovernanceReserved(registration.label);
+                    revert IPopRules.GovernanceReserved(registration.label);
                 }
-                revert NameReserved(registration.label);
+                revert IPopRules.NameReserved(registration.label);
             }
             require(
                 priced.userStatus >= priced.status,
-                OwnerStatusInsufficient(registration.label, priced.userStatus, priced.status)
+                IPopRules.OwnerStatusInsufficient(
+                    registration.label, priced.userStatus, priced.status
+                )
             );
         }
 
-        uint256 friction =
-            !isDirect ? rules.transferFloor(registration.label, msg.sender, registration.owner) : 0;
-        uint256 totalCharged = priced.price > friction ? priced.price : friction;
+        uint256 totalCharged = priced.price;
+        require(
+            totalCharged <= registration.maxPrice,
+            PriceExceedsMax(registration.label, totalCharged, registration.maxPrice)
+        );
         require(msg.value >= totalCharged, InsufficientValue());
 
         IDotnsReverseResolver reverse;
@@ -245,7 +276,7 @@ contract DotnsRegistrarController is
     ///      registration the full `chargeAmount` lands in the refundable deposit position
     ///      keyed to `nameOwner`. On a cross-payer registration the deposit position is
     ///      seeded with a zero amount so the release lifecycle stays reachable, and the same
-    ///      `chargeAmount` routes to the insurance fund via `depositInsurance` keyed to
+    ///      `chargeAmount` routes to the protocol fee pot via `depositProtocolFee` keyed to
     ///      `msg.sender` as the payer.
     function _settleEscrow(
         address escrow,
@@ -264,8 +295,8 @@ contract DotnsRegistrarController is
         );
 
         if (!isDirect && chargeAmount > 0) {
-            IDotnsNameEscrow(payable(escrow)).depositInsurance{value: chargeAmount}(
-                IDotnsNameEscrow.InsuranceDepositParams({
+            IDotnsNameEscrow(payable(escrow)).depositProtocolFee{value: chargeAmount}(
+                IDotnsNameEscrow.ProtocolFeeDepositParams({
                     tokenId: tokenId, payer: msg.sender, recipient: nameOwner
                 })
             );
@@ -356,7 +387,14 @@ contract DotnsRegistrarController is
             CommitmentTooOld(commitment, committedAt + maxCommitmentAge, block.timestamp)
         );
 
+        uint256 stamped = committedPricingVersion[commitment];
+        require(
+            registration.pricingVersion == stamped,
+            IDotnsCostModelRegistry.PricingVersionMismatch(stamped, registration.pricingVersion)
+        );
+
         delete commitments[commitment];
+        delete committedPricingVersion[commitment];
     }
 
     /// @notice Completes a commit-reveal registration: mints (or skips when reclaiming),

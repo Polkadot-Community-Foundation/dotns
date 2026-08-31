@@ -43,6 +43,7 @@ contract WireDeployments is BaseDeployer {
         address contentResolver;
         address resolver;
         address popRules;
+        address costModelRegistry;
         address registrarController;
         address protocolRegistry;
         address multicall3;
@@ -82,6 +83,7 @@ contract WireDeployments is BaseDeployer {
         addr.contentResolver = _readAddress("DotnsContentResolver");
         addr.resolver = _readAddress("DotnsResolver");
         addr.popRules = _readAddress("PopRules");
+        addr.costModelRegistry = _readAddress("DotnsCostModelRegistry");
         addr.registrarController = _readAddress("DotnsRegistrarController");
         addr.protocolRegistry = _readAddress("DotnsProtocolRegistry");
         addr.multicall3 = _readAddress("Multicall3");
@@ -111,6 +113,9 @@ contract WireDeployments is BaseDeployer {
         registry.set(DotnsConstants.REVERSE_RESOLVER, addr.reverseResolver);
         registry.set(DotnsConstants.RESOLVER, addr.resolver);
         registry.set(DotnsConstants.CONTENT_RESOLVER, addr.contentResolver);
+        // Point at the cost-model registry before PopRules so no pricing read resolves an unset
+        // key.
+        registry.set(DotnsConstants.COST_MODEL, addr.costModelRegistry);
         registry.set(DotnsConstants.POP_RULES, addr.popRules);
         registry.set(DotnsConstants.STORE_FACTORY, addr.storeFactory);
         registry.set(DotnsConstants.NAME_ESCROW, addr.nameEscrow);
@@ -203,6 +208,7 @@ contract WireDeployments is BaseDeployer {
             "Key: contentResolver"
         );
         require(registry.get(DotnsConstants.POP_RULES) == addr.popRules, "Key: popRules");
+        require(registry.get(DotnsConstants.COST_MODEL) == addr.costModelRegistry, "Key: costModel");
         require(
             registry.get(DotnsConstants.STORE_FACTORY) == addr.storeFactory, "Key: storeFactory"
         );

@@ -56,13 +56,19 @@ Before opening a pull request:
    - Interfaces should describe public/external functions with NatSpec.
    - Keep implementations aligned with the interface surface area. Avoid unused methods.
 
-3. Tests
+3. Comments
+   - Comments explain behaviour. Decorative separator comments are not allowed: a comment whose
+     content is a run of rule characters, such as a line of dashes, equals, hashes, or asterisks
+     under or around a heading. Group code with functions and NatSpec, not with drawn rules. The
+     pre-commit check rejects them.
+
+4. Tests
    - Add unit tests for behaviour changes.
    - Use fuzz tests where they add meaningful coverage.
    - Prefer readable, behaviour-oriented test names and assertions.
    - Keep tests deterministic unless explicitly fuzzing.
 
-4. Commit hygiene
+5. Commit hygiene
    - Keep commits logically grouped.
    - Squash when appropriate to keep history clean (maintainers may squash on merge).
 

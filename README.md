@@ -32,52 +32,65 @@ If a run fails partway, re-run it from the Actions tab; the draft is updated rat
 
 ## Economics
 
-dotNS uses a single tunable constant, written **D** throughout the protocol. D is the starting price used by PopRules and equals ten DOT at launch; governance can adjust it under the same gate as the upgrade authority. D is the only money quantity the protocol charges; everything else is a composition of D with zero.
+Every name admitted to public sale costs the same refundable deposit: 10 DOT at launch. The amount is not fixed in the registration path. It comes from a cost model resolved through the protocol registry under the `costModel` key, and governance can replace that model without touching the registrar or its storage. The launch model, `DotnsFlatPricing`, returns one deposit for every length. A length-sensitive scarcity curve, `DotnsScarcityPricing`, ships alongside it as a candidate for a later version but is not the registered default.
 
-D plays two distinct roles. As a **deposit** it is the refundable lock a NoStatus user posts to register a NoStatus-tier label; the deposit is bound to the name, not to the depositor, so it travels with the NFT on every transfer and only unlocks when the current holder releases the name back to escrow. Transferring a funded name forfeits the deposit to the new holder, who inherits the locked D and the right to release later. As a **friction** charge it is the non-refundable amount a sender pays on a cross-tier downward or reach-floor transfer. The two flows are economically distinct: the deposit gates a count of names (one D per NoStatus name in existence), the friction gates the rate of tier laundering.
+### Base length and the digit rule
 
-### Registration matrix
+Pricing and eligibility read a name's base length: the character count once a trailing number is set aside. A name carries no trailing digits or exactly two; one digit, or three or more, is rejected before pricing. The trailing digits come off before the length is measured, so `andrew` and `andrew01` both classify as a six-character name. Base length decides which band a name falls in and who may register it; under the flat model it does not change the amount.
 
-The public controller computes the registration charge as the greater of the owner-side price and the payer-to-owner downward friction; it does not add the two together. The single charge becomes a refundable deposit on a direct NoStatus registration and becomes non-refundable reserve funding on a cross-payer registration.
+### What a name costs
 
-| Owner tier      | Reserved (stem ≤5) | PopFull-tier (stem 6-8, no digits) | PopLite-tier (stem 6-8, two digits) | NoStatus-tier (stem ≥9) |
-|---|---|---|---|---|
-| **NoStatus user**     | rejected | rejected | rejected | direct: pays D into deposit |
-| **PopLite user**      | rejected | rejected | gateway-only; free | free |
-| **PopFull user**      | rejected | free | gateway-only; free | free |
-| **Whitelisted address** | free | free | free | free |
+Only names of nine characters or more are on public sale by default. The short-name switch, off at launch, keeps base lengths below nine off the public paid path. Every name on sale costs the flat deposit:
 
-Cross-payer registrations pay the greater of the owner-side price and the transfer-floor amount into the reserve. Reserved labels remain forbidden on the cross-payer path because the owner-side gate still rejects them. Whitelist registrations go through the same commit-reveal pipeline as the public path.
-
-### Transfer matrix
-
-The registrar consults PopRules for the transfer floor. A transfer pays D whenever the recipient's tier is strictly below the sender's, or whenever the recipient cannot reach the label's required tier. A stale PopFull-tier name landing with a PopLite holder, for example, can still owe friction even when the holder-to-holder move otherwise looks same-tier. Same-tier and upward transfers between holders of the label's own class are free of friction.
-
-The deposit, when present, is bound to the name and rides with it on every transfer. The escrow position is rebound to the new holder rather than refunded; only releasing the name back to escrow ever unlocks the locked D. Transferring a funded name is therefore a real forfeiture: the sender hands the locked deposit over to the recipient along with the NFT.
-
-| Sender → Recipient                | Friction (to insurance) | Deposit movement |
+| Base length | Price | On public sale by default |
 |---|---|---|
-| NoStatus → NoStatus (same tier)   | 0                      | Travels with the name; position rebinds to recipient |
-| NoStatus → PopLite or PopFull     | 0                      | Travels with the name; position rebinds to recipient |
-| PopLite → NoStatus                | D                      | Any inherited deposit travels with the name |
-| PopLite → PopLite (same)          | 0                      | Any inherited deposit stays bound to the name |
-| PopLite → PopFull (upward)        | 0                      | Any inherited deposit stays bound to the name |
-| PopFull → NoStatus                | D                      | Any inherited deposit travels with the name |
-| PopFull → PopLite (downward)      | D                      | Any inherited deposit stays bound to the name |
-| PopFull → PopFull (same)          | 0                      | Any inherited deposit stays bound to the name |
+| 6 to 8 | 10 DOT | No, held behind the short-name switch |
+| 9 or more | 10 DOT | Yes |
+| 5 or fewer | not sold | issued at zero base cost through the reserved path |
 
-The friction is constant and additive across downward hops. Every step that crosses a tier boundary downward charges D independently, so routing a name through intermediary tiers never costs less than the equivalent direct transfer. Laundering pays at least as much as the route it tries to avoid. Because the deposit follows the NFT, a NoStatus user cannot recover their D by handing the name to a fresh address and registering again; the only path back to D is releasing the current name into escrow. This binds Sybil cost to one D per live NoStatus name in existence, independent of how often names change hands.
+### Who can register a name
 
-### Refund and cooldown model
+Three bands share the one deposit.
 
-The escrow maintains two separate pull-payment ledgers. The split is deliberate: one ledger is for immediate overpayment withdrawals, and the other is for refunds that must wait behind a cooldown.
+| Base length | Who may register on the public paid path | Price |
+|---|---|---|
+| 9 or more | anyone, as NoStatus | 10 DOT |
+| 6 to 8 | a verified person, and only while the short-name switch is on | 10 DOT |
+| 5 or fewer | nobody on the public path | not sold; issued at zero base cost through the reserved path |
 
-- **Overpayment ledger.** No cooldown. Used only as the fallback when a direct registration overpayment cannot be returned to the sender inline.
-- **Refund ledger.** Every refund has its own cooldown clock. Used for transfer-fee overpayments. Transfers never credit the refund ledger because the position rides with the name.
+Personhood unlocks only the six-to-eight band. A no-digit name there needs full-person verification; a two-digit name needs lite-person verification. It gates who may buy, not the price: the deposit is the same one everyone pays.
 
-Only registrations try to return surplus immediately. Every other refund path waits behind a clock. The deposit unlocked by releasing a funded name is credited to the overpayment ledger rather than the refund ledger: the delay comes from the position's own `withdrawAvailableAt` stamp, so once `withdraw` lands the credit is immediately pullable. The cooldown is bounded to minutes and governance can tune it within that band.
+Names shorter than nine characters are closed on the public paid path by default. A paid registration below nine reverts until governance opens the short-name market with a single switch. The switch gates the public paid path alone: the personhood gateway issues names of any length without it, and the reserved path does not consult it. It defaults off, so at launch only names of nine characters or more are for sale.
 
-Clients can enumerate pending refunds through the escrow's public refund views. Pagination is capped so refund discovery remains bounded.
+Names of five characters or fewer are never sold on the public path, which rejects a reserved-tier label outright. Such a name enters circulation only through the reserved path, which the contract owner or a whitelisted operator calls to mint an available label at zero base cost with no deposit and no personhood check. There is no treasury: no value moves when a reserved name is issued.
+
+### Worked examples
+
+The path decides whether the amount is a refundable deposit, a non-refundable fee, or nothing at all. Every amount below is the flat launch deposit of 10 DOT.
+
+| Name | Base length | Path | Amount | Held as |
+|---|---|---|---|---|
+| `gavinwood` | 9 | public, own key | 10 DOT | refundable deposit |
+| `gavinwood` | 9 | public, someone else pays | 10 DOT | protocol fee |
+| `andrewsays` | 10 | public, own key | 10 DOT | refundable deposit |
+| `andrew` | 6 | public, own key (switch on, full person) | 10 DOT | refundable deposit |
+| `alicebob42` | 8 | public, own key (switch on, lite person) | 10 DOT | refundable deposit |
+| any six-to-eight name | 6 to 8 | personhood gateway grant | none | no deposit, no fee |
+| `andrew`, moved to a wallet that cannot clear its band | 6 | transfer | 10 DOT | protocol fee |
+
+### Deposits and protocol fees
+
+Registering a name under your own key locks a refundable deposit equal to the name's price. The deposit is bound to the name rather than to you, so it travels with the token on every transfer and unlocks only when the current holder releases the name back to escrow.
+
+A name someone else pays for, and a transfer, pay a non-refundable fee instead. When a third party pays for another wallet's registration, the charge is the same owner-side price, with no separate friction added; it routes to a single protocol fee pot, and the owner's escrow slot is seeded with a zero amount so the release lifecycle stays reachable. A gateway grant carries neither a deposit nor a fee. The protocol fee pot only ever grows: it backs no refunds, and nothing burns, sweeps, or withdraws from it. Refunds draw solely on the separate per-asset reserve that deposits fund. A holder's own deposit is their money held in trust and is never moved into fees.
+
+### Transfers re-price at the name's own length
+
+A transfer charges the name's own price, but only in two cases: the recipient cannot clear the name's band, or the move is a personhood downgrade, where the recipient's tier is lower than the sender's. Passing a six-character name to a wallet that could never have registered it costs the name's own price, so there is no cheap way to hand a band-gated name to a party who could not have earned it. A move between two wallets that both clear the band, and a move to the same address, cost nothing. The fee, when one is owed, settles into the protocol fee pot. The deposit, when present, rides with the name: the escrow position rebinds to the new holder rather than refunding, and only releasing the name back to escrow unlocks the locked deposit.
+
+### Versioned pricing
+
+The cost model is chosen by governance and swapped, not upgraded. Registering a new model adds it under a fresh version and points the current version at it; earlier versions stay priceable, so a registration already committed against an earlier version settles at the amount it committed to. A commitment binds the version current when it is made, and the reveal reverts if it is presented at a different version, so a model change between commit and reveal cannot move the amount. Governance can also point the current version back at an earlier registered model.
 
 ### Release lifecycle
 
@@ -85,21 +98,29 @@ Releasing a name starts two independent clocks, and the distinction between them
 
 | Clock | Length | What it gates |
 |---|---|---|
-| `withdrawAvailableAt` | release + `cooldown` (15 minutes at launch, ≤ 1 hour) | When the holder may credit the deposit to themselves via `withdraw` |
-| `redeemableUntil` | release + `redeemWindow` (1 day at launch, governance may set 1 to 30 days) | When the holder's exclusive claim on the name ends and `reclaim` opens to anyone |
+| `withdrawAvailableAt` | release + `cooldown` (15 minutes at launch, at most 1 hour) | When the holder may credit the deposit to themselves through `withdraw` |
+| `redeemableUntil` | release + `redeemWindow` (1 day at launch, governance may set 1 to 30 days) | When the holder's exclusive claim ends and `reclaim` opens to anyone |
 
-Both are snapshotted at release time, so a governance change never changes the clocks on a name already released. `redeemWindow` is tuned through `updateRedeemWindow` under the same gate as the upgrade authority.
+Both are stamped at release time, so a governance change never moves the clocks on a name already released. Inside the redeem window the name belongs to its previous holder, and `DotnsRegistrar.available` reports false so no client advertises it as free. The holder has two mutually exclusive options:
 
-Inside the redeem window the name belongs to its previous holder. They alone may act on it, and `DotnsRegistrar.available` reports **false** so no client advertises the name as free and no registrant burns a commit-reveal cycle on a registration that cannot succeed. The two are mutually exclusive:
+- `redeem` returns the token and moves no value. The position keeps its recipient, asset and amount, so the deposit stays locked and the name lands back in its exact pre-release state, releasable again later on a fresh pair of clocks. This is the undo for an accidental release.
+- `withdraw` credits the deposit and forfeits the right to redeem. A holder paid for the name cannot also take it back, otherwise they would hold a name no deposit backs.
 
-- **`redeem`** returns the NFT and moves no value. The position keeps its recipient, asset and amount, so the deposit stays locked and the name lands back in its exact pre-release state, releasable again later on a fresh pair of clocks. This is the undo for an accidental release.
-- **`withdraw`** credits the deposit and forfeits the right to redeem. A holder who has been paid for the name cannot also take it back; otherwise they would hold a NoStatus name that no deposit backs, and the Sybil bound of one D per live NoStatus name would break.
+Once `redeemableUntil` passes, `reclaim` is permissionless through the ordinary commit-reveal path, whether or not the previous holder ever withdrew. If the position still holds value, reclaim settles it: the amount is credited to the previous holder's pull-payment balance and stays claimable with no deadline. The value follows the departing holder; the name does not wait for them. Cross-paid registrations seed zero-amount positions, so those names have nothing to withdraw and nothing to settle.
 
-Once `redeemableUntil` is reached, `reclaim` is permissionless through the ordinary commit-reveal path, **whether or not the previous holder ever withdrew**. If the position still holds value, reclaim settles it: the amount is credited to the previous holder's pull-payment balance and stays claimable through `claimWithdrawal` with no deadline. The value follows the departing holder; the name does not wait for them.
+### Cost-model versioning
 
-That is why the window is bounded rather than open-ended: reclaim cannot depend on the previous holder acting. Free PopFull and PopLite registrations seed zero-amount positions, so for those names there is nothing to withdraw and no incentive to act.
+D and F are fixed for the life of a pricing model. Changing either means deploying a fresh model with the new values and registering it, at which point it becomes the current version; there is no live setter that edits the numbers in place. Governance can also point the current version back at an earlier registered model to roll a change back. An in-flight registration prices at the version it committed to, so a model change between commit and reveal leaves its cost unchanged.
 
-Clients wanting the exact moment a released name becomes registrable should read `redeemableUntil` from `getReleasePosition` rather than polling `available`.
+### What governance controls
+
+Governance sets D and F to whatever values it chooses. The contracts hold them coherent and nothing more: D above zero, F above zero and no greater than D, and D within a ceiling that keeps the six-character multiplication from overflowing. There is no cap on how high or low D goes and no limit on how fast it moves, so any rate limit or advance notice comes from the governance process rather than from these contracts. Governance also opens or closes the short-name market with the switch, tunes the release cooldown within its one-hour bound, sets the redeem window between 1 and 30 days, and sets the gateway's reservation duration. None of these controls lets governance seize, reassign, or destroy a name anyone already holds.
+
+### Refund ledgers
+
+The escrow keeps two separate pull-payment ledgers. One has no cooldown and serves as the fallback when a registration overpayment cannot be pushed back to the sender inline. The other gives every credit its own cooldown clock and holds transfer-fee overpayments. A deposit unlocked by releasing a funded name lands on the no-cooldown ledger; its delay comes instead from the position's own `withdrawAvailableAt` stamp, so once `withdraw` lands the credit is immediately pullable. Clients enumerate pending refunds through the escrow's public views, which page under a fixed cap so discovery stays bounded.
+
+Clients that need the exact moment a released name becomes registrable should read `redeemableUntil` from `getReleasePosition` rather than polling `available`.
 
 ## Contracts
 
@@ -107,7 +128,7 @@ Two controllers sit on top of a single registrar and a single protocol registry.
 
 ### DotnsRegistrarController
 
-Commit-reveal controller for the public registration path. A caller first submits a commitment hash, waits out the minimum commitment age, then reveals the registration parameters alongside the payment. The controller validates the commitment, routes price and eligibility through PopRules, and orchestrates every side effect of a successful registration: the mint on the registrar, the forward wire-up on the registry, the reverse record on the reverse resolver, the immutable Store write, and any refund owed on overpayment. Acceptable input is a single DNS label of at least the minimum-length policy; shorter labels revert with `LabelTooShort`. Labels classified as governance-reserved revert with `GovernanceReserved`; a base stem held by another user reverts with `NameReserved`. On the cross-payer path the owner's recorded PoP tier must meet the label's required tier — verified-payer-for-unverified-owner sponsorship is rejected with `OwnerStatusInsufficient`, so the direct-path personhood guarantee carries over to sponsored registrations.
+Commit-reveal controller for the public registration path. A caller first submits a commitment hash, waits out the minimum commitment age, then reveals the registration parameters alongside the payment. The controller validates the commitment, routes price and eligibility through PopRules, and orchestrates every side effect of a successful registration: the mint on the registrar, the forward wire-up on the registry, the reverse record on the reverse resolver, the immutable Store write, and any refund owed on overpayment. Acceptable input is a single DNS label of at least the minimum-length policy; shorter labels revert with `LabelTooShort`. Labels classified as governance-reserved revert with `GovernanceReserved`; a base stem held by another user reverts with `NameReserved`. On the cross-payer path the owner's recorded PoP tier must meet the label's required tier, so verified-payer-for-unverified-owner sponsorship is rejected with `OwnerStatusInsufficient` and the direct-path personhood guarantee carries over to sponsored registrations.
 
 ### DotnsPopController
 
@@ -149,24 +170,24 @@ The registry exposes isAuthorised(node, account) as the canonical check for whet
 
 ### PopRules
 
-PoP-aware name classification and pricing. Classification reads the label's **stem length** (the character count after stripping the trailing digit suffix) and the trailing digit count itself, then maps to one of four tiers: NoStatus (stem of 9+ characters, open to anyone for a flat deposit, with zero or exactly two trailing digits permitted), PopLite (stem of 6-8 characters with exactly two trailing digits, gateway-issued to lite-verified users), PopFull (stem of 6-8 characters with no trailing digits, requires full-person verification), and Reserved (stem of 5 characters or fewer, governed by the protocol). Labels carrying one trailing digit or more than two trailing digits are rejected at the classifier. The classification determines the price and the eligibility gate the commit-reveal controller enforces.
+PoP-aware name classification and pricing. Classification reads the label's **stem length** (the character count after stripping the trailing digit suffix) and the trailing digit count itself, then maps to one of four tiers: NoStatus (stem of 9+ characters, open to anyone at the cost-model price, with zero or exactly two trailing digits permitted), PopLite (stem of 6-8 characters with exactly two trailing digits, gateway-issued to lite-verified users), PopFull (stem of 6-8 characters with no trailing digits, requires full-person verification), and Reserved (stem of 5 characters or fewer, governed by the protocol). Labels carrying one trailing digit or more than two trailing digits are rejected at the classifier. The classification determines the price and the eligibility gate the commit-reveal controller enforces.
 
 #### Classification examples and failure modes
 
-The classifier bands on the stem, not the total label length. The stem is the label after removing any trailing digits. Trailing digit count must be zero or exactly two; a one-digit suffix and suffixes longer than two digits are invalid before tier eligibility is considered.
+The classifier bands on the stem, not the total label length. The stem is the label after removing any trailing digits. The trailing digit count must be zero or exactly two; a one-digit suffix and suffixes longer than two digits are invalid before tier eligibility is considered. The price column gives the flat deposit for a registrable example; a rejected or reserved name has no price.
 
-| Label | Stem | Trailing digits | Classification | Eligible public path | Notes |
-| --- | --- | ---: | --- | --- | --- |
-| alice12 | alice | 2 | Reserved | Whitelist only | The stem is five characters, so the two-digit suffix does not make it PopLite. |
-| andrew01 | andrew | 2 | PopLite | Pop gateway only | Valid lite shape: six-character stem plus system-supplied two-digit suffix. |
-| alicebob42 | alicebob | 2 | PopLite | Pop gateway only | Eight-character stem plus two digits; total length is ten. |
-| andrew | andrew | 0 | PopFull | PopFull user | Canonical full-person base name. |
-| andrew1 | andrew | 1 | Rejected | None | One trailing digit has no protocol meaning. |
-| andrewsays | andrewsays | 0 | NoStatus | Anyone | NoStatus self-registration pays the flat refundable deposit. |
-| andrewsays01 | andrewsays | 2 | NoStatus | Anyone | Long stem remains NoStatus even with a two-digit suffix. |
-| andrew123 | andrew | 3 | Rejected | None | More than two trailing digits is invalid. |
-| andrew.01 | n/a | n/a | Rejected by public label validator | None | Dots are not valid in the public flat label. The Pop gateway accepts stem.suffix and normalises it to stemsuffix. |
-| Andrew01 | n/a | n/a | Rejected by canonical label validator | None | Labels must be lowercase ASCII DNS labels. |
+| Label | Stem | Trailing digits | Classification | Eligible public path | Price | Notes |
+| --- | --- | ---: | --- | --- | ---: | --- |
+| alice12 | alice | 2 | Reserved | Whitelist only | Not sold; issued at 0 | The stem is five characters, so the two-digit suffix does not make it PopLite. |
+| andrew01 | andrew | 2 | PopLite | Pop gateway only | 10 DOT | Valid lite shape: six-character stem plus system-supplied two-digit suffix. Priced on the public paid path only while the short-name switch is on; the gateway grant is free. |
+| alicebob42 | alicebob | 2 | PopLite | Pop gateway only | 10 DOT | Eight-character stem plus two digits; total length is ten. Gateway grant is free. |
+| andrew | andrew | 0 | PopFull | PopFull user | 10 DOT | Canonical full-person base name; priced only while the short-name switch is on. |
+| andrew1 | andrew | 1 | Rejected | None | n/a | One trailing digit has no protocol meaning. |
+| andrewsays | andrewsays | 0 | NoStatus | Anyone | 10 DOT | Base length 10; the amount is the flat refundable deposit. |
+| andrewsays01 | andrewsays | 2 | NoStatus | Anyone | 10 DOT | Long stem remains NoStatus even with a two-digit suffix, and prices at the same flat deposit. |
+| andrew123 | andrew | 3 | Rejected | None | n/a | More than two trailing digits is invalid. |
+| andrew.01 | n/a | n/a | Rejected by public label validator | None | n/a | Dots are not valid in the public flat label. The Pop gateway accepts stem.suffix and normalises it to stemsuffix. |
+| Andrew01 | n/a | n/a | Rejected by canonical label validator | None | n/a | Labels must be lowercase ASCII DNS labels. |
 
 Tier assignment is read on every pricing call, not stored: PopRules queries the alias-accounts personhood precompile at DotnsConstants.PERSONHOOD with the dotns context (bytes32("dotns")), and translates the returned status byte into a PopStatus (0=NoStatus, 1=PopLite, 2=PopFull). Unknown tier bytes collapse to NoStatus, so a future precompile addition fails closed rather than silently being treated as a higher tier. There is no on-chain self-attestation; users obtain personhood off-chain through the People-chain ring proof and the alias-accounts pallet propagates the result via XCM.
 

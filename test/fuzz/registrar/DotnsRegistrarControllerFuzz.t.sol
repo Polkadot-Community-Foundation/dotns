@@ -86,14 +86,9 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         assertEq(dotnsRegistrar.ownerOf(tokenId), registrant);
     }
 
-    function testFuzz_register_refunds_overpayment_inline_when_price_is_zero(
-        uint256 extra,
-        uint256 salt
-    )
-        public
-    {
+    function testFuzz_register_refunds_overpayment_inline(uint256 extra, uint256 salt) public {
         address registrant = tiago;
-        string memory nameLabel = _labelPriceZero(bound(salt, 0, 64));
+        string memory nameLabel = _labelPopLitePriced(bound(salt, 0, 64));
 
         _grantPopLite(registrant);
 
@@ -101,27 +96,26 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
             _commitFor(nameLabel, registrant, false);
 
         uint256 requiredPrice = popRules.priceWithCheck(nameLabel, registrant).price;
-        assertEq(requiredPrice, 0);
+        assertGt(requiredPrice, 0);
 
         extra = bound(extra, 0, 5 ether);
 
         uint256 balanceBefore = registrant.balance;
 
         vm.startPrank(registrant);
-        dotnsRegistrarController.register{value: extra}(registration);
+        dotnsRegistrarController.register{value: requiredPrice + extra}(registration);
         vm.stopPrank();
 
-        // Zero-priced mint with overpayment: the EOA payer receives the full
-        // `extra` back inline, leaving the pull ledger untouched.
+        // Overpayment is refunded inline to the EOA payer, leaving the pull ledger untouched.
         assertEq(
             registrant.balance,
-            balanceBefore,
-            "zero-priced EOA mint must net out balances when overpaid"
+            balanceBefore - requiredPrice,
+            "payer nets out to exactly the price when overpaid"
         );
         assertEq(
             dotnsNameEscrow.pendingWithdrawal(registrant),
             0,
-            "zero-priced EOA mint must not credit the pull ledger"
+            "EOA mint must not credit the pull ledger"
         );
 
         bytes32 labelhash = keccak256(bytes(nameLabel));
@@ -148,7 +142,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
             _commitFor(nameLabel, nameOwner, true, payer);
 
         uint256 requiredPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
-        assertEq(requiredPrice, 0);
+        assertGt(requiredPrice, 0);
 
         extra = bound(extra, 0, 5 ether);
 
@@ -159,9 +153,11 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         dotnsRegistrarController.register{value: requiredPrice + extra}(registration);
         vm.stopPrank();
 
-        // EOA payers receive the refund inline. Owner's wallet stays untouched
+        // EOA payers receive the overpayment refund inline. Owner's wallet stays untouched
         // and the pull ledger is bypassed for both parties.
-        assertEq(payer.balance, payerBalanceBefore, "EOA payer must net to zero on a free mint");
+        assertEq(
+            payer.balance, payerBalanceBefore - requiredPrice, "EOA payer pays exactly the price"
+        );
         assertEq(
             dotnsNameEscrow.pendingWithdrawal(payer),
             0,
@@ -192,7 +188,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
             _commitFor(nameLabel, sender, true);
 
         vm.startPrank(sender);
-        dotnsRegistrarController.register{value: 0}(registration);
+        dotnsRegistrarController.register{value: popRules.price(nameLabel)}(registration);
         vm.stopPrank();
 
         bytes32 labelhash = keccak256(bytes(nameLabel));
@@ -225,8 +221,9 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         IDotnsRegistrarController.Registration memory primaryRegistration =
             _commitFor(primaryName, nameOwner, true);
 
+        uint256 primaryPrice = popRules.price(primaryName);
         vm.prank(nameOwner);
-        dotnsRegistrarController.register{value: 0}(primaryRegistration);
+        dotnsRegistrarController.register{value: primaryPrice}(primaryRegistration);
 
         assertEq(dotnsReverseResolver.nameOf(nameOwner), string.concat(primaryName, ".dot"));
 
@@ -237,8 +234,9 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         IDotnsRegistrarController.Registration memory giftedRegistration =
             _commitFor(giftedName, nameOwner, true, payer);
 
+        uint256 giftedPrice = popRules.price(giftedName);
         vm.prank(payer);
-        dotnsRegistrarController.register{value: 0}(giftedRegistration);
+        dotnsRegistrarController.register{value: giftedPrice}(giftedRegistration);
 
         assertEq(dotnsReverseResolver.nameOf(nameOwner), string.concat(primaryName, ".dot"));
     }
@@ -277,7 +275,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
             _commitFor(nameLabel, depositor, false);
 
         uint256 ownerPrice = popRules.priceWithCheck(nameLabel, depositor).price;
-        assertEq(ownerPrice, RENT_PRICE, "NoStatus price baseline must match RENT_PRICE");
+        assertEq(ownerPrice, BASE_DEPOSIT, "NoStatus price baseline must match BASE_DEPOSIT");
 
         vm.prank(depositor);
         dotnsRegistrarController.register{value: ownerPrice}(registration);
@@ -287,7 +285,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         uint256 tokenId = uint256(node);
 
         IDotnsNameEscrow.ReleasePosition memory atMint = dotnsNameEscrow.getReleasePosition(tokenId);
-        assertEq(atMint.amount, RENT_PRICE, "position must hold full deposit after register");
+        assertEq(atMint.amount, BASE_DEPOSIT, "position must hold full deposit after register");
         assertEq(atMint.recipient, depositor, "position recipient must be the depositor at mint");
 
         uint256 reservesBefore = dotnsNameEscrow.reserves(address(0));
@@ -303,7 +301,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
 
         IDotnsNameEscrow.ReleasePosition memory afterTransfer =
             dotnsNameEscrow.getReleasePosition(tokenId);
-        assertEq(afterTransfer.amount, RENT_PRICE, "deposit amount must travel with the NFT");
+        assertEq(afterTransfer.amount, BASE_DEPOSIT, "deposit amount must travel with the NFT");
         assertEq(
             afterTransfer.recipient,
             recipientSeed,
@@ -337,8 +335,9 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         IDotnsRegistrarController.Registration memory registration =
             _commitFor(nameLabel, sender, true);
 
+        uint256 registrationPrice = popRules.price(nameLabel);
         vm.prank(sender);
-        dotnsRegistrarController.register{value: 0}(registration);
+        dotnsRegistrarController.register{value: registrationPrice}(registration);
 
         bytes32 labelhash = keccak256(bytes(nameLabel));
         bytes32 node = _namehash(dotNode, labelhash);
@@ -381,7 +380,12 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
             keccak256(abi.encodePacked(nameLabel, nameOwner, block.timestamp, address(this)));
 
         registration = IDotnsRegistrarController.Registration({
-            label: nameLabel, owner: nameOwner, secret: secret, reserved: reserved
+            label: nameLabel,
+            owner: nameOwner,
+            secret: secret,
+            reserved: reserved,
+            maxPrice: type(uint256).max,
+            pricingVersion: popRules.pricingVersion()
         });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
@@ -398,13 +402,15 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         return string(abi.encodePacked("popful", _uintToAlphaFixed(salt, 2)));
     }
 
-    /// @notice Generate a label that classifies as NoStatus and carries a non-zero price.
+    /// @notice Generate a NoStatus label with a nine-character stem, so it prices at the base
+    ///         fee D on the curve.
     function _labelNoStatusPriced(uint256 salt) internal pure returns (string memory label) {
-        return string(abi.encodePacked("nostatus", _uintToAlphaFixed(salt, 2), "01"));
+        return string(abi.encodePacked("nostatu", _uintToAlphaFixed(salt, 2), "01"));
     }
 
-    /// @notice Generate a label that classifies as PopLite and prices to zero.
-    function _labelPriceZero(uint256 salt) internal pure returns (string memory label) {
+    /// @notice Generate an 8-char PopLite-tier label (base length 6) that prices at 8D on the
+    ///         curve, so the amount is non-zero.
+    function _labelPopLitePriced(uint256 salt) internal pure returns (string memory label) {
         return string(abi.encodePacked("free", _uintToAlphaFixed(salt, 2), "01"));
     }
 
