@@ -64,7 +64,7 @@ abstract contract BaseDeployer is Script {
 
     /// @notice Resolves the bare TLD label to initialise the protocol registry with.
     /// @dev Read from `DOTNS_TLD` because distinct networks can share one `block.chainid`, so the
-    ///      TLD cannot be keyed off the chain id. The operator sets `DOTNS_TLD=paseo` (or `test`,
+    ///      TLD cannot be keyed off the chain id. Operators set `DOTNS_TLD=paseo` (or `testnet`,
     ///      `dot`) per deployment; it is required, with no default, so an unset or empty value
     ///      aborts the deploy rather than silently landing the wrong TLD, which no setter can
     ///      correct afterwards. The label is passed straight into

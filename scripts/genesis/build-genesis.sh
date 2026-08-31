@@ -13,7 +13,7 @@ set -euo pipefail
 #   dotns-genesis-<tld>.json  pallet-revive GenesisConfig accounts
 #
 # The TLD is in the filename because it is baked into the registry initialiser: a genesis built
-# with DOTNS_TLD=test suits a test network and nothing else, and a file called plainly
+# with DOTNS_TLD=testnet suits a test network and nothing else, and a file called plainly
 # `dotns-genesis.json` is how a test registry ends up on a chain that wanted a real one.
 #
 # Addresses are NOT emitted here. `release-metadata.mjs build` already publishes deployments.json
@@ -73,7 +73,7 @@ WHITELIST_OPERATOR="${WHITELIST_OPERATOR:-}"
 # forge stage. This does not affect any address — only registry storage — but it
 # does decide which networks the resulting genesis is fit for, so it ends up in
 # the output filename.
-export DOTNS_TLD="${DOTNS_TLD:-test}"
+export DOTNS_TLD="${DOTNS_TLD:-testnet}"
 if ! printf '%s' "$DOTNS_TLD" | grep -Eq '^[a-z]{2,63}$'; then
     echo "Error: DOTNS_TLD ('$DOTNS_TLD') must be 2 to 63 lowercase ASCII letters (a-z)" >&2
     exit 1
