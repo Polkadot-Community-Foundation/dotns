@@ -21,7 +21,7 @@
  *   node scripts/genesis/extract-genesis.mjs \
  *     --state ./release/anvil-state.json \
  *     --deployments ./deployments/localhost/31337.json \
- *     --output ./release/dotns-genesis-test.json
+ *     --output ./release/dotns-genesis-testnet.json
  */
 
 import { readFileSync, writeFileSync } from "fs";
