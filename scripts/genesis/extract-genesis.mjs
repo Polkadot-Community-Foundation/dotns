@@ -28,9 +28,7 @@ import { readFileSync, writeFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { resolve } from "path";
 
-// =============================================================================
 // EIP-1967 implementation storage slot
-// =============================================================================
 export const EIP1967_IMPL_SLOT =
   "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
 
@@ -40,9 +38,7 @@ export const BEACON_IMPL_SLOT = "0x" + "0".repeat(63) + "1";
 
 const ZERO_ADDR = "0x" + "0".repeat(40);
 
-// =============================================================================
 // Helpers
-// =============================================================================
 
 /** Pad a hex string to N bytes (left-pad with zeros) */
 export function padHex(hex, bytes) {
@@ -287,9 +283,7 @@ export function buildGenesis(stateData, deployments, log = () => {}, tld) {
   return tld ? { tld, accounts: genesisAccounts } : { accounts: genesisAccounts };
 }
 
-// =============================================================================
 // CLI
-// =============================================================================
 
 function getArg(args, name) {
   const idx = args.indexOf(`--${name}`);

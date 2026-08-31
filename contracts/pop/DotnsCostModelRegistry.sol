@@ -5,14 +5,12 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {IDotnsCostModelRegistry} from "./IDotnsCostModelRegistry.sol";
 import {IDotnsPricing} from "./IDotnsPricing.sol";
-import {SystemUtils} from "../utils/SystemUtils.sol";
 
 /// @title DotNS Cost Model Registry
 /// @notice Keeps every registered cost model addressable by version and tracks the current one.
-/// @dev Holds only pointers. `PopRules` resolves it once through `DotnsConstants.COST_MODEL` and
-///      prices the current version for fresh reads and a specific version for in-flight
-///      registrations. Governance moves the model set: the mutating calls admit Root or the owner,
-///      so the economics track that governs pricing can drive them without the owner key.
+/// @dev Holds only pointers, so it stays a plain owner-gated contract. `PopRules` resolves it once
+///      through `DotnsConstants.COST_MODEL` and prices the current version for fresh reads and a
+///      specific version for in-flight registrations.
 /// @custom:security-contact admin@parity.io
 contract DotnsCostModelRegistry is Ownable, IDotnsCostModelRegistry {
     /// @inheritdoc IDotnsCostModelRegistry
@@ -21,22 +19,12 @@ contract DotnsCostModelRegistry is Ownable, IDotnsCostModelRegistry {
     /// @inheritdoc IDotnsCostModelRegistry
     uint256 public override currentVersion;
 
-    /// @notice Sets the owner permitted to register models alongside Root.
+    /// @notice Sets the owner permitted to register models.
     /// @param owner_ Address that governs the model set.
     constructor(address owner_) Ownable(owner_) {}
 
-    /// @notice Restricts a call to Root or the owner.
-    /// @dev Checks Root first so `msg.sender`, which traps under a Root origin, is read only for a
-    ///      signed caller.
-    modifier onlyGovernance() {
-        if (!SystemUtils.originIsRoot()) {
-            _checkOwner();
-        }
-        _;
-    }
-
     /// @inheritdoc IDotnsCostModelRegistry
-    function register(IDotnsPricing model) external override onlyGovernance {
+    function register(IDotnsPricing model) external override onlyOwner {
         uint256 version = model.version();
         require(version != 0, ZeroVersion());
         require(address(modelOf[version]) == address(0), AlreadyRegistered(version));
@@ -46,7 +34,7 @@ contract DotnsCostModelRegistry is Ownable, IDotnsCostModelRegistry {
     }
 
     /// @inheritdoc IDotnsCostModelRegistry
-    function setCurrentVersion(uint256 version) external override onlyGovernance {
+    function setCurrentVersion(uint256 version) external override onlyOwner {
         require(address(modelOf[version]) != address(0), UnknownVersion(version));
         currentVersion = version;
         emit CurrentModelSet(version);

@@ -285,9 +285,6 @@ abstract contract BaseDotns is Test {
         vm.label(address(scarcityPricing), "DotnsScarcityPricing");
         costModelRegistry = new DotnsCostModelRegistry(owner);
         vm.label(address(costModelRegistry), "DotnsCostModelRegistry");
-        // Governance registers models; the harness runs the seed under the owner prank opened
-        // above, so mock the Root check false to fall through to the owner path.
-        _mockOriginIsRoot(false);
         costModelRegistry.register(IDotnsPricing(address(flatPricing)));
 
         address popRulesAddress = Upgrades.deployUUPSProxy(
