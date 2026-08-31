@@ -36,9 +36,7 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
+      - uses: ./.github/actions/setup-foundry
 
       - uses: actions/setup-python@v5
         with:

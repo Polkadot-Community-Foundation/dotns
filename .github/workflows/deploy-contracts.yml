@@ -68,9 +68,7 @@ jobs:
           no-cache: true
 
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
+        uses: ./.github/actions/setup-foundry
 
       - name: Make scripts executable
         run: chmod +x setup.bash

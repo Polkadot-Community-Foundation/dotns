@@ -1,0 +1,30 @@
+name: Genesis Extractor Test
+
+# The release builds a pallet-revive genesis artifact from the deploy stages. The full build
+# needs anvil, forge and the deployer keys, so it stays a release step; the state-to-GenesisConfig
+# conversion is pure JSON and is worth checking on every PR that touches it. Without this, a
+# broken extractor would only surface when a release is cut.
+on:
+  pull_request:
+    paths:
+      - "scripts/genesis/**"
+      - ".github/workflows/genesis-extractor-test.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  genesis-extractor-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Test the genesis extractor
+        run: node --test scripts/genesis/extract-genesis.test.mjs
+
+      - name: Check the builder parses
+        run: bash -n scripts/genesis/build-genesis.sh
