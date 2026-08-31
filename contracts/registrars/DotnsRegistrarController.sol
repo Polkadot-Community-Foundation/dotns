@@ -10,6 +10,7 @@ import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/Reentrancy
 import {IDotnsRegistrar} from "./IDotnsRegistrar.sol";
 import {IDotnsReverseResolver} from "../resolvers/IDotnsReverseResolver.sol";
 import {IPopRules} from "../pop/IPopRules.sol";
+import {IDotnsCostModelRegistry} from "../pop/IDotnsCostModelRegistry.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
 import {IDotnsNameEscrow} from "../escrow/IDotnsNameEscrow.sol";
@@ -53,6 +54,13 @@ contract DotnsRegistrarController is
     /// @notice Stores Mapping of commitment hashes to timestamp committed.
     mapping(bytes32 hash => uint256 timestamp) public commitments;
 
+    /// @notice Cost-model version stamped on a commitment at commit time.
+    /// @dev Recorded from the registry's current version when `commit` runs, so the reveal can bind
+    ///      a registration to the version that was current then. A caller cannot commit against an
+    ///      arbitrary earlier, cheaper version: the reveal rejects a `pricingVersion` that differs
+    ///      from this stamp.
+    mapping(bytes32 hash => uint256 version) public committedPricingVersion;
+
     /// @notice Whitelist for addresses allowed to call `registerReserved`.
     mapping(address user => bool isWhiteListed) public whiteList;
 
@@ -60,7 +68,7 @@ contract DotnsRegistrarController is
     IDotnsProtocolRegistry public protocolRegistry;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
-    uint256[50] private __gap;
+    uint256[49] private __gap;
 
     /// @notice Restricts calls to whitelisted addresses or the owner.
     /// @dev Used to gate `registerReserved`, which allows registering reserved names without
@@ -149,7 +157,17 @@ contract DotnsRegistrarController is
         );
 
         commitments[commitment] = block.timestamp;
+        committedPricingVersion[commitment] = _currentPricingVersion();
         emit NameCommitted(commitment);
+    }
+
+    /// @notice Reads the cost model's current version through the protocol registry.
+    /// @dev Resolved at commit time so the stamp binds the version live then, not at reveal.
+    /// @return pricingVersion The current cost-model version.
+    function _currentPricingVersion() internal view returns (uint256 pricingVersion) {
+        return
+            IDotnsCostModelRegistry(protocolRegistry.get(DotnsConstants.COST_MODEL))
+                .currentVersion();
     }
 
     /// @inheritdoc IDotnsRegistrarController
@@ -194,13 +212,15 @@ contract DotnsRegistrarController is
             if (priced.status == IPopRules.PopStatus.Reserved) {
                 (IPopRules.PopStatus required,) = rules.classifyName(registration.label);
                 if (required == IPopRules.PopStatus.Reserved) {
-                    revert GovernanceReserved(registration.label);
+                    revert IPopRules.GovernanceReserved(registration.label);
                 }
-                revert NameReserved(registration.label);
+                revert IPopRules.NameReserved(registration.label);
             }
             require(
                 priced.userStatus >= priced.status,
-                OwnerStatusInsufficient(registration.label, priced.userStatus, priced.status)
+                IPopRules.OwnerStatusInsufficient(
+                    registration.label, priced.userStatus, priced.status
+                )
             );
         }
 
@@ -367,7 +387,14 @@ contract DotnsRegistrarController is
             CommitmentTooOld(commitment, committedAt + maxCommitmentAge, block.timestamp)
         );
 
+        uint256 stamped = committedPricingVersion[commitment];
+        require(
+            registration.pricingVersion == stamped,
+            IDotnsCostModelRegistry.PricingVersionMismatch(stamped, registration.pricingVersion)
+        );
+
         delete commitments[commitment];
+        delete committedPricingVersion[commitment];
     }
 
     /// @notice Completes a commit-reveal registration: mints (or skips when reclaiming),

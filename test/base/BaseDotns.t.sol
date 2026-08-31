@@ -4,6 +4,7 @@ pragma solidity ^0.8.34;
 import {Test} from "forge-std/Test.sol";
 
 import {PopRules, IPopRules} from "../../contracts/pop/PopRules.sol";
+import {DotnsFlatPricing} from "../../contracts/pop/DotnsFlatPricing.sol";
 import {DotnsScarcityPricing} from "../../contracts/pop/DotnsScarcityPricing.sol";
 import {DotnsCostModelRegistry} from "../../contracts/pop/DotnsCostModelRegistry.sol";
 import {IDotnsPricing} from "../../contracts/pop/IDotnsPricing.sol";
@@ -66,7 +67,11 @@ abstract contract BaseDotns is Test {
     /// @notice Deployed PoP oracle instance.
     PopRules public popRules;
 
-    /// @notice Deployed scarcity pricing model seeding the cost-model registry.
+    /// @notice Deployed flat model seeding the cost-model registry as the launch version.
+    DotnsFlatPricing public flatPricing;
+
+    /// @notice Deployed scarcity model, a later candidate held for the version-registry suites; not
+    ///         the registered default.
     DotnsScarcityPricing public scarcityPricing;
 
     /// @notice Deployed cost-model registry resolved by PopRules under `COST_MODEL`.
@@ -274,11 +279,16 @@ abstract contract BaseDotns is Test {
         dotnsContentResolver = DotnsContentResolver(dotnsContentResolverAddress);
         vm.label(dotnsContentResolverAddress, "DotnsContentResolver");
 
+        flatPricing = new DotnsFlatPricing(RENT_PRICE);
+        vm.label(address(flatPricing), "DotnsFlatPricing");
         scarcityPricing = new DotnsScarcityPricing(RENT_PRICE, MIN_PRICE);
         vm.label(address(scarcityPricing), "DotnsScarcityPricing");
         costModelRegistry = new DotnsCostModelRegistry(owner);
         vm.label(address(costModelRegistry), "DotnsCostModelRegistry");
-        costModelRegistry.register(IDotnsPricing(address(scarcityPricing)));
+        // Governance registers models; the harness runs the seed under the owner prank opened
+        // above, so mock the Root check false to fall through to the owner path.
+        _mockOriginIsRoot(false);
+        costModelRegistry.register(IDotnsPricing(address(flatPricing)));
 
         address popRulesAddress = Upgrades.deployUUPSProxy(
             "PopRules.sol:PopRules", abi.encodeCall(PopRules.initialize, (registry))

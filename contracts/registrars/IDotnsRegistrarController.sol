@@ -24,7 +24,10 @@ interface IDotnsRegistrarController is IDotnsController {
     /// @param maxPrice Ceiling in wei the caller accepts for this registration; a reveal charged
     /// above it reverts, closing the gap between the price at commit and the price at reveal.
     /// @param pricingVersion Cost-model version the caller committed to; the reveal prices the name
-    /// at this version, so a model change between commit and reveal leaves the amount unchanged.
+    /// at this version, so a model change between commit and reveal leaves the amount unchanged. It
+    /// must equal the version current when `commit` ran, which that call stamps on the commitment;
+    /// a reveal whose `pricingVersion` differs reverts, so the caller cannot bind an earlier,
+    /// cheaper version.
     struct Registration {
         string label;
         address owner;
@@ -78,28 +81,6 @@ interface IDotnsRegistrarController is IDotnsController {
     /// @param label Caller-supplied label that failed the minimum-length policy.
     error LabelTooShort(string label);
 
-    /// @notice Thrown when attempting to register a name whose base stem is held as a live
-    /// reservation by another user.
-    error NameReserved(string label);
-
-    /// @notice Thrown when attempting to register a label that classifies as
-    /// governance-reserved at the protocol level.
-    /// @dev Distinct from @custom:reverts NameReserved so off-chain consumers can tell
-    /// "wait for the holder to relinquish" apart from "this label is permanently held by
-    /// governance".
-    /// @param label Caller-supplied label that the rules engine classifies as governance-reserved.
-    error GovernanceReserved(string label);
-
-    /// @notice Thrown on the cross-payer path when the owner's recorded PoP tier does not
-    /// meet the label's required tier. The direct path's @custom:contract IPopRules
-    /// `priceWithCheck` covers this same condition via its own revert.
-    /// @param label Label whose tier requirement was unmet.
-    /// @param userStatus Owner's recorded tier.
-    /// @param required Required tier for the label.
-    error OwnerStatusInsufficient(
-        string label, IPopRules.PopStatus userStatus, IPopRules.PopStatus required
-    );
-
     /// @notice Thrown when a label is not a canonical lowercase ASCII DNS label.
     error InvalidLabel();
 
@@ -150,7 +131,10 @@ interface IDotnsRegistrarController is IDotnsController {
     /// (`committedAt + maxCommitmentAge <= block.timestamp` overwrites) and exclusive on the
     /// reveal side (`register` rejects at the same instant with @custom:reverts
     /// CommitmentTooOld), so the slot is overwritable from exactly the timestamp at which
-    /// reveal begins rejecting it. Emits @custom:emits NameCommitted on success.
+    /// reveal begins rejecting it. Stamps the cost model's current version on the commitment, so
+    /// the reveal binds to the version live now and rejects a `pricingVersion` bound to an earlier
+    /// one with @custom:reverts PricingVersionMismatch. Emits @custom:emits NameCommitted on
+    /// success.
     function commit(bytes32 commitment) external;
 
     /// @notice Registers a name after the commitment delay.

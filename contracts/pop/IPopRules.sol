@@ -47,8 +47,28 @@ interface IPopRules {
     /// @notice Thrown when a caller is not an authorised controller on the registrar.
     error NotRegistry();
 
+    /// @notice Thrown when registering a name whose base stem is held as a live reservation by
+    /// another user.
+    /// @param label Caller-supplied label whose stem is reserved.
+    error NameReserved(string label);
+
+    /// @notice Thrown when registering a label that classifies as governance-reserved at the
+    /// protocol level.
+    /// @dev Distinct from @custom:reverts NameReserved so off-chain consumers can tell "wait for
+    /// the holder to relinquish" apart from "this label is permanently held by governance".
+    /// @param label Caller-supplied label that classifies as governance-reserved.
+    error GovernanceReserved(string label);
+
+    /// @notice Thrown on the cross-payer path when the owner's recorded PoP tier does not meet the
+    /// label's required tier. The direct path's `priceWithCheck` covers this same condition via its
+    /// own revert.
+    /// @param label Label whose tier requirement was unmet.
+    /// @param userStatus Owner's recorded tier.
+    /// @param required Required tier for the label.
+    error OwnerStatusInsufficient(string label, PopStatus userStatus, PopStatus required);
+
     /// @notice Bundle returned from metadata-aware pricing queries.
-    /// @param price Registration cost on the scarcity curve for the label's base length.
+    /// @param price Registration cost from the current cost model for the label's base length.
     /// @param status Required PoP tier for this name.
     /// @param userStatus Current PoP status recorded for the querying user.
     /// @param message Human-readable classification description.

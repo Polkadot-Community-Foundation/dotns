@@ -690,7 +690,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         vm.prank(payer);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IDotnsRegistrarController.OwnerStatusInsufficient.selector,
+                IPopRules.OwnerStatusInsufficient.selector,
                 popfullLabel,
                 IPopRules.PopStatus.NoStatus,
                 IPopRules.PopStatus.PopFull
@@ -968,19 +968,26 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(_tokenIdForLabel(label)), nameOwner);
     }
 
-    function test_reveal_reverts_for_unregistered_committed_version() public {
+    function test_reveal_reverts_when_committed_version_not_current() public {
         string memory label = "unknownver01";
         address nameOwner = ed;
-        uint256 unknownVersion = uint256(keccak256("never registered version"));
+        // A caller cannot bind an arbitrary version: commit stamps the version current then, and
+        // the reveal rejects a `pricingVersion` that differs from it.
+        uint256 stampedVersion = costModelRegistry.currentVersion();
+        uint256 wrongVersion = uint256(keccak256("never registered version"));
 
         IDotnsRegistrarController.Registration memory registration =
-            _nostatusRegistration(label, nameOwner, type(uint256).max, unknownVersion);
+            _nostatusRegistration(label, nameOwner, type(uint256).max, wrongVersion);
 
         _commitRegistrationAndWaitMinimumAge(registration);
 
         vm.prank(nameOwner);
         vm.expectRevert(
-            abi.encodeWithSelector(IDotnsCostModelRegistry.UnknownVersion.selector, unknownVersion)
+            abi.encodeWithSelector(
+                IDotnsCostModelRegistry.PricingVersionMismatch.selector,
+                stampedVersion,
+                wrongVersion
+            )
         );
         dotnsRegistrarController.register{value: RENT_PRICE}(registration);
     }
@@ -1000,9 +1007,10 @@ contract DotnsRegistrarControllerTest is BaseDotns {
             _nostatusRegistration(label, nameOwner, committedPrice, committedVersion);
         _commitRegistrationAndWaitMinimumAge(registration);
 
-        // Move current forward to a third model, then revert it back to the first version.
+        // Move current forward to a third model, then revert it back to the first registered
+        // version, which the harness seeds with the flat launch model.
         DotnsScarcityPricing modelV3 = new DotnsScarcityPricing(RENT_PRICE * 4, MIN_PRICE);
-        uint256 firstVersion = scarcityPricing.version();
+        uint256 firstVersion = flatPricing.version();
         vm.prank(owner);
         costModelRegistry.register(IDotnsPricing(address(modelV3)));
         vm.prank(owner);

@@ -41,8 +41,8 @@ contract DotnsNameEscrowRedeemTest is BaseDotns {
     ///         receives the name) and return its tokenId.
     /// @dev A cross-payer registration routes the whole charge to the protocol fee pot and seeds a
     ///      zero-amount refundable position keyed to `nameOwner`, which is the registration shape
-    ///      that produces a zero-amount position under scarcity pricing. `nameOwner` must carry
-    ///      `status`, because the controller prices the owner's tier on this path.
+    ///      that produces a zero-amount position. `nameOwner` must carry `status`, because the
+    ///      controller prices the owner's tier on this path.
     function _registerCrossPayer(
         string memory label,
         address nameOwner,

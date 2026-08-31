@@ -12,6 +12,10 @@ pragma solidity ^0.8.34;
 ///      name.
 /// @custom:security-contact admin@parity.io
 interface IDotnsPricing {
+    /// @notice Thrown when a model constructor parameter breaks a pricing invariant.
+    /// @param reason Human-readable explanation of the failed invariant.
+    error PricingError(string reason);
+
     /// @notice Returns the registration cost in wei for a label of the given base length.
     /// @dev Pure amount lookup: the caller supplies the digit-stripped base length and the model
     ///      returns the curve value for it. Runs on the ERC721 transfer floor read, so it stays a

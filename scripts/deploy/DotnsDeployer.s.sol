@@ -5,7 +5,7 @@ import {console} from "forge-std/Script.sol";
 import {BaseDeployer} from "./BaseDeployer.s.sol";
 
 import {PopRules} from "../../contracts/pop/PopRules.sol";
-import {DotnsScarcityPricing} from "../../contracts/pop/DotnsScarcityPricing.sol";
+import {DotnsFlatPricing} from "../../contracts/pop/DotnsFlatPricing.sol";
 import {DotnsCostModelRegistry} from "../../contracts/pop/DotnsCostModelRegistry.sol";
 import {IDotnsPricing} from "../../contracts/pop/IDotnsPricing.sol";
 import {IDotnsCostModelRegistry} from "../../contracts/pop/IDotnsCostModelRegistry.sol";
@@ -286,9 +286,9 @@ contract DotnsDeployer is BaseDeployer {
     {
         model = _broadcastDeployCreate3(
             owner,
-            "DotnsScarcityPricing.sol:DotnsScarcityPricing",
-            abi.encode(DotnsConstants.RENT_PRICE, DotnsConstants.MIN_PRICE),
-            "DotnsScarcityPricing"
+            "DotnsFlatPricing.sol:DotnsFlatPricing",
+            abi.encode(DotnsConstants.RENT_PRICE),
+            "DotnsFlatPricing"
         );
         registry = _broadcastDeployCreate3(
             owner,
@@ -497,7 +497,7 @@ contract DotnsDeployer is BaseDeployer {
         require(
             IDotnsCostModelRegistry(deployment.costModelRegistry).priceForBaseLength(9)
                 == DotnsConstants.RENT_PRICE,
-            "CostModel: pivot price mismatch"
+            "CostModel: launch price mismatch"
         );
         console.log("=== Deployment verification complete ===");
     }

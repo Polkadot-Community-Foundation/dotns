@@ -8,6 +8,8 @@ import {DotnsCostModelRegistry} from "../../../contracts/pop/DotnsCostModelRegis
 import {IDotnsCostModelRegistry} from "../../../contracts/pop/IDotnsCostModelRegistry.sol";
 import {DotnsScarcityPricing} from "../../../contracts/pop/DotnsScarcityPricing.sol";
 import {IDotnsPricing} from "../../../contracts/pop/IDotnsPricing.sol";
+import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
+import {ISystem} from "../../../contracts/external/revive/ISystem.sol";
 
 /// @title ZeroVersionModel
 /// @notice Minimal cost model whose version identifier is zero, used to exercise the registry's
@@ -39,8 +41,22 @@ contract DotnsCostModelRegistryTests is Test {
         modelA = new DotnsScarcityPricing(BASE_FEE, FLOOR);
         modelB = new DotnsScarcityPricing(BASE_FEE * 2, FLOOR);
 
+        // Governance gate reads the Root origin first; keep it false so the tests exercise the
+        // owner path unless a case mocks it true.
+        _mockOriginIsRoot(false);
+
         vm.prank(owner);
         registry.register(IDotnsPricing(address(modelA)));
+    }
+
+    /// @notice Mocks revive's System precompile originIsRoot result.
+    /// @param returnValue Value to return from `originIsRoot`.
+    function _mockOriginIsRoot(bool returnValue) internal {
+        vm.mockCall(
+            DotnsConstants.REVIVE_SYSTEM,
+            abi.encodeWithSelector(ISystem.originIsRoot.selector),
+            abi.encode(returnValue)
+        );
     }
 
     function test_register_sets_current_version_and_model() public view {
@@ -49,11 +65,19 @@ contract DotnsCostModelRegistryTests is Test {
         assertEq(registry.priceForBaseLength(9), BASE_FEE);
     }
 
-    function test_register_only_owner() public {
+    function test_register_reverts_for_non_governance() public {
         vm.expectRevert(
             abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this))
         );
         registry.register(IDotnsPricing(address(modelB)));
+    }
+
+    function test_register_allows_root() public {
+        _mockOriginIsRoot(true);
+        // A non-owner caller under a Root origin registers without the owner key.
+        vm.prank(makeAddr("notOwner"));
+        registry.register(IDotnsPricing(address(modelB)));
+        assertEq(registry.currentVersion(), modelB.version());
     }
 
     function test_register_reverts_on_duplicate_version() public {
@@ -113,12 +137,22 @@ contract DotnsCostModelRegistryTests is Test {
         registry.setCurrentVersion(unknown);
     }
 
-    function test_setCurrentVersion_only_owner() public {
+    function test_setCurrentVersion_reverts_for_non_governance() public {
         uint256 versionA = modelA.version();
         vm.expectRevert(
             abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this))
         );
         registry.setCurrentVersion(versionA);
+    }
+
+    function test_setCurrentVersion_allows_root() public {
+        vm.prank(owner);
+        registry.register(IDotnsPricing(address(modelB)));
+
+        _mockOriginIsRoot(true);
+        vm.prank(makeAddr("notOwner"));
+        registry.setCurrentVersion(modelA.version());
+        assertEq(registry.currentVersion(), modelA.version());
     }
 
     function test_register_reverts_for_zero_version() public {

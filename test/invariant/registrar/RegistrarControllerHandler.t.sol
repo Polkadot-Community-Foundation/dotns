@@ -72,6 +72,11 @@ contract RegistrarControllerHandler is Test {
     /// @notice Owners of reserved registrations (same index as `_reservedLabels`).
     address[] internal _reservedOwners;
 
+    /// @notice Labels whose original owner holds a forward-confirmed reverse record pointing at
+    ///         them. Transferring such a label away would clear that owner's reverse resolution, so
+    ///         the transfer actions leave these names with their owner.
+    mapping(bytes32 labelhash => bool backsReverse) private _backsReverse;
+
     /// @notice Commitments consumed by a successful registration.
     bytes32[] internal _consumedCommitments;
 
@@ -142,6 +147,9 @@ contract RegistrarControllerHandler is Test {
         if (!_isActor[actor]) {
             _isActor[actor] = true;
             actors.push(actor);
+            // Fund the actor so the paid registration path is exercised rather than reverting on a
+            // zero balance. Far above any registration deposit, so it never runs dry over a run.
+            vm.deal(actor, 1_000_000_000 ether);
         }
         actorStatus[actor] = status;
 
@@ -206,6 +214,10 @@ contract RegistrarControllerHandler is Test {
         // Get price and register
         uint256 price = popRules.priceWithCheck(label, actor).price;
 
+        // The controller sets a default reverse record for a reserved self-registration only when
+        // the owner has none, so only this first name becomes the owner's reverse entry.
+        bool setsReverse = reserved && bytes(reverseResolver.nameOf(actor)).length == 0;
+
         vm.prank(actor);
         controller.register{value: price}(registration);
 
@@ -217,9 +229,10 @@ contract RegistrarControllerHandler is Test {
         labelRegistered[keccak256(bytes(label))] = true;
         ++registrationCount;
 
-        if (reserved) {
+        if (setsReverse) {
             _reservedLabels.push(label);
             _reservedOwners.push(actor);
+            _backsReverse[keccak256(bytes(label))] = true;
         }
     }
 
@@ -292,6 +305,10 @@ contract RegistrarControllerHandler is Test {
         uint256 price = popRules.priceWithCheck(label, actor).price;
         uint256 balanceBefore = actor.balance;
 
+        // The controller sets a default reverse record for a reserved self-registration only when
+        // the owner has none, so only this first name becomes the owner's reverse entry.
+        bool setsReverse = reserved && bytes(reverseResolver.nameOf(actor)).length == 0;
+
         vm.prank(actor);
         controller.register{value: price + overpayment}(registration);
 
@@ -306,9 +323,10 @@ contract RegistrarControllerHandler is Test {
         labelRegistered[keccak256(bytes(label))] = true;
         ++registrationCount;
 
-        if (reserved) {
+        if (setsReverse) {
             _reservedLabels.push(label);
             _reservedOwners.push(actor);
+            _backsReverse[keccak256(bytes(label))] = true;
         }
     }
 
@@ -364,6 +382,9 @@ contract RegistrarControllerHandler is Test {
 
         uint256 index = registrationSeed % _registeredLabels.length;
         string memory label = _registeredLabels[index];
+        // Leave a reverse-backing name with its owner: moving it clears their forward-confirmed
+        // reverse resolution, which the reserved-name invariant relies on.
+        if (_backsReverse[keccak256(bytes(label))]) return;
         address currentOwner = _registeredOwners[index];
 
         address recipient = _pickDifferentActor(currentOwner, recipientSeed);
@@ -394,6 +415,9 @@ contract RegistrarControllerHandler is Test {
 
         uint256 index = registrationSeed % _registeredLabels.length;
         string memory label = _registeredLabels[index];
+        // Leave a reverse-backing name with its owner: moving it clears their forward-confirmed
+        // reverse resolution, which the reserved-name invariant relies on.
+        if (_backsReverse[keccak256(bytes(label))]) return;
         address currentOwner = _registeredOwners[index];
 
         bytes32 labelhash = keccak256(bytes(label));
@@ -453,8 +477,26 @@ contract RegistrarControllerHandler is Test {
     /// @dev Uses incrementing nonce to ensure uniqueness across calls.
     /// @return label A unique label string with minimum 3 characters.
     function _generateUniqueLabel() internal returns (string memory label) {
-        label = string(abi.encodePacked("name", vm.toString(labelNonce)));
+        // A NoStatus-eligible label: all lowercase letters and eleven or more characters, so it
+        // carries no trailing digits, sits in the open band, and any funded actor can register it.
+        // A digit-suffixed or short label would classify as reserved or rejected and the register
+        // call would revert before it exercised anything.
+        label = string(abi.encodePacked("reginvname", _uniqueAlpha(labelNonce)));
         ++labelNonce;
+    }
+
+    /// @notice Encodes `n` as a non-empty base-26 lowercase-letter string, so successive nonces
+    ///         yield distinct all-letter suffixes.
+    /// @param n Value to encode.
+    /// @return alpha Lowercase-letter encoding of `n`.
+    function _uniqueAlpha(uint256 n) internal pure returns (string memory alpha) {
+        bytes memory buf;
+        uint256 value = n;
+        do {
+            buf = abi.encodePacked(bytes1(uint8(97 + (value % 26))), buf);
+            value /= 26;
+        } while (value > 0);
+        alpha = string(buf);
     }
 
     /// @notice Removes a commitment from the active commitments array.

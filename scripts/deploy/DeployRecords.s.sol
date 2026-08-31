@@ -7,7 +7,7 @@ import {BaseDeployer} from "./BaseDeployer.s.sol";
 import {DotnsResolver} from "../../contracts/resolvers/DotnsResolver.sol";
 import {DotnsContentResolver} from "../../contracts/resolvers/DotnsContentResolver.sol";
 import {PopRules} from "../../contracts/pop/PopRules.sol";
-import {DotnsScarcityPricing} from "../../contracts/pop/DotnsScarcityPricing.sol";
+import {DotnsFlatPricing} from "../../contracts/pop/DotnsFlatPricing.sol";
 import {DotnsCostModelRegistry} from "../../contracts/pop/DotnsCostModelRegistry.sol";
 import {IDotnsPricing} from "../../contracts/pop/IDotnsPricing.sol";
 import {IDotnsProtocolRegistry} from "../../contracts/registry/IDotnsProtocolRegistry.sol";
@@ -70,16 +70,17 @@ contract DeployRecords is BaseDeployer {
         );
     }
 
-    /// @notice Deploys the scarcity model and the cost-model registry, then registers the model
+    /// @notice Deploys the flat launch model and the cost-model registry, then registers the model
     ///         so the registry serves it as the current version.
     /// @dev The `COST_MODEL` protocol-registry key points at the registry, not the model; the wire
-    ///      stage sets that key.
+    ///      stage sets that key. The flat model prices every admitted name at `RENT_PRICE`;
+    ///      `DotnsScarcityPricing` is held as a later candidate and is not registered here.
     function _deployCostModelStack(address owner) internal returns (address registry) {
         address model = _broadcastDeployCreate3(
             owner,
-            "DotnsScarcityPricing.sol:DotnsScarcityPricing",
-            abi.encode(DotnsConstants.RENT_PRICE, DotnsConstants.MIN_PRICE),
-            "DotnsScarcityPricing"
+            "DotnsFlatPricing.sol:DotnsFlatPricing",
+            abi.encode(DotnsConstants.RENT_PRICE),
+            "DotnsFlatPricing"
         );
         registry = _broadcastDeployCreate3(
             owner,

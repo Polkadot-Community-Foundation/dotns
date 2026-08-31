@@ -8,7 +8,9 @@ import {IDotnsPricing} from "./IDotnsPricing.sol";
 /// @dev The curve doubles the base fee for each character below nine and halves it for each
 ///      character from nine upward, never below the floor. The base fee is the curve's value at
 ///      nine characters. Both parameters are fixed at deployment, so a new curve is a fresh
-///      deployment registered under `DotnsConstants.COST_MODEL`.
+///      deployment registered under `DotnsConstants.COST_MODEL`. Held as a length-sensitive
+///      candidate for a later cost-model version; the launch default is the constant
+///      `DotnsFlatPricing`, so this model ships unregistered until governance registers it.
 /// @custom:security-contact admin@parity.io
 contract DotnsScarcityPricing is IDotnsPricing {
     /// @notice Identifier of the scarcity curve form, mixed into `version`.
@@ -21,10 +23,6 @@ contract DotnsScarcityPricing is IDotnsPricing {
 
     /// @notice Price floor F in wei: the least any name can cost. Never above the base fee.
     uint256 public immutable minPrice;
-
-    /// @notice Thrown when a constructor parameter breaks a curve invariant.
-    /// @param reason Human-readable explanation of the failed invariant.
-    error PricingError(string reason);
 
     /// @notice Fixes the base fee and floor for the life of this model.
     /// @dev Carries the curve invariants: the base fee and floor are both strictly positive, the

@@ -4,6 +4,7 @@ pragma solidity ^0.8.34;
 import {Test} from "forge-std/Test.sol";
 
 import {DotnsScarcityPricing} from "../../../contracts/pop/DotnsScarcityPricing.sol";
+import {IDotnsPricing} from "../../../contracts/pop/IDotnsPricing.sol";
 
 /// @title DotnsScarcityPricingTests
 /// @notice Unit tests for the scarcity curve, its constructor guards, and its version identifier.
@@ -41,7 +42,7 @@ contract DotnsScarcityPricingTests is Test {
     function test_constructor_reverts_for_zero_base_fee() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                DotnsScarcityPricing.PricingError.selector, "Base fee must be greater than 0"
+                IDotnsPricing.PricingError.selector, "Base fee must be greater than 0"
             )
         );
         new DotnsScarcityPricing(0, FLOOR);
@@ -50,7 +51,7 @@ contract DotnsScarcityPricingTests is Test {
     function test_constructor_reverts_for_zero_floor() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                DotnsScarcityPricing.PricingError.selector, "Floor must be greater than 0"
+                IDotnsPricing.PricingError.selector, "Floor must be greater than 0"
             )
         );
         new DotnsScarcityPricing(BASE_FEE, 0);
@@ -59,7 +60,7 @@ contract DotnsScarcityPricingTests is Test {
     function test_constructor_reverts_when_floor_exceeds_base_fee() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                DotnsScarcityPricing.PricingError.selector, "Floor cannot exceed the base fee"
+                IDotnsPricing.PricingError.selector, "Floor cannot exceed the base fee"
             )
         );
         new DotnsScarcityPricing(BASE_FEE, BASE_FEE + 1);
@@ -69,8 +70,7 @@ contract DotnsScarcityPricingTests is Test {
         uint256 tooHigh = type(uint256).max / 512 + 1;
         vm.expectRevert(
             abi.encodeWithSelector(
-                DotnsScarcityPricing.PricingError.selector,
-                "Base fee exceeds the scarcity-curve ceiling"
+                IDotnsPricing.PricingError.selector, "Base fee exceeds the scarcity-curve ceiling"
             )
         );
         new DotnsScarcityPricing(tooHigh, FLOOR);

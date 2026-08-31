@@ -32,18 +32,25 @@ interface IDotnsCostModelRegistry {
     ///         an unregistered version and so cannot name a real model.
     error ZeroVersion();
 
+    /// @notice Thrown when a registration reveals at a different version than it committed to.
+    /// @dev Raised where a commit-reveal flow binds a version at commit and checks it at reveal, so
+    ///      the version a name prices at cannot move after the commitment is made.
+    /// @param committed The version bound when the commitment was made.
+    /// @param revealed The version supplied at reveal.
+    error PricingVersionMismatch(uint256 committed, uint256 revealed);
+
     /// @notice Registers a model and makes it current.
-    /// @dev Owner-only. Keys the model by its own `version`, so a version can be registered once;
-    ///      a repeat triggers @custom:reverts AlreadyRegistered. Moves the current pointer to the
-    ///      new version and emits @custom:emits CostModelRegistered.
+    /// @dev Callable by Root or the owner. Keys the model by its own `version`, so a version can be
+    ///      registered once; a repeat triggers @custom:reverts AlreadyRegistered. Moves the current
+    ///      pointer to the new version and emits @custom:emits CostModelRegistered.
     /// @param model The cost model to register.
     function register(IDotnsPricing model) external;
 
     /// @notice Points the current version at an already-registered model.
-    /// @dev Owner-only. Reverts to a previously registered version without redeploying it, so
-    ///      governance can roll fresh pricing back to an earlier curve. @custom:reverts
-    ///      UnknownVersion when no model is registered for `version`. Emits @custom:emits
-    ///      CurrentModelSet.
+    /// @dev Callable by Root or the owner. Reverts to a previously registered version without
+    ///      redeploying it, so governance can roll fresh pricing back to an earlier curve.
+    ///      @custom:reverts UnknownVersion when no model is registered for `version`. Emits
+    ///      @custom:emits CurrentModelSet.
     /// @param version The already-registered version to make current.
     function setCurrentVersion(uint256 version) external;
 

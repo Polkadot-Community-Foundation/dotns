@@ -81,17 +81,17 @@ contract PopRulesTests is BaseDotns {
         assertEq(popRules.price("andrew01"), popRules.price("andrew"));
     }
 
-    function test_verified_person_pays_the_curve_for_premium() public {
+    function test_verified_person_pays_the_deposit_for_premium() public {
         _grantPopFull(ed);
 
-        assertEq(popRules.priceWithCheck("alicebob", ed).price, 2 * RENT_PRICE);
-        assertEq(popRules.priceWithCheck("lights", ed).price, 8 * RENT_PRICE);
+        assertEq(popRules.priceWithCheck("alicebob", ed).price, RENT_PRICE);
+        assertEq(popRules.priceWithCheck("lights", ed).price, RENT_PRICE);
     }
 
     function test_transfer_reprices_at_own_length() public {
         _grantPopFull(leonardo);
 
-        assertEq(popRules.transferFloor("lights", leonardo, tiago), 8 * RENT_PRICE);
+        assertEq(popRules.transferFloor("lights", leonardo, tiago), RENT_PRICE);
         assertEq(popRules.transferFloor("lights", leonardo, leonardo), 0);
     }
 
@@ -118,7 +118,7 @@ contract PopRulesTests is BaseDotns {
 
         assertEq(uint256(priceMetadata.status), uint256(IPopRules.PopStatus.PopLite));
         assertEq(uint256(priceMetadata.userStatus), uint256(IPopRules.PopStatus.PopFull));
-        assertEq(priceMetadata.price, 8 * RENT_PRICE);
+        assertEq(priceMetadata.price, RENT_PRICE);
     }
 
     function test_poplite_user_can_access_nostatus_name() public {
@@ -128,7 +128,7 @@ contract PopRulesTests is BaseDotns {
 
         assertEq(uint256(priceMetadata.status), uint256(IPopRules.PopStatus.NoStatus));
         assertEq(uint256(priceMetadata.userStatus), uint256(IPopRules.PopStatus.PopLite));
-        assertEq(priceMetadata.price, RENT_PRICE / 8); // longnamehere is 12 characters
+        assertEq(priceMetadata.price, RENT_PRICE);
     }
 
     function test_base_reservation_blocks_others() public {
@@ -189,7 +189,7 @@ contract PopRulesTests is BaseDotns {
         popRules.setShortNamesEnabled(false);
         _grantPopLite(ed);
         // longnamehere is 12 characters, so the switch never gates it.
-        assertEq(popRules.priceWithCheck("longnamehere", ed).price, RENT_PRICE / 8);
+        assertEq(popRules.priceWithCheck("longnamehere", ed).price, RENT_PRICE);
     }
 
     function test_enabling_short_names_opens_the_market() public {
@@ -198,7 +198,7 @@ contract PopRulesTests is BaseDotns {
         _grantPopFull(ed);
         vm.prank(owner);
         popRules.setShortNamesEnabled(true);
-        assertEq(popRules.priceWithCheck("alicebob", ed).price, 2 * RENT_PRICE);
+        assertEq(popRules.priceWithCheck("alicebob", ed).price, RENT_PRICE);
     }
 
     function test_setShortNamesEnabled_emits() public {
@@ -219,28 +219,28 @@ contract PopRulesTests is BaseDotns {
     function test_price_matches_model() public view {
         string memory label = "thisisaverylongname";
         uint256 baseLength = bytes(label).length;
-        assertEq(popRules.price(label), scarcityPricing.priceForBaseLength(baseLength));
+        assertEq(popRules.price(label), flatPricing.priceForBaseLength(baseLength));
         assertEq(popRules.price(label), costModelRegistry.priceForBaseLength(baseLength));
     }
 
     function test_priceWithCheck_matches_model() public view {
         string memory label = "longnamehere";
         IPopRules.PriceWithMeta memory metadata = popRules.priceWithCheck(label, ed);
-        assertEq(metadata.price, scarcityPricing.priceForBaseLength(bytes(label).length));
+        assertEq(metadata.price, costModelRegistry.priceForBaseLength(bytes(label).length));
     }
 
     function test_transferFloor_matches_model() public {
         // A PopFull sender handing a NoStatus name to a NoStatus recipient pays the name's own
-        // curve price, which is the model amount for its base length.
+        // price, which is the registered model's amount for its base length.
         string memory label = "longnamehere";
         _grantPopFull(ed);
         uint256 floor = popRules.transferFloor(label, ed, leonardo);
-        assertEq(floor, scarcityPricing.priceForBaseLength(bytes(label).length));
+        assertEq(floor, costModelRegistry.priceForBaseLength(bytes(label).length));
     }
 
     function test_pricingVersion_matches_registry() public view {
         assertEq(popRules.pricingVersion(), costModelRegistry.currentVersion());
-        assertEq(popRules.pricingVersion(), scarcityPricing.version());
+        assertEq(popRules.pricingVersion(), flatPricing.version());
     }
 
     function test_price_reverts_when_cost_model_unconfigured() public {

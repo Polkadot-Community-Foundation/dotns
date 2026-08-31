@@ -32,77 +32,65 @@ If a run fails partway, re-run it from the Actions tab; the draft is updated rat
 
 ## Economics
 
-Every price comes from one number: a name's base length, the character count once a trailing number is set aside. One geometric curve turns that length into a price. The base fee D anchors the curve at nine characters and equals 10 DOT at launch; the floor F is the least a name can cost and equals 0.1 DOT.
-
-$$
-\text{price}(n) = \max\!\left(F,\; D \cdot 2^{\,9 - n}\right)
-$$
-
-The price doubles for each character below nine and halves for each character above it, down to the floor. Short names are scarce, so they cost more; long names are plentiful, so each extra character costs less, until the floor stops the price reaching zero.
+Every name admitted to public sale costs the same refundable deposit: 10 DOT at launch. The amount is not fixed in the registration path. It comes from a cost model resolved through the protocol registry under the `costModel` key, and governance can replace that model without touching the registrar or its storage. The launch model, `DotnsFlatPricing`, returns one deposit for every length. A length-sensitive scarcity curve, `DotnsScarcityPricing`, ships alongside it as a candidate for a later version but is not the registered default.
 
 ### Base length and the digit rule
 
-A name carries no trailing digits or exactly two; one digit, or three or more, is rejected before pricing. The trailing digits come off before the length is measured, so `andrew` and `andrew01` both price as a six-character name, at 80 DOT. An all-letter ten-character name such as `andrewsays` is base length 10 and prices at 5 DOT, and `andrewsays01` strips to the same ten-character stem and also prices at 5 DOT.
+Pricing and eligibility read a name's base length: the character count once a trailing number is set aside. A name carries no trailing digits or exactly two; one digit, or three or more, is rejected before pricing. The trailing digits come off before the length is measured, so `andrew` and `andrew01` both classify as a six-character name. Base length decides which band a name falls in and who may register it; under the flat model it does not change the amount.
 
 ### What a name costs
 
-Only names of nine characters or more are on public sale by default. The short-name switch, off at launch, keeps base lengths below nine off the public paid path, so the nine-and-above rows are the live ones. With D at 10 DOT the curve gives:
+Only names of nine characters or more are on public sale by default. The short-name switch, off at launch, keeps base lengths below nine off the public paid path. Every name on sale costs the flat deposit:
 
-| Base length | Curve | Price | On public sale by default |
-|---|---|---|---|
-| 6 | 8D | 80 DOT | No, held behind the short-name switch |
-| 7 | 4D | 40 DOT | No, held behind the short-name switch |
-| 8 | 2D | 20 DOT | No, held behind the short-name switch |
-| 9 | D | 10 DOT | Yes |
-| 10 | D / 2 | 5 DOT | Yes |
-| 11 | D / 4 | 2.5 DOT | Yes |
-| 12 | D / 8 | 1.25 DOT | Yes |
-| 13 | D / 16 | 0.625 DOT | Yes |
-| 14 | D / 32 | 0.3125 DOT | Yes |
-| 15 | D / 64 | 0.15625 DOT | Yes |
-| 16 and above | floor F | 0.1 DOT | Yes |
-
-Each character above nine halves the price. At base length 15 the curve is D/64 = 0.15625 DOT, still above the floor; at 16 it would be D/128 = 0.078 DOT, below the floor, so every name of 16 characters or more settles at F = 0.1 DOT.
+| Base length | Price | On public sale by default |
+|---|---|---|
+| 6 to 8 | 10 DOT | No, held behind the short-name switch |
+| 9 or more | 10 DOT | Yes |
+| 5 or fewer | not sold | issued at zero base cost through the reserved path |
 
 ### Who can register a name
 
-Three bands share the one curve.
+Three bands share the one deposit.
 
 | Base length | Who may register on the public paid path | Price |
 |---|---|---|
-| 9 or more | anyone, as NoStatus | 10 DOT at nine, halving each character above |
-| 6 to 8 | a verified person, and only while the short-name switch is on | 80, 40 or 20 DOT |
-| 5 or fewer | nobody on the curve | not sold; issued at zero base cost through the reserved path |
+| 9 or more | anyone, as NoStatus | 10 DOT |
+| 6 to 8 | a verified person, and only while the short-name switch is on | 10 DOT |
+| 5 or fewer | nobody on the public path | not sold; issued at zero base cost through the reserved path |
 
-Personhood unlocks only the six-to-eight band. A no-digit name there needs full-person verification; a two-digit name needs lite-person verification. The price is the same curve everyone pays, not a premium on top of it.
+Personhood unlocks only the six-to-eight band. A no-digit name there needs full-person verification; a two-digit name needs lite-person verification. It gates who may buy, not the price: the deposit is the same one everyone pays.
 
-Names shorter than nine characters are closed on the public paid path by default. A paid registration below nine reverts until governance opens the short-name market with a single switch. The switch gates the public paid path alone: the personhood gateway issues names of any length without it, and the reserved path does not consult it. It defaults off, so at launch only names of nine characters or more are for sale on the curve.
+Names shorter than nine characters are closed on the public paid path by default. A paid registration below nine reverts until governance opens the short-name market with a single switch. The switch gates the public paid path alone: the personhood gateway issues names of any length without it, and the reserved path does not consult it. It defaults off, so at launch only names of nine characters or more are for sale.
 
-Names of five characters or fewer are never sold on the curve. The public path rejects a reserved-tier label outright. Such a name enters circulation only through the reserved path, which the contract owner or a whitelisted operator calls to mint an available label at zero base cost with no deposit and no personhood check. There is no treasury: no value moves when a reserved name is issued.
+Names of five characters or fewer are never sold on the public path, which rejects a reserved-tier label outright. Such a name enters circulation only through the reserved path, which the contract owner or a whitelisted operator calls to mint an available label at zero base cost with no deposit and no personhood check. There is no treasury: no value moves when a reserved name is issued.
 
 ### Worked examples
 
-Every amount below assumes D at 10 DOT. The path decides whether the amount is a refundable deposit, a non-refundable fee, or nothing at all.
+The path decides whether the amount is a refundable deposit, a non-refundable fee, or nothing at all. Every amount below is the flat launch deposit of 10 DOT.
 
 | Name | Base length | Path | Amount | Held as |
 |---|---|---|---|---|
 | `gavinwood` | 9 | public, own key | 10 DOT | refundable deposit |
 | `gavinwood` | 9 | public, someone else pays | 10 DOT | protocol fee |
-| `andrewsays` | 10 | public, own key | 5 DOT | refundable deposit |
-| `andrew` | 6 | public, own key (switch on, full person) | 80 DOT | refundable deposit |
-| `alicebob42` | 8 | public, own key (switch on, lite person) | 20 DOT | refundable deposit |
+| `andrewsays` | 10 | public, own key | 10 DOT | refundable deposit |
+| `andrew` | 6 | public, own key (switch on, full person) | 10 DOT | refundable deposit |
+| `alicebob42` | 8 | public, own key (switch on, lite person) | 10 DOT | refundable deposit |
 | any six-to-eight name | 6 to 8 | personhood gateway grant | none | no deposit, no fee |
-| `andrew`, moved to a wallet that cannot clear its band | 6 | transfer | 80 DOT | protocol fee |
+| `andrew`, moved to a wallet that cannot clear its band | 6 | transfer | 10 DOT | protocol fee |
 
 ### Deposits and protocol fees
 
-Registering a name under your own key locks a refundable deposit equal to the name's curve price. The deposit is bound to the name rather than to you, so it travels with the token on every transfer and unlocks only when the current holder releases the name back to escrow. Holding many names ties up capital, and the cost rises with scarcity because the price does.
+Registering a name under your own key locks a refundable deposit equal to the name's price. The deposit is bound to the name rather than to you, so it travels with the token on every transfer and unlocks only when the current holder releases the name back to escrow.
 
-A name someone else pays for, and a transfer, pay a non-refundable fee instead. When a third party pays for another wallet's registration, the charge is the same owner-side curve price, with no separate friction added; it routes to a single protocol fee pot, and the owner's escrow slot is seeded with a zero amount so the release lifecycle stays reachable. A gateway grant carries neither a deposit nor a fee. The protocol fee pot only ever grows: it backs no refunds, and nothing burns, sweeps, or withdraws from it. Refunds draw solely on the separate per-asset reserve that deposits fund. A holder's own deposit is their money held in trust and is never moved into fees.
+A name someone else pays for, and a transfer, pay a non-refundable fee instead. When a third party pays for another wallet's registration, the charge is the same owner-side price, with no separate friction added; it routes to a single protocol fee pot, and the owner's escrow slot is seeded with a zero amount so the release lifecycle stays reachable. A gateway grant carries neither a deposit nor a fee. The protocol fee pot only ever grows: it backs no refunds, and nothing burns, sweeps, or withdraws from it. Refunds draw solely on the separate per-asset reserve that deposits fund. A holder's own deposit is their money held in trust and is never moved into fees.
 
 ### Transfers re-price at the name's own length
 
-A transfer charges the name's own curve price, but only in two cases: the recipient cannot clear the name's band, or the move is a personhood downgrade, where the recipient's tier is lower than the sender's. Passing a six-character name to a wallet that could never have registered it costs 80 DOT, the name's own price, so there is no cheap way to hand a scarce name to a party who could not have earned it. A move between two wallets that both clear the band, and a move to the same address, cost nothing. The fee, when one is owed, settles into the protocol fee pot. The deposit, when present, rides with the name: the escrow position rebinds to the new holder rather than refunding, and only releasing the name back to escrow unlocks the locked deposit.
+A transfer charges the name's own price, but only in two cases: the recipient cannot clear the name's band, or the move is a personhood downgrade, where the recipient's tier is lower than the sender's. Passing a six-character name to a wallet that could never have registered it costs the name's own price, so there is no cheap way to hand a band-gated name to a party who could not have earned it. A move between two wallets that both clear the band, and a move to the same address, cost nothing. The fee, when one is owed, settles into the protocol fee pot. The deposit, when present, rides with the name: the escrow position rebinds to the new holder rather than refunding, and only releasing the name back to escrow unlocks the locked deposit.
+
+### Versioned pricing
+
+The cost model is chosen by governance and swapped, not upgraded. Registering a new model adds it under a fresh version and points the current version at it; earlier versions stay priceable, so a registration already committed against an earlier version settles at the amount it committed to. A commitment binds the version current when it is made, and the reveal reverts if it is presented at a different version, so a model change between commit and reveal cannot move the amount. Governance can also point the current version back at an earlier registered model. The cost-model registry admits Root or the owner, so the economics track that governs pricing drives it without the registrar's own key.
 
 ### Release lifecycle
 
@@ -182,21 +170,21 @@ The registry exposes isAuthorised(node, account) as the canonical check for whet
 
 ### PopRules
 
-PoP-aware name classification and pricing. Classification reads the label's **stem length** (the character count after stripping the trailing digit suffix) and the trailing digit count itself, then maps to one of four tiers: NoStatus (stem of 9+ characters, open to anyone at the scarcity-curve price for the length, with zero or exactly two trailing digits permitted), PopLite (stem of 6-8 characters with exactly two trailing digits, gateway-issued to lite-verified users), PopFull (stem of 6-8 characters with no trailing digits, requires full-person verification), and Reserved (stem of 5 characters or fewer, governed by the protocol). Labels carrying one trailing digit or more than two trailing digits are rejected at the classifier. The classification determines the price and the eligibility gate the commit-reveal controller enforces.
+PoP-aware name classification and pricing. Classification reads the label's **stem length** (the character count after stripping the trailing digit suffix) and the trailing digit count itself, then maps to one of four tiers: NoStatus (stem of 9+ characters, open to anyone at the cost-model price, with zero or exactly two trailing digits permitted), PopLite (stem of 6-8 characters with exactly two trailing digits, gateway-issued to lite-verified users), PopFull (stem of 6-8 characters with no trailing digits, requires full-person verification), and Reserved (stem of 5 characters or fewer, governed by the protocol). Labels carrying one trailing digit or more than two trailing digits are rejected at the classifier. The classification determines the price and the eligibility gate the commit-reveal controller enforces.
 
 #### Classification examples and failure modes
 
-The classifier bands on the stem, not the total label length. The stem is the label after removing any trailing digits. The trailing digit count must be zero or exactly two; a one-digit suffix and suffixes longer than two digits are invalid before tier eligibility is considered. The price column gives the curve price for a registrable example at D = 10 DOT; a rejected or reserved name has no curve price.
+The classifier bands on the stem, not the total label length. The stem is the label after removing any trailing digits. The trailing digit count must be zero or exactly two; a one-digit suffix and suffixes longer than two digits are invalid before tier eligibility is considered. The price column gives the flat deposit for a registrable example; a rejected or reserved name has no price.
 
 | Label | Stem | Trailing digits | Classification | Eligible public path | Price | Notes |
 | --- | --- | ---: | --- | --- | ---: | --- |
-| alice12 | alice | 2 | Reserved | Whitelist only | Not sold on curve; issued at 0 | The stem is five characters, so the two-digit suffix does not make it PopLite. |
-| andrew01 | andrew | 2 | PopLite | Pop gateway only | 80 DOT | Valid lite shape: six-character stem plus system-supplied two-digit suffix. Priced on the public paid path only while the short-name switch is on; the gateway grant is free. |
-| alicebob42 | alicebob | 2 | PopLite | Pop gateway only | 20 DOT | Eight-character stem plus two digits; total length is ten. Gateway grant is free. |
-| andrew | andrew | 0 | PopFull | PopFull user | 80 DOT | Canonical full-person base name; priced only while the short-name switch is on. |
+| alice12 | alice | 2 | Reserved | Whitelist only | Not sold; issued at 0 | The stem is five characters, so the two-digit suffix does not make it PopLite. |
+| andrew01 | andrew | 2 | PopLite | Pop gateway only | 10 DOT | Valid lite shape: six-character stem plus system-supplied two-digit suffix. Priced on the public paid path only while the short-name switch is on; the gateway grant is free. |
+| alicebob42 | alicebob | 2 | PopLite | Pop gateway only | 10 DOT | Eight-character stem plus two digits; total length is ten. Gateway grant is free. |
+| andrew | andrew | 0 | PopFull | PopFull user | 10 DOT | Canonical full-person base name; priced only while the short-name switch is on. |
 | andrew1 | andrew | 1 | Rejected | None | n/a | One trailing digit has no protocol meaning. |
-| andrewsays | andrewsays | 0 | NoStatus | Anyone | 5 DOT | Base length 10, so the curve gives D/2; the amount is a refundable deposit. |
-| andrewsays01 | andrewsays | 2 | NoStatus | Anyone | 5 DOT | Long stem remains NoStatus even with a two-digit suffix, and prices at the same D/2. |
+| andrewsays | andrewsays | 0 | NoStatus | Anyone | 10 DOT | Base length 10; the amount is the flat refundable deposit. |
+| andrewsays01 | andrewsays | 2 | NoStatus | Anyone | 10 DOT | Long stem remains NoStatus even with a two-digit suffix, and prices at the same flat deposit. |
 | andrew123 | andrew | 3 | Rejected | None | n/a | More than two trailing digits is invalid. |
 | andrew.01 | n/a | n/a | Rejected by public label validator | None | n/a | Dots are not valid in the public flat label. The Pop gateway accepts stem.suffix and normalises it to stemsuffix. |
 | Andrew01 | n/a | n/a | Rejected by canonical label validator | None | n/a | Labels must be lowercase ASCII DNS labels. |

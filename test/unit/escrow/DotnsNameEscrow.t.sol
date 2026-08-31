@@ -378,7 +378,7 @@ contract DotnsNameEscrowTest is BaseDotns {
 
         IDotnsNameEscrow.ReleasePosition memory before = dotnsNameEscrow.getReleasePosition(tokenId);
         assertEq(before.recipient, ed, "funded position starts with registrant");
-        assertEq(before.amount, 2 * RENT_PRICE, "self-registration locks a refundable deposit");
+        assertEq(before.amount, RENT_PRICE, "self-registration locks a refundable deposit");
 
         uint256 quotedFee = dotnsRegistrar.quoteTransferFee(tokenId, leonardo);
         assertEq(quotedFee, 0, "same-tier transfer costs nothing");
@@ -392,7 +392,7 @@ contract DotnsNameEscrowTest is BaseDotns {
         IDotnsNameEscrow.ReleasePosition memory afterTransfer =
             dotnsNameEscrow.getReleasePosition(tokenId);
         assertEq(afterTransfer.recipient, leonardo, "position must follow the current holder");
-        assertEq(afterTransfer.amount, 2 * RENT_PRICE, "deposit travels with the name on rebind");
+        assertEq(afterTransfer.amount, RENT_PRICE, "deposit travels with the name on rebind");
         assertEq(dotnsNameEscrow.pendingRefundCount(ed), edRefundsBefore, "no refund on rebind");
         assertEq(
             dotnsNameEscrow.pendingRefundCount(leonardo),
