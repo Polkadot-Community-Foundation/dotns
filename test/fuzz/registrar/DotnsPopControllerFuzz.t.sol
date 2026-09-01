@@ -152,7 +152,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         bytes memory chatKey = _validChatKey(keySeed);
 
         _grantPopLite(ed);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({liteLabel: label, user: ed, chatKey: chatKey})
         );
 
@@ -178,7 +178,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         bytes memory chatKey = _validChatKey(keySeed);
 
         _grantPopLite(ed);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({liteLabel: label, user: ed, chatKey: chatKey})
         );
 
@@ -210,7 +210,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         dotnsPopController.setReservationDuration(duration);
 
         _grantPopLite(ed);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x77)
             })

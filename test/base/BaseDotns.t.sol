@@ -156,8 +156,6 @@ abstract contract BaseDotns is Test {
     // baselength 7 with 2 trailing digits classifies as PopLite.
     /// @notice PoP lite classification label fixture A.
     string internal constant LITE_LABEL_A = "aliceli01";
-    /// @notice Dotted form of @custom:constant LITE_LABEL_A used by gateway helpers.
-    string internal constant LITE_LABEL_A_DOTTED = "aliceli.01";
     /// @notice PoP lite classification label fixture B.
     string internal constant LITE_LABEL_B = "alicoli02";
     /// @notice PoP lite classification label fixture C.
@@ -465,7 +463,7 @@ abstract contract BaseDotns is Test {
     /// against the resolver and store hold. Chat keys are persisted eagerly on the PoP
     /// resolver at reserve time regardless of settlement. Tests that want to observe
     /// cold-path semantics (label stashed, no store deployed) must call
-    /// @custom:function _gatewayReserveBaseName or @custom:function _gatewayReserveLiteName
+    /// @custom:function _rootReserveBaseName or @custom:function _rootReserveLiteName
     /// directly.
     function _reservePop(
         address user,
@@ -475,7 +473,7 @@ abstract contract BaseDotns is Test {
     )
         internal
     {
-        _gatewayReserveBaseName(
+        _rootReserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
                     liteLabel: _toGatewayLiteLabel(liteLabel), user: user, chatKey: chatKey
@@ -490,19 +488,19 @@ abstract contract BaseDotns is Test {
     }
 
     /// @notice Dispatches the typed `reserveLiteName` call under a mocked Root origin.
-    function _gatewayReserveLiteName(IDotnsPopController.LiteRegistration memory params) internal {
+    function _rootReserveLiteName(IDotnsPopController.LiteRegistration memory params) internal {
         params.liteLabel = _toGatewayLiteLabel(params.liteLabel);
         _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_LITE_TYPED, params));
     }
 
     /// @notice Dispatches the typed `reserveBaseName` call under a mocked Root origin.
-    function _gatewayReserveBaseName(IDotnsPopController.BaseReservation memory params) internal {
+    function _rootReserveBaseName(IDotnsPopController.BaseReservation memory params) internal {
         params.lite.liteLabel = _toGatewayLiteLabel(params.lite.liteLabel);
         _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_BASE_TYPED, params));
     }
 
     /// @notice Dispatches the typed `reserveBaseNameOnly` call under a mocked Root origin.
-    function _gatewayReserveBaseNameOnly(IDotnsPopController.BaseNameReservation memory params)
+    function _rootReserveBaseNameOnly(IDotnsPopController.BaseNameReservation memory params)
         internal
     {
         _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_BASE_ONLY_TYPED, params));
@@ -510,7 +508,7 @@ abstract contract BaseDotns is Test {
 
     /// @notice Dispatches the typed `registerBaseName` call under a mocked Root origin.
     /// @dev Normalises any LiteUsername link to its dotted form before dispatch.
-    function _gatewayRegisterBaseName(IDotnsPopController.FullRegistration memory params) internal {
+    function _rootRegisterBaseName(IDotnsPopController.FullRegistration memory params) internal {
         if (params.link.kind == IDotnsPopController.LinkKind.LiteUsername) {
             params.link.liteLabel = _toGatewayLiteLabel(params.link.liteLabel);
         }
