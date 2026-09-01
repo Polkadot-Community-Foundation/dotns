@@ -86,7 +86,9 @@ A name someone else pays for, and a transfer, pay a non-refundable fee instead. 
 
 ### Transfers re-price at the name's own length
 
-A transfer charges the name's own price, but only in two cases: the recipient cannot clear the name's band, or the move is a personhood downgrade, where the recipient's tier is lower than the sender's. Passing a six-character name to a wallet that could never have registered it costs the name's own price, so there is no cheap way to hand a band-gated name to a party who could not have earned it. A move between two wallets that both clear the band, and a move to the same address, cost nothing. The fee, when one is owed, settles into the protocol fee pot. The deposit, when present, rides with the name: the escrow position rebinds to the new holder rather than refunding, and only releasing the name back to escrow unlocks the locked deposit.
+Publicly registered names transfer freely and charge the name's own price, but only in two cases: the recipient cannot clear the name's band, or the move is a personhood downgrade, where the recipient's tier is lower than the sender's. Passing a six-character name to a wallet that could never have registered it costs the name's own price, so there is no cheap way to hand a band-gated name to a party who could not have earned it. A move between two wallets that both clear the band, and a move to the same address, cost nothing. The fee, when one is owed, settles into the protocol fee pot. The deposit, when present, rides with the name: the escrow position rebinds to the new holder rather than refunding, and only releasing the name back to escrow unlocks the locked deposit.
+
+Names minted through the PoP gateway are soulbound: they stay bound to the person who earned them and cannot be transferred at all. Any transfer of a gateway-issued name reverts, and quoting a transfer fee for one reverts rather than returning a price. Everything else about the name works normally, so its owner still sets records, issues subnames, and manages the name.
 
 ### Versioned pricing
 
@@ -146,7 +148,7 @@ Each base label carries a head/tail-indexed reservation queue with a capacity of
 
 Pop-gateway issuances mint the name and persist its label, but LabelStore deployment is deferred for users who have not yet interacted with the protocol from their own address. The current pallet-revive runtime does not let substrate Root deploy contracts on behalf of an account it does not control, so the per-user LabelStore cannot be created at the moment the gateway writes. The controller stamps a pending-claim entry instead, and settlement writes the label into the owner's store, deploying the store on the first write. Settlement is permissionless via settlePendingClaims: the owner settles their own store, or after the claim window anyone settles a given owner's entry and pays the cost. Settlement always writes the label rather than dropping the entry, so a pending name is never stranded. When the runtime supports root-origin contract deployment, the deferred path collapses to a no-op and the issuance flow becomes one transaction end-to-end. This is a runtime limitation, not a protocol design choice.
 
-Operational consequence for transfers: the registrar derives the transfer-floor price by reading the label from the sender's LabelStore. A gateway-issued name whose pending claim is not yet settled has no readable label on the sender side, so `_quoteTransferFee` returns zero regardless of the recipient's tier. Until the name is settled into a LabelStore, a downward transfer (for example PopFull to NoStatus) does not charge the cross-tier friction it would otherwise owe. Clients that consume gateway-issued names should treat settlement as a prerequisite for accurate transfer-time pricing, not just for label discovery.
+Deferred settlement has no transfer-pricing consequence, because gateway-issued names are soulbound and cannot be transferred at all. The transfer-floor price is derived by reading the label from the sender's LabelStore, so a name held before its label is settled would have no readable label to price against; making gateway names non-transferable removes that path entirely rather than relying on settlement to close it.
 
 ### RootGatewayDispatcher
 
@@ -159,6 +161,8 @@ The dispatcher exists to work around a runtime limitation: the substrate Root or
 ### DotnsRegistrar
 
 ERC721-backed registrar that mints ownership of label IDs (labelhashes). Minting is restricted to every address in the controllers mapping; the mapping is owner-gated through addController and removeController. Every other contract in the system that needs to check "is this address authorised to drive name state?" consults this mapping rather than keeping a parallel list, which is what lets multiple controllers coexist on the same registrar without per-contract configuration changes.
+
+The registrar owns transferability. A name is marked soulbound at mint when the caller is the address registered under POP_CONTROLLER, so only the PoP gateway can issue a soulbound name and no other controller can lock a public one. The marker is set once and never cleared, and isSoulbound reports it. The transfer hook rejects every transfer of a soulbound name, mint and same-address moves aside, so a gateway-issued name cannot leave its holder's wallet or enter escrow.
 
 ### DotnsRegistry
 
@@ -279,7 +283,6 @@ For Parity's security disclosure process, and Bug Bounty program, feel free to v
 The protocol carries a handful of constraints worth knowing before deploying or building against it. Most stem from the current pallet-revive runtime rather than from protocol design, and collapse to a no-op once the runtime gains the corresponding capability. [KNOWN_ISSUES.md](./KNOWN_ISSUES.md) is the consolidated reference; each issue is also described in full where the relevant contract is documented below.
 
 - **Deferred LabelStore deployment** (runtime). See [DotnsPopController](#early-testnet-quirk-labelstore-deployment).
-- **Transfer fee is zero until the store is settled** (runtime). See [DotnsPopController](#early-testnet-quirk-labelstore-deployment).
 - **Root origin is not propagated through delegatecalls** (runtime). See [RootGatewayDispatcher](#rootgatewaydispatcher).
 - **No standalone user-status mapping** (current implementation). See [DotnsPopController](#dotnspopcontroller).
 
