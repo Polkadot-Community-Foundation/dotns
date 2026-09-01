@@ -456,8 +456,8 @@ abstract contract BaseDotns is Test {
         dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, false);
     }
 
-    /// @notice Drives a PoP reservation from the registered gateway address and settles
-    /// the resulting pending claim from the user's signed origin.
+    /// @notice Drives a PoP reservation under a Root origin and settles the resulting
+    /// pending claim from the user's signed origin.
     /// @dev Single canonical helper for PoP-gateway reservations across unit and fuzz
     /// test suites. Calls the controller under a mocked Root origin.
     /// The auto-settle deploys the user's `LabelStore` and writes the stashed label so
