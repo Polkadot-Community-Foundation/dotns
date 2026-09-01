@@ -489,26 +489,26 @@ abstract contract BaseDotns is Test {
         }
     }
 
-    /// @notice Dispatches the typed `reserveLiteName` call through the gateway stand-in.
+    /// @notice Dispatches the typed `reserveLiteName` call under a mocked Root origin.
     function _gatewayReserveLiteName(IDotnsPopController.LiteRegistration memory params) internal {
         params.liteLabel = _toGatewayLiteLabel(params.liteLabel);
         _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_LITE_TYPED, params));
     }
 
-    /// @notice Dispatches the typed `reserveBaseName` call through the gateway stand-in.
+    /// @notice Dispatches the typed `reserveBaseName` call under a mocked Root origin.
     function _gatewayReserveBaseName(IDotnsPopController.BaseReservation memory params) internal {
         params.lite.liteLabel = _toGatewayLiteLabel(params.lite.liteLabel);
         _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_BASE_TYPED, params));
     }
 
-    /// @notice Dispatches the typed `reserveBaseNameOnly` call through the gateway stand-in.
+    /// @notice Dispatches the typed `reserveBaseNameOnly` call under a mocked Root origin.
     function _gatewayReserveBaseNameOnly(IDotnsPopController.BaseNameReservation memory params)
         internal
     {
         _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_BASE_ONLY_TYPED, params));
     }
 
-    /// @notice Dispatches the typed `registerBaseName` call through the gateway stand-in.
+    /// @notice Dispatches the typed `registerBaseName` call under a mocked Root origin.
     /// @dev Normalises any LiteUsername link to its dotted form before dispatch.
     function _gatewayRegisterBaseName(IDotnsPopController.FullRegistration memory params) internal {
         if (params.link.kind == IDotnsPopController.LinkKind.LiteUsername) {

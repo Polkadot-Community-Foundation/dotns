@@ -10,7 +10,6 @@ import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
 import {StringUtils} from "../../../contracts/utils/StringUtils.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import {Vm} from "forge-std/Vm.sol";
 
 /// @title DotnsPopControllerFuzz
 /// @notice Property-based tests for @custom:contract DotnsPopController.
@@ -105,21 +104,6 @@ contract DotnsPopControllerFuzz is BaseDotns {
             vm.prank(ed);
             dotnsRegistrarController.register{value: cost}(registration);
             assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf(fullLabel))), ed);
-        }
-    }
-
-    /// @notice Assert that two recorded log arrays are element-wise identical.
-    /// @dev Compares count, ordering, emitter, topics and unindexed payload; any divergence
-    ///      fails the test.
-    function _assertLogsEqual(Vm.Log[] memory a, Vm.Log[] memory b) internal {
-        assertEq(a.length, b.length, "log count mismatch");
-        for (uint256 i = 0; i < a.length; ++i) {
-            assertEq(a[i].emitter, b[i].emitter, "log emitter mismatch");
-            assertEq(a[i].topics.length, b[i].topics.length, "log topic count mismatch");
-            for (uint256 t = 0; t < a[i].topics.length; ++t) {
-                assertEq(a[i].topics[t], b[i].topics[t], "log topic mismatch");
-            }
-            assertEq(keccak256(a[i].data), keccak256(b[i].data), "log data mismatch");
         }
     }
 
