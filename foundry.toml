@@ -100,6 +100,11 @@ multiline_func_header = "all"
 
 [lint]
 exclude_lints = ["mixed-case-variable"]
+# The post-build lint pass (solar) core-dumps on the full tree under the forge
+# version the CI toolchain pulls, aborting every `forge build` (exit 134) and so
+# every build-dependent job. Compilation itself is unaffected. Keep lint off the
+# build path; run `forge lint` explicitly when the findings are wanted.
+lint_on_build = false
 
 [rpc_endpoints]
 paseo_local = "http://127.0.0.1:8545"

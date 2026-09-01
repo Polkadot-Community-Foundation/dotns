@@ -24,9 +24,7 @@ import {
   BEACON_IMPL_SLOT,
 } from "./extract-genesis.mjs";
 
-// =============================================================================
 // Fixture: a miniature anvil dump shaped like the real DotNS deploy
-// =============================================================================
 
 const REGISTRY = "0x00000000000000000000000000000000000000a1";
 const REGISTRY_IMPL = "0x00000000000000000000000000000000000000a2";
@@ -100,9 +98,7 @@ const MANIFEST = {
 
 const addressesOf = (genesis) => genesis.accounts.map((a) => a.address).sort();
 
-// =============================================================================
 // addressFromWord
-// =============================================================================
 
 test("addressFromWord reads the low 20 bytes, including a packed pointer", () => {
   assert.equal(addressFromWord(word(STORE_IMPL)), STORE_IMPL);
@@ -139,9 +135,7 @@ test("a hash-shaped word yields a candidate that is dropped for having no code",
   );
 });
 
-// =============================================================================
 // Discovery
-// =============================================================================
 
 test("beacon implementations are extracted (the previewnet regression)", () => {
   const genesis = buildGenesis(fixture(), MANIFEST);
@@ -221,9 +215,7 @@ test("underscore-prefixed manifest keys are metadata, not contracts", () => {
   assert.equal(genesis.accounts.length, 6);
 });
 
-// =============================================================================
 // Output shape
-// =============================================================================
 
 test("accounts carry padded storage, hex balance and nonce", () => {
   const genesis = buildGenesis(fixture(), MANIFEST);
@@ -246,9 +238,7 @@ test("accounts carry padded storage, hex balance and nonce", () => {
   );
 });
 
-// =============================================================================
 // The proxy/implementation guard
-// =============================================================================
 
 test("findMissingImplementations catches a proxy whose impl never deployed", () => {
   // The blind spot this exists for: referencedContracts only follows a pointer whose

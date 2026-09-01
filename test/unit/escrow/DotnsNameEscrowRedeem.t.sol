@@ -3,6 +3,9 @@ pragma solidity ^0.8.34;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {IDotnsNameEscrow} from "../../../contracts/escrow/IDotnsNameEscrow.sol";
+import {
+    IDotnsRegistrarController
+} from "../../../contracts/registrars/IDotnsRegistrarController.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 
 /// @title DotnsNameEscrowRedeemTest
@@ -11,14 +14,14 @@ import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 ///         and the deposit settlement that makes the second possible without stranding value.
 /// @dev The defect these cover: reclaim used to gate on the `claimed` flag, which is only set by
 ///      `withdraw`. A holder who released a name and never withdrew removed the label from
-///      circulation permanently. For the zero-amount positions seeded by free registrations there
-///      is nothing to withdraw, so that was the default outcome rather than an edge case.
+///      circulation permanently. For the zero-amount positions seeded by cross-payer registrations
+///      there is nothing to withdraw, so that was the default outcome rather than an edge case.
 contract DotnsNameEscrowRedeemTest is BaseDotns {
     /// @notice 14-char label classifying as NoStatus, so registration seeds a funded position.
     string internal constant FUNDED_LABEL = "redeemlabela01";
 
-    /// @notice 6-char digit-free label classifying as PopFull: registration is free, so the
-    ///         position it seeds carries a zero amount.
+    /// @notice 6-char digit-free label classifying as PopFull, registered on the cross-payer path
+    ///         so its deposit position carries a zero amount.
     string internal constant FREE_LABEL = "redeem";
 
     /// @notice Register `label` for `nameOwner` at `status` and return its tokenId.
@@ -31,6 +34,47 @@ contract DotnsNameEscrowRedeemTest is BaseDotns {
         returns (uint256 tokenId)
     {
         _register(label, nameOwner, status);
+        tokenId = _tokenIdForLabel(label);
+    }
+
+    /// @notice Register `label` for `nameOwner` on the cross-payer path (`payer` pays, `nameOwner`
+    ///         receives the name) and return its tokenId.
+    /// @dev A cross-payer registration routes the whole charge to the protocol fee pot and seeds a
+    ///      zero-amount refundable position keyed to `nameOwner`, which is the registration shape
+    ///      that produces a zero-amount position. `nameOwner` must carry `status`, because the
+    ///      controller prices the owner's tier on this path.
+    function _registerCrossPayer(
+        string memory label,
+        address nameOwner,
+        address payer,
+        IPopRules.PopStatus status
+    )
+        internal
+        returns (uint256 tokenId)
+    {
+        _setUserPopStatus(nameOwner, status);
+
+        bytes32 secret = keccak256(abi.encodePacked(label, nameOwner, block.timestamp));
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: label,
+                owner: nameOwner,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
+            });
+
+        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
+        vm.prank(payer);
+        dotnsRegistrarController.commit(commitment);
+
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+
+        uint256 charge = popRules.priceWithoutCheck(label, nameOwner).price;
+        vm.prank(payer);
+        dotnsRegistrarController.register{value: charge}(registration);
+
         tokenId = _tokenIdForLabel(label);
     }
 
@@ -50,9 +94,7 @@ contract DotnsNameEscrowRedeemTest is BaseDotns {
         position = dotnsNameEscrow.getReleasePosition(tokenId);
     }
 
-    // --------------------------------------------------------------------------------------
     // release stamps both clocks
-    // --------------------------------------------------------------------------------------
 
     function test_release_stamps_independent_withdraw_and_redeem_clocks() public {
         uint256 tokenId = _registerAt(FUNDED_LABEL, ed, IPopRules.PopStatus.NoStatus);
@@ -142,9 +184,7 @@ contract DotnsNameEscrowRedeemTest is BaseDotns {
         revert("redeemWindow slot not found; storage layout changed");
     }
 
-    // --------------------------------------------------------------------------------------
     // redeem: the previous holder's undo
-    // --------------------------------------------------------------------------------------
 
     function test_redeem_returns_the_name_and_moves_no_value() public {
         uint256 tokenId = _registerAt(FUNDED_LABEL, ed, IPopRules.PopStatus.NoStatus);
@@ -277,13 +317,12 @@ contract DotnsNameEscrowRedeemTest is BaseDotns {
     }
 
     /// @dev The mirror of the case above, and the reason `claimed` is only set when value actually
-    ///      moves. A free registration has nothing to withdraw, so `withdraw` pays the holder
+    ///      moves. A zero-amount position has nothing to withdraw, so `withdraw` pays the holder
     ///      nothing, if it still flagged the position claimed it would silently forfeit their
-    ///      right to recover their own name for no consideration whatsoever. `withdraw` is also the
-    ///      step the old contract required before a name could be recycled, so it is a call holders
-    ///      have every reason to make.
+    ///      right to recover their own name for no consideration whatsoever. `withdraw` is also a
+    ///      step a holder has every reason to make before a name can be recycled.
     function test_zero_amount_withdrawal_does_not_forfeit_the_redeem_right() public {
-        uint256 tokenId = _registerAt(FREE_LABEL, ed, IPopRules.PopStatus.PopFull);
+        uint256 tokenId = _registerCrossPayer(FREE_LABEL, ed, leonardo, IPopRules.PopStatus.PopFull);
         assertEq(_positionOf(tokenId).amount, 0, "this case needs a zero-amount position");
 
         _approveAndRelease(tokenId, ed);
@@ -309,9 +348,7 @@ contract DotnsNameEscrowRedeemTest is BaseDotns {
         );
     }
 
-    // --------------------------------------------------------------------------------------
     // reclaim: permissionless once the window elapses
-    // --------------------------------------------------------------------------------------
 
     function test_revert_reclaim_while_inside_the_redeem_window() public {
         uint256 tokenId = _registerAt(FUNDED_LABEL, ed, IPopRules.PopStatus.NoStatus);
@@ -395,17 +432,20 @@ contract DotnsNameEscrowRedeemTest is BaseDotns {
         );
     }
 
-    // --------------------------------------------------------------------------------------
     // the zero-amount case: what the bug actually was
-    // --------------------------------------------------------------------------------------
 
-    /// @dev The headline regression test. A free registration seeds a zero-amount position, so its
-    ///      holder has nothing to withdraw and therefore no reason ever to call `withdraw`. Under
-    ///      the old `released && claimed` gate that made the name permanently unregisterable.
+    /// @dev The headline regression test. A cross-payer registration seeds a zero-amount position,
+    ///      so its holder has nothing to withdraw and therefore no reason ever to call `withdraw`.
+    ///      Under a `released && claimed` reclaim gate that would make the name permanently
+    ///      unregisterable.
     function test_zero_amount_release_becomes_reclaimable_without_any_withdrawal() public {
-        uint256 tokenId = _registerAt(FREE_LABEL, ed, IPopRules.PopStatus.PopFull);
+        uint256 tokenId = _registerCrossPayer(FREE_LABEL, ed, leonardo, IPopRules.PopStatus.PopFull);
 
-        assertEq(_positionOf(tokenId).amount, 0, "a free registration seeds a zero-amount position");
+        assertEq(
+            _positionOf(tokenId).amount,
+            0,
+            "a cross-payer registration seeds a zero-amount position"
+        );
 
         _approveAndRelease(tokenId, ed);
 
@@ -437,9 +477,7 @@ contract DotnsNameEscrowRedeemTest is BaseDotns {
         assertEq(address(dotnsNameEscrow).balance, escrowBalanceBefore, "and moves no value");
     }
 
-    // --------------------------------------------------------------------------------------
     // governance: updateRedeemWindow
-    // --------------------------------------------------------------------------------------
 
     function test_updateRedeemWindow_sets_the_value_and_emits() public {
         uint256 current = dotnsNameEscrow.redeemWindow();

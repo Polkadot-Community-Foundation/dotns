@@ -28,6 +28,8 @@ DotnsPopResolver
 DotnsRoleManager
 RootGatewayDispatcher
 DotnsNameWhitelist
+DotnsCostModelRegistry
+DotnsFlatPricing
 
 IStoreFactory
 ILabelStore
@@ -46,3 +48,5 @@ IDotnsPopResolver
 IDotnsController
 IDotnsRoleManager
 IDotnsNameWhitelist
+IDotnsCostModelRegistry
+IDotnsPricing

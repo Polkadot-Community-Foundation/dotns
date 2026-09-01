@@ -4,6 +4,10 @@ pragma solidity ^0.8.34;
 import {Test} from "forge-std/Test.sol";
 
 import {PopRules, IPopRules} from "../../contracts/pop/PopRules.sol";
+import {DotnsFlatPricing} from "../../contracts/pop/DotnsFlatPricing.sol";
+import {DotnsScarcityPricing} from "../../contracts/pop/DotnsScarcityPricing.sol";
+import {DotnsCostModelRegistry} from "../../contracts/pop/DotnsCostModelRegistry.sol";
+import {IDotnsPricing} from "../../contracts/pop/IDotnsPricing.sol";
 import {DotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
 import {
     DotnsRegistrarController,
@@ -62,6 +66,16 @@ abstract contract BaseDotns is Test {
 
     /// @notice Deployed PoP oracle instance.
     PopRules public popRules;
+
+    /// @notice Deployed flat model seeding the cost-model registry as the launch version.
+    DotnsFlatPricing public flatPricing;
+
+    /// @notice Deployed scarcity model, a later candidate held for the version-registry suites; not
+    ///         the registered default.
+    DotnsScarcityPricing public scarcityPricing;
+
+    /// @notice Deployed cost-model registry resolved by PopRules under `COST_MODEL`.
+    DotnsCostModelRegistry public costModelRegistry;
 
     /// @notice Deployed DotNS registrar instance.
     DotnsRegistrar public dotnsRegistrar;
@@ -140,12 +154,16 @@ abstract contract BaseDotns is Test {
 
     /// @notice Deployed name escrow instance.
     DotnsNameEscrow public dotnsNameEscrow;
-    /// @notice Rent price applied to PoP NoStatus users for spam resistance.
-    /// @dev This value is passed into PopRules initialisation in this base test.
-    /// @dev Aliased to @custom:constant DotnsConstants.RENT_PRICE so deploy scripts and the test
-    ///      base see the same value; downstream test suites reference `RENT_PRICE`
+    /// @notice Base deposit the flat launch model charges for every admitted name.
+    /// @dev Aliased to @custom:constant DotnsConstants.BASE_DEPOSIT so deploy scripts and the test
+    ///      base see the same value; downstream test suites reference `BASE_DEPOSIT`
     ///      directly.
-    uint256 public constant RENT_PRICE = DotnsConstants.RENT_PRICE;
+    uint256 public constant BASE_DEPOSIT = DotnsConstants.BASE_DEPOSIT;
+
+    /// @notice Price floor F seeded into PopRules initialisation in this base test.
+    /// @dev Aliased to @custom:constant DotnsConstants.MIN_PRICE so deploy scripts and the test
+    ///      base see the same seed; downstream test suites reference `MIN_PRICE` directly.
+    uint256 public constant MIN_PRICE = DotnsConstants.MIN_PRICE;
 
     /// @notice Default escrow cooldown used in tests. Bounded by the escrow's
     ///         @custom:constant MAX_COOLDOWN ceiling.
@@ -180,10 +198,10 @@ abstract contract BaseDotns is Test {
     string internal constant BASE_LABEL_C = "carolboy";
 
     // baselength >= 9 classifies as NoStatus with no suffix or exactly two trailing digits.
-    /// @notice NoStatus classification label fixture A.
-    string internal constant NOSTATUS_LABEL_A = "nostatususer01";
-    /// @notice NoStatus classification label fixture B.
-    string internal constant NOSTATUS_LABEL_B = "anothernostatus02";
+    /// @notice NoStatus classification label fixture A. Nine-character stem, so it prices at D.
+    string internal constant NOSTATUS_LABEL_A = "nostatusa01";
+    /// @notice NoStatus classification label fixture B. Nine-character stem, so it prices at D.
+    string internal constant NOSTATUS_LABEL_B = "nostatusb02";
 
     /// @notice The bare TLD label the whole suite runs against.
     /// @dev Single definition point for the fixture's TLD. Change this one line to run every test
@@ -260,11 +278,22 @@ abstract contract BaseDotns is Test {
         dotnsContentResolver = DotnsContentResolver(dotnsContentResolverAddress);
         vm.label(dotnsContentResolverAddress, "DotnsContentResolver");
 
+        flatPricing = new DotnsFlatPricing(BASE_DEPOSIT);
+        vm.label(address(flatPricing), "DotnsFlatPricing");
+        scarcityPricing = new DotnsScarcityPricing(BASE_DEPOSIT, MIN_PRICE);
+        vm.label(address(scarcityPricing), "DotnsScarcityPricing");
+        costModelRegistry = new DotnsCostModelRegistry(owner);
+        vm.label(address(costModelRegistry), "DotnsCostModelRegistry");
+        costModelRegistry.register(IDotnsPricing(address(flatPricing)));
+
         address popRulesAddress = Upgrades.deployUUPSProxy(
-            "PopRules.sol:PopRules", abi.encodeCall(PopRules.initialize, (RENT_PRICE, registry))
+            "PopRules.sol:PopRules", abi.encodeCall(PopRules.initialize, (registry))
         );
         popRules = PopRules(popRulesAddress);
         vm.label(popRulesAddress, "PopRules");
+        // Open the short-name market so the band and registration suites exercise names below nine
+        // characters. The default-closed state is covered directly in PopRules unit tests.
+        popRules.setShortNamesEnabled(true);
 
         address dotnsResolverAddress = Upgrades.deployUUPSProxy(
             "DotnsResolver.sol:DotnsResolver", abi.encodeCall(DotnsResolver.initialize, (registry))
@@ -319,6 +348,7 @@ abstract contract BaseDotns is Test {
         protocolRegistry.set(DotnsConstants.REGISTRY, dotnsRegistryAddress);
         protocolRegistry.set(DotnsConstants.REVERSE_RESOLVER, dotnsReverseResolverAddress);
         protocolRegistry.set(DotnsConstants.POP_RULES, popRulesAddress);
+        protocolRegistry.set(DotnsConstants.COST_MODEL, address(costModelRegistry));
         protocolRegistry.set(DotnsConstants.STORE_FACTORY, address(storeFactory));
         protocolRegistry.set(DotnsConstants.RESOLVER, dotnsResolverAddress);
         protocolRegistry.set(DotnsConstants.CONTENT_RESOLVER, dotnsContentResolverAddress);
@@ -698,7 +728,12 @@ abstract contract BaseDotns is Test {
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: nameOwner, secret: secret, reserved: reserveName
+                label: label,
+                owner: nameOwner,
+                secret: secret,
+                reserved: reserveName,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);

@@ -409,7 +409,12 @@ contract DotnsPopControllerTests is BaseDotns {
         bytes32 secret = keccak256(abi.encodePacked(label, ed, block.timestamp));
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: ed, secret: secret, reserved: true
+                label: label,
+                owner: ed,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
@@ -465,7 +470,12 @@ contract DotnsPopControllerTests is BaseDotns {
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: "longnamebob01", owner: tiago, secret: keccak256("secret"), reserved: true
+                label: "longnamebob01",
+                owner: tiago,
+                secret: keccak256("secret"),
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);

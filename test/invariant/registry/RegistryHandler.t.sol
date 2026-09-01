@@ -224,7 +224,12 @@ contract RegistryHandler is Test {
             keccak256(abi.encodePacked(label, domainOwner, block.timestamp, labelNonce));
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: domainOwner, secret: secret, reserved: true
+                label: label,
+                owner: domainOwner,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = controller.makeCommitment(registration);

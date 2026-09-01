@@ -141,7 +141,12 @@ contract DotnsNameEscrowFuzzTest is BaseDotns {
             keccak256(abi.encodePacked(nameLabel, nameOwner, block.timestamp, address(this)));
 
         registration = IDotnsRegistrarController.Registration({
-            label: nameLabel, owner: nameOwner, secret: secret, reserved: reserved
+            label: nameLabel,
+            owner: nameOwner,
+            secret: secret,
+            reserved: reserved,
+            maxPrice: type(uint256).max,
+            pricingVersion: popRules.pricingVersion()
         });
 
         bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);

@@ -28,7 +28,12 @@ contract WhitelistOperatorFlow is BaseDotns {
         bytes32 secret = keccak256(abi.encodePacked(nameLabel, user, "operator"));
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: nameLabel, owner: user, secret: secret, reserved: true
+                label: nameLabel,
+                owner: user,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         vm.startPrank(user);

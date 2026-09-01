@@ -30,14 +30,24 @@ library DotnsConstants {
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant PERSONHOOD_CONTEXT = bytes32("dotns");
 
-    /// @notice Default deploy-time NoStatus rent price passed into
-    ///         `PopRules.initialize` as `_startingPrice`.
-    /// @dev 10 DOT under revive's 18-decimal Asset Hub convention. Single
-    ///      source of truth for deploy scripts and tests so the value cannot
-    ///      drift between call sites. Live deployments rotate the runtime
-    ///      `startingPrice` on `PopRules` rather than rebuilding consumers
-    ///      against a new constant.
-    uint256 internal constant RENT_PRICE = 10 ether;
+    /// @notice Launch deposit passed into the `DotnsFlatPricing` constructor.
+    /// @dev 10 DOT under revive's 18-decimal Asset Hub convention. A new amount is a fresh model
+    ///      deployment registered under @custom:constant COST_MODEL, so this constant seeds the
+    ///      model rather than being read afterwards. Single source of truth for deploy scripts and
+    ///      tests so the seed cannot drift between call sites.
+    uint256 internal constant BASE_DEPOSIT = 10 ether;
+
+    /// @notice Price floor F passed into the `DotnsScarcityPricing` candidate's constructor.
+    /// @dev Below `BASE_DEPOSIT` so that curve falls above nine characters. Seeds the candidate
+    ///      constructor; a new floor is a fresh model deployment.
+    uint256 internal constant MIN_PRICE = 0.1 ether;
+
+    /// @notice Well-known key for the cost model pricing registrations by base length.
+    /// @dev Role: single authority for the wei amount a registration costs. `PopRules` resolves
+    ///      it here on every pricing read, so swapping the model is one `set` on the protocol
+    ///      registry without redeploying `PopRules` or its consumers.
+    /// forge-lint: disable-next-line(unsafe-typecast)
+    bytes32 internal constant COST_MODEL = bytes32("costModel");
 
     /// @notice Default release cooldown seeded on `DotnsNameEscrow.initialize`.
     /// @dev Single source of truth for deploy scripts and tests so the value cannot drift between

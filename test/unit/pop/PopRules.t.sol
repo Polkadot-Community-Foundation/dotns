@@ -2,8 +2,16 @@
 pragma solidity ^0.8.34;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
-import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
+import {PopRules, IPopRules} from "../../../contracts/pop/PopRules.sol";
 import {IDotnsController} from "../../../contracts/registrars/IDotnsController.sol";
+import {
+    DotnsProtocolRegistry,
+    IDotnsProtocolRegistry
+} from "../../../contracts/registry/DotnsProtocolRegistry.sol";
+import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
+import {
+    OwnableUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 /// @title PopRulesTests
 /// @notice Unit tests for PopRules name classification, pricing checks, and base-name reservation
@@ -69,18 +77,22 @@ contract PopRulesTests is BaseDotns {
         popRules.classifyName("andrew123");
     }
 
-    function test_flat_price_does_not_scale_with_length() public view {
-        // Three NoStatus labels across the previously-tiered length bands (9, 12, 17 chars)
-        // must all price identically under the flat deposit. The prior curve charged
-        // `startingPrice * (15 - length)` for lengths 9-14 and `startingPrice / 2` for >=15,
-        // so any two of these three would have differed.
-        uint256 minLengthPrice = popRules.price("ninechars");
-        uint256 midLengthPrice = popRules.price("longnamehere");
-        uint256 longLengthPrice = popRules.price("thisisaverylongname");
+    function test_trailing_digits_do_not_change_price() public view {
+        assertEq(popRules.price("andrew01"), popRules.price("andrew"));
+    }
 
-        assertEq(minLengthPrice, midLengthPrice);
-        assertEq(midLengthPrice, longLengthPrice);
-        assertGt(minLengthPrice, 0);
+    function test_verified_person_pays_the_deposit_for_premium() public {
+        _grantPopFull(ed);
+
+        assertEq(popRules.priceWithCheck("alicebob", ed).price, BASE_DEPOSIT);
+        assertEq(popRules.priceWithCheck("lights", ed).price, BASE_DEPOSIT);
+    }
+
+    function test_transfer_reprices_at_own_length() public {
+        _grantPopFull(leonardo);
+
+        assertEq(popRules.transferFloor("lights", leonardo, tiago), BASE_DEPOSIT);
+        assertEq(popRules.transferFloor("lights", leonardo, leonardo), 0);
     }
 
     function test_price_with_check_revert_governance() public {
@@ -93,7 +105,7 @@ contract PopRulesTests is BaseDotns {
     function test_price_with_check_revert_full_needed() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                IPopRules.PopError.selector, "Requires Full Personhood verification"
+                IPopRules.PopError.selector, "Requires Full personhood verification"
             )
         );
         popRules.priceWithCheck("alicebob", ed);
@@ -106,6 +118,7 @@ contract PopRulesTests is BaseDotns {
 
         assertEq(uint256(priceMetadata.status), uint256(IPopRules.PopStatus.PopLite));
         assertEq(uint256(priceMetadata.userStatus), uint256(IPopRules.PopStatus.PopFull));
+        assertEq(priceMetadata.price, BASE_DEPOSIT);
     }
 
     function test_poplite_user_can_access_nostatus_name() public {
@@ -115,6 +128,7 @@ contract PopRulesTests is BaseDotns {
 
         assertEq(uint256(priceMetadata.status), uint256(IPopRules.PopStatus.NoStatus));
         assertEq(uint256(priceMetadata.userStatus), uint256(IPopRules.PopStatus.PopLite));
+        assertEq(priceMetadata.price, BASE_DEPOSIT);
     }
 
     function test_base_reservation_blocks_others() public {
@@ -149,6 +163,103 @@ contract PopRulesTests is BaseDotns {
 
         assertEq(uint256(priceMetadata.status), uint256(IPopRules.PopStatus.Reserved));
         assertEq(priceMetadata.price, popRules.price("lights"));
+    }
+
+    function test_short_names_closed_reverts_direct_path() public {
+        vm.prank(owner);
+        popRules.setShortNamesEnabled(false);
+        _grantPopFull(ed);
+        vm.expectRevert(
+            abi.encodeWithSelector(IPopRules.PopError.selector, "Short names are not for sale")
+        );
+        popRules.priceWithCheck("alicebob", ed);
+    }
+
+    function test_short_names_closed_reverts_sponsored_path() public {
+        vm.prank(owner);
+        popRules.setShortNamesEnabled(false);
+        vm.expectRevert(
+            abi.encodeWithSelector(IPopRules.PopError.selector, "Short names are not for sale")
+        );
+        popRules.priceWithoutCheck("alicebob", ed);
+    }
+
+    function test_open_band_priced_while_short_names_closed() public {
+        vm.prank(owner);
+        popRules.setShortNamesEnabled(false);
+        _grantPopLite(ed);
+        // longnamehere is 12 characters, so the switch never gates it.
+        assertEq(popRules.priceWithCheck("longnamehere", ed).price, BASE_DEPOSIT);
+    }
+
+    function test_enabling_short_names_opens_the_market() public {
+        vm.prank(owner);
+        popRules.setShortNamesEnabled(false);
+        _grantPopFull(ed);
+        vm.prank(owner);
+        popRules.setShortNamesEnabled(true);
+        assertEq(popRules.priceWithCheck("alicebob", ed).price, BASE_DEPOSIT);
+    }
+
+    function test_setShortNamesEnabled_emits() public {
+        vm.expectEmit(address(popRules));
+        emit IPopRules.ShortNamesEnabledUpdated(false);
+        vm.prank(owner);
+        popRules.setShortNamesEnabled(false);
+    }
+
+    function test_setShortNamesEnabled_only_owner() public {
+        vm.prank(ed);
+        vm.expectRevert(
+            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, ed)
+        );
+        popRules.setShortNamesEnabled(false);
+    }
+
+    function test_price_matches_model() public view {
+        string memory label = "thisisaverylongname";
+        uint256 baseLength = bytes(label).length;
+        assertEq(popRules.price(label), flatPricing.priceForBaseLength(baseLength));
+        assertEq(popRules.price(label), costModelRegistry.priceForBaseLength(baseLength));
+    }
+
+    function test_priceWithCheck_matches_model() public view {
+        string memory label = "longnamehere";
+        IPopRules.PriceWithMeta memory metadata = popRules.priceWithCheck(label, ed);
+        assertEq(metadata.price, costModelRegistry.priceForBaseLength(bytes(label).length));
+    }
+
+    function test_transferFloor_matches_model() public {
+        // A PopFull sender handing a NoStatus name to a NoStatus recipient pays the name's own
+        // price, which is the registered model's amount for its base length.
+        string memory label = "longnamehere";
+        _grantPopFull(ed);
+        uint256 floor = popRules.transferFloor(label, ed, leonardo);
+        assertEq(floor, costModelRegistry.priceForBaseLength(bytes(label).length));
+    }
+
+    function test_pricingVersion_matches_registry() public view {
+        assertEq(popRules.pricingVersion(), costModelRegistry.currentVersion());
+        assertEq(popRules.pricingVersion(), flatPricing.version());
+    }
+
+    function test_price_reverts_when_cost_model_unconfigured() public {
+        // A PopRules bound to a registry with no COST_MODEL key fails closed on any pricing read.
+        vm.startPrank(owner);
+        address freshRegistry = Upgrades.deployUUPSProxy(
+            "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
+            abi.encodeCall(DotnsProtocolRegistry.initialize, (TLD_LABEL))
+        );
+        address freshPopRules = Upgrades.deployUUPSProxy(
+            "PopRules.sol:PopRules",
+            abi.encodeCall(PopRules.initialize, (IDotnsProtocolRegistry(freshRegistry)))
+        );
+        vm.stopPrank();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IPopRules.PopError.selector, "Cost model not configured")
+        );
+        PopRules(freshPopRules).price("longnamehere");
     }
 
     function test_reserveBaseNameForPop_reverts_for_non_controller() public {

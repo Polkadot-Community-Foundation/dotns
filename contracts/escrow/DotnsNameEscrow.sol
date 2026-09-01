@@ -80,11 +80,10 @@ contract DotnsNameEscrow is
     /// @notice Reverse lookup into `_releasedTokens` (one-based) for O(1) remove-by-swap.
     mapping(uint256 tokenId => uint256 indexPlusOne) private _releasedIndexPlusOne;
 
-    /// @notice Cumulative balance of cross-tier fees held against unreleased shortfalls.
-    /// @dev Credited by cross-tier registration deposits, reach-floor friction, and transfer-fee
-    ///      deltas; debited only when `withdraw` needs to top up a refund that exceeds the
-    ///      asset's reserved balance.
-    uint256 public insuranceFund;
+    /// @notice Cumulative balance of non-refundable protocol fees; only accumulates.
+    /// @dev Credited by cross-paid registration fees and transfer fees. Never debited: protocol
+    ///      fees do not back refunds, which draw solely on the per-asset reserve.
+    uint256 public protocolFees;
 
     /// @notice Pull-payment ledger storing each recipient's claimable refund balance.
     /// @dev Per-recipient isolation ensures a failing or reentrant receiver cannot block other
@@ -255,8 +254,8 @@ contract DotnsNameEscrow is
         ReleasePosition storage position = _positions[params.tokenId];
 
         // Use `recipient` as the "is this slot funded?" sentinel so zero-amount
-        // positions (seeded by free PopFull / PopLite registrations) still count
-        // as funded and cannot be re-seeded with a different recipient.
+        // positions (seeded by cross-paid registrations, which pay a fee rather than a deposit)
+        // still count as present and cannot be re-seeded with a different recipient.
         require(position.recipient == address(0), PositionAlreadyFunded(params.tokenId));
         require(!position.released, AlreadyReleased(params.tokenId));
 
@@ -278,7 +277,7 @@ contract DotnsNameEscrow is
     }
 
     /// @inheritdoc IDotnsNameEscrow
-    function depositInsurance(InsuranceDepositParams calldata params)
+    function depositProtocolFee(ProtocolFeeDepositParams calldata params)
         external
         payable
         override
@@ -286,7 +285,7 @@ contract DotnsNameEscrow is
     {
         require(msg.value > 0, InvalidAmount());
 
-        insuranceFund += msg.value;
+        protocolFees += msg.value;
 
         emit CrossTierFeePaid(
             params.tokenId,
@@ -315,7 +314,7 @@ contract DotnsNameEscrow is
 
         address priorRecipient = position.recipient;
 
-        uint256 fee = params.reachFloor;
+        uint256 fee = params.transferFee;
         require(msg.value >= fee, InsufficientValue());
 
         // Deposits follow the NFT, not the depositor. When the position is funded the locked
@@ -326,20 +325,19 @@ contract DotnsNameEscrow is
             position.recipient = params.to;
         }
 
-        if (fee > 0) {
-            insuranceFund += fee;
-        }
-
         charged = fee;
 
-        emit CrossTierFeePaid(
-            params.tokenId,
-            params.payer,
-            params.to,
-            fee,
-            /* isRegistration */
-            false
-        );
+        if (fee > 0) {
+            protocolFees += fee;
+            emit CrossTierFeePaid(
+                params.tokenId,
+                params.payer,
+                params.to,
+                fee,
+                /* isRegistration */
+                false
+            );
+        }
 
         uint256 overpayment = msg.value - fee;
         if (overpayment > 0) {
@@ -355,8 +353,8 @@ contract DotnsNameEscrow is
 
         ReleasePosition storage position = _positions[tokenId];
         // Recipient is the canonical "is this position present?" sentinel; zero-amount positions
-        // seeded for free PopFull / PopLite registrations are still releasable so every minted
-        // name has a reachable lifecycle.
+        // seeded for cross-paid registrations are still releasable so every minted name has a
+        // reachable lifecycle.
         require(position.recipient != address(0), DepositNotConfigured(tokenId));
         require(!position.released, AlreadyReleased(tokenId));
 
@@ -415,8 +413,6 @@ contract DotnsNameEscrow is
             WithdrawalTooEarly(tokenId, position.withdrawAvailableAt, block.timestamp)
         );
 
-        // `position.recipient == msg.sender` was just enforced above, so reuse the local in place
-        // of an extra warm SLOAD.
         _settleDeposit(position, tokenId, msg.sender);
     }
 
@@ -424,11 +420,9 @@ contract DotnsNameEscrow is
     /// @dev Shared by @custom:function withdraw, where the recipient pulls the deposit themselves,
     ///      and by @custom:function reclaim, where a third party takes the name and the deposit is
     ///      settled on the departing holder's behalf. Both credit the same ledger and neither
-    ///      transfers value, so the accounting is identical and lives here once. Draws from the
-    ///      per-asset `tokenReserved` pool first and tops up from `insuranceFund` on shortfall;
-    ///      @custom:reverts InsufficientFunds when even the combined balance cannot cover the
-    ///      amount owed. Emits @custom:emits RefundWithdrawn, and @custom:emits InsuranceDraw
-    ///      whenever the insurance fund contributes.
+    ///      transfers value, so the accounting is identical and lives here once. The per-asset
+    ///      `tokenReserved` pool backs the refund in full, and @custom:reverts InsufficientFunds
+    ///      when it cannot cover the amount owed. Emits @custom:emits RefundWithdrawn.
     ///      A zero-amount position is a no-op: it writes nothing and emits nothing, which keeps the
     ///      free-registration lifecycle free of meaningless ledger entries and events.
     /// @param position Storage pointer to the position being settled.
@@ -455,28 +449,14 @@ contract DotnsNameEscrow is
         // Effects: from here the deposit really is being handed over, so the flag is set.
         position.claimed = true;
 
-        uint256 reserved = tokenReserved[asset];
-
-        uint256 fromRefundable;
-        uint256 fromInsurance;
-        if (reserved >= owed) {
-            fromRefundable = owed;
-            // fromInsurance is already 0 from default initialization.
-        } else {
-            fromRefundable = reserved;
-            fromInsurance = owed - reserved;
-            require(
-                insuranceFund >= fromInsurance,
-                InsufficientFunds(tokenId, owed, reserved + insuranceFund)
-            );
-        }
+        // The per-asset reserve backs every refundable deposit; protocol fees are non-refundable
+        // and never cover a refund.
+        require(
+            tokenReserved[asset] >= owed, InsufficientFunds(tokenId, owed, tokenReserved[asset])
+        );
 
         position.amount = 0;
-        tokenReserved[asset] -= fromRefundable;
-        if (fromInsurance > 0) {
-            insuranceFund -= fromInsurance;
-            emit InsuranceDraw(tokenId, fromInsurance);
-        }
+        tokenReserved[asset] -= owed;
 
         _pendingWithdrawals[recipient] += owed;
 
@@ -720,8 +700,8 @@ contract DotnsNameEscrow is
         // instead, and reclaim settles any unwithdrawn value rather than holding it hostage.
         //
         // Lifecycle state only. `reclaim` also settles the deposit, which can in principle revert
-        // `InsufficientFunds` when the reserved balance plus the insurance fund cannot cover the
-        // amount owed, so a true answer here is a claim about the window rather than a guarantee
+        // `InsufficientFunds` when the reserved balance cannot cover the amount owed, so a true
+        // answer here is a claim about the window rather than a guarantee
         // that the call is funded. The two coincide because `tokenReserved` is by construction the
         // exact sum of live position amounts: only `deposit` credits it, and only `_settleDeposit`
         // debits it, by exactly the amount it zeroes. `invariant_reserves_match_positions` holds

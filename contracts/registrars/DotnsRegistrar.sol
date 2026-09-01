@@ -259,7 +259,7 @@ contract DotnsRegistrar is
             _syncRecipientStore(factory, to, from, tokenId);
         }
 
-        (uint256 reachFloor, uint256 requiredFee) =
+        (uint256 transferFee, uint256 requiredFee) =
             _quoteTransferFeeFor(registry, factory, isEscrowTouching, from, to, tokenId);
         if (requiredFee != 0) {
             require(msg.value >= requiredFee, TransferFeeRequired(tokenId, to, requiredFee));
@@ -284,7 +284,7 @@ contract DotnsRegistrar is
 
         IDotnsNameEscrow(payable(escrow)).chargeTransferFee{value: msg.value}(
             IDotnsNameEscrow.ChargeTransferFeeParams({
-                tokenId: tokenId, reachFloor: reachFloor, payer: msg.sender, to: to
+                tokenId: tokenId, transferFee: transferFee, payer: msg.sender, to: to
             })
         );
 
@@ -366,9 +366,10 @@ contract DotnsRegistrar is
     }
 
     /// @notice Quotes the friction fee required for a transfer.
-    /// @dev Required fee is the reach floor returned by @custom:function PopRules.transferFloor.
-    /// It is paid by the sender on every downward or cross-reach transfer and settles to the
-    /// insurance fund. Any prior deposit travels with the NFT: the escrow rebinds the position to
+    /// @dev Required fee is the name's own price returned by @custom:function
+    /// PopRules.transferFloor. It is paid by the sender on every downward or cross-reach transfer
+    /// and settles to the
+    /// protocol fee pot. Any prior deposit travels with the NFT: the escrow rebinds the position to
     /// the new holder rather than refunding the sender, so transferring a funded name forfeits the
     /// locked deposit to the recipient. Self-transfers and escrow-touching transfers return zero.
     function _quoteTransferFee(
@@ -378,7 +379,7 @@ contract DotnsRegistrar is
     )
         private
         view
-        returns (address escrow, uint256 reachFloor, uint256 requiredFee)
+        returns (address escrow, uint256 transferFee, uint256 requiredFee)
     {
         if (from == to) return (address(0), 0, 0);
 
@@ -388,7 +389,7 @@ contract DotnsRegistrar is
 
         bool isEscrowTouching = to == escrow || from == escrow;
         IStoreFactory factory = IStoreFactory(registry.get(DotnsConstants.STORE_FACTORY));
-        (reachFloor, requiredFee) =
+        (transferFee, requiredFee) =
             _quoteTransferFeeFor(registry, factory, isEscrowTouching, from, to, tokenId);
     }
 
@@ -406,7 +407,7 @@ contract DotnsRegistrar is
     )
         private
         view
-        returns (uint256 reachFloor, uint256 requiredFee)
+        returns (uint256 transferFee, uint256 requiredFee)
     {
         if (isEscrowTouching) return (0, 0);
 
@@ -420,9 +421,9 @@ contract DotnsRegistrar is
         string memory label = LabelUtils.stripTld(registry.tld(), fullName);
         require(bytes(label).length != 0, InvalidLabel());
 
-        reachFloor =
+        transferFee =
             IPopRules(registry.get(DotnsConstants.POP_RULES)).transferFloor(label, from, to);
-        requiredFee = reachFloor;
+        requiredFee = transferFee;
     }
 
     /// @inheritdoc UUPSUpgradeable

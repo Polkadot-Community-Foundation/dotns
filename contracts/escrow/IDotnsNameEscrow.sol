@@ -19,30 +19,30 @@ interface IDotnsNameEscrow {
         address recipient;
     }
 
-    /// @notice Parameters for recording a cross-tier registration fee into the insurance fund.
-    /// @dev Funds the shared insurance pool used by `withdraw` to top up refunds whose per-asset
-    ///      reserve is short; `payer` is preserved purely for event accounting since the deposit
-    ///      itself is non-refundable.
+    /// @notice Parameters for recording a cross-paid registration fee into the protocol fee pot.
+    /// @dev The pot is non-refundable and only accumulates; it never backs a refund. `payer` is
+    ///      preserved purely for event accounting since the fee itself is non-refundable.
     /// @param payer Original `msg.sender` of the controller's `register` call.
     /// @param recipient The NFT registrant the fee was paid on behalf of.
-    struct InsuranceDepositParams {
+    struct ProtocolFeeDepositParams {
         uint256 tokenId;
         address payer;
         address recipient;
     }
 
     /// @notice Inputs for charging transfer friction and rebinding the escrow position.
-    /// @dev The fee charged is the flat reach floor returned by @custom:function
-    ///      PopRules.transferFloor, settled to the insurance fund. The deposit, when present,
+    /// @dev The fee charged is the name's own price returned by @custom:function
+    ///      PopRules.transferFloor, settled to the protocol fee pot. The deposit, when present,
     ///      travels with the NFT: the position is rebound to the recipient so the new holder is
     ///      the only address that can later release into escrow and unlock the locked value.
     ///      There is no transfer-time refund path.
-    /// @param reachFloor Required fee paid by the sender on a downward or cross-reach transfer.
+    /// @param tokenId Token whose escrow position is charged and rebound to the recipient.
+    /// @param transferFee The name's own curve price on a downward or cross-reach transfer.
     /// @param payer Original sender of the registrar transfer entrypoint.
     /// @param to NFT recipient. Becomes the new position recipient whenever a position exists.
     struct ChargeTransferFeeParams {
         uint256 tokenId;
-        uint256 reachFloor;
+        uint256 transferFee;
         address payer;
         address to;
     }
@@ -146,9 +146,9 @@ interface IDotnsNameEscrow {
     /// @param recipient Address the NFT was returned to, which is also the position recipient.
     event NameRedeemed(uint256 indexed tokenId, address indexed recipient);
 
-    /// @notice Emitted when a cross-tier fee is paid into the insurance fund.
+    /// @notice Emitted when a cross-paid fee is paid into the protocol fee pot.
     /// @param payer Original `msg.sender` whose value funded the fee.
-    /// @param isRegistration True when emitted from `depositInsurance`; false from
+    /// @param isRegistration True when emitted from `depositProtocolFee`; false from
     /// `chargeTransferFee`.
     event CrossTierFeePaid(
         uint256 indexed tokenId,
@@ -157,10 +157,6 @@ interface IDotnsNameEscrow {
         uint256 amount,
         bool isRegistration
     );
-
-    /// @notice Emitted when a withdrawal draws from the insurance fund to cover a shortfall in
-    /// `tokenReserved`.
-    event InsuranceDraw(uint256 indexed tokenId, uint256 amount);
 
     /// @notice Emitted when overpayment is refunded to the payer.
     event OverpaymentRefunded(address indexed payer, uint256 amount);
@@ -177,8 +173,8 @@ interface IDotnsNameEscrow {
     /// @notice Thrown when the attached call value is insufficient to cover the computed charge.
     error InsufficientValue();
 
-    /// @notice Thrown when neither `tokenReserved` nor the insurance fund can cover the refund.
-    /// @param available Combined balance available across reserves and insurance.
+    /// @notice Thrown when the per-asset reserve cannot cover the refund owed.
+    /// @param available Reserve balance available for the asset.
     error InsufficientFunds(uint256 tokenId, uint256 owed, uint256 available);
 
     /// @notice Thrown when assets being deposited are not supported by the escrow.
@@ -322,11 +318,11 @@ interface IDotnsNameEscrow {
     ///      Emits @custom:emits NativeDepositRecorded once the deposit is booked.
     function deposit(DepositParams calldata params) external payable;
 
-    /// @notice Records a cross-tier registration fee into the insurance fund.
+    /// @notice Records a cross-paid registration fee into the protocol fee pot.
     /// @dev Only the configured controller may call this, otherwise @custom:reverts NotController.
     ///      `msg.value` must be non-zero, otherwise @custom:reverts InvalidAmount. Emits
     ///      @custom:emits CrossTierFeePaid with `isRegistration = true` once the fee is booked.
-    function depositInsurance(InsuranceDepositParams calldata params) external payable;
+    function depositProtocolFee(ProtocolFeeDepositParams calldata params) external payable;
 
     /// @notice Credits `msg.value` to `recipient`'s pull-payment ledger so the caller can later
     ///         pull the balance with @custom:func claimWithdrawal.
@@ -338,7 +334,7 @@ interface IDotnsNameEscrow {
     /// @param recipient Address whose pending balance should grow by `msg.value`.
     function creditOverpayment(address recipient) external payable;
 
-    /// @notice Charges transfer friction and rebinds the token's escrow position to the new holder.
+    /// @notice Charges the transfer fee and rebinds the token's escrow position to the new holder.
     /// @dev Only the configured registrar may call this, otherwise @custom:reverts NotRegistrar.
     ///      When a fee is owed, the attached value must cover it or @custom:reverts
     ///      InsufficientValue. Whenever a position exists for the token and the NFT is leaving its
@@ -347,17 +343,17 @@ interface IDotnsNameEscrow {
     ///      escrow does not refund anyone at transfer time; the only path back to the locked
     ///      deposit is for the current holder to release into escrow and wait the cooldown.
     ///      Emits @custom:emits CrossTierFeePaid (non-registration) when a non-zero fee is credited
-    ///      to insurance, and credits any surplus value to the payer on the time-locked refund
-    ///      ledger via @custom:emits RefundCredited.
-    /// @return charged Amount actually credited to insurance.
+    ///      to the protocol fee pot, and credits any surplus value to the payer on the time-locked
+    ///      refund ledger via @custom:emits RefundCredited.
+    /// @return charged Amount actually credited to the protocol fee pot.
     function chargeTransferFee(ChargeTransferFeeParams calldata params)
         external
         payable
         returns (uint256 charged);
 
-    /// @notice Returns the cumulative cross-tier fee balance held against future shortfalls.
-    /// @return balance Current insurance fund balance, in wei.
-    function insuranceFund() external view returns (uint256 balance);
+    /// @notice Returns the cumulative protocol fee balance, non-refundable and accumulating.
+    /// @return balance Current protocol fee balance, in wei.
+    function protocolFees() external view returns (uint256 balance);
 
     /// @notice Releases a token into escrow and starts the withdrawal cooldown.
     /// @dev First step of the phased lifecycle. The caller must be the current NFT holder and the
@@ -386,12 +382,11 @@ interface IDotnsNameEscrow {
     ///      AlreadyClaimed on re-entry). Only the current position recipient (the address that
     ///      released the name, which mirrored the NFT holder at that moment) may call this,
     ///      otherwise @custom:reverts NotRefundRecipient, and `block.timestamp` must have reached
-    ///      `withdrawAvailableAt`, otherwise @custom:reverts WithdrawalTooEarly. Draws from the
-    ///      per-asset `tokenReserved` pool first and falls back to the shared insurance fund on
-    ///      shortfall; if even the combined balance is short, @custom:reverts InsufficientFunds.
-    ///      Funds are not transferred here, only credited to the pull-payment ledger. Emits
-    ///      @custom:emits RefundWithdrawn once the credit lands, and @custom:emits InsuranceDraw
-    ///      whenever the insurance fund tops up a shortfall.
+    ///      `withdrawAvailableAt`, otherwise @custom:reverts WithdrawalTooEarly. Refunds are backed
+    ///      entirely by the per-asset `tokenReserved` pool; if that reserve is short,
+    ///      @custom:reverts InsufficientFunds. Protocol fees never back a refund. Funds are not
+    ///      transferred here, only credited to the pull-payment ledger. Emits @custom:emits
+    ///      RefundWithdrawn once the credit lands.
     function withdraw(uint256 tokenId) external;
 
     /// @notice Pulls the caller's accumulated pending refund balance.
@@ -416,13 +411,11 @@ interface IDotnsNameEscrow {
     ///      NotReclaimable. Emits @custom:emits NameReclaimed once custody is transferred.
     ///      Reclaim does not require the deposit to have been withdrawn first. If the position
     ///      still holds value, this call settles it: the amount is debited from `tokenReserved`
-    ///      (topping up from the insurance fund on shortfall, @custom:reverts InsufficientFunds if
-    ///      even the combined balance is short) and credited to the previous recipient's
-    ///      pull-payment balance, claimable through @custom:function claimWithdrawal with no
-    ///      deadline. That is what keeps a name recyclable when its previous holder never returns:
-    ///      the value follows them, the name does not wait for them. Emits @custom:emits
-    ///      RefundWithdrawn on settlement, and @custom:emits InsuranceDraw when the insurance fund
-    ///      tops up a shortfall.
+    ///      (@custom:reverts InsufficientFunds if the reserve is short) and credited to the
+    ///      previous recipient's pull-payment balance, claimable through @custom:function
+    ///      claimWithdrawal with no deadline. That is what keeps a name recyclable when its
+    ///      previous holder never returns: the value follows them, the name does not wait for them.
+    ///      Emits @custom:emits RefundWithdrawn on settlement.
     /// @param newOwner Address of the new registrant taking over the name.
     function reclaim(uint256 tokenId, address newOwner) external;
 
