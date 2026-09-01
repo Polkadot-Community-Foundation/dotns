@@ -70,6 +70,7 @@ contract RootGatewayDispatcherTests is BaseDotns {
 
     function test_dispatcher_forwards_to_controller_when_root() public {
         _mockCallerIsRoot(true);
+        _mockOriginIsRoot(true);
         _grantPopFull(ed);
 
         bytes memory payload = abi.encodeWithSelector(
@@ -88,6 +89,7 @@ contract RootGatewayDispatcherTests is BaseDotns {
 
     function test_dispatcher_bubbles_controller_revert_data() public {
         _mockCallerIsRoot(true);
+        _mockOriginIsRoot(true);
         // The flat lite-label `LITE_LABEL_A` does not satisfy the gateway-facing
         // `stem.digits` shape, so the controller reverts with InvalidLiteLabel.
         // The dispatcher must surface that revert verbatim rather than masking it
@@ -111,11 +113,10 @@ contract RootGatewayDispatcherTests is BaseDotns {
     }
 
     function test_controller_authorises_call_from_dispatcher_address() public {
-        // Dispatcher path: the precompile reports non-Root from inside the
-        // controller's proxy implementation frame, but the dispatcher acting
-        // as the immediate caller carries the call through the controller's
-        // gateway check.
+        // Dispatcher path: the controller gates on the dispatch origin, which the
+        // dispatcher's plain forwarding call preserves.
         _grantPopFull(ed);
+        _mockOriginIsRoot(true);
 
         vm.prank(address(dispatcher));
         dotnsPopController.reserveLiteName(
@@ -128,12 +129,10 @@ contract RootGatewayDispatcherTests is BaseDotns {
         assertEq(dotnsRegistry.owner(node), ed);
     }
 
-    function test_controller_rejects_unknown_msg_sender_when_not_root() public {
-        // Caller is neither the registered gateway nor a Root-origin
-        // dispatch, so the gateway check rejects it.
-        vm.expectRevert(
-            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(this))
-        );
+    function test_controller_rejects_call_when_origin_is_not_root() public {
+        // No Root origin, so the controller rejects the call whoever makes it.
+        _mockOriginIsRoot(false);
+        vm.expectRevert(IDotnsPopController.NotRoot.selector);
         dotnsPopController.reserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x01)
@@ -141,7 +140,9 @@ contract RootGatewayDispatcherTests is BaseDotns {
         );
     }
 
-    function test_rotating_pop_gateway_key_revokes_old_dispatcher() public {
+    function test_rotating_pop_gateway_key_no_longer_gates_the_controller() public {
+        // Authorisation is the origin, not the registry key, so rotating
+        // POP_GATEWAY revokes nothing.
         address newGateway = address(0xBEEF);
 
         vm.prank(owner);
@@ -149,16 +150,16 @@ contract RootGatewayDispatcherTests is BaseDotns {
 
         assertEq(protocolRegistry.get(DotnsConstants.POP_GATEWAY), newGateway);
 
-        // Old dispatcher no longer authorised.
+        // The dispatcher carries a Root-origin call through regardless.
         _grantPopFull(ed);
+        _mockOriginIsRoot(true);
         vm.prank(address(dispatcher));
-        vm.expectRevert(
-            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(dispatcher))
-        );
         dotnsPopController.reserveLiteName(
             IDotnsPopController.LiteRegistration({
-                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x01)
+                liteLabel: LITE_LABEL_A_DOTTED, user: ed, chatKey: _validChatKey(0x01)
             })
         );
+
+        assertEq(dotnsRegistry.owner(_nodeOf(LITE_LABEL_A)), ed);
     }
 }

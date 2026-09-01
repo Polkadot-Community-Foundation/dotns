@@ -125,7 +125,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         uint256 baseline = vm.snapshotState();
 
         vm.recordLogs();
-        vm.prank(popGateway);
+        _mockOriginIsRoot(true);
         dotnsPopController.reserveLiteName(params);
         Vm.Log[] memory typedLogs = vm.getRecordedLogs();
         address typedOwner = IERC721(address(dotnsRegistrar)).ownerOf(uint256(node));
@@ -134,7 +134,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         vm.revertToState(baseline);
 
         vm.recordLogs();
-        vm.prank(popGateway);
+        _mockOriginIsRoot(true);
         dotnsPopController.reserveLiteName(abi.encode(params));
         Vm.Log[] memory bytesLogs = vm.getRecordedLogs();
 
@@ -176,7 +176,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         uint256 baseline = vm.snapshotState();
 
         vm.recordLogs();
-        vm.prank(popGateway);
+        _mockOriginIsRoot(true);
         dotnsPopController.reserveBaseName(params);
         Vm.Log[] memory typedLogs = vm.getRecordedLogs();
         address typedOwner = IERC721(address(dotnsRegistrar)).ownerOf(uint256(liteNode));
@@ -190,7 +190,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         vm.revertToState(baseline);
 
         vm.recordLogs();
-        vm.prank(popGateway);
+        _mockOriginIsRoot(true);
         dotnsPopController.reserveBaseName(abi.encode(params));
         Vm.Log[] memory bytesLogs = vm.getRecordedLogs();
 
@@ -230,7 +230,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         // the two branches stay isolated under fuzzing.
         IDotnsPopController.Link memory link;
         if (useLiteLink) {
-            vm.prank(popGateway);
+            _mockOriginIsRoot(true);
             dotnsPopController.reserveLiteName(
                 IDotnsPopController.LiteRegistration({
                     liteLabel: LITE_LABEL_A_DOTTED, user: ed, chatKey: chatKey
@@ -256,7 +256,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         uint256 baseline = vm.snapshotState();
 
         vm.recordLogs();
-        vm.prank(popGateway);
+        _mockOriginIsRoot(true);
         dotnsPopController.registerBaseName(params);
         Vm.Log[] memory typedLogs = vm.getRecordedLogs();
         address typedOwner = IERC721(address(dotnsRegistrar)).ownerOf(uint256(baseNode));
@@ -266,7 +266,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         vm.revertToState(baseline);
 
         vm.recordLogs();
-        vm.prank(popGateway);
+        _mockOriginIsRoot(true);
         dotnsPopController.registerBaseName(abi.encode(params));
         Vm.Log[] memory bytesLogs = vm.getRecordedLogs();
 

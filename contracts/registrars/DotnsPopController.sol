@@ -24,6 +24,7 @@ import {LabelUtils} from "../utils/LabelUtils.sol";
 import {RegistrationUtils} from "../utils/RegistrationUtils.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {DotnsConstants} from "../utils/DotnsConstants.sol";
+import {SystemUtils} from "../utils/SystemUtils.sol";
 
 /// @title DotnsPopController
 /// @notice Dedicated PoP controller orchestrating lite-person and full-person username
@@ -155,17 +156,9 @@ contract DotnsPopController is
     /// @dev Reserved storage space to allow for layout changes in future upgrades.
     uint256[50] private __gap;
 
-    /// @notice Restricts calls to the address registered as the PoP gateway
-    ///         on the protocol registry.
-    /// @dev Authority is delegated wholly to the registered gateway, which is
-    ///      the Root gateway dispatcher. Any caller other than the registered
-    ///      gateway is rejected with NotGateway. The Root-authority check
-    ///      itself lives in the dispatcher because the revive System
-    ///      precompile is only meaningful in the frame that is the direct
-    ///      callee of Root, which is the dispatcher and never this UUPS
-    ///      implementation.
-    modifier onlyGateway() {
-        _onlyGateway();
+    /// @notice Restricts calls to a substrate Root origin.
+    modifier onlyRoot() {
+        _onlyRoot();
         _;
     }
 
@@ -199,17 +192,17 @@ contract DotnsPopController is
     }
 
     /// @inheritdoc IDotnsPopController
-    function reserveLiteName(LiteRegistration calldata params) external override onlyGateway {
+    function reserveLiteName(LiteRegistration calldata params) external override onlyRoot {
         _reserveLite(_popRules(), params);
     }
 
     /// @inheritdoc IDotnsPopController
-    function reserveLiteName(bytes calldata payload) external override onlyGateway {
+    function reserveLiteName(bytes calldata payload) external override onlyRoot {
         _dispatchTyped(SELECTOR_RESERVE_LITE, payload);
     }
 
     /// @inheritdoc IDotnsPopController
-    function reserveBaseName(BaseReservation calldata params) external override onlyGateway {
+    function reserveBaseName(BaseReservation calldata params) external override onlyRoot {
         IPopRules rules = _popRules();
         bytes32 reservedHash;
         bool hasReservation = bytes(params.reservedBaseLabel).length != 0;
@@ -227,16 +220,12 @@ contract DotnsPopController is
     }
 
     /// @inheritdoc IDotnsPopController
-    function reserveBaseName(bytes calldata payload) external override onlyGateway {
+    function reserveBaseName(bytes calldata payload) external override onlyRoot {
         _dispatchTyped(SELECTOR_RESERVE_BASE, payload);
     }
 
     /// @inheritdoc IDotnsPopController
-    function reserveBaseNameOnly(BaseNameReservation calldata params)
-        external
-        override
-        onlyGateway
-    {
+    function reserveBaseNameOnly(BaseNameReservation calldata params) external override onlyRoot {
         IPopRules rules = _popRules();
         (bytes32 reservedHash,) = _validateReservableBaseLabel(rules, params.reservedBaseLabel);
         _advanceExpiredHead(reservedHash);
@@ -245,7 +234,7 @@ contract DotnsPopController is
     }
 
     /// @inheritdoc IDotnsPopController
-    function reserveBaseNameOnly(bytes calldata payload) external override onlyGateway {
+    function reserveBaseNameOnly(bytes calldata payload) external override onlyRoot {
         _dispatchTyped(SELECTOR_RESERVE_BASE_ONLY, payload);
     }
 
@@ -278,12 +267,12 @@ contract DotnsPopController is
     }
 
     /// @inheritdoc IDotnsPopController
-    function registerBaseName(bytes calldata payload) external override onlyGateway {
+    function registerBaseName(bytes calldata payload) external override onlyRoot {
         _dispatchTyped(SELECTOR_REGISTER_BASE, payload);
     }
 
     /// @inheritdoc IDotnsPopController
-    function registerBaseName(FullRegistration calldata params) external override onlyGateway {
+    function registerBaseName(FullRegistration calldata params) external override onlyRoot {
         Link calldata link = params.link;
         address user = params.user;
         string calldata label = params.label;
@@ -895,16 +884,12 @@ contract DotnsPopController is
         delete _reservedBaseLabel[labelhash];
     }
 
-    /// @notice Internal check enforcing PoP-gateway-only access.
-    /// @dev Authorises a call when the caller matches the address registered
-    ///      as the PoP gateway on the protocol registry. The dispatcher
-    ///      registered there is responsible for proving substrate Root
-    ///      authority via the revive System precompile; this contract trusts
-    ///      that forwarded calls already carry that authority. Reverts with
-    ///      NotGateway on failure, including when the registry key is unset.
-    function _onlyGateway() internal view {
-        address gw = protocolRegistry.get(DotnsConstants.POP_GATEWAY);
-        require(gw != address(0) && msg.sender == gw, NotGateway(msg.sender));
+    /// @notice Internal check enforcing a substrate Root origin.
+    /// @dev Authorises a call when @custom:function SystemUtils.originIsRoot is true, and
+    ///      reverts with NotRoot otherwise. `msg.sender` is deliberately not consulted: a
+    ///      Root origin has no account behind it, so reading it traps.
+    function _onlyRoot() internal view {
+        require(SystemUtils.originIsRoot(), NotRoot());
     }
 
     /// @notice Routes a raw cross-chain payload to the typed entrypoint identified by `selector`.
@@ -914,11 +899,11 @@ contract DotnsPopController is
     /// `abi.encode(StructTuple)`, so concatenating `selector` with `payload` is exactly the
     /// calldata the typed overload expects. Reverts bubble up byte-for-byte so the caller sees
     /// the same error it would have seen on a direct typed call. The delegatecall target is
-    /// hard-coded to `address(this)` and `selector` is one of three module-private constants
+    /// hard-coded to `address(this)` and `selector` is one of four module-private constants
     /// pointing at this contract's own typed entrypoints, so storage context is preserved and
-    /// no external code can run in this contract's frame. @custom:function _onlyGateway runs
-    /// on both the outer bytes overload and the inner typed overload; both checks read the
-    /// same registry slot.
+    /// no external code can run in this contract's frame. @custom:function _onlyRoot runs
+    /// on both the outer bytes overload and the inner typed overload; both read the same
+    /// origin.
     /// @custom:oz-upgrades-unsafe-allow delegatecall
     function _dispatchTyped(bytes4 selector, bytes calldata payload) private {
         (bool ok, bytes memory ret) = address(this).delegatecall(bytes.concat(selector, payload));

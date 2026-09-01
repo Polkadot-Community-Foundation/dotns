@@ -36,10 +36,8 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function test_reserveBaseName_reverts_when_origin_is_not_root() public {
-        _mockCallerIsRoot(false);
-        vm.expectRevert(
-            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(this))
-        );
+        _mockOriginIsRoot(false);
+        vm.expectRevert(IDotnsPopController.NotRoot.selector);
         dotnsPopController.reserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
@@ -180,10 +178,8 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_registerBaseName_reverts_when_origin_is_not_root() public {
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xaa));
 
-        _mockCallerIsRoot(false);
-        vm.expectRevert(
-            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(this))
-        );
+        _mockOriginIsRoot(false);
+        vm.expectRevert(IDotnsPopController.NotRoot.selector);
         dotnsPopController.registerBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_A, user: ed, link: link})
         );
@@ -323,7 +319,7 @@ contract DotnsPopControllerTests is BaseDotns {
 
         vm.warp(block.timestamp + dotnsPopController.reservationDuration() + 1);
         // Anyone can call. Pinning this prevents a future patch from silently
-        // adding `onlyGateway` and breaking permissionless garbage collection.
+        // adding `onlyRoot` and breaking permissionless garbage collection.
         address stranger = makeAddr("stranger");
         vm.prank(stranger);
         dotnsPopController.expireReservation(BASE_LABEL_A);
@@ -639,13 +635,9 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_controller_authorised_but_not_gateway_cannot_enter_pop_flow() public {
         // The public commit-reveal controller is already a registered controller.
         // Even from that origin, the Root-gate must reject the call.
-        _mockCallerIsRoot(false);
+        _mockOriginIsRoot(false);
         vm.prank(address(dotnsRegistrarController));
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IDotnsPopController.NotGateway.selector, address(dotnsRegistrarController)
-            )
-        );
+        vm.expectRevert(IDotnsPopController.NotRoot.selector);
         dotnsPopController.reserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
@@ -865,10 +857,8 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function test_reserveLiteName_reverts_when_origin_is_not_root() public {
-        _mockCallerIsRoot(false);
-        vm.expectRevert(
-            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(this))
-        );
+        _mockOriginIsRoot(false);
+        vm.expectRevert(IDotnsPopController.NotRoot.selector);
         dotnsPopController.reserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
@@ -918,10 +908,8 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function test_reserveBaseNameOnly_reverts_for_non_gateway() public {
-        _mockCallerIsRoot(false);
-        vm.expectRevert(
-            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(this))
-        );
+        _mockOriginIsRoot(false);
+        vm.expectRevert(IDotnsPopController.NotRoot.selector);
         dotnsPopController.reserveBaseNameOnly(
             IDotnsPopController.BaseNameReservation({user: ed, reservedBaseLabel: BASE_LABEL_A})
         );
@@ -1114,15 +1102,13 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function testFuzz_bytes_overloads_reject_non_root_origin(uint8 which) public {
-        // `which` selects which of the three bytes overloads to invoke; the
-        // `onlyGateway` modifier must reject a non-Root origin on each.
-        // Single fuzz replaces three near-identical unit tests.
-        which = uint8(bound(uint256(which), 0, 2));
+        // `which` selects which of the four bytes overloads to invoke; the
+        // `onlyRoot` modifier must reject a non-Root origin on each.
+        // Single fuzz replaces four near-identical unit tests.
+        which = uint8(bound(uint256(which), 0, 3));
 
-        _mockCallerIsRoot(false);
-        vm.expectRevert(
-            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(this))
-        );
+        _mockOriginIsRoot(false);
+        vm.expectRevert(IDotnsPopController.NotRoot.selector);
 
         if (which == 0) {
             dotnsPopController.reserveLiteName(
@@ -1143,7 +1129,7 @@ contract DotnsPopControllerTests is BaseDotns {
                     })
                 )
             );
-        } else {
+        } else if (which == 2) {
             dotnsPopController.registerBaseName(
                 abi.encode(
                     IDotnsPopController.FullRegistration({
@@ -1154,6 +1140,14 @@ contract DotnsPopControllerTests is BaseDotns {
                             liteLabel: "",
                             chatKey: _validChatKey(0xaa)
                         })
+                    })
+                )
+            );
+        } else {
+            dotnsPopController.reserveBaseNameOnly(
+                abi.encode(
+                    IDotnsPopController.BaseNameReservation({
+                        user: ed, reservedBaseLabel: BASE_LABEL_A
                     })
                 )
             );

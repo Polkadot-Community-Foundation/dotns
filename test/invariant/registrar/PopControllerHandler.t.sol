@@ -331,7 +331,7 @@ contract PopControllerHandler is Test {
         internal
         returns (bool ok)
     {
-        _mockCallerIsRoot(true);
+        _mockOriginIsRoot(true);
         if (useBytes) {
             try CONTROLLER.reserveBaseName(abi.encode(params)) {
                 return true;
@@ -356,7 +356,7 @@ contract PopControllerHandler is Test {
         internal
         returns (bool ok)
     {
-        _mockCallerIsRoot(true);
+        _mockOriginIsRoot(true);
         if (useBytes) {
             try CONTROLLER.registerBaseName(abi.encode(params)) {
                 return true;
@@ -371,11 +371,11 @@ contract PopControllerHandler is Test {
         }
     }
 
-    /// @notice Mocks the revive `callerIsRoot()` query to return `returnValue`.
-    function _mockCallerIsRoot(bool returnValue) internal {
+    /// @notice Mocks the revive `originIsRoot()` query to return `returnValue`.
+    function _mockOriginIsRoot(bool returnValue) internal {
         vm.mockCall(
             DotnsConstants.REVIVE_SYSTEM,
-            abi.encodeWithSelector(ISystem.callerIsRoot.selector),
+            abi.encodeWithSelector(ISystem.originIsRoot.selector),
             abi.encode(returnValue)
         );
     }

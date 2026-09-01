@@ -553,7 +553,10 @@ abstract contract BaseDotns is Test {
     /// @dev Reverts with the inner error data when the forwarded call fails, so
     ///      `vm.expectRevert` assertions remain meaningful at the test level.
     function _dispatchFromRoot(bytes memory payload) internal returns (bytes memory ret) {
+        // This path crosses both gates: the dispatcher reads `callerIsRoot`, the
+        // controller reads `originIsRoot`.
         _mockCallerIsRoot(true);
+        _mockOriginIsRoot(true);
 
         (bool ok, bytes memory data) = popGateway.call(payload);
         if (!ok) {
