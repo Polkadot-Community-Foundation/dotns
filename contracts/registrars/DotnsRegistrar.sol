@@ -148,11 +148,10 @@ contract DotnsRegistrar is
         // canonical PoP controller mints soulbound names, so a compromised or buggy peer controller
         // cannot lock a public name and the PoP controller cannot mint an unlocked one. Written
         // only on the true branch to leave the public path free of a redundant zero write.
-        if (msg.sender == protocolRegistry.get(DotnsConstants.POP_CONTROLLER)) {
-            _soulbound[id] = true;
-        }
+        bool soulbound = msg.sender == protocolRegistry.get(DotnsConstants.POP_CONTROLLER);
+        if (soulbound) _soulbound[id] = true;
         if (bytes(label).length != 0) _writeOwnerLabel(owner, id, label);
-        emit NameRegistered(id, owner);
+        emit NameRegistered(id, owner, soulbound);
     }
 
     /// @inheritdoc IDotnsRegistrar

@@ -98,7 +98,7 @@ contract DotnsRegistrarTests is BaseDotns {
         uint256 tokenId = _tokenIdForLabel(label);
 
         vm.expectEmit(true, true, false, true, address(dotnsRegistrar));
-        emit IDotnsRegistrar.NameRegistered(tokenId, ed);
+        emit IDotnsRegistrar.NameRegistered(tokenId, ed, false);
 
         vm.prank(address(dotnsRegistrarController));
         dotnsRegistrar.register(tokenId, ed, label);
@@ -423,6 +423,17 @@ contract DotnsRegistrarTests is BaseDotns {
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), ed, "mint must not be blocked");
         assertTrue(dotnsRegistrar.isSoulbound(tokenId));
+    }
+
+    function test_pop_gateway_mint_emits_soulbound_true() public {
+        string memory label = "sbemit01";
+        uint256 tokenId = _tokenIdForLabel(label);
+
+        vm.expectEmit(true, true, false, true, address(dotnsRegistrar));
+        emit IDotnsRegistrar.NameRegistered(tokenId, ed, true);
+
+        vm.prank(address(dotnsPopController));
+        dotnsRegistrar.register(tokenId, ed, "");
     }
 
     function test_public_mint_is_not_soulbound() public {

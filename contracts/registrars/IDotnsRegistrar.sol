@@ -48,7 +48,11 @@ interface IDotnsRegistrar is IERC721 {
     error NameSoulbound(uint256 tokenId);
 
     /// @notice Emitted when a name is registered.
-    event NameRegistered(uint256 indexed id, address indexed owner);
+    /// @param id The token id (namehash node) that was minted.
+    /// @param owner The address that received the name.
+    /// @param soulbound True when the name is soulbound: PoP-gateway minted and non-transferable.
+    /// Lets indexers classify registrations without a per-token @custom:function isSoulbound read.
+    event NameRegistered(uint256 indexed id, address indexed owner, bool soulbound);
 
     /// @notice Emitted when a controller is added.
     /// @dev Typed as the shared baseline @custom:contract IDotnsController so the commit-reveal
