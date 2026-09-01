@@ -316,8 +316,7 @@ contract PopControllerHandler is Test {
         }
     }
 
-    /// @notice Mirror of `_callReserveBaseName` for the `registerBaseName`
-    ///         overloads.
+    /// @notice Mirror of `_callReserveBaseName` for `registerBaseName`.
     /// @return ok Whether the underlying call succeeded.
     function _callRegisterBaseName(IDotnsPopController.FullRegistration memory params)
         internal
