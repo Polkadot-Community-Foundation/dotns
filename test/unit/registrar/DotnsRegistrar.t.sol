@@ -98,7 +98,7 @@ contract DotnsRegistrarTests is BaseDotns {
         uint256 tokenId = _tokenIdForLabel(label);
 
         vm.expectEmit(true, true, false, true, address(dotnsRegistrar));
-        emit IDotnsRegistrar.NameRegistered(tokenId, ed);
+        emit IDotnsRegistrar.NameRegistered(tokenId, ed, false);
 
         vm.prank(address(dotnsRegistrarController));
         dotnsRegistrar.register(tokenId, ed, label);
@@ -402,5 +402,226 @@ contract DotnsRegistrarTests is BaseDotns {
 
         assertTrue(dotnsRegistrar.isApprovedForAll(nameOwner, operator));
         assertTrue(dotnsRegistrar.supportsInterface(type(IERC721).interfaceId));
+    }
+
+    /// @notice Mints a name as if through the PoP gateway: the caller is the address registered
+    /// under `POP_CONTROLLER`, and the gateway path passes an empty label.
+    function _mintSoulbound(
+        string memory label,
+        address nameOwner
+    )
+        internal
+        returns (uint256 tokenId)
+    {
+        tokenId = _tokenIdForLabel(label);
+        vm.prank(address(dotnsPopController));
+        dotnsRegistrar.register(tokenId, nameOwner, "");
+    }
+
+    function test_pop_gateway_mint_marks_soulbound() public {
+        uint256 tokenId = _mintSoulbound("soulbound01", ed);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), ed, "mint must not be blocked");
+        assertTrue(dotnsRegistrar.isSoulbound(tokenId));
+    }
+
+    function test_pop_gateway_mint_emits_soulbound_true() public {
+        string memory label = "sbemit01";
+        uint256 tokenId = _tokenIdForLabel(label);
+
+        vm.expectEmit(true, true, false, true, address(dotnsRegistrar));
+        emit IDotnsRegistrar.NameRegistered(tokenId, ed, true);
+
+        vm.prank(address(dotnsPopController));
+        dotnsRegistrar.register(tokenId, ed, "");
+    }
+
+    function test_public_mint_is_not_soulbound() public {
+        string memory label = "public01";
+        uint256 tokenId = _tokenIdForLabel(label);
+
+        vm.prank(address(dotnsRegistrarController));
+        dotnsRegistrar.register(tokenId, ed, label);
+
+        assertFalse(dotnsRegistrar.isSoulbound(tokenId));
+    }
+
+    function test_soulbound_provenance_is_only_the_pop_controller() public {
+        // A third authorised controller that is not the registry POP_CONTROLLER must mint
+        // transferable names: provenance is read from the registry, not from mere controller
+        // membership.
+        address thirdController = makeAddr("thirdController");
+        vm.prank(owner);
+        dotnsRegistrar.addController(IDotnsController(thirdController));
+
+        string memory label = "thirdctrl01";
+        uint256 tokenId = _tokenIdForLabel(label);
+        vm.prank(thirdController);
+        dotnsRegistrar.register(tokenId, ed, label);
+
+        assertFalse(dotnsRegistrar.isSoulbound(tokenId));
+    }
+
+    function test_soulbound_transfer_from_reverts_and_owner_unchanged() public {
+        uint256 tokenId = _mintSoulbound("sbtransfer01", ed);
+
+        vm.expectRevert(abi.encodeWithSelector(IDotnsRegistrar.NameSoulbound.selector, tokenId));
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+
+        assertEq(
+            dotnsRegistrar.ownerOf(tokenId), ed, "ownership must not move on a reverted transfer"
+        );
+    }
+
+    function test_soulbound_safe_transfer_from_reverts_and_owner_unchanged() public {
+        uint256 tokenId = _mintSoulbound("sbsafe01", ed);
+
+        vm.expectRevert(abi.encodeWithSelector(IDotnsRegistrar.NameSoulbound.selector, tokenId));
+        vm.prank(ed);
+        dotnsRegistrar.safeTransferFrom(ed, leonardo, tokenId);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
+    }
+
+    function test_soulbound_safe_transfer_from_with_data_reverts_and_owner_unchanged() public {
+        uint256 tokenId = _mintSoulbound("sbsafedata01", ed);
+
+        vm.expectRevert(abi.encodeWithSelector(IDotnsRegistrar.NameSoulbound.selector, tokenId));
+        vm.prank(ed);
+        dotnsRegistrar.safeTransferFrom(ed, leonardo, tokenId, bytes("payload"));
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
+    }
+
+    function test_soulbound_operator_transfer_reverts_and_owner_unchanged() public {
+        // An approved operator cannot move a soulbound name either: the transfer hook rejects the
+        // move regardless of who initiates it.
+        uint256 tokenId = _mintSoulbound("sboperator01", ed);
+
+        vm.prank(ed);
+        dotnsRegistrar.setApprovalForAll(leonardo, true);
+
+        vm.expectRevert(abi.encodeWithSelector(IDotnsRegistrar.NameSoulbound.selector, tokenId));
+        vm.prank(leonardo);
+        dotnsRegistrar.transferFrom(ed, tiago, tokenId);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
+    }
+
+    function test_soulbound_transfer_reverts_even_when_escrow_unconfigured() public {
+        // The gate sits before any escrow lookup, so a soulbound transfer is rejected without
+        // depending on the escrow being configured.
+        uint256 tokenId = _mintSoulbound("sbnoescrow01", ed);
+
+        vm.mockCall(
+            address(protocolRegistry),
+            abi.encodeWithSelector(IDotnsProtocolRegistry.get.selector, DotnsConstants.NAME_ESCROW),
+            abi.encode(address(0))
+        );
+
+        vm.expectRevert(abi.encodeWithSelector(IDotnsRegistrar.NameSoulbound.selector, tokenId));
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
+    }
+
+    function test_soulbound_quote_transfer_fee_reverts() public {
+        uint256 tokenId = _mintSoulbound("sbquote01", ed);
+
+        vm.expectRevert(abi.encodeWithSelector(IDotnsRegistrar.NameSoulbound.selector, tokenId));
+        dotnsRegistrar.quoteTransferFee(tokenId, leonardo);
+    }
+
+    function test_soulbound_cannot_enter_escrow() public {
+        // A soulbound name holds no escrow position, so `release` rejects it before any custody
+        // move is attempted. The name can never be released into escrow.
+        uint256 tokenId = _mintSoulbound("sbescrow01", ed);
+
+        vm.startPrank(ed);
+        dotnsRegistrar.setApprovalForAll(address(dotnsNameEscrow), true);
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsNameEscrow.DepositNotConfigured.selector, tokenId)
+        );
+        dotnsNameEscrow.release(tokenId);
+        vm.stopPrank();
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
+    }
+
+    function test_public_name_remains_transferable() public {
+        // Control: a publicly registered name with no fee owed still transfers normally, so the
+        // soulbound gate does not regress the ordinary path.
+        string memory label = "publicmove01";
+        _register(label, ed, IPopRules.PopStatus.NoStatus);
+        uint256 tokenId = _tokenIdForLabel(label);
+
+        assertFalse(dotnsRegistrar.isSoulbound(tokenId));
+
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), leonardo);
+    }
+
+    function test_soulbound_with_label_transfer_reverts() public {
+        // A soulbound name that carries a label (the PoP controller may register a non-empty
+        // label) still cannot be transferred. This exercises the labelled branch that would run
+        // the transfer-floor quote if the gate were absent.
+        string memory label = "sblabelled01";
+        uint256 tokenId = _tokenIdForLabel(label);
+        vm.prank(address(dotnsPopController));
+        dotnsRegistrar.register(tokenId, ed, label);
+
+        assertTrue(dotnsRegistrar.isSoulbound(tokenId));
+        assertEq(dotnsRegistrar.labelOf(tokenId), label);
+
+        vm.expectRevert(abi.encodeWithSelector(IDotnsRegistrar.NameSoulbound.selector, tokenId));
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom(ed, leonardo, tokenId);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
+    }
+
+    function test_soulbound_transfer_with_value_reverts_and_returns_value() public {
+        // Attaching value to a blocked soulbound transfer must revert and strand no funds: the
+        // sender's balance is intact and the registrar holds nothing afterwards.
+        uint256 tokenId = _mintSoulbound("sbvalue01", ed);
+        vm.deal(ed, 1 ether);
+
+        vm.expectRevert(abi.encodeWithSelector(IDotnsRegistrar.NameSoulbound.selector, tokenId));
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom{value: 1 ether}(ed, leonardo, tokenId);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
+        assertEq(ed.balance, 1 ether, "attached value must be returned on revert");
+        assertEq(address(dotnsRegistrar).balance, 0, "registrar must not retain value");
+    }
+
+    function test_soulbound_self_transfer_reverts() public {
+        // A soulbound name reverts even on a same-address move, keeping transferFrom in step with
+        // quoteTransferFee (which reverts regardless of recipient) and the interface contract.
+        uint256 tokenId = _mintSoulbound("sbself01", ed);
+
+        vm.expectRevert(abi.encodeWithSelector(IDotnsRegistrar.NameSoulbound.selector, tokenId));
+        vm.prank(ed);
+        dotnsRegistrar.transferFrom(ed, ed, tokenId);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
+    }
+
+    function test_soulbound_single_token_approvee_transfer_reverts() public {
+        // A single-token approvee is blocked on the same gate as the owner and operators.
+        uint256 tokenId = _mintSoulbound("sbapprovee01", ed);
+
+        vm.prank(ed);
+        dotnsRegistrar.approve(leonardo, tokenId);
+
+        vm.expectRevert(abi.encodeWithSelector(IDotnsRegistrar.NameSoulbound.selector, tokenId));
+        vm.prank(leonardo);
+        dotnsRegistrar.transferFrom(ed, tiago, tokenId);
+
+        assertEq(dotnsRegistrar.ownerOf(tokenId), ed);
     }
 }

@@ -144,6 +144,13 @@ contract RegistrarControllerHandler is Test {
     /// @param actor The actor address.
     /// @param status The PoP status to assign.
     function addActor(address actor, IPopRules.PopStatus status) external {
+        // Actors model real users, so reject the zero address and any contract. The fuzzer's
+        // address dictionary contains protocol contracts, and if the escrow were admitted as an
+        // actor a name could be transferred into it: an escrow-touching transfer skips the label
+        // mirror, leaving the escrow as a recipient with no store and breaking the recipient-store
+        // invariant for a reason unrelated to user transfers.
+        if (actor == address(0) || actor.code.length != 0) return;
+
         if (!_isActor[actor]) {
             _isActor[actor] = true;
             actors.push(actor);
