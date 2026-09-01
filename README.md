@@ -132,7 +132,7 @@ Commit-reveal controller for the public registration path. A caller first submit
 
 ### DotnsPopController
 
-Dedicated controller for the Proof-of-Personhood gateway flow. Lives behind its own UUPS proxy with its own storage and is registered on the registrar via addController alongside the commit-reveal controller. Its gated entry points are callable only from the address resolved through the protocol registry under the POP_GATEWAY key, which is the RootGatewayDispatcher deployed against this controller; the dispatcher is the contract that actually proves substrate Root authority before forwarding here.
+Dedicated controller for the Proof-of-Personhood gateway flow. Lives behind its own UUPS proxy with its own storage and is registered on the registrar via addController alongside the commit-reveal controller. Its gated entry points are callable only under a substrate Root origin, which the controller verifies itself by reading `originIsRoot` from the revive System precompile.
 
 Today the Pop gateway does not write a standalone user-status mapping. It materialises the PoP flow through gateway-issued labels, PoP resolver records, and reservation queue state; user tier checks for public pricing still come from the personhood precompile/context read.
 
@@ -147,14 +147,6 @@ Each base label carries a head/tail-indexed reservation queue with a capacity of
 Pop-gateway issuances mint the name and persist its label, but LabelStore deployment is deferred for users who have not yet interacted with the protocol from their own address. The current pallet-revive runtime does not let substrate Root deploy contracts on behalf of an account it does not control, so the per-user LabelStore cannot be created at the moment the gateway writes. The controller stamps a pending-claim entry instead, and settlement writes the label into the owner's store, deploying the store on the first write. Settlement is permissionless via settlePendingClaims: the owner settles their own store, or after the claim window anyone settles a given owner's entry and pays the cost. Settlement always writes the label rather than dropping the entry, so a pending name is never stranded. When the runtime supports root-origin contract deployment, the deferred path collapses to a no-op and the issuance flow becomes one transaction end-to-end. This is a runtime limitation, not a protocol design choice.
 
 Operational consequence for transfers: the registrar derives the transfer-floor price by reading the label from the sender's LabelStore. A gateway-issued name whose pending claim is not yet settled has no readable label on the sender side, so `_quoteTransferFee` returns zero regardless of the recipient's tier. Until the name is settled into a LabelStore, a downward transfer (for example PopFull to NoStatus) does not charge the cross-tier friction it would otherwise owe. Clients that consume gateway-issued names should treat settlement as a prerequisite for accurate transfer-time pricing, not just for label discovery.
-
-### RootGatewayDispatcher
-
-Non-upgradeable shim that translates a substrate Root-origin dispatch into an EVM-observable authority on the PoP controller. The dispatcher is the direct callee of the Root runtime origin, asks the revive System precompile whether its caller is Root, and forwards the calldata to the controller via a regular message call only when that check passes. The forwarded call lands on the controller proxy with the dispatcher as the immediate caller, which the controller authorises against the address registered on the protocol registry under POP_GATEWAY.
-
-Hosting the Root check in a separate, non-proxy contract is what makes it work at all. The revive System precompile is only meaningful in the frame that is the direct callee of Root, and a UUPS implementation runs inside the proxy's delegatecall, so the controller cannot ask the precompile from its own frame. The dispatcher's target is immutable, set at construction to the controller proxy it serves, and the dispatcher holds no storage of its own and never delegatecalls, so it cannot be repurposed as an arbitrary-target proxy. Rotating the dispatcher is a single set call on the protocol registry; the controller picks up the new gateway on its next call without an upgrade.
-
-The dispatcher exists to work around a runtime limitation: the substrate Root origin is not propagated through delegatecalls, so a UUPS implementation running inside its proxy's delegatecall frame cannot observe Root authority directly. Routing gateway calls through the non-proxy dispatcher restores a frame in which the Root check is meaningful. When the runtime propagates origin through delegatecalls, the controller can verify Root from its own frame and the dispatcher becomes unnecessary. This is a runtime limitation, not a protocol design choice.
 
 ### DotnsRegistrar
 
@@ -239,7 +231,7 @@ On-chain lookup table mapping well-known bytes32 keys (declared in DotnsConstant
 
 Without it, each contract would store direct addresses to every contract it calls. An upgrade that changes one address would require a separate owner transaction for every contract that references it. The protocol registry reduces this to one: update the key in the registry, and every caller picks up the new address on its next call. The indirection also means a governance-driven rotation of, say, the PoP controller does not break any consumer that has already been deployed.
 
-The registered keys include REGISTRAR, CONTROLLER, REGISTRY, REVERSE_RESOLVER, RESOLVER, CONTENT_RESOLVER, POP_RULES, STORE_FACTORY, POP_CONTROLLER, POP_RESOLVER, NAME_ESCROW, MULTICALL3, and POP_GATEWAY.
+The registered keys include REGISTRAR, CONTROLLER, REGISTRY, REVERSE_RESOLVER, RESOLVER, CONTENT_RESOLVER, POP_RULES, STORE_FACTORY, POP_CONTROLLER, POP_RESOLVER, NAME_ESCROW, and MULTICALL3.
 
 ### Multicall3
 
@@ -280,7 +272,6 @@ The protocol carries a handful of constraints worth knowing before deploying or 
 
 - **Deferred LabelStore deployment** (runtime). See [DotnsPopController](#early-testnet-quirk-labelstore-deployment).
 - **Transfer fee is zero until the store is settled** (runtime). See [DotnsPopController](#early-testnet-quirk-labelstore-deployment).
-- **Root origin is not propagated through delegatecalls** (runtime). See [RootGatewayDispatcher](#rootgatewaydispatcher).
 - **No standalone user-status mapping** (current implementation). See [DotnsPopController](#dotnspopcontroller).
 
 ## License

@@ -186,17 +186,6 @@ library DotnsConstants {
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant CREATE3_FACTORY = bytes32("create3Factory");
 
-    /// @notice Well-known key for the Root gateway dispatcher fronting the PoP
-    ///         controller.
-    /// @dev Role: substrate Root-origin shim. Resolves to the Root gateway
-    ///      dispatcher deployed against the PoP controller. The dispatcher
-    ///      verifies Root authority through the revive System precompile in
-    ///      its own frame and forwards calldata to the controller via a
-    ///      regular message call. It is not an authorisation source: the
-    ///      controller gates on the dispatch origin, not on this key.
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 internal constant POP_GATEWAY = bytes32("popGateway");
-
     /// @notice Well-known key for the pre-launch name whitelist that binds a label to the
     ///         one address permitted to register it.
     /// @dev Role: authority for label-bound registration grants. Both the public and PoP

@@ -30,7 +30,6 @@ contract DeployPopSystem is BaseDeployer {
 
         _deployPopResolver(owner, protocolRegistry);
         address popController = _deployPopController(owner, protocolRegistry);
-        _deployGatewayDispatcher(owner, popController);
         _deployPopLens(owner, protocolRegistry);
 
         saveDeployments();
@@ -68,32 +67,6 @@ contract DeployPopSystem is BaseDeployer {
                 (IDotnsProtocolRegistry(protocolRegistry), DEFAULT_RESERVATION_DURATION)
             ),
             "DotnsPopController"
-        );
-    }
-
-    /// @notice Deploys the Root gateway dispatcher bound to the PoP
-    ///         controller proxy and records it on the manifest for the
-    ///         wire-up stage to register on the protocol registry.
-    /// @dev The dispatcher's target is immutable and must be set to the
-    ///      controller proxy at construction. Registry registration is the
-    ///      wire-up stage's job, following the same pattern as every other
-    ///      protocol address, so this script only deploys and logs.
-    /// @param owner Broadcasting account.
-    /// @param popController Address of the controller proxy from the previous
-    ///        deploy step.
-    /// @return dispatcher Address of the deployed Root gateway dispatcher.
-    function _deployGatewayDispatcher(
-        address owner,
-        address popController
-    )
-        internal
-        returns (address dispatcher)
-    {
-        dispatcher = _broadcastDeployCreate3(
-            owner,
-            "RootGatewayDispatcher.sol:RootGatewayDispatcher",
-            abi.encode(popController),
-            "RootGatewayDispatcher"
         );
     }
 

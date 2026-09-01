@@ -156,18 +156,10 @@ contract PopControllerHandler is Test {
     /// @notice Reserves a lite label for an actor, optionally enqueueing on a
     ///         base label.
     /// @dev Swallows known-good reverts (QueueFull, AlreadyReserved, ERC721
-    ///      collision) so the runner keeps exploring. `useBytes` chooses
     ///      between the typed and bytes overloads so existing invariants run
     ///      against mixed dispatch paths. The dispatch path should affect call
     ///      shape only, never resulting state.
-    function reserve(
-        uint256 actorIndex,
-        uint256 baseIndex,
-        bool attachReservation,
-        bool useBytes
-    )
-        external
-    {
+    function reserve(uint256 actorIndex, uint256 baseIndex, bool attachReservation) external {
         address actor = _actor(actorIndex);
         _liteSuffix[actor]++;
         string memory liteLabel = _buildLiteLabel("rsv", actor, _liteSuffix[actor]);
@@ -180,7 +172,7 @@ contract PopControllerHandler is Test {
             reservedBaseLabel: reservedBase
         });
 
-        if (_callReserveBaseName(params, useBytes)) {
+        if (_callReserveBaseName(params)) {
             if (attachReservation) _track(keccak256(bytes(reservedBase)));
             bytes32 node = LabelUtils.namehashUnder(TLD_NODE, LabelUtils.labelhashMemory(liteLabel));
             mintedLiteTokenIds.push(uint256(node));
@@ -193,9 +185,8 @@ contract PopControllerHandler is Test {
     ///         head of the queue for the picked base label.
     /// @dev Missing preconditions (wrong actor, expired head, empty queue)
     ///      surface as a revert and are swallowed so the runner keeps
-    ///      exploring. `useBytes` selects the dispatch path for both the lite
     ///      leg and the full register leg.
-    function claim(uint256 actorIndex, uint256 baseIndex, bool useBytes) external {
+    function claim(uint256 actorIndex, uint256 baseIndex) external {
         address actor = _actor(actorIndex);
         string memory baseLabel = _baseLabel(baseIndex);
 
@@ -212,7 +203,7 @@ contract PopControllerHandler is Test {
             }),
             reservedBaseLabel: ""
         });
-        if (!_callReserveBaseName(liteParams, useBytes)) return;
+        if (!_callReserveBaseName(liteParams)) return;
         _trackPendingActor(actor);
 
         // The lite leg stashed a pending claim. Settle it now so the base
@@ -226,7 +217,7 @@ contract PopControllerHandler is Test {
         });
         IDotnsPopController.FullRegistration memory fullParams =
             IDotnsPopController.FullRegistration({label: baseLabel, user: actor, link: link});
-        if (!_callRegisterBaseName(fullParams, useBytes)) return;
+        if (!_callRegisterBaseName(fullParams)) return;
 
         bytes32 liteLabelhash = LabelUtils.labelhashMemory(liteLabel);
         bytes32 fullNode = LabelUtils.namehashUnder(TLD_NODE, LabelUtils.labelhashMemory(baseLabel));
@@ -242,15 +233,7 @@ contract PopControllerHandler is Test {
     /// @dev Drives the resolver overwrite paths. When the handler
     ///      re-uses the same (baseLabel, actor) pair later it also exercises
     ///      the symmetric case: same fullNode mapped to a new liteHash.
-    ///      `useBytes` selects the dispatch path for the register call.
-    function reLink(
-        uint256 actorIndex,
-        uint256 baseIndex,
-        uint256 liteIndex,
-        bool useBytes
-    )
-        external
-    {
+    function reLink(uint256 actorIndex, uint256 baseIndex, uint256 liteIndex) external {
         uint256 liteCount = priorLiteLabels.length;
         if (liteCount == 0) return;
 
@@ -267,7 +250,7 @@ contract PopControllerHandler is Test {
         });
         IDotnsPopController.FullRegistration memory params =
             IDotnsPopController.FullRegistration({label: baseLabel, user: actor, link: link});
-        if (!_callRegisterBaseName(params, useBytes)) return;
+        if (!_callRegisterBaseName(params)) return;
 
         bytes32 liteLabelhash = LabelUtils.labelhashMemory(liteLabel);
         bytes32 fullNode = LabelUtils.namehashUnder(TLD_NODE, LabelUtils.labelhashMemory(baseLabel));
@@ -324,21 +307,11 @@ contract PopControllerHandler is Test {
     ///      bookkeeping (ghost arrays) stays consistent with on-chain state
     ///      regardless of dispatch path.
     /// @return ok Whether the underlying call succeeded.
-    function _callReserveBaseName(
-        IDotnsPopController.BaseReservation memory params,
-        bool useBytes
-    )
+    function _callReserveBaseName(IDotnsPopController.BaseReservation memory params)
         internal
         returns (bool ok)
     {
         _mockOriginIsRoot(true);
-        if (useBytes) {
-            try CONTROLLER.reserveBaseName(abi.encode(params)) {
-                return true;
-            } catch {
-                return false;
-            }
-        }
         try CONTROLLER.reserveBaseName(params) {
             return true;
         } catch {
@@ -349,21 +322,11 @@ contract PopControllerHandler is Test {
     /// @notice Mirror of `_callReserveBaseName` for the `registerBaseName`
     ///         overloads.
     /// @return ok Whether the underlying call succeeded.
-    function _callRegisterBaseName(
-        IDotnsPopController.FullRegistration memory params,
-        bool useBytes
-    )
+    function _callRegisterBaseName(IDotnsPopController.FullRegistration memory params)
         internal
         returns (bool ok)
     {
         _mockOriginIsRoot(true);
-        if (useBytes) {
-            try CONTROLLER.registerBaseName(abi.encode(params)) {
-                return true;
-            } catch {
-                return false;
-            }
-        }
         try CONTROLLER.registerBaseName(params) {
             return true;
         } catch {

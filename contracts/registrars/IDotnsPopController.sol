@@ -268,26 +268,6 @@ interface IDotnsPopController is IDotnsController {
     /// @param params Reservation request; see @custom:struct BaseReservation.
     function reserveBaseName(BaseReservation calldata params) external;
 
-    /// @notice Raw-payload variant of @custom:function reserveBaseName for cross-chain dispatch.
-    /// @dev `payload` is `abi.encode(BaseReservation({...}))`, the bare ABI-encoded struct
-    /// with NO function-selector prefix and NO leading bytes-length word. The contract
-    /// prepends the typed selector and `delegatecall`s itself so the typed entrypoint runs
-    /// in the original call context and remains the single source of truth, which means the
-    /// typed overload's full revert surface bubbles up byte-for-byte: Root-origin access
-    /// (otherwise @custom:reverts NotRoot), lite-label shape (otherwise
-    /// @custom:reverts InvalidLiteLabel), base-label shape (otherwise
-    /// @custom:reverts InvalidBaseLabel), already-registered base label (otherwise
-    /// @custom:reverts BaseNameAlreadyRegistered), duplicate-reservation guard (otherwise
-    /// @custom:reverts AlreadyReserved), and queue capacity (otherwise
-    /// @custom:reverts QueueFull). The success path likewise emits the same events as the
-    /// typed call: @custom:emits LiteNameReserved and @custom:emits NameRegistered on the lite
-    /// leg, plus @custom:emits ReservationQueued and any @custom:emits ReservationExpired
-    /// observed while advancing the queue head when the base-name leg runs.
-    /// Note: `abi.decode` ignores trailing bytes past the encoded struct, so off-chain
-    /// encoders MUST NOT assume strict length validation.
-    /// @param payload `abi.encode(BaseReservation)` produced by the cross-chain caller.
-    function reserveBaseName(bytes calldata payload) external;
-
     /// @notice Enqueues only the full/base-name reservation for a user.
     /// @dev Callable only under a substrate Root origin (otherwise @custom:reverts NotRoot).
     /// This is the second step of the split
@@ -300,12 +280,6 @@ interface IDotnsPopController is IDotnsController {
     /// backend batching; it simply exposes a small retryable primitive.
     /// @param params Reservation request; see @custom:struct BaseNameReservation.
     function reserveBaseNameOnly(BaseNameReservation calldata params) external;
-
-    /// @notice Raw-payload variant of @custom:function reserveBaseNameOnly for cross-chain
-    /// dispatch. Callable only under a substrate Root origin (otherwise
-    /// @custom:reverts NotRoot).
-    /// @param payload `abi.encode(BaseNameReservation)` produced by the cross-chain caller.
-    function reserveBaseNameOnly(bytes calldata payload) external;
 
     /// @notice Registers a lite-person username on behalf of the supplied
     /// user without touching the base-name reservation queue.
@@ -321,25 +295,6 @@ interface IDotnsPopController is IDotnsController {
     /// call's payload, which Solidity decodes directly.
     /// @param params Registration request; see @custom:struct LiteRegistration.
     function reserveLiteName(LiteRegistration calldata params) external;
-
-    /// @notice Raw-payload variant of @custom:function reserveLiteName for cross-chain dispatch.
-    /// @dev `payload` is `abi.encode(LiteRegistration({...}))`, the bare ABI-encoded struct
-    /// with NO function-selector prefix and NO leading bytes-length word. The contract
-    /// prepends the typed selector and `delegatecall`s itself so the typed entrypoint runs
-    /// in the original call context and remains the single source of truth, so the typed
-    /// overload's revert surface bubbles up byte-for-byte: Root-origin access (otherwise
-    /// @custom:reverts NotRoot) and lite-label shape (otherwise
-    /// @custom:reverts InvalidLiteLabel). The success path emits the same events as the typed
-    /// call: @custom:emits LiteNameReserved and @custom:emits NameRegistered.
-    /// Note: `abi.decode` ignores trailing bytes past the encoded struct, so
-    /// off-chain encoders MUST NOT assume strict length validation; pad-only
-    /// junk past the tail is silently dropped (no state corruption; decoded
-    /// values are unchanged).
-    /// Worked example off-chain:
-    ///   `bytes payload = abi.encode(LiteRegistration({liteLabel: "alice42", user: u, chatKey:
-    /// k}));`
-    /// @param payload `abi.encode(LiteRegistration)` produced by the cross-chain caller.
-    function reserveLiteName(bytes calldata payload) external;
 
     /// @notice Registers a full-person username on behalf of the supplied user.
     /// @dev Callable only under a substrate Root origin (otherwise @custom:reverts NotRoot). The
@@ -374,24 +329,6 @@ interface IDotnsPopController is IDotnsController {
     /// the call's payload, which Solidity decodes directly.
     /// @param params Registration request; see @custom:struct FullRegistration.
     function registerBaseName(FullRegistration calldata params) external;
-
-    /// @notice Raw-payload variant of @custom:function registerBaseName for cross-chain dispatch.
-    /// @dev `payload` is `abi.encode(FullRegistration({...}))`, the bare ABI-encoded struct
-    /// with NO function-selector prefix and NO leading bytes-length word. The contract
-    /// prepends the typed selector and `delegatecall`s itself so the typed entrypoint runs
-    /// in the original call context and remains the single source of truth, so the typed
-    /// overload's revert surface bubbles up byte-for-byte: Root-origin access (otherwise
-    /// @custom:reverts NotRoot), base-label shape (otherwise @custom:reverts InvalidBaseLabel),
-    /// lite-label shape on the `LiteUsername` branch (otherwise @custom:reverts InvalidLiteLabel),
-    /// and the standalone-mint holder guard (otherwise @custom:reverts NotHolder). The success
-    /// path emits the same events as the typed call: @custom:emits BaseNameClaimed on a claim
-    /// or @custom:emits StandaloneNameRegistered otherwise, @custom:emits LiteToFullLinked on
-    /// the `LiteUsername` branch, @custom:emits ReservationExpired for each entry reaped while
-    /// advancing the queue head, and always @custom:emits NameRegistered.
-    /// Note: `abi.decode` ignores trailing bytes past the encoded struct, so off-chain
-    /// encoders MUST NOT assume strict length validation.
-    /// @param payload `abi.encode(FullRegistration)` produced by the cross-chain caller.
-    function registerBaseName(bytes calldata payload) external;
 
     /// @notice Permissionlessly removes expired entries from the head of a reservation queue.
     /// @dev Permissionless on purpose: anyone (typically a UI or a bot) can poke a stale queue
