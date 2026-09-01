@@ -156,9 +156,7 @@ contract PopControllerHandler is Test {
     /// @notice Reserves a lite label for an actor, optionally enqueueing on a
     ///         base label.
     /// @dev Swallows known-good reverts (QueueFull, AlreadyReserved, ERC721
-    ///      between the typed and bytes overloads so existing invariants run
-    ///      against mixed dispatch paths. The dispatch path should affect call
-    ///      shape only, never resulting state.
+    ///      collision) so the runner keeps exploring.
     function reserve(uint256 actorIndex, uint256 baseIndex, bool attachReservation) external {
         address actor = _actor(actorIndex);
         _liteSuffix[actor]++;
@@ -302,10 +300,9 @@ contract PopControllerHandler is Test {
         try CONTROLLER.settlePendingClaims(actor, type(uint256).max) {} catch {}
     }
 
-    /// @notice Calls `reserveBaseName` through the typed or bytes overload.
+    /// @notice Calls `reserveBaseName`.
     /// @dev Returns true on success and false on revert so the caller's
-    ///      bookkeeping (ghost arrays) stays consistent with on-chain state
-    ///      regardless of dispatch path.
+    ///      bookkeeping (ghost arrays) stays consistent with on-chain state.
     /// @return ok Whether the underlying call succeeded.
     function _callReserveBaseName(IDotnsPopController.BaseReservation memory params)
         internal

@@ -72,7 +72,7 @@ contract DeployPopSystem is BaseDeployer {
 
     /// @notice Deploys the read-only PoP lens bound to the protocol registry and records it on
     ///         the manifest for the wire-up stage to register.
-    /// @dev A plain CREATE3 deployment, like the dispatcher: the lens holds no state beyond the
+    /// @dev A plain CREATE3 deployment: the lens holds no state beyond the
     ///      registry it resolves siblings through, so it needs no proxy. Registry registration is
     ///      the wire-up stage's job.
     /// @param owner Broadcasting account.

@@ -642,7 +642,7 @@ contract DotnsPopControllerTests is BaseDotns {
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebob01"))), tiago);
     }
 
-    function test_controller_authorised_but_not_gateway_cannot_enter_pop_flow() public {
+    function test_registered_controller_without_root_origin_cannot_enter_pop_flow() public {
         // The public commit-reveal controller is already a registered controller.
         // Even from that origin, the Root-gate must reject the call.
         _mockOriginIsRoot(false);
@@ -917,7 +917,7 @@ contract DotnsPopControllerTests is BaseDotns {
         assertFalse(dotnsRegistrar.exists(uint256(_nodeOf(BASE_LABEL_A))));
     }
 
-    function test_reserveBaseNameOnly_reverts_for_non_gateway() public {
+    function test_reserveBaseNameOnly_reverts_when_origin_is_not_root() public {
         _mockOriginIsRoot(false);
         vm.expectRevert(IDotnsPopController.NotRoot.selector);
         dotnsPopController.reserveBaseNameOnly(
