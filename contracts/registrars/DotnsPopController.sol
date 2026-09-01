@@ -846,7 +846,8 @@ contract DotnsPopController is
     /// @notice Internal check enforcing a substrate Root origin.
     /// @dev Authorises a call when @custom:function SystemUtils.originIsRoot is true, and
     ///      reverts with NotRoot otherwise. `msg.sender` is deliberately not consulted: a
-    ///      Root origin has no account behind it, so reading it traps.
+    ///      Root origin has no account behind it, so reading `msg.sender` traps. The same
+    ///      applies to anything reachable from an onlyRoot entrypoint.
     function _onlyRoot() internal view {
         require(SystemUtils.originIsRoot(), NotRoot());
     }
