@@ -469,10 +469,10 @@ contract DotnsRegistrarControllerTest is BaseDotns {
     }
 
     function test_registerReserved_bypasses_closed_short_name_gate() public {
-        vm.prank(owner);
-        popRules.setShortNamesEnabled(false);
+        _setShortNames(false);
 
-        string memory nameLabel = "reserved"; // base length 8, closed on the public path
+        // base length 8, closed on the public path
+        string memory nameLabel = "reserved";
         address nameOwner = ed;
 
         vm.prank(owner);

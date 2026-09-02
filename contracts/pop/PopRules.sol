@@ -10,6 +10,7 @@ import {
     ERC165Upgradeable
 } from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
+import {SystemUtils} from "../utils/SystemUtils.sol";
 import {IPopRules} from "./IPopRules.sol";
 import {IDotnsCostModelRegistry} from "./IDotnsCostModelRegistry.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
@@ -79,7 +80,11 @@ contract PopRules is
     }
 
     /// @inheritdoc IPopRules
-    function setShortNamesEnabled(bool enabled) external override onlyOwner {
+    function setShortNamesEnabled(bool enabled) external override {
+        // Opening the short-name band to the public path is a governance decision, so it is gated
+        // on a substrate Root origin rather than the owner. `msg.sender` is deliberately not read:
+        // a Root origin has no account behind it, so reading it would trap.
+        require(SystemUtils.originIsRoot(), NotRoot());
         shortNamesEnabled = enabled;
         emit ShortNamesEnabledUpdated(enabled);
     }

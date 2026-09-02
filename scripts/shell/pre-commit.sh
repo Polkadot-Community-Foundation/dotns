@@ -141,6 +141,34 @@ validate_no_separator_comments() {
   run_validation "$file" "decorative-separator check" _reject_separator_comments "$file"
 }
 
+# Rejects trailing inline comments: a run of two or more slashes that follows code
+# on the same line, including `///`. A comment belongs on its own line above the
+# code it describes. Full-line and doc comments on their own line are fine, an
+# inline tool directive such as solhint-disable-line is allowed because it only
+# works on the line it annotates, and a `://` inside a URL is skipped. The check
+# is a line regex, not a parser, so a `//` inside a string, template, or regex
+# literal, or in a multi-line block-comment body, can also be flagged; put such a
+# value on its own line to satisfy it.
+_reject_trailing_comments() {
+  local hits
+  hits="$(
+    grep -nE '^[[:space:]]*[^/*[:space:]].*[^:/]/{2,}' "$1" 2>/dev/null \
+      | grep -vE '//[[:space:]]*(solhint-disable(-next)?-line|eslint-disable(-next)?-line|prettier-ignore|slither-disable(-next)?-line|forge-lint:|@ts-(expect-error|ignore|nocheck))' 2>/dev/null \
+      || true
+  )"
+  if [ -n "$hits" ]; then
+    printf '%s\n' "$hits" >&2
+    return 1
+  fi
+  return 0
+}
+
+validate_no_trailing_comments() {
+  local file="$1"
+
+  run_validation "$file" "trailing-comment check" _reject_trailing_comments "$file"
+}
+
 echo "pre-commit: validating repository files"
 while IFS= read -r -d '' file; do
   [ -f "$file" ] || continue
@@ -181,8 +209,16 @@ while IFS= read -r -d '' file; do
   case "$file" in
     lib/*|node_modules/*)
       ;;
-    *.sol|*.ts|*.tsx|*.js|*.cjs|*.mjs|*.sh|*.bash|*.py)
+    *.sol|*.ts|*.tsx|*.mts|*.cts|*.js|*.jsx|*.cjs|*.mjs|*.sh|*.bash|*.py)
       validate_no_separator_comments "$file"
+      ;;
+  esac
+
+  case "$file" in
+    lib/*|node_modules/*)
+      ;;
+    *.sol|*.ts|*.tsx|*.mts|*.cts|*.js|*.jsx|*.cjs|*.mjs)
+      validate_no_trailing_comments "$file"
       ;;
   esac
 done < <(git ls-files -z)
