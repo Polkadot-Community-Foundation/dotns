@@ -848,6 +848,12 @@ contract DotnsPopController is
     ///      reverts with NotRoot otherwise. `msg.sender` is deliberately not consulted: a
     ///      Root origin has no account behind it, so reading `msg.sender` traps. The same
     ///      applies to anything reachable from an onlyRoot entrypoint.
+    ///
+    ///      The check also holds for the whole Root transaction rather than the entry frame
+    ///      alone, so nothing reachable from an onlyRoot entrypoint may call a
+    ///      user-controlled address: such a callee could re-enter a gated function and still
+    ///      pass. Every call out of this contract goes to a protocol contract resolved
+    ///      through the registry.
     function _onlyRoot() internal view {
         require(SystemUtils.originIsRoot(), NotRoot());
     }
