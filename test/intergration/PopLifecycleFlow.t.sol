@@ -4,6 +4,7 @@ pragma solidity ^0.8.34;
 import {BaseDotns} from "../base/BaseDotns.t.sol";
 
 import {IDotnsPopController} from "../../contracts/registrars/IDotnsPopController.sol";
+import {IDotnsRegistrar} from "../../contracts/registrars/IDotnsRegistrar.sol";
 import {IDotnsRegistry} from "../../contracts/registry/IDotnsRegistry.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {ILabelStore} from "../../contracts/store/ILabelStore.sol";
@@ -47,7 +48,7 @@ contract PopLifecycleFlow is BaseDotns {
         assertEq(ownerStore.getLabel(fullNode), string.concat(FULL_LABEL, protocolRegistry.tld()));
     }
 
-    function test_pop_full_name_is_first_class_erc721_name() public {
+    function test_pop_full_name_is_soulbound_but_fully_usable() public {
         _mintLiteThenClaimFull(ed);
 
         bytes32 fullNode = _nodeOf(FULL_LABEL);
@@ -60,7 +61,9 @@ contract PopLifecycleFlow is BaseDotns {
         assertEq(dotnsPopResolver.chatKey(fullNode), CHAT_KEY);
         assertEq(dotnsPopResolver.liteLink(fullNode), liteLabelhash);
         assertEq(dotnsPopResolver.fullClaim(liteLabelhash), fullNode);
+        assertTrue(dotnsRegistrar.isSoulbound(fullTokenId));
 
+        // The name is fully usable by its owner: records and subnames work.
         vm.prank(ed);
         dotnsContentResolver.setContenthash(fullNode, CONTENT_HASH_A);
         assertEq(dotnsContentResolver.contenthash(fullNode), CONTENT_HASH_A);
@@ -68,35 +71,32 @@ contract PopLifecycleFlow is BaseDotns {
         bytes32 subnode = _setSubnode(ed, fullNode, SUB_LABEL, FULL_LABEL, leonardo);
         assertEq(dotnsRegistry.owner(subnode), leonardo);
 
-        uint256 _xferFee = dotnsRegistrar.quoteTransferFee(fullTokenId, tiago);
+        // It is soulbound: quoting a transfer and attempting one both revert, and ownership
+        // does not move.
+        vm.expectRevert(abi.encodeWithSelector(IDotnsRegistrar.NameSoulbound.selector, fullTokenId));
+        dotnsRegistrar.quoteTransferFee(fullTokenId, tiago);
+
+        vm.expectRevert(abi.encodeWithSelector(IDotnsRegistrar.NameSoulbound.selector, fullTokenId));
         vm.prank(ed);
-        dotnsRegistrar.transferFrom{value: _xferFee}(ed, tiago, fullTokenId);
-        // Post-transfer invariants. Only ownership fields change; PoP-layer
-        // records are keyed by node and survive intact.
-        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(fullTokenId), tiago);
-        assertEq(dotnsRegistry.owner(fullNode), tiago);
-        assertEq(dotnsRegistrar.labelOf(fullTokenId), FULL_LABEL);
+        dotnsRegistrar.transferFrom(ed, tiago, fullTokenId);
+
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(fullTokenId), ed);
+        assertEq(dotnsRegistry.owner(fullNode), ed);
+        // PoP-layer records and the owner's continued control are untouched by the blocked move.
         assertEq(dotnsPopResolver.chatKey(fullNode), CHAT_KEY);
-        assertEq(dotnsPopResolver.liteLink(fullNode), liteLabelhash);
         assertEq(dotnsPopResolver.fullClaim(liteLabelhash), fullNode);
         assertEq(dotnsContentResolver.contenthash(fullNode), CONTENT_HASH_A);
         assertEq(dotnsRegistry.owner(subnode), leonardo);
-        // The new owner drives node writes and subname reassignments.
-        vm.prank(tiago);
+
+        vm.prank(ed);
         dotnsContentResolver.setContenthash(fullNode, CONTENT_HASH_B);
         assertEq(dotnsContentResolver.contenthash(fullNode), CONTENT_HASH_B);
 
-        bytes32 reassignedSubnode = _setSubnode(tiago, fullNode, SUB_LABEL, FULL_LABEL, ed);
+        bytes32 reassignedSubnode = _setSubnode(ed, fullNode, SUB_LABEL, FULL_LABEL, tiago);
         assertEq(reassignedSubnode, subnode);
-        assertEq(dotnsRegistry.owner(subnode), ed);
-        // The lite token is not transferred alongside the full token.
-        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf(LITE_LABEL))), ed);
-        // Store writes are one-shot-locked at registration time, so the label
-        // stays under the original owner's Store even after transfer.
-        ILabelStore edStore = ILabelStore(storeFactory.getLabelStore(ed));
-        assertEq(
-            edStore.getLabel(_nodeOf(FULL_LABEL)), string.concat(FULL_LABEL, protocolRegistry.tld())
-        );
+        assertEq(dotnsRegistry.owner(subnode), tiago);
+        // The lite token is also gateway-minted and equally soulbound.
+        assertTrue(dotnsRegistrar.isSoulbound(uint256(_nodeOf(LITE_LABEL))));
     }
 
     function test_cold_gateway_reserve_then_user_settles_pending_claim() public {
@@ -177,7 +177,7 @@ contract PopLifecycleFlow is BaseDotns {
         assertEq(dotnsPopController.pendingClaimUserCount(), 0);
     }
 
-    function test_transfer_of_token_with_live_pending_claim_does_not_move_claim() public {
+    function test_gateway_name_with_live_pending_claim_is_soulbound_and_settles_for_owner() public {
         _grantPopFull(ed);
         _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
@@ -186,20 +186,20 @@ contract PopLifecycleFlow is BaseDotns {
         );
 
         uint256 tokenId = uint256(_nodeOf(LITE_LABEL));
+        assertTrue(dotnsRegistrar.isSoulbound(tokenId));
+        // The gateway name is soulbound while its claim is still pending, so it cannot be moved
+        // out of the beneficiary's wallet before settlement. This is the path the issue closes:
+        // a pre-claim transfer previously escaped tier pricing entirely.
+        vm.expectRevert(abi.encodeWithSelector(IDotnsRegistrar.NameSoulbound.selector, tokenId));
         vm.prank(ed);
         dotnsRegistrar.transferFrom(ed, tiago, tokenId);
-        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(tokenId), tiago);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(tokenId), ed);
 
-        // The pending claim is keyed by the original user (`ed`) and stays put
-        // when the token transfers. `tiago` receives an empty `LabelStore` via
-        // the registrar's transfer-sync path because `ed` has no store yet to
-        // copy the label from; this is current `DotnsRegistrar._update`
-        // behaviour and is independent of the pending-claim mapping.
+        // The pending claim is keyed by the original user and still settles into their store.
         IDotnsPopController.PendingClaim[] memory pending =
             dotnsPopController.pendingClaims(ed, 0, type(uint256).max);
         assertEq(pending[0].label, LITE_LABEL);
         assertGt(pending[0].mintedAt, 0);
-        assertEq(dotnsPopController.pendingClaimCountOf(tiago), 0);
 
         vm.prank(ed);
         dotnsPopController.settlePendingClaims(ed, type(uint256).max);

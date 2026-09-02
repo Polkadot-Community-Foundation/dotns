@@ -7,8 +7,7 @@ For the security and audit status of the codebase, see [SECURITY.md](./SECURITY.
 | # | Issue | Type | Resolves when |
 | :- | :---- | :--- | :------------ |
 | 1 | Deferred LabelStore deployment | Runtime | Runtime allows root-origin contract deployment |
-| 2 | Transfer fee is zero until the store is settled | Runtime (follows from 1) | The holder calls `claimLabelStore`, or 1 is resolved |
-| 3 | No standalone user-status mapping | Current implementation | A dedicated status mapping is added, if ever needed |
+| 2 | No standalone user-status mapping | Current implementation | A dedicated status mapping is added, if ever needed |
 
 ## 1. Deferred LabelStore deployment
 
@@ -22,20 +21,7 @@ Substrate Root cannot deploy a contract on behalf of an account it does not cont
 
 See [README → DotnsPopController](./README.md#early-testnet-quirk-labelstore-deployment).
 
-## 2. Transfer fee is zero until the store is settled
-
-**Type:** runtime limitation; a direct consequence of issue 1.
-
-The registrar derives the transfer-floor price by reading the label from the sender's `LabelStore`. A gateway-issued name held by a user who has not yet called `claimLabelStore` has no readable label on the sender side, so `_quoteTransferFee` returns zero regardless of the recipient's tier. Until the holder settles their store, a downward transfer (for example PopFull to NoStatus) does not charge the cross-tier friction it would otherwise owe.
-
-**Workaround:** clients that consume gateway-issued names should treat `claimLabelStore` as a prerequisite for accurate transfer-time pricing, not just for label discovery.
-
-**Resolution:** clears once issue 1 is resolved.
-
-See [README → DotnsPopController](./README.md#early-testnet-quirk-labelstore-deployment).
-
-
-## 3. No standalone user-status mapping
+## 2. No standalone user-status mapping
 
 **Type:** current implementation.
 
