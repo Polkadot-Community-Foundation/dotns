@@ -441,7 +441,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
     function testFuzz_granted_name_mints_to_the_beneficiary(uint256 salt, uint256 seed) public {
         address[3] memory pool = [ed, leonardo, tiago];
         address submitter = pool[seed % 3];
-        address beneficiary = pool[(seed + 1) % 3];
+        address beneficiary = pool[(seed % 3 + 1) % 3];
 
         string memory nameLabel = _grantLabel(salt);
         _grantName(nameLabel, beneficiary);
@@ -469,7 +469,7 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
     {
         address[3] memory pool = [ed, leonardo, tiago];
         address submitter = pool[seed % 3];
-        address beneficiary = pool[(seed + 1) % 3];
+        address beneficiary = pool[(seed % 3 + 1) % 3];
 
         string memory nameLabel = _grantLabel(salt);
         _grantName(nameLabel, beneficiary);

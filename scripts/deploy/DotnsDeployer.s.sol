@@ -538,6 +538,7 @@ contract DotnsDeployer is BaseDeployer {
         _assertKey(DotnsConstants.COST_MODEL, deployment.costModelRegistry, "Key: costModel");
         _assertKey(DotnsConstants.STORE_FACTORY, deployment.storeFactory, "Key: storeFactory");
         _assertKey(DotnsConstants.NAME_ESCROW, deployment.nameEscrow, "Key: nameEscrow");
+        _assertKey(DotnsConstants.NAME_WHITELIST, deployment.nameWhitelist, "Key: nameWhitelist");
         _assertKey(DotnsConstants.POP_CONTROLLER, deployment.popController, "Key: popController");
         _assertKey(DotnsConstants.POP_RESOLVER, deployment.popResolver, "Key: popResolver");
         _assertKey(DotnsConstants.POP_LENS, deployment.popLens, "Key: popLens");

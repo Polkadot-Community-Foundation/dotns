@@ -32,7 +32,6 @@
 #                      Defaults to `dotns-deploy`.
 #   ACCOUNT_PASSWORD   Password passed to cast/forge as --password. Prompted
 #                      interactively when not set.
-#                      Defaults to the team-wide operator in .env.example.
 #   PRIVATE_KEY        Hex-encoded deployer private key, with or without 0x.
 #                      Required only when ACCOUNT_NAME has not yet been
 #                      imported into the Foundry keystore.

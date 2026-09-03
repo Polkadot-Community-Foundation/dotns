@@ -454,10 +454,10 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         string memory nameLabel = "reserved02";
         address nameOwner = ed;
 
-        vm.startPrank(owner);
-        dotnsNameWhitelist.grantName(nameLabel, nameOwner);
+        _grantName(nameLabel, nameOwner);
+        _mockOriginIsRoot(true);
         dotnsNameWhitelist.revokeName(nameLabel);
-        vm.stopPrank();
+        _mockOriginIsRoot(false);
 
         assertFalse(dotnsNameWhitelist.isGrantedTo(nameLabel, nameOwner));
 
@@ -1007,10 +1007,12 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         assertFalse(dotnsNameWhitelist.isGrantedTo(nameLabel, ed));
 
+        IDotnsRegistrarController.Registration memory second = _commitReserved(nameLabel, ed, ed);
+        vm.prank(ed);
         vm.expectRevert(
             abi.encodeWithSelector(IDotnsRegistrarController.NameNotGranted.selector, nameLabel, ed)
         );
-        _revealReserved(nameLabel, ed, ed);
+        dotnsRegistrarController.registerReserved(second);
     }
 
     /// @dev The gate reads `registration.owner`, so a relayer may submit for the beneficiary and
@@ -1040,8 +1042,11 @@ contract DotnsRegistrarControllerTest is BaseDotns {
             abi.encode(address(0))
         );
 
+        IDotnsRegistrarController.Registration memory registration =
+            _commitReserved(nameLabel, ed, ed);
+        vm.prank(ed);
         vm.expectRevert(IDotnsRegistrarController.WhitelistNotConfigured.selector);
-        _revealReserved(nameLabel, ed, ed);
+        dotnsRegistrarController.registerReserved(registration);
     }
 
     /// @dev Same, under a Root dispatch. Root skips both the grant check and the consume, but the
@@ -1056,9 +1061,12 @@ contract DotnsRegistrarControllerTest is BaseDotns {
             abi.encode(address(0))
         );
 
+        IDotnsRegistrarController.Registration memory registration =
+            _commitReserved("rootunconfigured01", ed, ed);
         _mockOriginIsRoot(true);
+        vm.prank(ed);
         vm.expectRevert(IDotnsRegistrarController.WhitelistNotConfigured.selector);
-        _revealReserved("rootunconfigured01", ed, ed);
+        dotnsRegistrarController.registerReserved(registration);
         _mockOriginIsRoot(false);
     }
 
@@ -1117,6 +1125,36 @@ contract DotnsRegistrarControllerTest is BaseDotns {
     }
 
     /// @notice Commit-reveal a reserved registration for `nameOwner`, submitted by `submitter`.
+    /// @notice Commits a reserved registration and warps past the minimum age, returning it ready
+    /// to reveal.
+    /// @dev Separate from the reveal so a negative test can place `vm.expectRevert` immediately
+    ///      before `registerReserved`. The cheatcode attaches to the next external call, and
+    ///      `makeCommitment` is one, so a combined helper would consume the expectation there and
+    ///      the test would fail against a call that never reverts.
+    function _commitReserved(
+        string memory nameLabel,
+        address nameOwner,
+        address submitter
+    )
+        private
+        returns (IDotnsRegistrarController.Registration memory registration)
+    {
+        registration = IDotnsRegistrarController.Registration({
+            label: nameLabel,
+            owner: nameOwner,
+            secret: keccak256(abi.encodePacked(nameLabel, nameOwner, submitter)),
+            reserved: true,
+            maxPrice: type(uint256).max,
+            pricingVersion: popRules.pricingVersion()
+        });
+
+        vm.startPrank(submitter);
+        dotnsRegistrarController.commit(dotnsRegistrarController.makeCommitment(registration));
+        vm.stopPrank();
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+    }
+
+    /// @notice Commit-reveal a reserved registration for `nameOwner`, submitted by `submitter`.
     function _revealReserved(
         string memory nameLabel,
         address nameOwner,
@@ -1125,19 +1163,8 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         private
     {
         IDotnsRegistrarController.Registration memory registration =
-            IDotnsRegistrarController.Registration({
-                label: nameLabel,
-                owner: nameOwner,
-                secret: keccak256(abi.encodePacked(nameLabel, nameOwner, submitter)),
-                reserved: true,
-                maxPrice: type(uint256).max,
-                pricingVersion: popRules.pricingVersion()
-            });
-
-        vm.startPrank(submitter);
-        dotnsRegistrarController.commit(dotnsRegistrarController.makeCommitment(registration));
-        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+            _commitReserved(nameLabel, nameOwner, submitter);
+        vm.prank(submitter);
         dotnsRegistrarController.registerReserved(registration);
-        vm.stopPrank();
     }
 }
