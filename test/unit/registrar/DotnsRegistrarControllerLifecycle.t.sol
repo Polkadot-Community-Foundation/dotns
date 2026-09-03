@@ -294,7 +294,9 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         string memory label = "hello1234";
         address nameOwner = ed;
 
-        vm.startPrank(owner);
+        _grantName(label, nameOwner);
+
+        vm.startPrank(nameOwner);
         bytes32 secret = keccak256("seed-reserved");
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
@@ -322,7 +324,11 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
                 pricingVersion: popRules.pricingVersion()
             });
 
-        vm.startPrank(owner);
+        // Re-grant so the second attempt fails on availability rather than on the spent grant,
+        // which is what this test is about.
+        _grantName(label, nameOwner);
+
+        vm.startPrank(nameOwner);
         bytes32 secondCommitment = dotnsRegistrarController.makeCommitment(secondRegistration);
         dotnsRegistrarController.commit(secondCommitment);
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);

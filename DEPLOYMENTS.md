@@ -16,7 +16,7 @@ You need:
 - Foundry, including forge and cast.
 - Bun, because the package manifest wraps the deployment runner.
 - A funded deployer key for the target network.
-- A whitelist-operator address to receive whitelist-management permission after deployment.
+- A whitelist-operator address to receive name-granting permission on `DotnsNameWhitelist` after deployment.
 
 The deployment runner uses a Foundry keystore account, not a long-lived plaintext private key. A plaintext private key is only needed for the first import of the deployer account into the local Foundry keystore.
 
@@ -84,7 +84,7 @@ Set these fields:
 | ACCOUNT_NAME | optional | Foundry keystore account name. Defaults to dotns-deploy. |
 | ACCOUNT_PASSWORD | yes on first import | Password used to import and unlock the Foundry keystore account. |
 | PRIVATE_KEY | yes on first import | Hex deployer private key. This is imported into the Foundry keystore, then removed from disk when the deploy succeeds. |
-| WHITELIST_OPERATOR | optional | Address granted whitelist-management permission after deployment. Defaults to the team operator in the example file. |
+| WHITELIST_OPERATOR | yes | Address granted `WHITELIST_OPERATOR_ROLE` on `DotnsNameWhitelist` after deployment, permitting name grants and revocations without a Root dispatch. Read with `vm.envAddress`, so an unset value aborts the deploy; there is no default. The example file carries a testnet operator. Do not carry it to a production deploy: see [Grant authority per network](#grant-authority-per-network). |
 | RPC_URL | optional | Foundry RPC alias or full RPC URL. Defaults to paseo_local, which means the local adapter. |
 | DEPLOYMENT_NETWORK | optional | Manifest subdirectory under deployments/. Set it to keep networks that share a chain id apart (see [Deployment manifests](#deployment-manifests)). Defaults to the chain-id mapping. |
 
@@ -284,23 +284,33 @@ forge test --match-path 'test/fork/**' -vvvvv
 
 If the deployment was intended to update a public environment, update the address tables in this file from the deployment manifest in the same change that updates the generated deployment JSON.
 
-## Whitelisting
+## Name grants (whitelisting)
 
-The public registrar controller carries a whitelist for `registerReserved`. A whitelisted address can run the reserved registration path, which skips the Proof-of-Personhood pricing gate while still going through the normal commit-reveal and availability checks. See the [README economics section](./README.md#economics) for what whitelisting does and does not grant; this section covers the operator mechanics.
+Reserved registration is gated on `DotnsNameWhitelist`, not on an address list held by the controller. A grant binds one label to one beneficiary address and is single use: `registerReserved` requires a grant naming `registration.owner`, spends it on the mint, and refuses a second attempt. A substrate Root dispatch is the other accepted authority and needs no grant. See the [README economics section](./README.md#economics) for what a grant does and does not confer; this section covers the operator mechanics.
 
-Authority comes in two levels. The owner holds the controller and grants or revokes the whitelist-operator role. A whitelist operator holds `WHITELIST_OPERATOR_ROLE` and can add or remove whitelisted addresses, but cannot grant the role on. A whitelisted address can call `registerReserved`. The role is held on the controller itself, so the owner rotates, grants, or revokes operators at any time without an upgrade. Granting the operator role and whitelisting an address are separate grants.
+Authority comes in two levels, both on the whitelist. The owner holds `DotnsNameWhitelist` and grants or revokes the operator role. An operator holds `WHITELIST_OPERATOR_ROLE` and can grant and revoke names, but cannot grant the role on. The controller itself carries no roles: it reads grants and consumes them, so `setRole` on the controller reverts with `UnsupportedRole`.
+
+### Grant authority per network
+
+A Root dispatch can always grant, on every chain, and needs no role. The operator role is a convenience that lets a plain signed account grant without one, and whether a network has any operator is a deploy-time decision made through `WHITELIST_OPERATOR`.
+
+On a test network, use it freely. Root is reachable there through the chain's sudo pallet, so grants can also be dispatched as Root without an operator at all.
+
+On a production network the operator role is the whole attack surface: a key holding it can grant any label to any address without a referendum. Point `WHITELIST_OPERATOR` at an account governance controls, and never at a key held by CI or any other automation. A grant on a production network should be a Root dispatch, not a transaction signed by a pipeline secret.
 
 `WHITELIST_OPERATOR_ROLE` is a standard access-control role, so any number of addresses can hold it at once. The fresh-deploy pipeline grants it to the single `WHITELIST_OPERATOR` address described in [One-time deployer bootstrap](#one-time-deployer-bootstrap), in `_bootstrapWhitelistOperator` (present in both `scripts/deploy/WireDeployments.s.sol` and `scripts/deploy/DotnsDeployer.s.sol`):
 
 ```solidity
-DotnsRegistrarController(addr.registrarController)
+DotnsNameWhitelist(addr.nameWhitelist)
     .setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator, true);
 ```
 
-The `WHITELIST_OPERATOR` env carries one address. To seed more operators in the same deployment, add a `setRole` call per extra address in that helper, each address hardcoded or read from a further env var. The controller handle is `addr.registrarController` in WireDeployments and `deployment.registrarController` in DotnsDeployer:
+The deploy grants through `setRole` rather than the whitelist's own `setOperator`, because `setOperator` is `onlyGovernance` and reads the revive System precompile, which is absent on the anvil reproduction chain the pipeline verifies against. Both land the same role.
+
+The `WHITELIST_OPERATOR` env carries one address. To seed more operators in the same deployment, add a `setRole` call per extra address in that helper. The whitelist handle is `addr.nameWhitelist` in WireDeployments and `deployment.nameWhitelist` in DotnsDeployer:
 
 ```solidity
-DotnsRegistrarController(addr.registrarController)
+DotnsNameWhitelist(addr.nameWhitelist)
     .setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, anotherOperator, true);
 ```
 
@@ -308,7 +318,7 @@ After deployment, the owner grants further operators with `setRole`, which is ow
 
 ```bash
 ROLE=$(cast keccak "DOTNS_WHITELIST_OPERATOR_ROLE")
-cast send "$CONTROLLER" "setRole(bytes32,address,bool)" "$ROLE" "$OPERATOR" true \
+cast send "$WHITELIST" "setRole(bytes32,address,bool)" "$ROLE" "$OPERATOR" true \
   --rpc-url "$RPC_URL" --account "$ACCOUNT_NAME"
 ```
 
@@ -317,28 +327,27 @@ To grant many operators, loop the same call over the addresses from the owner ac
 ```bash
 ROLE=$(cast keccak "DOTNS_WHITELIST_OPERATOR_ROLE")
 for OPERATOR in 0xOperator1 0xOperator2 0xOperator3; do
-  cast send "$CONTROLLER" "setRole(bytes32,address,bool)" "$ROLE" "$OPERATOR" true \
+  cast send "$WHITELIST" "setRole(bytes32,address,bool)" "$ROLE" "$OPERATOR" true \
     --rpc-url "$RPC_URL" --account "$ACCOUNT_NAME"
 done
 ```
 
-Whitelisting an address is the day-to-day operation, run by the owner or any operator. The dotNS SDK CLI exposes a whitelist command for this; run it from an account that holds the role (see the [dotns-sdk](https://github.com/paritytech/dotns-sdk) repository). The hosted dotNS app at [dotns.paseo.li](https://dotns.paseo.li) and [dotns.dot.li](https://dotns.dot.li) drives the same flow from its UI; see its docs section, built from the dotns-sdk UI packages. The equivalent direct call is `whiteListAddress(address who, bool whiteListStatus)`, again with `false` to remove:
+Granting a name is the day-to-day operation, run by the owner or any operator. `grantName(string label, address user)` binds one label; `revokeName(string label)` releases it while it is still unspent:
 
 ```bash
-cast send "$CONTROLLER" "whiteListAddress(address,bool)" "$ADDRESS" true \
+cast send "$WHITELIST" "grantName(string,address)" "$LABEL" "$ADDRESS" \
   --rpc-url "$RPC_URL" --account "$ACCOUNT_NAME"
 ```
 
-There is no batch entry point, so whitelisting many addresses is one call each. The SDK CLI applies a list in bulk; the dependency-free equivalent loops over the addresses from the role-holding account:
+Granting is batched on chain. `grantNames(string[] labels, address user)` binds several labels to one beneficiary in a single call, up to `maxGrantBatch`:
 
 ```bash
-for ADDRESS in 0xAddress1 0xAddress2 0xAddress3; do
-  cast send "$CONTROLLER" "whiteListAddress(address,bool)" "$ADDRESS" true \
-    --rpc-url "$RPC_URL" --account "$ACCOUNT_NAME"
-done
+cast send "$WHITELIST" "grantNames(string[],address)" '["alpha01","beta02"]' "$ADDRESS" \
+  --rpc-url "$RPC_URL" --account "$ACCOUNT_NAME"
 ```
 
-Both states are open view calls needing no authority: `isWhiteListed(address)` reports whether an address may call `registerReserved`, and `hasRole(WHITELIST_OPERATOR_ROLE, account)` reports whether an account holds the operator role. `$CONTROLLER` is the `DotnsRegistrarController` address for the target network, read from the protocol registry or taken from the [deployment manifest](#addresses), never hardcoded across networks.
+Both states are open view calls needing no authority: `isGrantedTo(string label, address account)` reports whether that address may register that label, and `hasRole(WHITELIST_OPERATOR_ROLE, account)` reports whether an account holds the operator role. A grant that has been spent reads `false`, so this is also how you tell an unused grant from a consumed one. `$WHITELIST` is the `DotnsNameWhitelist` address for the target network, read from the protocol registry under the `nameWhitelist` key or taken from the [deployment manifest](#addresses), never hardcoded across networks.
+
 
 ## Deterministic addresses (CREATE3)
 

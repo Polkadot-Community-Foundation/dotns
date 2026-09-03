@@ -137,8 +137,7 @@ contract WireDeployments is BaseDeployer {
         internal
     {
         vm.startBroadcast(owner);
-        DotnsRegistrarController(addr.registrarController)
-            .setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator, true);
+        // Only on the whitelist: the controller carries no roles of its own, it reads grants.
         // Grant through setRole rather than the onlyGovernance setOperator: the deploy signs as
         // the owner, and setOperator reads the revive System precompile, which is absent on the
         // anvil reproduction chain. setRole grants the same WHITELIST_OPERATOR_ROLE.
@@ -234,11 +233,6 @@ contract WireDeployments is BaseDeployer {
         require(
             DotnsRegistrar(addr.registrar).controllers(IDotnsController(addr.popController)),
             "PopController: not authorised"
-        );
-        require(
-            DotnsRegistrarController(addr.registrarController)
-                .hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator),
-            "WhitelistOperator: role not granted"
         );
         require(
             DotnsNameWhitelist(addr.nameWhitelist)

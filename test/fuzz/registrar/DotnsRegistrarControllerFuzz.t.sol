@@ -5,6 +5,7 @@ import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
 import {IDotnsNameEscrow} from "../../../contracts/escrow/IDotnsNameEscrow.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
+import {IDotnsRoleManager} from "../../../contracts/access/IDotnsRoleManager.sol";
 import {
     OwnableUpgradeable
 } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -13,32 +14,13 @@ import {
 /// @notice Property-based tests for @custom:contract DotnsRegistrarController role administration,
 ///         payment handling and reverse-record behaviour.
 contract DotnsRegistrarControllerFuzzTest is BaseDotns {
-    function testFuzz_owner_setrole_matches_hasrole(address account, bool enabled) public {
+    /// @notice The controller supports no roles of its own; operators live on the whitelist.
+    function testFuzz_controller_rejects_every_role(bytes32 role, address account) public {
         vm.assume(account != address(0));
 
         vm.prank(owner);
-        dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, enabled);
-
-        assertEq(
-            dotnsRegistrarController.hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account),
-            enabled
-        );
-    }
-
-    function testFuzz_non_owner_cannot_setrole(
-        address caller,
-        address account,
-        bool enabled
-    )
-        public
-    {
-        vm.assume(caller != owner);
-
-        vm.prank(caller);
-        vm.expectRevert(
-            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, caller)
-        );
-        dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, enabled);
+        vm.expectRevert(abi.encodeWithSelector(IDotnsRoleManager.UnsupportedRole.selector, role));
+        dotnsRegistrarController.setRole(role, account, true);
     }
 
     function testFuzz_register_pushes_overpayment_back_to_eoa_payer(
@@ -432,5 +414,114 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         }
 
         return string(buffer);
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // Reserved registration: grant-gated, relayer-submittable, single use, reverse-record silent.
+    // -------------------------------------------------------------------------------------------
+
+    /// @notice Without a grant naming the owner, no submitter can drive a reserved mint.
+    function testFuzz_reserved_mint_requires_a_grant(uint256 salt, address submitter) public {
+        vm.assume(submitter != address(0) && submitter.code.length == 0);
+        string memory nameLabel = _grantLabel(salt);
+
+        IDotnsRegistrarController.Registration memory registration = _reservedFor(nameLabel, ed);
+        vm.startPrank(submitter);
+        dotnsRegistrarController.commit(dotnsRegistrarController.makeCommitment(registration));
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsRegistrarController.NameNotGranted.selector, nameLabel, ed)
+        );
+        dotnsRegistrarController.registerReserved(registration);
+        vm.stopPrank();
+    }
+
+    /// @notice The gate reads `registration.owner`, so whoever submits, the name lands on the
+    /// beneficiary and never on the submitter.
+    function testFuzz_granted_name_mints_to_the_beneficiary(uint256 salt, uint256 seed) public {
+        address[3] memory pool = [ed, leonardo, tiago];
+        address submitter = pool[seed % 3];
+        address beneficiary = pool[(seed + 1) % 3];
+
+        string memory nameLabel = _grantLabel(salt);
+        _grantName(nameLabel, beneficiary);
+        _revealReserved(_reservedFor(nameLabel, beneficiary), submitter);
+
+        assertEq(dotnsRegistrar.ownerOf(_tokenIdForLabel(nameLabel)), beneficiary);
+    }
+
+    /// @notice A grant is spent by the mint, so the same label cannot be issued twice.
+    function testFuzz_grant_is_single_use(uint256 salt) public {
+        string memory nameLabel = _grantLabel(salt);
+        _grantName(nameLabel, ed);
+        _revealReserved(_reservedFor(nameLabel, ed), ed);
+
+        assertFalse(dotnsNameWhitelist.isGrantedTo(nameLabel, ed));
+    }
+
+    /// @notice The reserved path never writes the beneficiary's reverse record: the submitter is
+    /// not necessarily the beneficiary, and `setReverseName` overwrites unconditionally.
+    function testFuzz_reserved_mint_leaves_the_reverse_record_untouched(
+        uint256 salt,
+        uint256 seed
+    )
+        public
+    {
+        address[3] memory pool = [ed, leonardo, tiago];
+        address submitter = pool[seed % 3];
+        address beneficiary = pool[(seed + 1) % 3];
+
+        string memory nameLabel = _grantLabel(salt);
+        _grantName(nameLabel, beneficiary);
+        _revealReserved(_reservedFor(nameLabel, beneficiary), submitter);
+
+        assertEq(dotnsReverseResolver.nameOf(beneficiary), "");
+    }
+
+    /// @notice A Root dispatch mints without a grant and leaves any grant unspent.
+    function testFuzz_root_mints_without_a_grant(uint256 salt) public {
+        string memory nameLabel = _grantLabel(salt);
+
+        _mockOriginIsRoot(true);
+        _revealReserved(_reservedFor(nameLabel, ed), tiago);
+        _mockOriginIsRoot(false);
+
+        assertEq(dotnsRegistrar.ownerOf(_tokenIdForLabel(nameLabel)), ed);
+    }
+
+    /// @notice Distinct, always-valid label per fuzz run.
+    function _grantLabel(uint256 salt) private pure returns (string memory nameLabel) {
+        nameLabel = string.concat("granted", vm.toString(salt % 1_000_000));
+    }
+
+    function _reservedFor(
+        string memory nameLabel,
+        address nameOwner
+    )
+        private
+        view
+        returns (IDotnsRegistrarController.Registration memory registration)
+    {
+        registration = IDotnsRegistrarController.Registration({
+            label: nameLabel,
+            owner: nameOwner,
+            secret: keccak256(abi.encodePacked(nameLabel, nameOwner)),
+            reserved: true,
+            maxPrice: type(uint256).max,
+            pricingVersion: popRules.pricingVersion()
+        });
+    }
+
+    function _revealReserved(
+        IDotnsRegistrarController.Registration memory registration,
+        address submitter
+    )
+        private
+    {
+        vm.startPrank(submitter);
+        dotnsRegistrarController.commit(dotnsRegistrarController.makeCommitment(registration));
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+        dotnsRegistrarController.registerReserved(registration);
+        vm.stopPrank();
     }
 }

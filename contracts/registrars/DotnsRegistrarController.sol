@@ -14,6 +14,7 @@ import {IDotnsCostModelRegistry} from "../pop/IDotnsCostModelRegistry.sol";
 import {StringUtils} from "../utils/StringUtils.sol";
 import {IDotnsRegistrarController} from "./IDotnsRegistrarController.sol";
 import {IDotnsNameEscrow} from "../escrow/IDotnsNameEscrow.sol";
+import {IDotnsNameWhitelist} from "../whitelist/IDotnsNameWhitelist.sol";
 import {IStoreFactory} from "../store/IStoreFactory.sol";
 import {IDotnsProtocolRegistry} from "../registry/IDotnsProtocolRegistry.sol";
 import {IDotnsRegistry} from "../registry/IDotnsRegistry.sol";
@@ -21,6 +22,7 @@ import {DotnsConstants} from "../utils/DotnsConstants.sol";
 import {LabelUtils} from "../utils/LabelUtils.sol";
 import {RegistrationUtils} from "../utils/RegistrationUtils.sol";
 import {StoreUtils} from "../utils/StoreUtils.sol";
+import {SystemUtils} from "../utils/SystemUtils.sol";
 
 /// @title Dotns Registrar Controller
 /// @notice Allocates top-level labels using a commit reveal scheme.
@@ -61,29 +63,11 @@ contract DotnsRegistrarController is
     ///      from this stamp.
     mapping(bytes32 hash => uint256 version) public committedPricingVersion;
 
-    /// @notice Whitelist for addresses allowed to call `registerReserved`.
-    mapping(address user => bool isWhiteListed) public whiteList;
-
     /// @notice Protocol-level address registry for all DotNS contracts.
     IDotnsProtocolRegistry public protocolRegistry;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
-    uint256[49] private __gap;
-
-    /// @notice Restricts calls to whitelisted addresses or the owner.
-    /// @dev Used to gate `registerReserved`, which allows registering reserved names without
-    /// PoP checks or payment. Necessary so the owner (or a whitelisted operator) can seed
-    /// reserved names on behalf of users who are already known and verified and do not need
-    /// PoP checks.
-    modifier onlyWhiteListedOrOwner() {
-        _onlyWhiteListedOrOwner();
-        _;
-    }
-
-    modifier onlyWhitelistOperatorOrOwner() {
-        _checkRoleOrOwner(DotnsConstants.WHITELIST_OPERATOR_ROLE);
-        _;
-    }
+    uint256[50] private __gap;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -304,36 +288,36 @@ contract DotnsRegistrarController is
     }
 
     /// @inheritdoc IDotnsRegistrarController
-    function isWhiteListed(address who) external view override returns (bool) {
-        return whiteList[who];
-    }
+    function registerReserved(Registration calldata registration) external override nonReentrant {
+        // Read Root once, up front. Everything below must stay callable under a substrate Root
+        // origin, which has no account, so no branch may read `msg.sender`: the grant is checked
+        // against `registration.owner`, the commitment is keyed on its own hash, and the mint
+        // targets the owner.
+        bool isRoot = SystemUtils.originIsRoot();
+        IDotnsNameWhitelist whitelist = _nameWhitelist();
+        if (!isRoot) {
+            require(
+                whitelist.isGrantedTo(registration.label, registration.owner),
+                NameNotGranted(registration.label, registration.owner)
+            );
+        }
 
-    /// @inheritdoc IDotnsRegistrarController
-    function whiteListAddress(
-        address who,
-        bool whiteListStatus
-    )
-        external
-        override
-        onlyWhitelistOperatorOrOwner
-    {
-        whiteList[who] = whiteListStatus;
-        emit WhiteListed(who, whiteListStatus);
-    }
-
-    /// @inheritdoc IDotnsRegistrarController
-    function registerReserved(Registration calldata registration)
-        external
-        override
-        onlyWhiteListedOrOwner
-        nonReentrant
-    {
         (, bytes32 labelhash, bytes32 node) = _requireAvailableLabel(registration.label);
         _consumeCommitment(registration);
 
-        IDotnsReverseResolver reverse =
-            IDotnsReverseResolver(protocolRegistry.get(DotnsConstants.REVERSE_RESOLVER));
-        _completeRegistration(registration, labelhash, node, 0, true, reverse, false);
+        // Spend the grant before minting so a grant in the wrong state fails before any name is
+        // issued. Root skips it: a governance mint must not consume a grant held by someone else.
+        if (!isRoot) {
+            whitelist.consume(registration.label, registration.owner);
+        }
+
+        // No reverse record. `setReverseName` overwrites unconditionally, and the gate above lets
+        // anyone submit for the beneficiary, so writing here would let a third party relabel
+        // another address. The owner claims their own record through `claimReverseRecord`, which
+        // checks ownership and writes only their own key.
+        _completeRegistration(
+            registration, labelhash, node, 0, false, IDotnsReverseResolver(address(0)), false
+        );
     }
 
     /// @inheritdoc IERC165
@@ -458,13 +442,18 @@ contract DotnsRegistrarController is
         versionString = "1.0.0";
     }
 
-    /// @notice Internal check enforcing whitelist-or-owner access.
-    function _onlyWhiteListedOrOwner() internal view {
-        require(whiteList[msg.sender] || msg.sender == owner(), NotWhiteListedOrOwner(msg.sender));
+    /// @notice Returns the configured name whitelist from the protocol registry.
+    function _nameWhitelist() internal view returns (IDotnsNameWhitelist whitelist) {
+        address configured = protocolRegistry.get(DotnsConstants.NAME_WHITELIST);
+        require(configured != address(0), WhitelistNotConfigured());
+        whitelist = IDotnsNameWhitelist(configured);
     }
 
-    function _isSupportedRole(bytes32 role) internal view override returns (bool supported) {
-        return role == DotnsConstants.WHITELIST_OPERATOR_ROLE;
+    /// @dev The controller carries no roles of its own. Whitelist operators live on
+    ///      `DotnsNameWhitelist`, which owns the grant lifecycle, so `setRole` here always
+    ///      @custom:reverts UnsupportedRole.
+    function _isSupportedRole(bytes32) internal view override returns (bool supported) {
+        return false;
     }
 
     /// @inheritdoc UUPSUpgradeable

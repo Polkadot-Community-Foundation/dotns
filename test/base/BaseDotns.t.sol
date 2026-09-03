@@ -32,6 +32,7 @@ import {
     IDotnsProtocolRegistry
 } from "../../contracts/registry/DotnsProtocolRegistry.sol";
 import {DotnsNameEscrow} from "../../contracts/escrow/DotnsNameEscrow.sol";
+import {DotnsNameWhitelist} from "../../contracts/whitelist/DotnsNameWhitelist.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 import {LabelUtils} from "../../contracts/utils/LabelUtils.sol";
 import {ISystem} from "../../contracts/external/revive/ISystem.sol";
@@ -154,6 +155,8 @@ abstract contract BaseDotns is Test {
 
     /// @notice Deployed name escrow instance.
     DotnsNameEscrow public dotnsNameEscrow;
+
+    DotnsNameWhitelist public dotnsNameWhitelist;
     /// @notice Base deposit the flat launch model charges for every admitted name.
     /// @dev Aliased to @custom:constant DotnsConstants.BASE_DEPOSIT so deploy scripts and the test
     ///      base see the same value; downstream test suites reference `BASE_DEPOSIT`
@@ -355,6 +358,7 @@ abstract contract BaseDotns is Test {
         protocolRegistry.set(DotnsConstants.POP_RESOLVER, dotnsPopResolverAddress);
         protocolRegistry.set(DotnsConstants.POP_CONTROLLER, dotnsPopControllerAddress);
         protocolRegistry.set(DotnsConstants.NAME_ESCROW, dotnsNameEscrowAddress);
+        _deployNameWhitelist();
         // Stand-in for the Root gateway dispatcher. Dedicated dispatcher
         // coverage lives in test/unit/registrar/RootGatewayDispatcher.t.sol.
         protocolRegistry.set(DotnsConstants.POP_GATEWAY, popGateway);
@@ -375,6 +379,13 @@ abstract contract BaseDotns is Test {
             abi.encodeWithSelector(IPersonhood.personhoodStatus.selector),
             abi.encode(IPersonhood.PersonhoodInfo({status: 0, contextAlias: bytes32(0)}))
         );
+        // Default the revive System precompile to a non-Root origin. Every governance-gated path
+        // reads it (`DotnsNameWhitelist.onlyGovernance`,
+        // `DotnsRegistrarController.registerReserved` and there is no code at the precompile
+        // address under forge, so an unmocked read decodes
+        // empty returndata and reverts. Tests exercising the Root branch override with
+        // `_mockOriginIsRoot(true)`.
+        _mockOriginIsRoot(false);
     }
 
     /// @notice Mocks revive's System precompile callerIsRoot result.
@@ -481,19 +492,42 @@ abstract contract BaseDotns is Test {
         _setUserPopStatus(who, IPopRules.PopStatus.NoStatus);
     }
 
-    /// @notice Owner-prank shortcut that grants `WHITELIST_OPERATOR_ROLE` on the
-    ///         registrar controller.
+    /// @notice Deploys the name whitelist and registers it under `NAME_WHITELIST`.
+    /// @dev Its own function, taking no arguments and reading `protocolRegistry` from storage,
+    ///      because `setUp` is at the stack limit under via-ir: extending the live range of one
+    ///      more local there fails to compile.
+    function _deployNameWhitelist() private {
+        dotnsNameWhitelist = DotnsNameWhitelist(
+            Upgrades.deployUUPSProxy(
+                "DotnsNameWhitelist.sol:DotnsNameWhitelist",
+                abi.encodeCall(DotnsNameWhitelist.initialize, (protocolRegistry))
+            )
+        );
+        vm.label(address(dotnsNameWhitelist), "DotnsNameWhitelist");
+        protocolRegistry.set(DotnsConstants.NAME_WHITELIST, address(dotnsNameWhitelist));
+    }
+
+    /// @notice Owner-prank shortcut that grants `WHITELIST_OPERATOR_ROLE` on the name whitelist.
     /// @dev Centralises the prank-and-setRole boilerplate used by unit, fuzz, and
-    ///      integration suites.
+    ///      integration suites. The role lives only on the whitelist: the controller reads
+    ///      grants and carries no roles of its own.
     function _grantWhitelistOperator(address account) internal {
         vm.prank(owner);
-        dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, true);
+        dotnsNameWhitelist.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, true);
     }
 
     /// @notice Owner-prank shortcut that revokes `WHITELIST_OPERATOR_ROLE`.
     function _revokeWhitelistOperator(address account) internal {
         vm.prank(owner);
-        dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, false);
+        dotnsNameWhitelist.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, false);
+    }
+
+    /// @notice Owner-prank shortcut granting `label` to `user` on the name whitelist.
+    /// @dev The reserved registration path requires a grant naming the intended owner, so this is
+    ///      the setup step every `registerReserved` test needs.
+    function _grantName(string memory label, address user) internal {
+        vm.prank(owner);
+        dotnsNameWhitelist.grantName(label, user);
     }
 
     /// @notice Drives a PoP reservation from the registered gateway address and settles

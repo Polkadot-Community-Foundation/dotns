@@ -55,12 +55,12 @@ contract DotnsDeployer is BaseDeployer {
     ///      via @custom:function DotnsNameEscrow.updateRedeemWindow.
     uint256 public constant ESCROW_REDEEM_WINDOW = 1 days;
 
-    /// @notice Operator address granted `WHITELIST_OPERATOR_ROLE` on the
-    ///         registrar controller at fresh-deploy time.
-    /// @dev Permits managing the public-controller whitelist via
-    ///      `DotnsRegistrarController.whiteListAddress` without upgrade or
-    ///      configuration authority. The owner rotates, grants, or revokes the
-    ///      role at any time via `DotnsRegistrarController.setRole`.
+    /// @notice Operator address granted `WHITELIST_OPERATOR_ROLE` on the name
+    ///         whitelist at fresh-deploy time.
+    /// @dev Permits granting and revoking label-bound registration grants via
+    ///      `DotnsNameWhitelist` without upgrade or configuration authority. The
+    ///      owner rotates, grants, or revokes the role at any time via
+    ///      `DotnsNameWhitelist.setRole`.
     string internal constant WHITELIST_OPERATOR_ENV = "WHITELIST_OPERATOR";
 
     StoreFactory public storeFactory;
@@ -473,7 +473,8 @@ contract DotnsDeployer is BaseDeployer {
         internal
     {
         vm.startBroadcast(owner);
-        DotnsRegistrarController(deployment.registrarController)
+        // Only on the whitelist: the controller carries no roles of its own, it reads grants.
+        DotnsNameWhitelist(deployment.nameWhitelist)
             .setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator, true);
         vm.stopBroadcast();
         console.log("Whitelist operator role granted to", whitelistOperator);
@@ -510,9 +511,9 @@ contract DotnsDeployer is BaseDeployer {
         view
     {
         require(
-            DotnsRegistrarController(deployment.registrarController)
+            DotnsNameWhitelist(deployment.nameWhitelist)
                 .hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator),
-            "WhitelistOperator: role not granted"
+            "NameWhitelist operator: role not granted"
         );
     }
 

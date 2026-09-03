@@ -6,6 +6,10 @@ import {DotnsNameWhitelist} from "../../../contracts/whitelist/DotnsNameWhitelis
 import {IDotnsNameWhitelist} from "../../../contracts/whitelist/IDotnsNameWhitelist.sol";
 import {IDotnsProtocolRegistry} from "../../../contracts/registry/IDotnsProtocolRegistry.sol";
 import {StringUtils} from "../../../contracts/utils/StringUtils.sol";
+import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
+import {
+    OwnableUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 /// @title DotnsNameWhitelist fuzz tests
@@ -132,5 +136,30 @@ contract DotnsNameWhitelistFuzz is BaseDotns {
         vm.expectRevert(IDotnsNameWhitelist.WindowClosed.selector);
         vm.prank(ed);
         whitelist.requestName(label, "r", ed);
+    }
+
+    function testFuzz_owner_setrole_matches_hasrole(address account, bool enabled) public {
+        vm.assume(account != address(0));
+
+        vm.prank(owner);
+        whitelist.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, enabled);
+
+        assertEq(whitelist.hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account), enabled);
+    }
+
+    function testFuzz_non_owner_cannot_setrole(
+        address caller,
+        address account,
+        bool enabled
+    )
+        public
+    {
+        vm.assume(caller != owner);
+
+        vm.prank(caller);
+        vm.expectRevert(
+            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, caller)
+        );
+        whitelist.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, enabled);
     }
 }

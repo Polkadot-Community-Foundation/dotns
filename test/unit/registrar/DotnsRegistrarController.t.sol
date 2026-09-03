@@ -295,7 +295,8 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         string memory nameLabel = "hello";
         address nameOwner = ed;
 
-        vm.startPrank(owner);
+        _grantName(nameLabel, nameOwner);
+        vm.startPrank(nameOwner);
 
         bytes32 secret = keccak256(abi.encodePacked(nameLabel, nameOwner, "reserved"));
         IDotnsRegistrarController.Registration memory registration =
@@ -326,11 +327,11 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         assertEq(edStore.getLabel(node), string.concat(nameLabel, ".dot"));
     }
 
-    function test_registerreserved_revertnon_owner() public {
+    function test_registerreserved_reverts_without_a_grant() public {
         string memory nameLabel = "hello";
         address nameOwner = ed;
 
-        vm.startPrank(owner);
+        vm.startPrank(ed);
 
         bytes32 secret = keccak256(abi.encodePacked(nameLabel, nameOwner, "reserved"));
         IDotnsRegistrarController.Registration memory registration =
@@ -351,53 +352,22 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         vm.prank(ed);
         vm.expectRevert(
-            abi.encodeWithSelector(IDotnsRegistrarController.NotWhiteListedOrOwner.selector, ed)
+            abi.encodeWithSelector(
+                IDotnsRegistrarController.NameNotGranted.selector, nameLabel, nameOwner
+            )
         );
         dotnsRegistrarController.registerReserved(registration);
     }
 
-    function test_whitelistaddress_reverts_without_owner_or_operator() public {
-        vm.prank(ed);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IDotnsRoleManager.NotRoleOrOwner.selector,
-                ed,
-                DotnsConstants.WHITELIST_OPERATOR_ROLE
-            )
-        );
-        dotnsRegistrarController.whiteListAddress(ed, true);
-    }
-
-    function test_owner_can_grant_and_revoke_whitelist_operator() public {
-        vm.startPrank(owner);
-        dotnsRegistrarController.grantRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, leonardo);
-        assertTrue(
-            dotnsRegistrarController.hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, leonardo)
-        );
-
-        dotnsRegistrarController.revokeRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, leonardo);
-        vm.stopPrank();
-
-        assertFalse(
-            dotnsRegistrarController.hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, leonardo)
-        );
-    }
-
-    function test_whitelist_operator_can_whitelist_address() public {
-        _grantWhitelistOperator(leonardo);
-
-        vm.prank(leonardo);
-        dotnsRegistrarController.whiteListAddress(ed, true);
-
-        assertTrue(dotnsRegistrarController.isWhiteListed(ed));
-    }
-
-    function test_setrole_reverts_for_zero_address() public {
+    /// @dev The controller carries no roles of its own: operators live on `DotnsNameWhitelist`.
+    function test_controller_supports_no_roles() public {
         vm.prank(owner);
         vm.expectRevert(
-            abi.encodeWithSelector(IDotnsRoleManager.InvalidRoleAccount.selector, address(0))
+            abi.encodeWithSelector(
+                IDotnsRoleManager.UnsupportedRole.selector, DotnsConstants.WHITELIST_OPERATOR_ROLE
+            )
         );
-        dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, address(0), true);
+        dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, leonardo, true);
     }
 
     function test_setrole_reverts_for_unsupported_role() public {
@@ -432,13 +402,12 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         assertTrue(dotnsRegistrarController.supportsInterface(type(IDotnsRoleManager).interfaceId));
     }
 
-    function test_whitelisted_can_register_reserved() public {
+    function test_granted_beneficiary_can_register_reserved() public {
         string memory nameLabel = "reserved01";
         address nameOwner = ed;
 
-        vm.prank(owner);
-        dotnsRegistrarController.whiteListAddress(ed, true);
-        assertTrue(dotnsRegistrarController.isWhiteListed(ed));
+        _grantName(nameLabel, nameOwner);
+        assertTrue(dotnsNameWhitelist.isGrantedTo(nameLabel, nameOwner));
 
         vm.startPrank(ed);
 
@@ -466,6 +435,10 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(node)), nameOwner);
         assertEq(dotnsRegistry.owner(node), nameOwner);
+        // Single use: the mint spends the grant.
+        assertFalse(dotnsNameWhitelist.isGrantedTo(nameLabel, nameOwner));
+        // The reserved path never writes the owner's reverse record.
+        assertEq(dotnsReverseResolver.nameOf(nameOwner), "");
     }
 
     function test_registerReserved_bypasses_closed_short_name_gate() public {
@@ -475,8 +448,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         string memory nameLabel = "reserved"; // base length 8, closed on the public path
         address nameOwner = ed;
 
-        vm.prank(owner);
-        dotnsRegistrarController.whiteListAddress(ed, true);
+        _grantName(nameLabel, nameOwner);
 
         vm.startPrank(ed);
         bytes32 secret = keccak256(abi.encodePacked(nameLabel, nameOwner, "gate-closed"));
@@ -499,16 +471,16 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(node)), nameOwner);
     }
 
-    function test_removed_from_whitelist_cannot_register_reserved() public {
+    function test_revoked_grant_cannot_register_reserved() public {
         string memory nameLabel = "reserved02";
         address nameOwner = ed;
 
         vm.startPrank(owner);
-        dotnsRegistrarController.whiteListAddress(ed, true);
-        dotnsRegistrarController.whiteListAddress(ed, false);
+        dotnsNameWhitelist.grantName(nameLabel, nameOwner);
+        dotnsNameWhitelist.revokeName(nameLabel);
         vm.stopPrank();
 
-        assertFalse(dotnsRegistrarController.isWhiteListed(ed));
+        assertFalse(dotnsNameWhitelist.isGrantedTo(nameLabel, nameOwner));
 
         vm.startPrank(ed);
 
@@ -529,7 +501,9 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
 
         vm.expectRevert(
-            abi.encodeWithSelector(IDotnsRegistrarController.NotWhiteListedOrOwner.selector, ed)
+            abi.encodeWithSelector(
+                IDotnsRegistrarController.NameNotGranted.selector, nameLabel, nameOwner
+            )
         );
         dotnsRegistrarController.registerReserved(registration);
         vm.stopPrank();
@@ -1021,5 +995,169 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         dotnsRegistrarController.register{value: committedPrice}(registration);
 
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(_tokenIdForLabel(label)), nameOwner);
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // Reserved path: Root authority, single use, relayer submission, unconfigured whitelist.
+    // -------------------------------------------------------------------------------------------
+
+    /// @dev Root is the second accepted authority and needs no grant. It must also leave any live
+    /// grant unspent, so governance minting does not silently consume someone else's entitlement.
+    function test_root_mints_reserved_without_a_grant_and_leaves_grants_unspent() public {
+        string memory nameLabel = "rootmint01";
+        string memory otherLabel = "othergrant01";
+        _grantName(otherLabel, ed);
+
+        _mockOriginIsRoot(true);
+        _revealReserved(nameLabel, ed, tiago);
+        _mockOriginIsRoot(false);
+
+        assertEq(dotnsRegistrar.ownerOf(_tokenIdForLabel(nameLabel)), ed);
+        assertTrue(
+            dotnsNameWhitelist.isGrantedTo(otherLabel, ed), "Root minting spent an unrelated grant"
+        );
+    }
+
+    /// @dev A grant is spent by its mint, so a second registration of the same label is refused by
+    /// the grant check, which runs before the availability check. Availability after a re-grant is
+    /// covered separately in the lifecycle suite.
+    function test_consumed_grant_cannot_mint_again() public {
+        string memory nameLabel = "singleuse01";
+        _grantName(nameLabel, ed);
+        _revealReserved(nameLabel, ed, ed);
+
+        assertFalse(dotnsNameWhitelist.isGrantedTo(nameLabel, ed));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsRegistrarController.NameNotGranted.selector, nameLabel, ed)
+        );
+        _revealReserved(nameLabel, ed, ed);
+    }
+
+    /// @dev The gate reads `registration.owner`, so a relayer may submit for the beneficiary and
+    /// the name still mints to the beneficiary rather than the submitter.
+    function test_relayer_can_submit_for_the_granted_beneficiary() public {
+        string memory nameLabel = "relayed01";
+        _grantName(nameLabel, ed);
+
+        _revealReserved(nameLabel, ed, tiago);
+
+        assertEq(dotnsRegistrar.ownerOf(_tokenIdForLabel(nameLabel)), ed);
+        assertEq(dotnsReverseResolver.nameOf(ed), "");
+    }
+
+    /// @dev With no whitelist on the registry there is no grant authority to consult, so the path
+    /// fails closed rather than falling back to some other gate. Checked before the Root branch
+    /// can matter, so it holds for a Root dispatch too.
+    function test_registerReserved_reverts_when_the_whitelist_is_unconfigured() public {
+        string memory nameLabel = "unconfigured01";
+        _grantName(nameLabel, ed);
+
+        vm.mockCall(
+            address(protocolRegistry),
+            abi.encodeWithSelector(
+                IDotnsProtocolRegistry.get.selector, DotnsConstants.NAME_WHITELIST
+            ),
+            abi.encode(address(0))
+        );
+
+        vm.expectRevert(IDotnsRegistrarController.WhitelistNotConfigured.selector);
+        _revealReserved(nameLabel, ed, ed);
+    }
+
+    /// @dev Same, under a Root dispatch: Root skips the grant check but still needs the whitelist
+    /// resolved, because it consults it to decide whether to consume.
+    function test_root_also_reverts_when_the_whitelist_is_unconfigured() public {
+        vm.mockCall(
+            address(protocolRegistry),
+            abi.encodeWithSelector(
+                IDotnsProtocolRegistry.get.selector, DotnsConstants.NAME_WHITELIST
+            ),
+            abi.encode(address(0))
+        );
+
+        _mockOriginIsRoot(true);
+        vm.expectRevert(IDotnsRegistrarController.WhitelistNotConfigured.selector);
+        _revealReserved("rootunconfigured01", ed, ed);
+        _mockOriginIsRoot(false);
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // Regression: the paid path's governance-reserved rejection is unchanged by the grant gate.
+    // -------------------------------------------------------------------------------------------
+
+    /// @dev A reserved-tier label (base length five or fewer) is refused on the paid path whoever
+    /// pays. The cross-payer branch distinguishes a governance-reserved label from a stem held by
+    /// another user, so it reverts `GovernanceReserved` rather than `NameReserved`. Reserved-tier
+    /// labels reach circulation only through `registerReserved`, and a grant does not change that.
+    function test_register_rejects_a_governance_reserved_label_for_a_cross_payer() public {
+        string memory nameLabel = "alice";
+
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: nameLabel,
+                owner: ed,
+                secret: keccak256("governance-reserved"),
+                reserved: false,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
+            });
+
+        vm.startPrank(tiago);
+        dotnsRegistrarController.commit(dotnsRegistrarController.makeCommitment(registration));
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+        vm.expectRevert(abi.encodeWithSelector(IPopRules.GovernanceReserved.selector, nameLabel));
+        dotnsRegistrarController.register{value: 10 ether}(registration);
+        vm.stopPrank();
+    }
+
+    /// @dev The direct branch prices through `priceWithCheck`, which rejects the reserved tier in
+    /// PopRules before the controller sees it.
+    function test_register_rejects_a_governance_reserved_label_for_the_owner() public {
+        string memory nameLabel = "alice";
+
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: nameLabel,
+                owner: ed,
+                secret: keccak256("governance-reserved-direct"),
+                reserved: false,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
+            });
+
+        vm.startPrank(ed);
+        dotnsRegistrarController.commit(dotnsRegistrarController.makeCommitment(registration));
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(IPopRules.PopError.selector, "Reserved for Governance")
+        );
+        dotnsRegistrarController.register{value: 10 ether}(registration);
+        vm.stopPrank();
+    }
+
+    /// @notice Commit-reveal a reserved registration for `nameOwner`, submitted by `submitter`.
+    function _revealReserved(
+        string memory nameLabel,
+        address nameOwner,
+        address submitter
+    )
+        private
+    {
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: nameLabel,
+                owner: nameOwner,
+                secret: keccak256(abi.encodePacked(nameLabel, nameOwner, submitter)),
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
+            });
+
+        vm.startPrank(submitter);
+        dotnsRegistrarController.commit(dotnsRegistrarController.makeCommitment(registration));
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+        dotnsRegistrarController.registerReserved(registration);
+        vm.stopPrank();
     }
 }

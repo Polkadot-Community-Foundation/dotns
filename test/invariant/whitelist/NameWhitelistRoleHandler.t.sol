@@ -2,31 +2,33 @@
 pragma solidity ^0.8.34;
 
 import {Test} from "forge-std/Test.sol";
-import {DotnsRegistrarController} from "../../../contracts/registrars/DotnsRegistrarController.sol";
+import {DotnsNameWhitelist} from "../../../contracts/whitelist/DotnsNameWhitelist.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 
-/// @title RegistrarControllerRoleHandler
-/// @notice Bounded random-action handler that mutates the registrar
-///         controller's `WHITELIST_OPERATOR_ROLE` membership for a fixed
-///         actor pool and mirrors the expected state in a ghost mapping.
-contract RegistrarControllerRoleHandler is Test {
-    /// @notice The registrar controller under test.
-    DotnsRegistrarController public controller;
-    /// @notice The account holding the default admin role on the controller.
+/// @title NameWhitelistRoleHandler
+/// @notice Bounded random-action handler that mutates the name whitelist's
+///         `WHITELIST_OPERATOR_ROLE` membership for a fixed actor pool and
+///         mirrors the expected state in a ghost mapping.
+/// @dev The role lives on `DotnsNameWhitelist`, which owns the grant lifecycle. The registrar
+///      controller supports no roles: it reads grants, so `setRole` there reverts.
+contract NameWhitelistRoleHandler is Test {
+    /// @notice The name whitelist under test.
+    DotnsNameWhitelist public controller;
+    /// @notice The account holding the default admin role on the whitelist.
     address public owner;
     /// @notice Actor pool whose role membership the handler toggles.
     address[] internal _actors;
 
     /// @notice Ghost mirror of `WHITELIST_OPERATOR_ROLE` membership the
-    ///         handler expects the controller to hold per actor.
+    ///         handler expects the whitelist to hold per actor.
     mapping(address account => bool enabled) public ghostWhitelistOperator;
 
     /// @notice Initialises the handler with the controller, admin owner, and
     ///         the fixed actor pool.
-    /// @param _controller The registrar controller.
+    /// @param _controller The name whitelist.
     /// @param _owner The admin owner used to authorise role mutations.
     /// @param actorList Pool of accounts the handler cycles through.
-    constructor(DotnsRegistrarController _controller, address _owner, address[] memory actorList) {
+    constructor(DotnsNameWhitelist _controller, address _owner, address[] memory actorList) {
         controller = _controller;
         owner = _owner;
         _actors = actorList;

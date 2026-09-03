@@ -3,14 +3,14 @@ pragma solidity ^0.8.34;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
-import {RegistrarControllerRoleHandler} from "./RegistrarControllerRoleHandler.t.sol";
+import {NameWhitelistRoleHandler} from "./NameWhitelistRoleHandler.t.sol";
 
-/// @title DotnsRegistrarControllerRoleInvariantTest
+/// @title DotnsNameWhitelistRoleInvariantTest
 /// @notice Invariants asserted over random sequences of `WHITELIST_OPERATOR_ROLE`
-///         grants and revocations on the registrar controller.
-contract DotnsRegistrarControllerRoleInvariantTest is BaseDotns {
+///         grants and revocations on the name whitelist, which is where the role lives.
+contract DotnsNameWhitelistRoleInvariantTest is BaseDotns {
     /// @notice Bounded random-action handler driving role transitions.
-    RegistrarControllerRoleHandler public handler;
+    NameWhitelistRoleHandler public handler;
 
     /// @notice Wires the handler and constrains the fuzzer to its role-mutating
     ///         selectors.
@@ -22,7 +22,7 @@ contract DotnsRegistrarControllerRoleInvariantTest is BaseDotns {
         actors[1] = leonardo;
         actors[2] = tiago;
 
-        handler = new RegistrarControllerRoleHandler(dotnsRegistrarController, owner, actors);
+        handler = new NameWhitelistRoleHandler(dotnsNameWhitelist, owner, actors);
 
         targetContract(address(handler));
 
@@ -32,7 +32,7 @@ contract DotnsRegistrarControllerRoleInvariantTest is BaseDotns {
         selectors[2] = handler.revokeWhitelistOperator.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
 
-        excludeContract(address(dotnsRegistrarController));
+        excludeContract(address(dotnsNameWhitelist));
     }
 
     /// @notice The on-chain `WHITELIST_OPERATOR_ROLE` membership for every
@@ -45,7 +45,7 @@ contract DotnsRegistrarControllerRoleInvariantTest is BaseDotns {
             address actor = actors[i];
 
             assertEq(
-                dotnsRegistrarController.hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, actor),
+                dotnsNameWhitelist.hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, actor),
                 handler.ghostWhitelistOperator(actor),
                 "Whitelist operator role must match handler state"
             );
