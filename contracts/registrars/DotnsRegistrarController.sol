@@ -449,9 +449,9 @@ contract DotnsRegistrarController is
         whitelist = IDotnsNameWhitelist(configured);
     }
 
-    /// @dev The controller carries no roles of its own. Whitelist operators live on
-    ///      `DotnsNameWhitelist`, which owns the grant lifecycle, so `setRole` here always
-    ///      @custom:reverts UnsupportedRole.
+    /// @dev The controller carries no roles. It reads grants from `DotnsNameWhitelist`, whose own
+    ///      admin surface is Root-only, so there is no role to hold anywhere and `setRole` here
+    ///      always @custom:reverts UnsupportedRole.
     function _isSupportedRole(bytes32) internal view override returns (bool supported) {
         return false;
     }

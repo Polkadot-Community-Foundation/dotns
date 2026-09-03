@@ -465,27 +465,16 @@ abstract contract BaseDotns is Test {
         protocolRegistry.set(DotnsConstants.NAME_WHITELIST, address(dotnsNameWhitelist));
     }
 
-    /// @notice Owner-prank shortcut that grants `WHITELIST_OPERATOR_ROLE` on the name whitelist.
-    /// @dev Centralises the prank-and-setRole boilerplate used by unit, fuzz, and
-    ///      integration suites. The role lives only on the whitelist: the controller reads
-    ///      grants and carries no roles of its own.
-    function _grantWhitelistOperator(address account) internal {
-        vm.prank(owner);
-        dotnsNameWhitelist.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, true);
-    }
-
-    /// @notice Owner-prank shortcut that revokes `WHITELIST_OPERATOR_ROLE`.
-    function _revokeWhitelistOperator(address account) internal {
-        vm.prank(owner);
-        dotnsNameWhitelist.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, false);
-    }
-
-    /// @notice Owner-prank shortcut granting `label` to `user` on the name whitelist.
-    /// @dev The reserved registration path requires a grant naming the intended owner, so this is
-    ///      the setup step every `registerReserved` test needs.
+    /// @notice Grants `label` to `user` on the name whitelist under a mocked Root origin.
+    /// @dev The whitelist's admin surface is Root-only, so this mocks `originIsRoot` for the call
+    ///      and restores the default afterwards. The reserved registration path requires a grant
+    ///      naming the intended owner, so this is the setup step every `registerReserved` test
+    ///      needs. Restoring matters: `registerReserved` reads `originIsRoot` too, and a sticky
+    ///      `true` would put the registration itself on the Root branch.
     function _grantName(string memory label, address user) internal {
-        vm.prank(owner);
+        _mockOriginIsRoot(true);
         dotnsNameWhitelist.grantName(label, user);
+        _mockOriginIsRoot(false);
     }
 
     /// @notice Drives a PoP reservation under a Root origin and settles the resulting

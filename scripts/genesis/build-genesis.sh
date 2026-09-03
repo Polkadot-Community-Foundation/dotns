@@ -61,10 +61,6 @@ ADMIN_KEY="${DOTNS_ADMIN_KEY:-}"
 # what makes the genesis addresses equal the live ones, which is asserted below.
 FACTORY_DEPLOYER_KEY="${FACTORY_DEPLOYER_KEY:-}"
 
-# WHITELIST_OPERATOR_ROLE recipient, required by the deploy scripts. Manages the
-# public-controller whitelist on the registrar. Defaults to the deployer.
-WHITELIST_OPERATOR="${WHITELIST_OPERATOR:-}"
-
 # TLD the genesis registry initialises with. Required by DeployCore, which reads
 # it to build the registry initialiser and reverts when unset. Validated as a
 # single lowercase DNS label so a bad value fails here rather than deep inside a
@@ -115,9 +111,7 @@ MSG
 fi
 
 DEPLOYER_ADDR="$(cast wallet address --private-key "$ADMIN_KEY")"
-export WHITELIST_OPERATOR="${WHITELIST_OPERATOR:-$DEPLOYER_ADDR}"
 echo "Contract owner:      $DEPLOYER_ADDR"
-echo "Whitelist operator:  $WHITELIST_OPERATOR"
 echo "TLD:                 .$DOTNS_TLD"
 echo ""
 

@@ -2,29 +2,21 @@
 pragma solidity ^0.8.34;
 
 import {BaseDotns, IDotnsRegistrarController} from "../base/BaseDotns.t.sol";
-import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 import {IDotnsNameWhitelist} from "../../contracts/whitelist/IDotnsNameWhitelist.sol";
-import {IDotnsRoleManager} from "../../contracts/access/IDotnsRoleManager.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
-/// @title WhitelistOperatorFlow
-/// @notice End-to-end integration coverage for the whitelist operator role.
-/// @dev Asserts the full chain from `setRole` through a name grant on
-///      `DotnsNameWhitelist` into a reserved registration on the public
-///      controller. Lives in the integration suite because it spans the role
-///      manager, the whitelist, and the reserved registration flow rather than
-///      any single unit of behaviour.
+/// @title NameGrantFlow
+/// @notice End-to-end integration coverage for the governance name-grant flow.
+/// @dev Asserts the chain from a Root-dispatched grant on `DotnsNameWhitelist` through a reserved
+///      registration on the public controller. Lives in the integration suite because it spans the
+///      whitelist and the registration flow rather than any single unit of behaviour.
 /// @custom:security-contact admin@parity.io
-contract WhitelistOperatorFlow is BaseDotns {
-    function test_operator_can_grant_a_name_for_reserved_registration() public {
-        address operator = leonardo;
+contract NameGrantFlow is BaseDotns {
+    function test_root_grant_seeds_a_reserved_registration() public {
         address user = ed;
-        string memory nameLabel = "operatorseed01";
+        string memory nameLabel = "governanceseed01";
 
-        _grantWhitelistOperator(operator);
-
-        vm.prank(operator);
-        dotnsNameWhitelist.grantName(nameLabel, user);
+        _grantName(nameLabel, user);
         assertTrue(dotnsNameWhitelist.isGrantedTo(nameLabel, user));
 
         _registerReserved(nameLabel, user, user);
@@ -34,6 +26,17 @@ contract WhitelistOperatorFlow is BaseDotns {
         assertEq(dotnsRegistry.owner(node), user);
         // The grant is spent by the mint, so it cannot seed a second registration.
         assertFalse(dotnsNameWhitelist.isGrantedTo(nameLabel, user));
+    }
+
+    /// @dev No signed account grants, the owner included. Only a Root dispatch does.
+    function test_no_signed_account_can_grant() public {
+        address[3] memory callers = [owner, leonardo, ed];
+        for (uint256 i = 0; i < callers.length; i++) {
+            vm.prank(callers[i]);
+            vm.expectRevert(IDotnsNameWhitelist.NotGovernance.selector);
+            dotnsNameWhitelist.grantName("blocked01", tiago);
+        }
+        assertFalse(dotnsNameWhitelist.isGrantedTo("blocked01", tiago));
     }
 
     /// @dev The submitter is not necessarily the beneficiary, and `setReverseName` overwrites
@@ -66,30 +69,6 @@ contract WhitelistOperatorFlow is BaseDotns {
 
         bytes32 node = _nodeOf(nameLabel);
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(node)), beneficiary);
-    }
-
-    function test_operator_role_revocation_blocks_further_grants() public {
-        address operator = leonardo;
-
-        _grantWhitelistOperator(operator);
-
-        vm.prank(operator);
-        dotnsNameWhitelist.grantName("granted01", ed);
-        assertTrue(dotnsNameWhitelist.isGrantedTo("granted01", ed));
-
-        _revokeWhitelistOperator(operator);
-
-        vm.prank(operator);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IDotnsRoleManager.NotRoleOrOwner.selector,
-                operator,
-                DotnsConstants.WHITELIST_OPERATOR_ROLE
-            )
-        );
-        dotnsNameWhitelist.grantName("blocked01", tiago);
-
-        assertTrue(dotnsNameWhitelist.isGrantedTo("granted01", ed));
     }
 
     /// @notice Commit-reveal a reserved registration for `nameOwner`, submitted by `submitter`.

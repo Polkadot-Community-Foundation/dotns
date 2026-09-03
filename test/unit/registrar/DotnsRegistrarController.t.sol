@@ -359,25 +359,14 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         dotnsRegistrarController.registerReserved(registration);
     }
 
-    /// @dev The controller carries no roles of its own: operators live on `DotnsNameWhitelist`.
+    /// @dev The controller carries no roles at all: reserved registration reads grants from
+    /// `DotnsNameWhitelist`, whose own admin surface is Root-only.
     function test_controller_supports_no_roles() public {
-        vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IDotnsRoleManager.UnsupportedRole.selector, DotnsConstants.WHITELIST_OPERATOR_ROLE
-            )
-        );
-        dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, leonardo, true);
-    }
-
-    function test_setrole_reverts_for_unsupported_role() public {
-        bytes32 unsupportedRole = keccak256("DOTNS_UNSUPPORTED_ROLE");
+        bytes32 anyRole = keccak256("DOTNS_ANY_ROLE");
 
         vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(IDotnsRoleManager.UnsupportedRole.selector, unsupportedRole)
-        );
-        dotnsRegistrarController.setRole(unsupportedRole, leonardo, true);
+        vm.expectRevert(abi.encodeWithSelector(IDotnsRoleManager.UnsupportedRole.selector, anyRole));
+        dotnsRegistrarController.setRole(anyRole, leonardo, true);
     }
 
     function test_non_owner_cannot_grant_role() public {
@@ -385,17 +374,7 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         vm.expectRevert(
             abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, ed)
         );
-        dotnsRegistrarController.grantRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, leonardo);
-    }
-
-    function test_non_owner_cannot_revoke_role() public {
-        _grantWhitelistOperator(leonardo);
-
-        vm.prank(ed);
-        vm.expectRevert(
-            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, ed)
-        );
-        dotnsRegistrarController.revokeRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, leonardo);
+        dotnsRegistrarController.grantRole(keccak256("DOTNS_ANY_ROLE"), leonardo);
     }
 
     function test_supports_idotnsrolemanager_interface() public view {

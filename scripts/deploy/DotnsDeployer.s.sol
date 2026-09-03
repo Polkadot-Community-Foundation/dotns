@@ -55,14 +55,6 @@ contract DotnsDeployer is BaseDeployer {
     ///      via @custom:function DotnsNameEscrow.updateRedeemWindow.
     uint256 public constant ESCROW_REDEEM_WINDOW = 1 days;
 
-    /// @notice Operator address granted `WHITELIST_OPERATOR_ROLE` on the name
-    ///         whitelist at fresh-deploy time.
-    /// @dev Permits granting and revoking label-bound registration grants via
-    ///      `DotnsNameWhitelist` without upgrade or configuration authority. The
-    ///      owner rotates, grants, or revokes the role at any time via
-    ///      `DotnsNameWhitelist.setRole`.
-    string internal constant WHITELIST_OPERATOR_ENV = "WHITELIST_OPERATOR";
-
     StoreFactory public storeFactory;
 
     PopRules public popRules;
@@ -119,8 +111,6 @@ contract DotnsDeployer is BaseDeployer {
 
         address OWNER = msg.sender;
         vm.label(OWNER, "OWNER");
-        address whitelistOperator = vm.envAddress(WHITELIST_OPERATOR_ENV);
-        vm.label(whitelistOperator, "WHITELIST_OPERATOR");
 
         // Each `_deploy*` step wraps its own `Upgrades.deployUUPSProxy` call in
         // a dedicated `vm.startBroadcast / vm.stopBroadcast` pair. Running each
@@ -149,9 +139,8 @@ contract DotnsDeployer is BaseDeployer {
 
         _authoriseControllers(OWNER, deployment);
         _wireProtocolRegistryKeys(OWNER, deployment);
-        _bootstrapWhitelistOperator(OWNER, deployment, whitelistOperator);
 
-        _verifyDeployment(deployment, OWNER, whitelistOperator);
+        _verifyDeployment(deployment, OWNER);
 
         saveDeployments();
     }
@@ -465,34 +454,11 @@ contract DotnsDeployer is BaseDeployer {
         console.log("Protocol registry keys set");
     }
 
-    function _bootstrapWhitelistOperator(
-        address owner,
-        Deployment memory deployment,
-        address whitelistOperator
-    )
-        internal
-    {
-        vm.startBroadcast(owner);
-        // Only on the whitelist: the controller carries no roles of its own, it reads grants.
-        DotnsNameWhitelist(deployment.nameWhitelist)
-            .setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator, true);
-        vm.stopBroadcast();
-        console.log("Whitelist operator role granted to", whitelistOperator);
-    }
-
-    function _verifyDeployment(
-        Deployment memory deployment,
-        address expectedOwner,
-        address whitelistOperator
-    )
-        internal
-        view
-    {
+    function _verifyDeployment(Deployment memory deployment, address expectedOwner) internal view {
         _verifyOwnership(deployment, expectedOwner);
         _verifyRegistryKeys(deployment, expectedOwner);
         _verifyRegistryPointers(deployment);
         _verifyControllerAuthorisation(deployment);
-        _verifyWhitelistOperator(deployment, whitelistOperator);
 
         require(DotnsRegistry(deployment.registry).recordExists(bytes32(0)), "Root record missing");
         require(
@@ -501,20 +467,6 @@ contract DotnsDeployer is BaseDeployer {
             "CostModel: launch price mismatch"
         );
         console.log("=== Deployment verification complete ===");
-    }
-
-    function _verifyWhitelistOperator(
-        Deployment memory deployment,
-        address whitelistOperator
-    )
-        internal
-        view
-    {
-        require(
-            DotnsNameWhitelist(deployment.nameWhitelist)
-                .hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator),
-            "NameWhitelist operator: role not granted"
-        );
     }
 
     function _verifyOwnership(Deployment memory deployment, address expectedOwner) internal view {

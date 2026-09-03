@@ -120,11 +120,11 @@
 
 - name: "whitelist-request"
   color: "5319e7"
-  description: "Whitelist address request"
+  description: "Request for a name grant"
 
 - name: "whitelist-approved"
   color: "0e8a16"
-  description: "Approved whitelist request"
+  description: "Request triaged as worth raising; the grant itself is decided on-chain"
 - name: "dotns-sdk"
   color: "5319e7"
   description: "DotNS SDK (UI, CLI, libraries)"

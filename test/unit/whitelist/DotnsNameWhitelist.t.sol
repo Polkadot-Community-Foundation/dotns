@@ -18,13 +18,11 @@ import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 ///         controller-only consume hook, and the review views.
 contract DotnsNameWhitelistTests is BaseDotns {
     DotnsNameWhitelist internal whitelist;
-    address internal operator;
 
     string internal constant REASON = "the rightful owner of this name";
 
     function setUp() public override {
         super.setUp();
-        operator = _createUser("operator");
 
         vm.startPrank(owner);
         whitelist = DotnsNameWhitelist(
@@ -36,10 +34,12 @@ contract DotnsNameWhitelistTests is BaseDotns {
                 )
             )
         );
-        whitelist.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, operator, true);
-        _mockOriginIsRoot(false);
-        whitelist.setWindow(0, 30 days);
         vm.stopPrank();
+
+        // The whitelist's admin surface is Root-only, so the suite runs under a Root origin and
+        // the unauthorised-caller tests flip it back with `_mockOriginIsRoot(false)`.
+        _mockOriginIsRoot(true);
+        whitelist.setWindow(0, 30 days);
 
         vm.label(address(whitelist), "DotnsNameWhitelist");
     }
@@ -50,7 +50,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
     }
 
     function _grant(address user, string memory label) internal {
-        vm.prank(operator);
         whitelist.grantName(label, user);
     }
 
@@ -142,7 +141,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
         emit IDotnsNameWhitelist.NameAccepted(node, ed, BASE_LABEL_A);
         vm.expectEmit(true, true, false, true, address(whitelist));
         emit IDotnsNameWhitelist.NameRejected(node, tiago, BASE_LABEL_A);
-        vm.prank(operator);
         whitelist.accept(BASE_LABEL_A, ed);
 
         assertEq(whitelist.granteeOf(BASE_LABEL_A), ed);
@@ -164,19 +162,13 @@ contract DotnsNameWhitelistTests is BaseDotns {
                 IDotnsNameWhitelist.NotRequested.selector, _nodeOf(BASE_LABEL_A), ed
             )
         );
-        vm.prank(operator);
         whitelist.accept(BASE_LABEL_A, ed);
     }
 
-    function test_accept_reverts_for_unauthorised_caller() public {
+    function test_accept_reverts_for_a_signed_caller() public {
         _request(ed, BASE_LABEL_A);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IDotnsRoleManager.NotRoleOrOwner.selector,
-                tiago,
-                DotnsConstants.WHITELIST_OPERATOR_ROLE
-            )
-        );
+        _mockOriginIsRoot(false);
+        vm.expectRevert(IDotnsNameWhitelist.NotGovernance.selector);
         vm.prank(tiago);
         whitelist.accept(BASE_LABEL_A, ed);
     }
@@ -186,7 +178,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
         bytes32 node = _nodeOf(BASE_LABEL_A);
         vm.expectEmit(true, true, false, true, address(whitelist));
         emit IDotnsNameWhitelist.NameRejected(node, ed, BASE_LABEL_A);
-        vm.prank(operator);
         whitelist.reject(BASE_LABEL_A, ed);
 
         assertEq(whitelist.claimantCount(BASE_LABEL_A), 0);
@@ -198,7 +189,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
 
     function test_reject_self_filed_is_sticky() public {
         _request(ed, BASE_LABEL_A);
-        vm.prank(operator);
         whitelist.reject(BASE_LABEL_A, ed);
 
         assertEq(
@@ -220,7 +210,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
         whitelist.requestName(BASE_LABEL_A, REASON, ed);
         assertEq(whitelist.claimOf(BASE_LABEL_A, ed).submitter, tiago);
 
-        vm.prank(operator);
         whitelist.reject(BASE_LABEL_A, ed);
         assertEq(
             uint256(whitelist.claimOf(BASE_LABEL_A, ed).status),
@@ -253,7 +242,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
         bytes32 node = _nodeOf(BASE_LABEL_A);
         vm.expectEmit(true, true, false, true, address(whitelist));
         emit IDotnsNameWhitelist.NameRejected(node, tiago, BASE_LABEL_A);
-        vm.prank(operator);
         whitelist.grantName(BASE_LABEL_A, ed);
         assertEq(whitelist.granteeOf(BASE_LABEL_A), ed);
         assertEq(whitelist.claimantCount(BASE_LABEL_A), 0);
@@ -261,17 +249,14 @@ contract DotnsNameWhitelistTests is BaseDotns {
 
     function test_grantName_reverts_for_zero_user() public {
         vm.expectRevert(IDotnsNameWhitelist.ZeroUser.selector);
-        vm.prank(operator);
         whitelist.grantName(BASE_LABEL_A, address(0));
     }
 
     function test_grantName_reverts_when_not_open() public {
-        vm.prank(operator);
         whitelist.grantName(BASE_LABEL_A, ed);
         vm.expectRevert(
             abi.encodeWithSelector(IDotnsNameWhitelist.NameNotOpen.selector, _nodeOf(BASE_LABEL_A))
         );
-        vm.prank(operator);
         whitelist.grantName(BASE_LABEL_A, tiago);
     }
 
@@ -279,7 +264,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
         string[] memory labels = new string[](2);
         labels[0] = BASE_LABEL_A;
         labels[1] = BASE_LABEL_B;
-        vm.prank(operator);
         whitelist.grantNames(labels, ed);
         assertEq(whitelist.granteeOf(BASE_LABEL_A), ed);
         assertEq(whitelist.granteeOf(BASE_LABEL_B), ed);
@@ -290,7 +274,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
         uint256 aboveBatch = uint256(whitelist.maxGrantBatch()) + 1;
         string[] memory labels = new string[](aboveBatch);
         vm.expectRevert(IDotnsNameWhitelist.TooManyLabels.selector);
-        vm.prank(operator);
         whitelist.grantNames(labels, ed);
     }
 
@@ -307,12 +290,12 @@ contract DotnsNameWhitelistTests is BaseDotns {
         assertEq(whitelist.nameCount(), 0);
     }
 
-    function test_revokeName_rejects_operator() public {
+    /// @dev Not even the owner revokes: the admin surface is Root-only.
+    function test_revokeName_rejects_the_owner() public {
         _grant(ed, BASE_LABEL_A);
-        vm.prank(operator);
-        vm.expectRevert(
-            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, operator)
-        );
+        _mockOriginIsRoot(false);
+        vm.expectRevert(IDotnsNameWhitelist.NotGovernance.selector);
+        vm.prank(owner);
         whitelist.revokeName(BASE_LABEL_A);
     }
 
@@ -388,11 +371,10 @@ contract DotnsNameWhitelistTests is BaseDotns {
         whitelist.setReserved(BASE_LABEL_A, false);
     }
 
-    function test_setReserved_reverts_for_non_owner() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, operator)
-        );
-        vm.prank(operator);
+    function test_setReserved_reverts_for_a_signed_caller() public {
+        _mockOriginIsRoot(false);
+        vm.expectRevert(IDotnsNameWhitelist.NotGovernance.selector);
+        vm.prank(tiago);
         whitelist.setReserved(BASE_LABEL_A, true);
     }
 
@@ -436,7 +418,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
 
     function test_full_lifecycle_request_accept_consume() public {
         _request(ed, BASE_LABEL_A);
-        vm.prank(operator);
         whitelist.accept(BASE_LABEL_A, ed);
         assertTrue(whitelist.isGrantedTo(BASE_LABEL_A, ed));
         vm.prank(address(dotnsRegistrarController));
@@ -577,7 +558,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
         labels[0] = BASE_LABEL_A;
         labels[1] = BASE_LABEL_B;
         vm.expectRevert(IDotnsNameWhitelist.TooManyLabels.selector);
-        vm.prank(operator);
         whitelist.grantNames(labels, ed);
     }
 
@@ -593,18 +573,12 @@ contract DotnsNameWhitelistTests is BaseDotns {
         whitelist.setMaxGrantBatch(aboveLimit);
     }
 
-    function test_setMaxClaimants_reverts_for_non_owner() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, operator)
-        );
-        vm.prank(operator);
-        whitelist.setMaxClaimants(10);
-    }
-
-    function test_setOperator_by_owner() public {
+    /// @dev Caps are configuration, and configuration is Root-only too: the owner cannot retune.
+    function test_setMaxClaimants_reverts_for_a_signed_caller() public {
+        _mockOriginIsRoot(false);
+        vm.expectRevert(IDotnsNameWhitelist.NotGovernance.selector);
         vm.prank(owner);
-        whitelist.setOperator(tiago, true);
-        assertTrue(whitelist.hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, tiago));
+        whitelist.setMaxClaimants(10);
     }
 
     function test_governance_root_grants_from_any_caller() public {
@@ -622,10 +596,11 @@ contract DotnsNameWhitelistTests is BaseDotns {
         assertTrue(whitelist.isReserved(BASE_LABEL_A));
     }
 
-    function test_governance_root_sets_operator_from_any_caller() public {
+    /// @dev Configuration is Root-only as well, so a referendum retunes the caps.
+    function test_governance_root_sets_a_cap_from_any_caller() public {
         _mockOriginIsRoot(true);
         vm.prank(leonardo);
-        whitelist.setOperator(tiago, true);
-        assertTrue(whitelist.hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, tiago));
+        whitelist.setMaxClaimants(7);
+        assertEq(whitelist.maxClaimants(), 7);
     }
 }

@@ -65,12 +65,6 @@ library DotnsConstants {
     ///      and callers page through larger sets with `offset`.
     uint256 internal constant MAX_PAGE_SIZE = 200;
 
-    /// @notice Operational role allowed to manage name grants on `DotnsNameWhitelist`.
-    /// @dev Holders can grant or revoke a label's binding to a beneficiary, but cannot upgrade
-    ///      contracts or change protocol configuration. Held on the whitelist alone: the registrar
-    ///      controller reads grants and supports no roles of its own.
-    bytes32 internal constant WHITELIST_OPERATOR_ROLE = keccak256("DOTNS_WHITELIST_OPERATOR_ROLE");
-
     /// @notice Default per-name live-claim cap the name whitelist starts with.
     /// @dev Governance retunes it on the whitelist within `WHITELIST_MAX_CLAIMANTS_LIMIT`.
     uint16 internal constant WHITELIST_DEFAULT_MAX_CLAIMANTS = 64;
