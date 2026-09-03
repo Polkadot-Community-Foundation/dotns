@@ -51,6 +51,13 @@ contract ReservedGrantHandler is Test {
     /// @notice Trips true if a spent grant is ever accepted a second time.
     bool public sawDoubleSpend;
 
+    /// @notice Trips true if a grant is still live immediately after the mint that should have
+    /// spent it. Direct evidence that `consume` ran, independent of any later revert.
+    bool public sawGrantSurviveMint;
+
+    /// @notice Trips true if a mint succeeds for an address the label was not granted to.
+    bool public sawGrantOwnerMismatch;
+
     /// @notice Counters exposed so the suite can prove the campaign was not vacuous.
     uint256 public grantCount;
     uint256 public mintCount;
@@ -107,12 +114,33 @@ contract ReservedGrantHandler is Test {
         _reveal(label, beneficiary, submitter);
 
         if (REGISTRAR.ownerOf(_tokenId(label)) != beneficiary) sawWrongOwner = true;
+        // Read the grant back rather than inferring consumption from a later failure: the grant
+        // check precedes the availability check, so a grant left live would surface as
+        // `NameNotAvailable` and be indistinguishable from a correctly spent one.
+        if (WHITELIST.isGrantedTo(label, beneficiary)) sawGrantSurviveMint = true;
 
         pendingLabels[index] = pendingLabels[count - 1];
         pendingLabels.pop();
         mintedLabels.push(label);
         mintedTo[label] = beneficiary;
         ++mintCount;
+    }
+
+    /// @notice Attempts a mint of a granted label for someone other than its beneficiary. The gate
+    /// pairs label and owner, so this must fail even though the label does carry a live grant.
+    function attemptGrantOwnerMismatch(uint256 labelSeed, uint256 submitterSeed) external {
+        uint256 count = pendingLabels.length;
+        if (count == 0 || actors.length < 2) return;
+
+        string memory label = pendingLabels[labelSeed % count];
+        address beneficiary = grantedTo[label];
+        address impostor = actors[submitterSeed % actors.length];
+        if (impostor == beneficiary) impostor = actors[(submitterSeed + 1) % actors.length];
+        if (impostor == beneficiary) return;
+
+        try this.reveal(label, impostor, impostor) {
+            sawGrantOwnerMismatch = true;
+        } catch {}
     }
 
     /// @notice Attempts a reserved mint for a label with no grant. Must never succeed.

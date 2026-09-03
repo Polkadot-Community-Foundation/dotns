@@ -436,6 +436,31 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         vm.stopPrank();
     }
 
+    /// @notice A live grant admits only the address it names, over any pair of distinct actors.
+    function testFuzz_a_grant_admits_only_its_beneficiary(uint256 salt, uint256 seed) public {
+        address[3] memory pool = [ed, leonardo, tiago];
+        address beneficiary = pool[seed % 3];
+        address impostor = pool[(seed % 3 + 1) % 3];
+
+        string memory nameLabel = _grantLabel(salt);
+        _grantName(nameLabel, beneficiary);
+
+        IDotnsRegistrarController.Registration memory registration =
+            _reservedFor(nameLabel, impostor);
+        vm.startPrank(impostor);
+        dotnsRegistrarController.commit(dotnsRegistrarController.makeCommitment(registration));
+        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IDotnsRegistrarController.NameNotGranted.selector, nameLabel, impostor
+            )
+        );
+        dotnsRegistrarController.registerReserved(registration);
+        vm.stopPrank();
+
+        assertTrue(dotnsNameWhitelist.isGrantedTo(nameLabel, beneficiary));
+    }
+
     /// @notice The gate reads `registration.owner`, so whoever submits, the name lands on the
     /// beneficiary and never on the submitter.
     function testFuzz_granted_name_mints_to_the_beneficiary(uint256 salt, uint256 seed) public {

@@ -225,6 +225,40 @@ contract DotnsNameWhitelistTests is BaseDotns {
         );
     }
 
+    /// @dev Exhaustive over the governance surface rather than a sample. Every `onlyGovernance`
+    /// entry point must refuse a signed origin; a per-method test set would silently miss any
+    /// method that later lost its gate, which is how the four spot checks below left `reject`,
+    /// `grantNames`, `setWindow` and two caps uncovered.
+    function test_every_admin_entry_point_requires_root() public {
+        _mockOriginIsRoot(false);
+
+        string[] memory batch = new string[](1);
+        batch[0] = BASE_LABEL_B;
+
+        bytes[] memory calls = new bytes[](10);
+        calls[0] = abi.encodeCall(IDotnsNameWhitelist.grantName, (BASE_LABEL_A, ed));
+        calls[1] = abi.encodeCall(IDotnsNameWhitelist.grantNames, (batch, ed));
+        calls[2] = abi.encodeCall(IDotnsNameWhitelist.accept, (BASE_LABEL_A, ed));
+        calls[3] = abi.encodeCall(IDotnsNameWhitelist.reject, (BASE_LABEL_A, ed));
+        calls[4] = abi.encodeCall(IDotnsNameWhitelist.revokeName, (BASE_LABEL_A));
+        calls[5] = abi.encodeCall(IDotnsNameWhitelist.setReserved, (BASE_LABEL_A, true));
+        calls[6] = abi.encodeCall(IDotnsNameWhitelist.setWindow, (0, 1 days));
+        calls[7] = abi.encodeCall(IDotnsNameWhitelist.setMaxClaimants, (4));
+        calls[8] = abi.encodeCall(IDotnsNameWhitelist.setMaxReasonBytes, (64));
+        calls[9] = abi.encodeCall(IDotnsNameWhitelist.setMaxGrantBatch, (4));
+
+        for (uint256 i = 0; i < calls.length; i++) {
+            vm.prank(ed);
+            (bool ok, bytes memory ret) = address(whitelist).call(calls[i]);
+            assertFalse(ok, "a signed caller reached a governance entry point");
+            assertEq(
+                bytes4(ret),
+                IDotnsNameWhitelist.NotGovernance.selector,
+                "governance gate reverted with something other than NotGovernance"
+            );
+        }
+    }
+
     function test_grantName_direct() public {
         bytes32 node = _nodeOf(BASE_LABEL_A);
         vm.expectEmit(true, true, false, true, address(whitelist));

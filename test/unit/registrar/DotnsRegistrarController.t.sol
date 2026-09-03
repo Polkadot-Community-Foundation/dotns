@@ -984,8 +984,10 @@ contract DotnsRegistrarControllerTest is BaseDotns {
     /// grant unspent, so governance minting does not silently consume someone else's entitlement.
     function test_root_mints_reserved_without_a_grant_and_leaves_grants_unspent() public {
         string memory nameLabel = "rootmint01";
-        string memory otherLabel = "othergrant01";
-        _grantName(otherLabel, ed);
+
+        // Grant the label Root is about to mint. Root skips consume, so this exact grant must
+        // survive; an unrelated label could not detect consumption of the one being minted.
+        _grantName(nameLabel, ed);
 
         _mockOriginIsRoot(true);
         _revealReserved(nameLabel, ed, tiago);
@@ -993,7 +995,8 @@ contract DotnsRegistrarControllerTest is BaseDotns {
 
         assertEq(dotnsRegistrar.ownerOf(_tokenIdForLabel(nameLabel)), ed);
         assertTrue(
-            dotnsNameWhitelist.isGrantedTo(otherLabel, ed), "Root minting spent an unrelated grant"
+            dotnsNameWhitelist.isGrantedTo(nameLabel, ed),
+            "a Root mint consumed the grant on the label it minted"
         );
     }
 
@@ -1013,6 +1016,27 @@ contract DotnsRegistrarControllerTest is BaseDotns {
             abi.encodeWithSelector(IDotnsRegistrarController.NameNotGranted.selector, nameLabel, ed)
         );
         dotnsRegistrarController.registerReserved(second);
+    }
+
+    /// @dev The gate pairs label with owner. A grant naming one address must not admit a
+    /// registration for a different one, even though the label does carry a live grant. Without
+    /// this, an implementation that checked only "the label is granted" would pass every other
+    /// negative test here, since those all use ungranted labels.
+    function test_a_grant_does_not_admit_a_different_owner() public {
+        string memory nameLabel = "boundgrant01";
+        _grantName(nameLabel, ed);
+
+        IDotnsRegistrarController.Registration memory registration =
+            _commitReserved(nameLabel, tiago, tiago);
+        vm.prank(tiago);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IDotnsRegistrarController.NameNotGranted.selector, nameLabel, tiago
+            )
+        );
+        dotnsRegistrarController.registerReserved(registration);
+
+        assertTrue(dotnsNameWhitelist.isGrantedTo(nameLabel, ed), "the grant was disturbed");
     }
 
     /// @dev The gate reads `registration.owner`, so a relayer may submit for the beneficiary and

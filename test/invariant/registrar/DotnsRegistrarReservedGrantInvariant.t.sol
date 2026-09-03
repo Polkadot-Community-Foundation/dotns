@@ -31,11 +31,12 @@ contract DotnsRegistrarReservedGrantInvariantTest is BaseDotns {
 
         targetContract(address(handler));
 
-        bytes4[] memory selectors = new bytes4[](4);
+        bytes4[] memory selectors = new bytes4[](5);
         selectors[0] = handler.grantName.selector;
         selectors[1] = handler.mintGranted.selector;
         selectors[2] = handler.attemptUngranted.selector;
         selectors[3] = handler.attemptDoubleSpend.selector;
+        selectors[4] = handler.attemptGrantOwnerMismatch.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
 
         excludeContract(address(dotnsRegistrarController));
@@ -65,6 +66,19 @@ contract DotnsRegistrarReservedGrantInvariantTest is BaseDotns {
     /// @notice A grant is single use. Re-minting a spent grant must never succeed.
     function invariant_no_grant_is_spent_twice() public view {
         assertFalse(handler.sawDoubleSpend(), "a spent grant minted a second time");
+    }
+
+    /// @notice Every mint spends its grant. Asserted from the grant itself rather than from a
+    /// later failure: the grant check runs before the availability check, so a grant left live
+    /// would show up as `NameNotAvailable` and look identical to a correctly spent one.
+    function invariant_every_mint_spends_its_grant() public view {
+        assertFalse(handler.sawGrantSurviveMint(), "a grant outlived the mint that spent it");
+    }
+
+    /// @notice The gate pairs label with owner. A live grant for one address must never admit a
+    /// registration for another.
+    function invariant_a_grant_admits_only_its_beneficiary() public view {
+        assertFalse(handler.sawGrantOwnerMismatch(), "a grant admitted the wrong beneficiary");
     }
 
     /// @notice The gate reads `registration.owner`, so a relayed mint lands on the beneficiary.
