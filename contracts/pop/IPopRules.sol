@@ -36,13 +36,19 @@ interface IPopRules {
 
     /// @notice Emitted when the public market for names shorter than nine characters is opened or
     ///         closed.
-    /// @dev Owner-only setter @custom:function setShortNamesEnabled.
+    /// @dev Set by the Root-gated @custom:function setShortNamesEnabled.
     /// @param enabled Whether names shorter than nine characters may now be bought.
     event ShortNamesEnabledUpdated(bool enabled);
 
     /// @notice Thrown when a name violates PoP-tier or reservation requirements.
     /// @param reason Human-readable explanation of the failure condition.
     error PopError(string reason);
+
+    /// @notice Thrown when @custom:function setShortNamesEnabled is called without a substrate
+    /// Root origin.
+    /// @dev Carries no caller parameter: a Root origin has no account to report, and reading
+    /// `msg.sender` under one traps.
+    error NotRoot();
 
     /// @notice Thrown when a caller is not an authorised controller on the registrar.
     error NotRegistry();
@@ -104,7 +110,9 @@ interface IPopRules {
         returns (PopStatus requirement, string memory message);
 
     /// @notice Opens or closes the public market for names shorter than nine characters.
-    /// @dev Owner-only; unauthorised callers trigger @custom:reverts OwnableUnauthorizedAccount.
+    /// @dev Restricted to a substrate Root origin; any other caller triggers @custom:reverts
+    ///      NotRoot. Short names are otherwise issued through the PoP gateway, so this flag is the
+    ///      Root-only lever that additionally admits them on the public paid path.
     ///      While closed, which is the deploy default, @custom:function priceWithCheck and
     ///      @custom:function priceWithoutCheck trigger @custom:reverts PopError for a base length
     ///      below nine, so no public caller buys a short name. The gateway free grant and the
