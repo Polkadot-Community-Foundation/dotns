@@ -478,7 +478,8 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         assertEq(dotnsReverseResolver.nameOf(beneficiary), "");
     }
 
-    /// @notice A Root dispatch mints without a grant and leaves any grant unspent.
+    /// @notice A Root dispatch mints a label that was never granted. That an unrelated live grant
+    /// survives a Root mint is asserted in the unit suite, which seeds one.
     function testFuzz_root_mints_without_a_grant(uint256 salt) public {
         string memory nameLabel = _grantLabel(salt);
 

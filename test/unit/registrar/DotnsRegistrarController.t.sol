@@ -1065,8 +1065,9 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         _revealReserved(nameLabel, ed, ed);
     }
 
-    /// @dev Same, under a Root dispatch: Root skips the grant check but still needs the whitelist
-    /// resolved, because it consults it to decide whether to consume.
+    /// @dev Same, under a Root dispatch. Root skips both the grant check and the consume, but the
+    /// whitelist is resolved before that branch is taken, so an unset key fails closed either way
+    /// rather than letting a Root mint proceed against an unconfigured protocol.
     function test_root_also_reverts_when_the_whitelist_is_unconfigured() public {
         vm.mockCall(
             address(protocolRegistry),
