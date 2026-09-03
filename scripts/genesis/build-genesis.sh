@@ -47,9 +47,9 @@ CANONICAL_MANIFEST="deployments/paseo-assethub/420420417.json"
 #   DOTNS_ADMIN_KEY       a raw private key — the admin credential this repo already holds
 #   DOTNS_ADMIN_MNEMONIC  the admin mnemonic; index $DOTNS_ADMIN_INDEX (default 0)
 #
-# Deliberately NOT accepted: DOTNS_MNEMONIC. That is the operational credential the
-# whitelist workflows drive the `dotns` CLI with, not the contract admin, and quietly
-# making it the owner of every contract in a genesis would be a hard mistake to spot.
+# Deliberately NOT accepted: DOTNS_MNEMONIC. That is an operational credential for driving
+# the `dotns` CLI, not the contract admin, and quietly making it the owner of every
+# contract in a genesis would be a hard mistake to spot.
 # Not DEPLOYER_KEY: that name is dotns-releases' own secret, and accepting it here
 # would make which key owns a published genesis depend on which repo the build ran in.
 ADMIN_KEY="${DOTNS_ADMIN_KEY:-}"
