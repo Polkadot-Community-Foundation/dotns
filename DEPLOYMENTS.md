@@ -269,7 +269,6 @@ At minimum, confirm:
 - The forward, reverse, content, and Pop resolvers are present.
 - The escrow address is present.
 - StoreFactory and both store beacons are present.
-- The RootGatewayDispatcher is present on environments that use the root-dispatch path.
 - The escrow's redeem window is non-zero. A zero leaves `release` reverting with `RedeemWindowNotConfigured` for every name on the deployment, so a holder who releases a name by accident has no chance to redeem it back. Any value the setter accepted is already at least `MIN_REDEEM_WINDOW` (1 day), so this check is only ever confirming that the window was configured at all, which is exactly what a proxy upgraded without seeding it would fail.
 
 ```bash

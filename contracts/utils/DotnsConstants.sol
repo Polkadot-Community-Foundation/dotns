@@ -14,8 +14,8 @@ library DotnsConstants {
     ///         that opts the precompile in.
     /// @dev Mirrors the upstream `SYSTEM_ADDR` constant in
     ///      `substrate/frame/revive/uapi/sol/ISystem.sol`. Consumed by
-    ///      `DotnsPopController` to authenticate Root-origin dispatches via
-    ///      `ISystem.callerIsRoot()`.
+    ///      `DotnsPopController` and `DotnsNameWhitelist` to authenticate
+    ///      Root-origin dispatches via `ISystem.originIsRoot()`.
     address internal constant REVIVE_SYSTEM = address(0x0900);
 
     /// @notice Address of the Proof-of-Personhood precompile backed by the
@@ -186,18 +186,6 @@ library DotnsConstants {
     ///      on an environment variable.
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant CREATE3_FACTORY = bytes32("create3Factory");
-
-    /// @notice Well-known key for the address authorised to invoke the PoP
-    ///         controller's gated entrypoints.
-    /// @dev Role: substrate Root-origin shim. Resolves to the Root gateway
-    ///      dispatcher deployed against the PoP controller. The dispatcher
-    ///      verifies Root authority through the revive System precompile in
-    ///      its own frame and forwards calldata to the controller via a
-    ///      regular message call; the controller authorises against this
-    ///      registry key, so rotating the dispatcher is a single write on
-    ///      the protocol registry.
-    /// forge-lint: disable-next-line(unsafe-typecast)
-    bytes32 internal constant POP_GATEWAY = bytes32("popGateway");
 
     /// @notice Well-known key for the pre-launch name whitelist that binds a label to the
     ///         one address permitted to register it.

@@ -19,7 +19,6 @@ import {
 } from "../../contracts/registrars/DotnsPopController.sol";
 import {DotnsPopLens} from "../../contracts/registrars/DotnsPopLens.sol";
 import {IDotnsPopLens} from "../../contracts/registrars/IDotnsPopLens.sol";
-import {RootGatewayDispatcher} from "../../contracts/registrars/RootGatewayDispatcher.sol";
 import {IDotnsController} from "../../contracts/registrars/IDotnsController.sol";
 import {DotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
 import {DotnsResolver} from "../../contracts/resolvers/DotnsResolver.sol";
@@ -105,44 +104,21 @@ abstract contract BaseDotns is Test {
     /// @notice Deployed PoP lens instance (read-only view over PoP identity data).
     DotnsPopLens public dotnsPopLens;
 
-    /// @notice Test stand-in for the Root gateway dispatcher.
-    /// @dev Registered on the protocol registry under the PoP gateway key
-    ///      during setUp. Tests that exercise gated PoP entrypoints prank as
-    ///      this address, mirroring how the dispatcher's forwarded call
-    ///      appears to the controller in production.
-    address public popGateway;
-
     /// @notice Selector for the typed reserveLiteName entrypoint.
     bytes4 internal constant SELECTOR_RESERVE_LITE_TYPED =
         bytes4(keccak256("reserveLiteName((string,address,bytes))"));
-
-    /// @notice Selector for the bytes-encoded reserveLiteName entrypoint.
-    bytes4 internal constant SELECTOR_RESERVE_LITE_BYTES =
-        bytes4(keccak256("reserveLiteName(bytes)"));
 
     /// @notice Selector for the typed reserveBaseName entrypoint.
     bytes4 internal constant SELECTOR_RESERVE_BASE_TYPED =
         bytes4(keccak256("reserveBaseName(((string,address,bytes),string))"));
 
-    /// @notice Selector for the bytes-encoded reserveBaseName entrypoint.
-    bytes4 internal constant SELECTOR_RESERVE_BASE_BYTES =
-        bytes4(keccak256("reserveBaseName(bytes)"));
-
     /// @notice Selector for the typed reserveBaseNameOnly entrypoint.
     bytes4 internal constant SELECTOR_RESERVE_BASE_ONLY_TYPED =
         bytes4(keccak256("reserveBaseNameOnly((address,string))"));
 
-    /// @notice Selector for the bytes-encoded reserveBaseNameOnly entrypoint.
-    bytes4 internal constant SELECTOR_RESERVE_BASE_ONLY_BYTES =
-        bytes4(keccak256("reserveBaseNameOnly(bytes)"));
-
     /// @notice Selector for the typed registerBaseName entrypoint.
     bytes4 internal constant SELECTOR_REGISTER_BASE_TYPED =
         bytes4(keccak256("registerBaseName((string,address,(uint8,string,bytes)))"));
-
-    /// @notice Selector for the bytes-encoded registerBaseName entrypoint.
-    bytes4 internal constant SELECTOR_REGISTER_BASE_BYTES =
-        bytes4(keccak256("registerBaseName(bytes)"));
 
     /// @notice Default reservation duration used by the PoP controller.
     uint64 public constant DEFAULT_RESERVATION_DURATION = 7 days;
@@ -183,8 +159,6 @@ abstract contract BaseDotns is Test {
     // baselength 7 with 2 trailing digits classifies as PopLite.
     /// @notice PoP lite classification label fixture A.
     string internal constant LITE_LABEL_A = "aliceli01";
-    /// @notice Dotted form of @custom:constant LITE_LABEL_A used by gateway helpers.
-    string internal constant LITE_LABEL_A_DOTTED = "aliceli.01";
     /// @notice PoP lite classification label fixture B.
     string internal constant LITE_LABEL_B = "alicoli02";
     /// @notice PoP lite classification label fixture C.
@@ -327,9 +301,6 @@ abstract contract BaseDotns is Test {
         dotnsPopController = DotnsPopController(dotnsPopControllerAddress);
         vm.label(dotnsPopControllerAddress, "DotnsPopController");
 
-        popGateway = address(new RootGatewayDispatcher(dotnsPopControllerAddress));
-        vm.label(popGateway, "RootGatewayDispatcher");
-
         dotnsRegistrar.addController(IDotnsController(dotnsPopControllerAddress));
 
         address dotnsNameEscrowAddress = Upgrades.deployUUPSProxy(
@@ -359,9 +330,6 @@ abstract contract BaseDotns is Test {
         protocolRegistry.set(DotnsConstants.POP_CONTROLLER, dotnsPopControllerAddress);
         protocolRegistry.set(DotnsConstants.NAME_ESCROW, dotnsNameEscrowAddress);
         _deployNameWhitelist();
-        // Stand-in for the Root gateway dispatcher. Dedicated dispatcher
-        // coverage lives in test/unit/registrar/RootGatewayDispatcher.t.sol.
-        protocolRegistry.set(DotnsConstants.POP_GATEWAY, popGateway);
 
         // Deploy the read-only lens last, once every sibling key it resolves
         // (POP_CONTROLLER, REGISTRAR, STORE_FACTORY, POP_RESOLVER, POP_RULES) is
@@ -386,16 +354,6 @@ abstract contract BaseDotns is Test {
         // empty returndata and reverts. Tests exercising the Root branch override with
         // `_mockOriginIsRoot(true)`.
         _mockOriginIsRoot(false);
-    }
-
-    /// @notice Mocks revive's System precompile callerIsRoot result.
-    /// @param returnValue Value to return from `callerIsRoot`.
-    function _mockCallerIsRoot(bool returnValue) internal {
-        vm.mockCall(
-            DotnsConstants.REVIVE_SYSTEM,
-            abi.encodeWithSelector(ISystem.callerIsRoot.selector),
-            abi.encode(returnValue)
-        );
     }
 
     /// @notice Mocks revive's System precompile originIsRoot result.
@@ -530,17 +488,16 @@ abstract contract BaseDotns is Test {
         dotnsNameWhitelist.grantName(label, user);
     }
 
-    /// @notice Drives a PoP reservation from the registered gateway address and settles
-    /// the resulting pending claim from the user's signed origin.
+    /// @notice Drives a PoP reservation under a Root origin and settles the resulting
+    /// pending claim from the user's signed origin.
     /// @dev Single canonical helper for PoP-gateway reservations across unit and fuzz
-    /// test suites. Pranks from the gateway stand-in installed during setUp, which
-    /// mirrors how the Root gateway dispatcher appears to the controller in production.
+    /// test suites. Calls the controller under a mocked Root origin.
     /// The auto-settle deploys the user's `LabelStore` and writes the stashed label so
     /// subsequent gateway mints for the same user take the warm path and assertions
     /// against the resolver and store hold. Chat keys are persisted eagerly on the PoP
     /// resolver at reserve time regardless of settlement. Tests that want to observe
     /// cold-path semantics (label stashed, no store deployed) must call
-    /// @custom:function _gatewayReserveBaseName or @custom:function _gatewayReserveLiteName
+    /// @custom:function _rootReserveBaseName or @custom:function _rootReserveLiteName
     /// directly.
     function _reservePop(
         address user,
@@ -550,7 +507,7 @@ abstract contract BaseDotns is Test {
     )
         internal
     {
-        _gatewayReserveBaseName(
+        _rootReserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
                     liteLabel: _toGatewayLiteLabel(liteLabel), user: user, chatKey: chatKey
@@ -564,62 +521,46 @@ abstract contract BaseDotns is Test {
         }
     }
 
-    /// @notice Dispatches the typed `reserveLiteName` call through the gateway stand-in.
-    function _gatewayReserveLiteName(IDotnsPopController.LiteRegistration memory params) internal {
+    /// @notice Dispatches the typed `reserveLiteName` call under a mocked Root origin.
+    function _rootReserveLiteName(IDotnsPopController.LiteRegistration memory params) internal {
         params.liteLabel = _toGatewayLiteLabel(params.liteLabel);
         _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_LITE_TYPED, params));
     }
 
-    /// @notice Dispatches a pre-encoded `reserveLiteName` payload through the gateway.
-    function _gatewayReserveLiteName(bytes memory payload) internal {
-        _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_LITE_BYTES, payload));
-    }
-
-    /// @notice Dispatches the typed `reserveBaseName` call through the gateway stand-in.
-    function _gatewayReserveBaseName(IDotnsPopController.BaseReservation memory params) internal {
+    /// @notice Dispatches the typed `reserveBaseName` call under a mocked Root origin.
+    function _rootReserveBaseName(IDotnsPopController.BaseReservation memory params) internal {
         params.lite.liteLabel = _toGatewayLiteLabel(params.lite.liteLabel);
         _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_BASE_TYPED, params));
     }
 
-    /// @notice Dispatches a pre-encoded `reserveBaseName` payload through the gateway.
-    function _gatewayReserveBaseName(bytes memory payload) internal {
-        _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_BASE_BYTES, payload));
-    }
-
-    /// @notice Dispatches the typed `reserveBaseNameOnly` call through the gateway stand-in.
-    function _gatewayReserveBaseNameOnly(IDotnsPopController.BaseNameReservation memory params)
+    /// @notice Dispatches the typed `reserveBaseNameOnly` call under a mocked Root origin.
+    function _rootReserveBaseNameOnly(IDotnsPopController.BaseNameReservation memory params)
         internal
     {
         _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_BASE_ONLY_TYPED, params));
     }
 
-    /// @notice Dispatches a pre-encoded `reserveBaseNameOnly` payload through the gateway.
-    function _gatewayReserveBaseNameOnly(bytes memory payload) internal {
-        _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_BASE_ONLY_BYTES, payload));
-    }
-
-    /// @notice Dispatches the typed `registerBaseName` call through the gateway stand-in.
+    /// @notice Dispatches the typed `registerBaseName` call under a mocked Root origin.
     /// @dev Normalises any LiteUsername link to its dotted form before dispatch.
-    function _gatewayRegisterBaseName(IDotnsPopController.FullRegistration memory params) internal {
+    function _rootRegisterBaseName(IDotnsPopController.FullRegistration memory params) internal {
         if (params.link.kind == IDotnsPopController.LinkKind.LiteUsername) {
             params.link.liteLabel = _toGatewayLiteLabel(params.link.liteLabel);
         }
         _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_REGISTER_BASE_TYPED, params));
     }
 
-    /// @notice Dispatches a pre-encoded `registerBaseName` payload through the gateway.
-    function _gatewayRegisterBaseName(bytes memory payload) internal {
-        _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_REGISTER_BASE_BYTES, payload));
-    }
-
-    /// @notice Forwards `payload` to the gateway stand-in while pretending the call
-    ///         originated from the root account.
-    /// @dev Reverts with the inner error data when the forwarded call fails, so
+    /// @notice Calls `payload` on the PoP controller under a mocked Root origin.
+    /// @dev Reverts with the inner error data when the call fails, so
     ///      `vm.expectRevert` assertions remain meaningful at the test level.
     function _dispatchFromRoot(bytes memory payload) internal returns (bytes memory ret) {
-        _mockCallerIsRoot(true);
+        _mockOriginIsRoot(true);
 
-        (bool ok, bytes memory data) = popGateway.call(payload);
+        (bool ok, bytes memory data) = address(dotnsPopController).call(payload);
+        // Restore the default before unwinding, on both the success and revert paths.
+        // `DotnsRegistrarController.registerReserved` reads `originIsRoot` too, so a sticky
+        // `true` here would silently put a later reserved registration on the Root branch,
+        // skipping the grant check and the consume.
+        _mockOriginIsRoot(false);
         if (!ok) {
             assembly {
                 revert(add(data, 32), mload(data))

@@ -137,7 +137,6 @@ Confirm these keys are present:
 - [ ] `LabelStoreBeacon`
 - [ ] `UserStoreBeacon`
 - [ ] `Multicall3`
-- [ ] `RootGatewayDispatcher` (only on chains that use the root-dispatch path)
 
 Done. ✅
 
