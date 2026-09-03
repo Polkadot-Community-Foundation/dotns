@@ -147,8 +147,7 @@ validate_no_separator_comments() {
 # inline tool directive such as solhint-disable-line is allowed because it only
 # works on the line it annotates, and a `://` inside a URL is skipped. The check
 # is a line regex, not a parser, so a `//` inside a string, template, or regex
-# literal, or in a multi-line block-comment body, can also be flagged; put such a
-# value on its own line to satisfy it.
+# literal, or in a multi-line block-comment body, is a known false positive.
 _reject_trailing_comments() {
   local hits
   hits="$(

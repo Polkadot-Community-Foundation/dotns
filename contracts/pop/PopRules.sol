@@ -29,7 +29,7 @@ import {IPersonhood} from "../external/personhood/IPersonhood.sol";
 ///      model registered under `DotnsConstants.COST_MODEL`, which owns the curve; this contract
 ///      passes it only the base length and keeps the classification, reservation, and tier rules.
 ///      Personhood only unlocks the premium band. Base lengths below nine are closed to the public
-///      paid path until governance sets `shortNamesEnabled`; the gateway and registerReserved do
+///      paid path until Root sets `shortNamesEnabled`; the gateway and registerReserved do
 ///      not consult it.
 /// @custom:security-contact admin@parity.io
 contract PopRules is

@@ -209,6 +209,15 @@ contract PopRulesTests is BaseDotns {
         popRules.setShortNamesEnabled(false);
     }
 
+    function test_setShortNamesEnabled_owner_reverts() public {
+        // The owner used to hold this switch. It is now Root-only, so the owner reverts NotRoot
+        // too.
+        _mockOriginIsRoot(false);
+        vm.expectRevert(IPopRules.NotRoot.selector);
+        vm.prank(owner);
+        popRules.setShortNamesEnabled(false);
+    }
+
     function test_setShortNamesEnabled_root_succeeds() public {
         _mockOriginIsRoot(true);
         popRules.setShortNamesEnabled(true);
