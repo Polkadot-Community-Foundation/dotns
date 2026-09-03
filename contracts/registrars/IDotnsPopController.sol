@@ -189,16 +189,11 @@ interface IDotnsPopController is IDotnsController {
     /// @param newHead Address now holding the head slot.
     event ReservationHeadAdvanced(bytes32 indexed labelhash, address indexed newHead);
 
-    /// @notice Thrown when a gated entrypoint is reached from an address that
-    ///         is not the gateway registered on the protocol registry under
-    ///         the PoP gateway key.
-    /// @dev The controller delegates substrate Root-authority verification to
-    ///      the registered gateway, which is the Root gateway dispatcher, and
-    ///      authorises calls solely against the address resolved from the
-    ///      protocol registry. The caller parameter carries the immediate EVM
-    ///      caller observed by this contract for off-chain diagnostics.
-    /// @param caller Immediate EVM caller observed by this contract.
-    error NotGateway(address caller);
+    /// @notice Thrown when a gated entrypoint is reached without a substrate
+    ///         Root origin.
+    /// @dev Carries no caller parameter: a Root origin has no account to report,
+    ///      and reading `msg.sender` under one traps.
+    error NotRoot();
 
     /// @notice Thrown when a supplied lite-person label does not match `NAMEXX`.
     error InvalidLiteLabel();
@@ -245,10 +240,9 @@ interface IDotnsPopController is IDotnsController {
     /// @notice Registers a lite-person username on behalf of the supplied user
     /// and optionally enqueues a reservation for a base name they intend to
     /// claim as a full person later.
-    /// @dev Callable only via the registered PoP gateway (otherwise @custom:reverts NotGateway);
-    /// the gateway is responsible for asserting substrate Root authority before forwarding
-    /// here. The lite leg validates the dotted `stem.NN` shape and requires the flattened label
-    /// to classify as PopLite (otherwise @custom:reverts InvalidLiteLabel), and rejects a
+    /// @dev Callable only under a substrate Root origin (otherwise @custom:reverts NotRoot). The
+    /// lite leg validates the dotted `stem.NN` shape and requires the flattened label to classify
+    /// as PopLite (otherwise @custom:reverts InvalidLiteLabel), and rejects a
     /// supplied chat key whose length is neither zero nor `CHAT_KEY_LENGTH`
     /// (otherwise @custom:reverts InvalidChatKey). On a warm-path mint (user already has a
     /// `LabelStore`) it @custom:emits LiteNameReserved and @custom:emits NameRegistered;
@@ -274,28 +268,9 @@ interface IDotnsPopController is IDotnsController {
     /// @param params Reservation request; see @custom:struct BaseReservation.
     function reserveBaseName(BaseReservation calldata params) external;
 
-    /// @notice Raw-payload variant of @custom:function reserveBaseName for cross-chain dispatch.
-    /// @dev `payload` is `abi.encode(BaseReservation({...}))`, the bare ABI-encoded struct
-    /// with NO function-selector prefix and NO leading bytes-length word. The contract
-    /// prepends the typed selector and `delegatecall`s itself so the typed entrypoint runs
-    /// in the original call context and remains the single source of truth, which means the
-    /// typed overload's full revert surface bubbles up byte-for-byte: gateway-only access
-    /// (otherwise @custom:reverts NotGateway), lite-label shape (otherwise
-    /// @custom:reverts InvalidLiteLabel), base-label shape (otherwise
-    /// @custom:reverts InvalidBaseLabel), already-registered base label (otherwise
-    /// @custom:reverts BaseNameAlreadyRegistered), duplicate-reservation guard (otherwise
-    /// @custom:reverts AlreadyReserved), and queue capacity (otherwise
-    /// @custom:reverts QueueFull). The success path likewise emits the same events as the
-    /// typed call: @custom:emits LiteNameReserved and @custom:emits NameRegistered on the lite
-    /// leg, plus @custom:emits ReservationQueued and any @custom:emits ReservationExpired
-    /// observed while advancing the queue head when the base-name leg runs.
-    /// Note: `abi.decode` ignores trailing bytes past the encoded struct, so off-chain
-    /// encoders MUST NOT assume strict length validation.
-    /// @param payload `abi.encode(BaseReservation)` produced by the cross-chain caller.
-    function reserveBaseName(bytes calldata payload) external;
-
     /// @notice Enqueues only the full/base-name reservation for a user.
-    /// @dev Callable only via the registered PoP gateway. This is the second step of the split
+    /// @dev Callable only under a substrate Root origin (otherwise @custom:reverts NotRoot).
+    /// This is the second step of the split
     /// gateway flow: @custom:function reserveLiteName mints the lite username first, then this
     /// function reserves the full/base label in a separate transaction so proof-size stays below
     /// per-call limits. Reverts with @custom:reverts InvalidBaseLabel when the label is empty,
@@ -306,17 +281,11 @@ interface IDotnsPopController is IDotnsController {
     /// @param params Reservation request; see @custom:struct BaseNameReservation.
     function reserveBaseNameOnly(BaseNameReservation calldata params) external;
 
-    /// @notice Raw-payload variant of @custom:function reserveBaseNameOnly for cross-chain
-    /// dispatch. @param payload `abi.encode(BaseNameReservation)` produced by the cross-chain
-    /// caller.
-    function reserveBaseNameOnly(bytes calldata payload) external;
-
     /// @notice Registers a lite-person username on behalf of the supplied
     /// user without touching the base-name reservation queue.
-    /// @dev Callable only via the registered PoP gateway (otherwise @custom:reverts NotGateway);
-    /// the gateway is responsible for asserting substrate Root authority before forwarding
-    /// here. The supplied label must satisfy the dotted `stem.NN` shape and the flattened label
-    /// must classify as PopLite (otherwise @custom:reverts InvalidLiteLabel); a supplied chat
+    /// @dev Callable only under a substrate Root origin (otherwise @custom:reverts NotRoot). The
+    /// supplied label must satisfy the dotted `stem.NN` shape and the flattened label must classify
+    /// as PopLite (otherwise @custom:reverts InvalidLiteLabel); a supplied chat
     /// key whose length is neither zero nor `CHAT_KEY_LENGTH` reverts
     /// @custom:reverts InvalidChatKey before mint and resolver writes run. On a warm-path mint
     /// @custom:emits LiteNameReserved and @custom:emits NameRegistered. On a cold-path
@@ -327,30 +296,10 @@ interface IDotnsPopController is IDotnsController {
     /// @param params Registration request; see @custom:struct LiteRegistration.
     function reserveLiteName(LiteRegistration calldata params) external;
 
-    /// @notice Raw-payload variant of @custom:function reserveLiteName for cross-chain dispatch.
-    /// @dev `payload` is `abi.encode(LiteRegistration({...}))`, the bare ABI-encoded struct
-    /// with NO function-selector prefix and NO leading bytes-length word. The contract
-    /// prepends the typed selector and `delegatecall`s itself so the typed entrypoint runs
-    /// in the original call context and remains the single source of truth, so the typed
-    /// overload's revert surface bubbles up byte-for-byte: gateway-only access (otherwise
-    /// @custom:reverts NotGateway) and lite-label shape (otherwise
-    /// @custom:reverts InvalidLiteLabel). The success path emits the same events as the typed
-    /// call: @custom:emits LiteNameReserved and @custom:emits NameRegistered.
-    /// Note: `abi.decode` ignores trailing bytes past the encoded struct, so
-    /// off-chain encoders MUST NOT assume strict length validation; pad-only
-    /// junk past the tail is silently dropped (no state corruption; decoded
-    /// values are unchanged).
-    /// Worked example off-chain:
-    ///   `bytes payload = abi.encode(LiteRegistration({liteLabel: "alice42", user: u, chatKey:
-    /// k}));`
-    /// @param payload `abi.encode(LiteRegistration)` produced by the cross-chain caller.
-    function reserveLiteName(bytes calldata payload) external;
-
     /// @notice Registers a full-person username on behalf of the supplied user.
-    /// @dev Callable only via the registered PoP gateway (otherwise @custom:reverts NotGateway);
-    /// the gateway is responsible for asserting substrate Root authority before forwarding
-    /// here. The base label must satisfy the DNS-label shape and be a true base label with no
-    /// trailing digits (otherwise @custom:reverts InvalidBaseLabel), and the label must not
+    /// @dev Callable only under a substrate Root origin (otherwise @custom:reverts NotRoot). The
+    /// base label must satisfy the DNS-label shape and be a true base label with no trailing digits
+    /// (otherwise @custom:reverts InvalidBaseLabel), and the label must not
     /// classify as governance-reserved (otherwise @custom:reverts InvalidBaseLabel). The
     /// gateway also defers to PopRules as the single cross-flow authority: when PopRules
     /// carries a live base-name slot held by another user (stamped by the public commit-reveal
@@ -380,24 +329,6 @@ interface IDotnsPopController is IDotnsController {
     /// the call's payload, which Solidity decodes directly.
     /// @param params Registration request; see @custom:struct FullRegistration.
     function registerBaseName(FullRegistration calldata params) external;
-
-    /// @notice Raw-payload variant of @custom:function registerBaseName for cross-chain dispatch.
-    /// @dev `payload` is `abi.encode(FullRegistration({...}))`, the bare ABI-encoded struct
-    /// with NO function-selector prefix and NO leading bytes-length word. The contract
-    /// prepends the typed selector and `delegatecall`s itself so the typed entrypoint runs
-    /// in the original call context and remains the single source of truth, so the typed
-    /// overload's revert surface bubbles up byte-for-byte: gateway-only access (otherwise
-    /// @custom:reverts NotGateway), base-label shape (otherwise @custom:reverts InvalidBaseLabel),
-    /// lite-label shape on the `LiteUsername` branch (otherwise @custom:reverts InvalidLiteLabel),
-    /// and the standalone-mint holder guard (otherwise @custom:reverts NotHolder). The success
-    /// path emits the same events as the typed call: @custom:emits BaseNameClaimed on a claim
-    /// or @custom:emits StandaloneNameRegistered otherwise, @custom:emits LiteToFullLinked on
-    /// the `LiteUsername` branch, @custom:emits ReservationExpired for each entry reaped while
-    /// advancing the queue head, and always @custom:emits NameRegistered.
-    /// Note: `abi.decode` ignores trailing bytes past the encoded struct, so off-chain
-    /// encoders MUST NOT assume strict length validation.
-    /// @param payload `abi.encode(FullRegistration)` produced by the cross-chain caller.
-    function registerBaseName(bytes calldata payload) external;
 
     /// @notice Permissionlessly removes expired entries from the head of a reservation queue.
     /// @dev Permissionless on purpose: anyone (typically a UI or a bot) can poke a stale queue

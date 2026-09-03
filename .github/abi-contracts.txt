@@ -26,7 +26,6 @@ DotnsNameEscrow
 DotnsPopController
 DotnsPopResolver
 DotnsRoleManager
-RootGatewayDispatcher
 DotnsNameWhitelist
 DotnsCostModelRegistry
 DotnsFlatPricing

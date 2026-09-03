@@ -36,10 +36,8 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function test_reserveBaseName_reverts_when_origin_is_not_root() public {
-        _mockCallerIsRoot(false);
-        vm.expectRevert(
-            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(this))
-        );
+        _mockOriginIsRoot(false);
+        vm.expectRevert(IDotnsPopController.NotRoot.selector);
         dotnsPopController.reserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
@@ -70,7 +68,7 @@ contract DotnsPopControllerTests is BaseDotns {
         IDotnsPopController.Link memory link = _linkWithLite(LITE_LABEL_A);
 
         vm.recordLogs();
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_A, user: ed, link: link})
         );
         Vm.Log[] memory logs = vm.getRecordedLogs();
@@ -93,7 +91,7 @@ contract DotnsPopControllerTests is BaseDotns {
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xcf));
 
         vm.recordLogs();
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_C, user: ed, link: link})
         );
         Vm.Log[] memory logs = vm.getRecordedLogs();
@@ -109,7 +107,7 @@ contract DotnsPopControllerTests is BaseDotns {
         _reservePop(ed, LITE_LABEL_A, liteChatKey, BASE_LABEL_A);
 
         IDotnsPopController.Link memory link = _linkWithLite(LITE_LABEL_A);
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_A, user: ed, link: link})
         );
 
@@ -127,7 +125,7 @@ contract DotnsPopControllerTests is BaseDotns {
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0x01), BASE_LABEL_A);
 
         IDotnsPopController.Link memory link = _linkWithLite(LITE_LABEL_A);
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_A, user: ed, link: link})
         );
 
@@ -144,7 +142,7 @@ contract DotnsPopControllerTests is BaseDotns {
 
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0x02));
 
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_B, user: ed, link: link})
         );
 
@@ -160,7 +158,7 @@ contract DotnsPopControllerTests is BaseDotns {
         IDotnsPopController.Link memory link = _linkWithLite(LITE_LABEL_A);
 
         vm.recordLogs();
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_B, user: ed, link: link})
         );
         Vm.Log[] memory logs = vm.getRecordedLogs();
@@ -180,10 +178,8 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_registerBaseName_reverts_when_origin_is_not_root() public {
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xaa));
 
-        _mockCallerIsRoot(false);
-        vm.expectRevert(
-            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(this))
-        );
+        _mockOriginIsRoot(false);
+        vm.expectRevert(IDotnsPopController.NotRoot.selector);
         dotnsPopController.registerBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_A, user: ed, link: link})
         );
@@ -299,7 +295,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // `_reservedBaseLabel[labelhash]` and release the PopRules slot. Missing
         // any one of those lets the next reservation inherit stale state.
         IDotnsPopController.Link memory link = _linkWithLite(LITE_LABEL_A);
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: baseStem, user: ed, link: link})
         );
 
@@ -323,7 +319,7 @@ contract DotnsPopControllerTests is BaseDotns {
 
         vm.warp(block.timestamp + dotnsPopController.reservationDuration() + 1);
         // Anyone can call. Pinning this prevents a future patch from silently
-        // adding `onlyGateway` and breaking permissionless garbage collection.
+        // adding `onlyRoot` and breaking permissionless garbage collection.
         address stranger = makeAddr("stranger");
         vm.prank(stranger);
         dotnsPopController.expireReservation(BASE_LABEL_A);
@@ -359,7 +355,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // classifies as PopFull and ed is PopFull; the isLitePersonLabel
         // guard then rejects the zero trailing digits.
         vm.expectRevert(IDotnsPopController.InvalidLiteLabel.selector);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({liteLabel: "aliceli", user: ed, chatKey: ""})
         );
 
@@ -368,7 +364,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // PopRules.priceWithCheck before reaching the controller's own
         // isSingleLabel check.
         vm.expectPartialRevert(IPopRules.PopError.selector);
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: "not.valid", user: ed, link: link})
         );
     }
@@ -380,7 +376,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // and shares the lite's stem, so both tokens coexist on the registrar.
         _grantPopFull(tiago);
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xbb));
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: "aliceli", user: tiago, link: link})
         );
 
@@ -453,7 +449,7 @@ contract DotnsPopControllerTests is BaseDotns {
                 IDotnsRegistrar.NameNotAvailable.selector, uint256(_nodeOf(LITE_LABEL_A))
             )
         );
-        _gatewayReserveBaseName(
+        _rootReserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
                     liteLabel: LITE_LABEL_A, user: tiago, chatKey: _validChatKey(0xbb)
@@ -466,7 +462,7 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_public_register_after_pop_full_mint_reverts_at_registrar() public {
         // "longnamebob01" is classification-NoStatus, so ed keeps default status.
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xcf));
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: "longnamebob01", user: ed, link: link})
         );
 
@@ -501,7 +497,7 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_owner_of_pop_minted_name_can_create_subname() public {
         _grantPopFull(ed);
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xcf));
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_A, user: ed, link: link})
         );
 
@@ -519,7 +515,7 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_non_owner_cannot_create_subname_under_pop_minted_name() public {
         _grantPopFull(ed);
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xcf));
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_A, user: ed, link: link})
         );
 
@@ -567,7 +563,7 @@ contract DotnsPopControllerTests is BaseDotns {
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0xaa), "longnamebob");
 
         IDotnsPopController.Link memory link = _linkWithLite(LITE_LABEL_A);
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: "longnamebob", user: ed, link: link})
         );
 
@@ -610,7 +606,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // would lock every two-digit variant of the stem for the full reservation window.
         _grantPopFull(ed);
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0xaa), "longnamebob");
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({
                 label: "longnamebob", user: ed, link: _linkWithLite(LITE_LABEL_A)
             })
@@ -626,7 +622,7 @@ contract DotnsPopControllerTests is BaseDotns {
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0xaa), "longnamebob");
 
         IDotnsPopController.Link memory link = _linkWithLite(LITE_LABEL_A);
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: "longnamebob", user: ed, link: link})
         );
         // Now the stem is clear on PopRules, so tiago can register the
@@ -646,16 +642,12 @@ contract DotnsPopControllerTests is BaseDotns {
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebob01"))), tiago);
     }
 
-    function test_controller_authorised_but_not_gateway_cannot_enter_pop_flow() public {
+    function test_registered_controller_without_root_origin_cannot_enter_pop_flow() public {
         // The public commit-reveal controller is already a registered controller.
         // Even from that origin, the Root-gate must reject the call.
-        _mockCallerIsRoot(false);
+        _mockOriginIsRoot(false);
         vm.prank(address(dotnsRegistrarController));
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IDotnsPopController.NotGateway.selector, address(dotnsRegistrarController)
-            )
-        );
+        vm.expectRevert(IDotnsPopController.NotRoot.selector);
         dotnsPopController.reserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
@@ -712,7 +704,7 @@ contract DotnsPopControllerTests is BaseDotns {
         _grantPopFull(tiago);
 
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xcf));
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_A, user: tiago, link: link})
         );
 
@@ -723,7 +715,7 @@ contract DotnsPopControllerTests is BaseDotns {
         _grantPopFull(ed);
 
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xcf));
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_A, user: ed, link: link})
         );
 
@@ -735,7 +727,7 @@ contract DotnsPopControllerTests is BaseDotns {
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0x01), BASE_LABEL_A);
 
         IDotnsPopController.Link memory link = _linkWithLite(LITE_LABEL_A);
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_A, user: ed, link: link})
         );
 
@@ -749,14 +741,14 @@ contract DotnsPopControllerTests is BaseDotns {
         _grantPopFull(tiago);
         IDotnsPopController.Link memory strangerLink = _linkFresh(_validChatKey(0xbb));
         vm.expectPartialRevert(IDotnsPopController.NotHolder.selector);
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({
                 label: BASE_LABEL_A, user: tiago, link: strangerLink
             })
         );
         // A's reservation is intact; A claims successfully.
         IDotnsPopController.Link memory claimLink = _linkWithLite(LITE_LABEL_A);
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_A, user: ed, link: claimLink})
         );
 
@@ -771,7 +763,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // which the PoP controller's governance guard rejects.
         vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
 
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: "alice", user: ed, link: link})
         );
     }
@@ -783,7 +775,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // which classifies as `Reserved for Governance` and is rejected by the
         // PoP controller's governance guard.
         vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
-        _gatewayReserveBaseName(
+        _rootReserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
                     liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
@@ -799,7 +791,7 @@ contract DotnsPopControllerTests is BaseDotns {
         uint256 controllerBalanceBefore = address(dotnsPopController).balance;
 
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xaa));
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_A, user: ed, link: link})
         );
         // No native token moves on the PoP path.
@@ -816,7 +808,7 @@ contract DotnsPopControllerTests is BaseDotns {
         address fresh = makeAddr("freshLite");
         _grantPopLite(fresh);
 
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: "freshli01", user: fresh, chatKey: _validChatKey(0xcc)
             })
@@ -829,7 +821,7 @@ contract DotnsPopControllerTests is BaseDotns {
         _grantPopFull(ed);
 
         vm.expectRevert(IDotnsPopController.InvalidLiteLabel.selector);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: "alice", user: ed, chatKey: _validChatKey(0xaa)
             })
@@ -840,7 +832,7 @@ contract DotnsPopControllerTests is BaseDotns {
         _grantPopFull(ed);
 
         vm.expectRevert(IDotnsPopController.InvalidLiteLabel.selector);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: "aliceli.001", user: ed, chatKey: _validChatKey(0xaa)
             })
@@ -853,7 +845,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // `abcd.12` flattens to `abcd12`: base length 4 classifies as Reserved (governance), so the
         // gateway lite path still rejects it even though the dotted format is valid.
         vm.expectRevert(IDotnsPopController.InvalidLiteLabel.selector);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: "abcd.12", user: ed, chatKey: _validChatKey(0xaa)
             })
@@ -865,7 +857,7 @@ contract DotnsPopControllerTests is BaseDotns {
 
         // `andrewsays.01` flattens to `andrewsays01`: base length 10 classifies as NoStatus, which
         // the gateway may issue as a lite username regardless of stem length.
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: "andrewsays.01", user: ed, chatKey: _validChatKey(0xaa)
             })
@@ -875,10 +867,8 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function test_reserveLiteName_reverts_when_origin_is_not_root() public {
-        _mockCallerIsRoot(false);
-        vm.expectRevert(
-            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(this))
-        );
+        _mockOriginIsRoot(false);
+        vm.expectRevert(IDotnsPopController.NotRoot.selector);
         dotnsPopController.reserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
@@ -889,7 +879,7 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_reserveBaseName_lite_and_base_legs_both_succeed_in_one_call() public {
         _grantPopFull(ed);
 
-        _gatewayReserveBaseName(
+        _rootReserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
                     liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
@@ -908,7 +898,7 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_split_gateway_flow_mints_lite_then_reserves_base() public {
         _grantPopFull(ed);
 
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
             })
@@ -917,7 +907,7 @@ contract DotnsPopControllerTests is BaseDotns {
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf(LITE_LABEL_A))), ed);
         assertFalse(dotnsRegistrar.exists(uint256(_nodeOf(BASE_LABEL_A))));
 
-        _gatewayReserveBaseNameOnly(
+        _rootReserveBaseNameOnly(
             IDotnsPopController.BaseNameReservation({user: ed, reservedBaseLabel: BASE_LABEL_A})
         );
 
@@ -927,11 +917,9 @@ contract DotnsPopControllerTests is BaseDotns {
         assertFalse(dotnsRegistrar.exists(uint256(_nodeOf(BASE_LABEL_A))));
     }
 
-    function test_reserveBaseNameOnly_reverts_for_non_gateway() public {
-        _mockCallerIsRoot(false);
-        vm.expectRevert(
-            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(this))
-        );
+    function test_reserveBaseNameOnly_reverts_when_origin_is_not_root() public {
+        _mockOriginIsRoot(false);
+        vm.expectRevert(IDotnsPopController.NotRoot.selector);
         dotnsPopController.reserveBaseNameOnly(
             IDotnsPopController.BaseNameReservation({user: ed, reservedBaseLabel: BASE_LABEL_A})
         );
@@ -939,12 +927,12 @@ contract DotnsPopControllerTests is BaseDotns {
 
     function test_reserveBaseNameOnly_reverts_for_reserved_or_suffixed_labels() public {
         vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
-        _gatewayReserveBaseNameOnly(
+        _rootReserveBaseNameOnly(
             IDotnsPopController.BaseNameReservation({user: ed, reservedBaseLabel: "alice"})
         );
 
         vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
-        _gatewayReserveBaseNameOnly(
+        _rootReserveBaseNameOnly(
             IDotnsPopController.BaseNameReservation({user: ed, reservedBaseLabel: "longnamebob01"})
         );
     }
@@ -955,20 +943,20 @@ contract DotnsPopControllerTests is BaseDotns {
         // front rather than discovered to be unusable at claim time.
         _grantPopFull(ed);
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0xaa), "longnamebob");
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({
                 label: "longnamebob", user: ed, link: _linkWithLite(LITE_LABEL_A)
             })
         );
 
         vm.expectRevert(IDotnsPopController.BaseNameAlreadyRegistered.selector);
-        _gatewayReserveBaseNameOnly(
+        _rootReserveBaseNameOnly(
             IDotnsPopController.BaseNameReservation({user: tiago, reservedBaseLabel: "longnamebob"})
         );
     }
 
     function test_reserveBaseNameOnly_does_not_mint_lite_or_base_name() public {
-        _gatewayReserveBaseNameOnly(
+        _rootReserveBaseNameOnly(
             IDotnsPopController.BaseNameReservation({user: ed, reservedBaseLabel: BASE_LABEL_A})
         );
 
@@ -981,10 +969,10 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function test_reserveBaseNameOnly_same_user_can_replace_prior_reservation() public {
-        _gatewayReserveBaseNameOnly(
+        _rootReserveBaseNameOnly(
             IDotnsPopController.BaseNameReservation({user: ed, reservedBaseLabel: BASE_LABEL_A})
         );
-        _gatewayReserveBaseNameOnly(
+        _rootReserveBaseNameOnly(
             IDotnsPopController.BaseNameReservation({user: ed, reservedBaseLabel: BASE_LABEL_B})
         );
 
@@ -1002,7 +990,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // stashed label. The settled name lands in the beneficiary's store, and the settlement
         // event records the third party as the settler.
         _grantPopFull(ed);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
             })
@@ -1027,7 +1015,7 @@ contract DotnsPopControllerTests is BaseDotns {
 
     function test_user_settles_own_pending_claim_after_gateway_mint() public {
         _grantPopFull(ed);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
             })
@@ -1046,7 +1034,7 @@ contract DotnsPopControllerTests is BaseDotns {
 
     function test_claimLabelStore_settles_callers_own_pending_claim() public {
         _grantPopFull(ed);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
             })
@@ -1068,7 +1056,7 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_settle_deploys_store_when_user_has_none() public {
         _grantPopFull(ed);
 
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
             })
@@ -1097,7 +1085,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // Classification runs first; empty string fails canonical label check
         // in PopRules before reaching the PoP controller's own shape guard.
         vm.expectPartialRevert(IPopRules.PopError.selector);
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: "", user: ed, link: link})
         );
     }
@@ -1107,7 +1095,7 @@ contract DotnsPopControllerTests is BaseDotns {
 
         bytes memory chatKey = _validChatKey(0x42);
 
-        _gatewayReserveBaseName(
+        _rootReserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
                     liteLabel: LITE_LABEL_A, user: ed, chatKey: chatKey
@@ -1121,64 +1109,6 @@ contract DotnsPopControllerTests is BaseDotns {
 
         bytes32 node = _nodeOf(LITE_LABEL_A);
         assertEq(dotnsPopResolver.chatKey(node), chatKey);
-    }
-
-    function testFuzz_bytes_overloads_reject_non_root_origin(uint8 which) public {
-        // `which` selects which of the three bytes overloads to invoke; the
-        // `onlyGateway` modifier must reject a non-Root origin on each.
-        // Single fuzz replaces three near-identical unit tests.
-        which = uint8(bound(uint256(which), 0, 2));
-
-        _mockCallerIsRoot(false);
-        vm.expectRevert(
-            abi.encodeWithSelector(IDotnsPopController.NotGateway.selector, address(this))
-        );
-
-        if (which == 0) {
-            dotnsPopController.reserveLiteName(
-                abi.encode(
-                    IDotnsPopController.LiteRegistration({
-                        liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
-                    })
-                )
-            );
-        } else if (which == 1) {
-            dotnsPopController.reserveBaseName(
-                abi.encode(
-                    IDotnsPopController.BaseReservation({
-                        lite: IDotnsPopController.LiteRegistration({
-                            liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xaa)
-                        }),
-                        reservedBaseLabel: ""
-                    })
-                )
-            );
-        } else {
-            dotnsPopController.registerBaseName(
-                abi.encode(
-                    IDotnsPopController.FullRegistration({
-                        label: BASE_LABEL_A,
-                        user: ed,
-                        link: IDotnsPopController.Link({
-                            kind: IDotnsPopController.LinkKind.None,
-                            liteLabel: "",
-                            chatKey: _validChatKey(0xaa)
-                        })
-                    })
-                )
-            );
-        }
-    }
-
-    function test_reserveLiteName_bytes_reverts_on_malformed_payload() public {
-        // Truncated payload cannot be ABI-decoded into the target struct, so the
-        // typed entrypoint reverts inside `abi.decode` (panic-style, no return
-        // data); `_dispatchTyped` re-throws via assembly so the outer call
-        // surfaces the same empty revert. Asserting "any revert" is intentional;
-        // locking the exact error string would couple the test to solc internals.
-        bytes memory truncated = hex"deadbeef";
-        vm.expectRevert();
-        _gatewayReserveLiteName(truncated);
     }
 
     function test_revert_setReservationDuration_below_minimum() public {
@@ -1204,7 +1134,7 @@ contract DotnsPopControllerTests is BaseDotns {
         _grantPopFull(ed);
         bytes memory chatKey = _validChatKey(0x01);
 
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: chatKey
             })
@@ -1227,7 +1157,7 @@ contract DotnsPopControllerTests is BaseDotns {
         _grantPopFull(ed);
         bytes memory chatKey = _validChatKey(0x07);
 
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: chatKey
             })
@@ -1252,7 +1182,7 @@ contract DotnsPopControllerTests is BaseDotns {
         _grantPopFull(ed);
         bytes memory chatKey = _validChatKey(0x03);
 
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: chatKey
             })
@@ -1286,17 +1216,17 @@ contract DotnsPopControllerTests is BaseDotns {
         // block gas limit. Settling with a limit below the queue length reports the residue and a
         // follow-up call clears it.
         _grantPopFull(ed);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x05)
             })
         );
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_B, user: ed, chatKey: _validChatKey(0x06)
             })
         );
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_C, user: ed, chatKey: _validChatKey(0x07)
             })
@@ -1323,7 +1253,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // the label is written, the queue empties, the beneficiary leaves the enumeration set, and
         // the settler is recorded on the event.
         _grantPopFull(ed);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x02)
             })
@@ -1358,7 +1288,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // reservation duration and settling writes the label into the store rather than
         // discarding it.
         _grantPopFull(ed);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x04)
             })
@@ -1384,12 +1314,12 @@ contract DotnsPopControllerTests is BaseDotns {
         // accumulating deferred names instead of reverting; a single signed-origin
         // settlement writes them all at once.
         _grantPopFull(ed);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x05)
             })
         );
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_B, user: ed, chatKey: _validChatKey(0x06)
             })
@@ -1430,7 +1360,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // claims the base name. The base mint stashes a second deferred claim instead of
         // reverting; one signed-origin settlement deploys the store and settles both.
         _grantPopFull(ed);
-        _gatewayReserveBaseName(
+        _rootReserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
                     liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x31)
@@ -1441,7 +1371,7 @@ contract DotnsPopControllerTests is BaseDotns {
         assertEq(storeFactory.getLabelStore(ed), address(0));
         assertEq(dotnsPopController.pendingClaimCountOf(ed), 1);
 
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({
                 label: BASE_LABEL_A, user: ed, link: _linkWithLite(LITE_LABEL_A)
             })
@@ -1474,17 +1404,17 @@ contract DotnsPopControllerTests is BaseDotns {
         _grantPopFull(tiago);
         _grantPopFull(leonardo);
 
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x01)
             })
         );
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_B, user: tiago, chatKey: _validChatKey(0x02)
             })
         );
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_C, user: leonardo, chatKey: _validChatKey(0x03)
             })
@@ -1511,7 +1441,7 @@ contract DotnsPopControllerTests is BaseDotns {
 
     function test_pendingClaimUsers_returns_empty_when_offset_past_count() public {
         _grantPopFull(ed);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x01)
             })
@@ -1525,7 +1455,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // Age is irrelevant to settlement: at the exact reservation deadline the claim still
         // settles and writes its label rather than being treated as forfeit.
         _grantPopFull(ed);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x11)
             })
@@ -1551,7 +1481,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // stash is a no-op and does not disturb another user's pending claim.
         _grantPopFull(ed);
         bytes memory chatKey = _validChatKey(0x12);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: chatKey
             })
@@ -1576,17 +1506,17 @@ contract DotnsPopControllerTests is BaseDotns {
         _grantPopFull(ed);
         _grantPopFull(tiago);
         _grantPopFull(leonardo);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x01)
             })
         );
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_B, user: tiago, chatKey: _validChatKey(0x02)
             })
         );
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_C, user: leonardo, chatKey: _validChatKey(0x03)
             })
@@ -1603,7 +1533,7 @@ contract DotnsPopControllerTests is BaseDotns {
 
     function test_settle_with_empty_chat_key_skips_resolver_write() public {
         _grantPopFull(ed);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({liteLabel: LITE_LABEL_A, user: ed, chatKey: ""})
         );
 
@@ -1621,7 +1551,7 @@ contract DotnsPopControllerTests is BaseDotns {
 
     function test_gatewayReserve_warm_user_after_settle_writes_directly_without_stashing() public {
         _grantPopFull(ed);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0x21)
             })
@@ -1633,7 +1563,7 @@ contract DotnsPopControllerTests is BaseDotns {
         assertTrue(store != address(0));
 
         bytes memory secondChatKey = _validChatKey(0x22);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_B, user: ed, chatKey: secondChatKey
             })
@@ -1694,7 +1624,7 @@ contract DotnsPopControllerTests is BaseDotns {
 
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xbb));
         vm.expectPartialRevert(IDotnsPopController.NotHolder.selector);
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: BASE_LABEL_A, user: tiago, link: link})
         );
     }
@@ -1705,14 +1635,14 @@ contract DotnsPopControllerTests is BaseDotns {
         // returns empty lists and zero counts.
         _grantPopFull(ed);
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0x01), "");
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({
                 label: BASE_LABEL_A, user: ed, link: _linkFresh(_validChatKey(0x02))
             })
         );
 
         _grantPopFull(leonardo);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_C, user: leonardo, chatKey: _validChatKey(0x03)
             })
@@ -1753,7 +1683,7 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_liteNamesOf_pagination_slices_and_clamps() public {
         _grantPopFull(ed);
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0x01), "");
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_B, user: ed, chatKey: _validChatKey(0x02)
             })
@@ -1798,7 +1728,7 @@ contract DotnsPopControllerTests is BaseDotns {
         _grantPopFull(ed);
         bytes memory liteChatKey = _validChatKey(0xaa);
         _reservePop(ed, LITE_LABEL_A, liteChatKey, BASE_LABEL_A);
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({
                 label: BASE_LABEL_A, user: ed, link: _linkWithLite(LITE_LABEL_A)
             })
@@ -1848,7 +1778,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // A store-less user with a staged claim, a settled user holding a reservation, and an
         // untouched account each report distinct profile facts.
         _grantPopFull(leonardo);
-        _gatewayReserveLiteName(
+        _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: LITE_LABEL_C, user: leonardo, chatKey: _validChatKey(0x01)
             })
