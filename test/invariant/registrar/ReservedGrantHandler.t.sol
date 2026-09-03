@@ -134,8 +134,9 @@ contract ReservedGrantHandler is Test {
 
         string memory label = pendingLabels[labelSeed % count];
         address beneficiary = grantedTo[label];
-        address impostor = actors[submitterSeed % actors.length];
-        if (impostor == beneficiary) impostor = actors[(submitterSeed + 1) % actors.length];
+        uint256 pick = submitterSeed % actors.length;
+        address impostor = actors[pick];
+        if (impostor == beneficiary) impostor = actors[(pick + 1) % actors.length];
         if (impostor == beneficiary) return;
 
         try this.reveal(label, impostor, impostor) {
