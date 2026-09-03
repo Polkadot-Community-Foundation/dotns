@@ -29,7 +29,7 @@ contract DotnsNameWhitelistInvariant is BaseDotns {
                 )
             )
         );
-        _mockOriginIsRoot(false);
+        _mockOriginIsRoot(true);
         whitelist.setWindow(0, 3650 days);
         vm.stopPrank();
 

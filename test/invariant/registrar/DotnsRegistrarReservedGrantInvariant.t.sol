@@ -20,8 +20,7 @@ contract DotnsRegistrarReservedGrantInvariantTest is BaseDotns {
             dotnsNameWhitelist,
             dotnsRegistrar,
             dotnsReverseResolver,
-            popRules,
-            owner
+            popRules
         );
 
         handler.addActor(ed);

@@ -30,9 +30,12 @@ contract DotnsNameWhitelistFuzz is BaseDotns {
                 )
             )
         );
-        _mockOriginIsRoot(false);
-        whitelist.setWindow(0, 365 days);
         vm.stopPrank();
+
+        // Configuration is Root-only, and the suite's own actions are governance calls, so it
+        // runs under a Root origin throughout.
+        _mockOriginIsRoot(true);
+        whitelist.setWindow(0, 365 days);
     }
 
     function _label(uint256 seed) internal pure returns (string memory) {

@@ -10,6 +10,8 @@ import {IDotnsNameWhitelist} from "../../../contracts/whitelist/IDotnsNameWhitel
 import {IDotnsReverseResolver} from "../../../contracts/resolvers/IDotnsReverseResolver.sol";
 import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 import {DotnsRegistrar} from "../../../contracts/registrars/DotnsRegistrar.sol";
+import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
+import {ISystem} from "../../../contracts/external/revive/ISystem.sol";
 
 /// @title ReservedGrantHandler
 /// @notice Bounded random-action handler for the grant-gated reserved registration path.
@@ -23,9 +25,6 @@ contract ReservedGrantHandler is Test {
     DotnsRegistrar public immutable REGISTRAR;
     IDotnsReverseResolver public immutable REVERSE;
     IPopRules public immutable POP_RULES;
-
-    /// @notice Account the handler pranks to grant names. Owner of the whitelist.
-    address public immutable GOVERNOR;
 
     /// @notice Actor pool used as beneficiaries and as submitters.
     address[] internal actors;
@@ -64,15 +63,13 @@ contract ReservedGrantHandler is Test {
         IDotnsNameWhitelist whitelist,
         DotnsRegistrar registrar,
         IDotnsReverseResolver reverseResolver,
-        IPopRules popRules,
-        address governor
+        IPopRules popRules
     ) {
         CONTROLLER = controller;
         WHITELIST = whitelist;
         REGISTRAR = registrar;
         REVERSE = reverseResolver;
         POP_RULES = popRules;
-        GOVERNOR = governor;
     }
 
     function addActor(address actor) external {
@@ -85,8 +82,11 @@ contract ReservedGrantHandler is Test {
         address beneficiary = actors[actorSeed % actors.length];
         string memory label = _freshLabel();
 
-        vm.prank(GOVERNOR);
+        // The whitelist is Root-only. Restore the default afterwards: `registerReserved` reads
+        // `originIsRoot` too, and a sticky `true` would skip the grant check and the consume.
+        _mockOriginIsRoot(true);
         WHITELIST.grantName(label, beneficiary);
+        _mockOriginIsRoot(false);
 
         pendingLabels.push(label);
         grantedTo[label] = beneficiary;
@@ -185,6 +185,15 @@ contract ReservedGrantHandler is Test {
         if (isBeneficiary[account]) return;
         isBeneficiary[account] = true;
         beneficiaries.push(account);
+    }
+
+    /// @notice Mocks the revive `originIsRoot()` query for the next call.
+    function _mockOriginIsRoot(bool returnValue) internal {
+        vm.mockCall(
+            DotnsConstants.REVIVE_SYSTEM,
+            abi.encodeWithSelector(ISystem.originIsRoot.selector),
+            abi.encode(returnValue)
+        );
     }
 
     function _freshLabel() internal returns (string memory label) {

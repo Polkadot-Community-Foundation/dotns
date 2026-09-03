@@ -16,6 +16,10 @@ import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 /// @title DotnsNameWhitelist unit tests
 /// @notice Covers claiming, competing claims and resolution, the request window, reservation, the
 ///         controller-only consume hook, and the review views.
+/// @dev No test here pranks a caller for a governance action. The admin surface is Root-only and
+///      the gates read no `msg.sender`, so who submits is irrelevant and a prank would imply an
+///      owner authority that does not exist. The negative cases mock a signed origin instead and
+///      assert `NotGovernance`.
 contract DotnsNameWhitelistTests is BaseDotns {
     DotnsNameWhitelist internal whitelist;
 
@@ -116,7 +120,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
     }
 
     function test_requestName_reverts_when_reserved() public {
-        vm.prank(owner);
         whitelist.setReserved(BASE_LABEL_A, true);
         vm.expectRevert(
             abi.encodeWithSelector(IDotnsNameWhitelist.NameNotOpen.selector, _nodeOf(BASE_LABEL_A))
@@ -125,7 +128,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
     }
 
     function test_requestName_reverts_outside_window() public {
-        vm.prank(owner);
         whitelist.setWindow(1 days, 1 days);
         vm.expectRevert(IDotnsNameWhitelist.WindowClosed.selector);
         _request(ed, BASE_LABEL_A);
@@ -227,7 +229,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
         bytes32 node = _nodeOf(BASE_LABEL_A);
         vm.expectEmit(true, true, false, true, address(whitelist));
         emit IDotnsNameWhitelist.NameAccepted(node, ed, BASE_LABEL_A);
-        vm.prank(owner);
         whitelist.grantName(BASE_LABEL_A, ed);
 
         assertEq(whitelist.granteeOf(BASE_LABEL_A), ed);
@@ -282,7 +283,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
         bytes32 node = _nodeOf(BASE_LABEL_A);
         vm.expectEmit(true, true, false, true, address(whitelist));
         emit IDotnsNameWhitelist.NameRevoked(node, ed, BASE_LABEL_A);
-        vm.prank(owner);
         whitelist.revokeName(BASE_LABEL_A);
         assertEq(
             uint256(whitelist.statusOf(BASE_LABEL_A)), uint256(IDotnsNameWhitelist.NameStatus.Open)
@@ -295,7 +295,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
         _grant(ed, BASE_LABEL_A);
         _mockOriginIsRoot(false);
         vm.expectRevert(IDotnsNameWhitelist.NotGovernance.selector);
-        vm.prank(owner);
         whitelist.revokeName(BASE_LABEL_A);
     }
 
@@ -305,28 +304,24 @@ contract DotnsNameWhitelistTests is BaseDotns {
                 IDotnsNameWhitelist.NothingToRevoke.selector, _nodeOf(BASE_LABEL_A)
             )
         );
-        vm.prank(owner);
         whitelist.revokeName(BASE_LABEL_A);
     }
 
     function test_revokeName_clears_open_name_with_claims() public {
         _request(ed, BASE_LABEL_A);
         _request(tiago, BASE_LABEL_A);
-        vm.prank(owner);
         whitelist.revokeName(BASE_LABEL_A);
         assertEq(whitelist.claimantCount(BASE_LABEL_A), 0);
         assertEq(whitelist.nameCount(), 0);
     }
 
     function test_revokeName_reverts_on_reserved_name() public {
-        vm.prank(owner);
         whitelist.setReserved(BASE_LABEL_A, true);
         vm.expectRevert(
             abi.encodeWithSelector(
                 IDotnsNameWhitelist.NothingToRevoke.selector, _nodeOf(BASE_LABEL_A)
             )
         );
-        vm.prank(owner);
         whitelist.revokeName(BASE_LABEL_A);
         assertTrue(whitelist.isReserved(BASE_LABEL_A));
     }
@@ -335,13 +330,11 @@ contract DotnsNameWhitelistTests is BaseDotns {
         bytes32 node = _nodeOf(BASE_LABEL_A);
         vm.expectEmit(true, false, false, true, address(whitelist));
         emit IDotnsNameWhitelist.NameReserved(node, BASE_LABEL_A);
-        vm.prank(owner);
         whitelist.setReserved(BASE_LABEL_A, true);
         assertTrue(whitelist.isReserved(BASE_LABEL_A));
 
         vm.expectEmit(true, false, false, true, address(whitelist));
         emit IDotnsNameWhitelist.NameUnreserved(node, BASE_LABEL_A);
-        vm.prank(owner);
         whitelist.setReserved(BASE_LABEL_A, false);
         assertFalse(whitelist.isReserved(BASE_LABEL_A));
         assertEq(whitelist.nameCount(), 0);
@@ -352,7 +345,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
         _request(ed, BASE_LABEL_A);
         vm.expectEmit(true, true, false, true, address(whitelist));
         emit IDotnsNameWhitelist.NameRejected(node, ed, BASE_LABEL_A);
-        vm.prank(owner);
         whitelist.setReserved(BASE_LABEL_A, true);
 
         assertTrue(whitelist.isReserved(BASE_LABEL_A));
@@ -367,7 +359,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
         vm.expectRevert(
             abi.encodeWithSelector(IDotnsNameWhitelist.NotReserved.selector, _nodeOf(BASE_LABEL_A))
         );
-        vm.prank(owner);
         whitelist.setReserved(BASE_LABEL_A, false);
     }
 
@@ -433,7 +424,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
         uint64 closeAt = openAt + 5 days;
         vm.expectEmit(false, false, false, true, address(whitelist));
         emit IDotnsNameWhitelist.WindowSet(openAt, closeAt);
-        vm.prank(owner);
         whitelist.setWindow(1 days, 5 days);
         (uint64 gotOpen, uint64 gotClose) = whitelist.window();
         assertEq(gotOpen, openAt);
@@ -443,7 +433,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
     function test_isWindowOpen_tracks_the_window() public {
         uint64 openAt = uint64(block.timestamp) + 1 days;
         uint64 closeAt = openAt + 1 days;
-        vm.prank(owner);
         whitelist.setWindow(1 days, 1 days);
         assertFalse(whitelist.isWindowOpen());
         vm.warp(openAt);
@@ -454,7 +443,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
 
     function test_setWindow_reverts_for_zero_duration() public {
         vm.expectRevert(IDotnsNameWhitelist.BadWindow.selector);
-        vm.prank(owner);
         whitelist.setWindow(1 days, 0);
     }
 
@@ -497,7 +485,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
     function test_setMaxClaimants_enforced() public {
         vm.expectEmit(false, false, false, true, address(whitelist));
         emit IDotnsNameWhitelist.MaxClaimantsSet(1);
-        vm.prank(owner);
         whitelist.setMaxClaimants(1);
         assertEq(whitelist.maxClaimants(), 1);
 
@@ -515,18 +502,15 @@ contract DotnsNameWhitelistTests is BaseDotns {
         uint16 aboveLimit = DotnsConstants.WHITELIST_MAX_CLAIMANTS_LIMIT + 1;
 
         vm.expectRevert(IDotnsNameWhitelist.MaxClaimantsOutOfRange.selector);
-        vm.prank(owner);
         whitelist.setMaxClaimants(0);
 
         vm.expectRevert(IDotnsNameWhitelist.MaxClaimantsOutOfRange.selector);
-        vm.prank(owner);
         whitelist.setMaxClaimants(aboveLimit);
     }
 
     function test_setMaxReasonBytes_enforced() public {
         vm.expectEmit(false, false, false, true, address(whitelist));
         emit IDotnsNameWhitelist.MaxReasonBytesSet(4);
-        vm.prank(owner);
         whitelist.setMaxReasonBytes(4);
         assertEq(whitelist.maxReasonBytes(), 4);
 
@@ -539,18 +523,15 @@ contract DotnsNameWhitelistTests is BaseDotns {
         uint256 aboveLimit = DotnsConstants.WHITELIST_MAX_REASON_LIMIT + 1;
 
         vm.expectRevert(IDotnsNameWhitelist.MaxReasonBytesOutOfRange.selector);
-        vm.prank(owner);
         whitelist.setMaxReasonBytes(0);
 
         vm.expectRevert(IDotnsNameWhitelist.MaxReasonBytesOutOfRange.selector);
-        vm.prank(owner);
         whitelist.setMaxReasonBytes(aboveLimit);
     }
 
     function test_setMaxGrantBatch_enforced() public {
         vm.expectEmit(false, false, false, true, address(whitelist));
         emit IDotnsNameWhitelist.MaxGrantBatchSet(1);
-        vm.prank(owner);
         whitelist.setMaxGrantBatch(1);
         assertEq(whitelist.maxGrantBatch(), 1);
 
@@ -565,11 +546,9 @@ contract DotnsNameWhitelistTests is BaseDotns {
         uint16 aboveLimit = DotnsConstants.WHITELIST_MAX_GRANT_BATCH_LIMIT + 1;
 
         vm.expectRevert(IDotnsNameWhitelist.MaxGrantBatchOutOfRange.selector);
-        vm.prank(owner);
         whitelist.setMaxGrantBatch(0);
 
         vm.expectRevert(IDotnsNameWhitelist.MaxGrantBatchOutOfRange.selector);
-        vm.prank(owner);
         whitelist.setMaxGrantBatch(aboveLimit);
     }
 
@@ -577,7 +556,6 @@ contract DotnsNameWhitelistTests is BaseDotns {
     function test_setMaxClaimants_reverts_for_a_signed_caller() public {
         _mockOriginIsRoot(false);
         vm.expectRevert(IDotnsNameWhitelist.NotGovernance.selector);
-        vm.prank(owner);
         whitelist.setMaxClaimants(10);
     }
 

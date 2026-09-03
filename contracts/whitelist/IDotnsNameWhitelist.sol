@@ -239,8 +239,8 @@ interface IDotnsNameWhitelist {
     function revokeName(string calldata label) external;
 
     /// @notice Reserves or releases `label`.
-    /// @dev Restricted to Root or the owner. Reserving requires the name Open and clears any
-    /// pending claims, rejecting each; releasing requires it `Reserved`. @custom:reverts
+    /// @dev Restricted to a substrate Root dispatch. Reserving requires the name Open and clears
+    /// any pending claims, rejecting each; releasing requires it `Reserved`. @custom:reverts
     /// NameNotOpen or @custom:reverts NotReserved. @custom:emits NameReserved or @custom:emits
     /// NameUnreserved. @param label Bare label.
     /// @param reserved True to reserve, false to release.
@@ -256,14 +256,14 @@ interface IDotnsNameWhitelist {
     function consume(string calldata label, address registrant) external;
 
     /// @notice Sets the request window relative to the current time.
-    /// @dev Restricted to Root or the owner. Opens at `block.timestamp + startsIn` for `duration`.
-    /// @custom:reverts BadWindow when `duration` is zero. @custom:emits WindowSet.
+    /// @dev Restricted to a substrate Root dispatch. Opens at `block.timestamp + startsIn` for
+    /// `duration`. @custom:reverts BadWindow when `duration` is zero. @custom:emits WindowSet.
     /// @param startsIn Seconds from now until requests start being accepted.
     /// @param duration Seconds the window stays open.
     function setWindow(uint64 startsIn, uint64 duration) external;
 
     /// @notice Sets the live-claim cap per name.
-    /// @dev Restricted to Root or the owner. The cap is bounded by
+    /// @dev Restricted to a substrate Root dispatch. The cap is bounded by
     /// `DotnsConstants.WHITELIST_MAX_CLAIMANTS_LIMIT`, which bounds the resolution clear-loop.
     /// @custom:reverts MaxClaimantsOutOfRange when `newMax` is zero or above the ceiling.
     /// @custom:emits MaxClaimantsSet.
@@ -271,14 +271,14 @@ interface IDotnsNameWhitelist {
     function setMaxClaimants(uint16 newMax) external;
 
     /// @notice Sets the reason byte cap.
-    /// @dev Restricted to Root or the owner, bounded by
+    /// @dev Restricted to a substrate Root dispatch, bounded by
     /// `DotnsConstants.WHITELIST_MAX_REASON_LIMIT`. @custom:reverts MaxReasonBytesOutOfRange when
     /// `newMax` is zero or above the ceiling. @custom:emits MaxReasonBytesSet.
     /// @param newMax New reason byte cap.
     function setMaxReasonBytes(uint256 newMax) external;
 
     /// @notice Sets the cap on labels per `grantNames` call.
-    /// @dev Restricted to Root or the owner, bounded by
+    /// @dev Restricted to a substrate Root dispatch, bounded by
     /// `DotnsConstants.WHITELIST_MAX_GRANT_BATCH_LIMIT`. @custom:reverts MaxGrantBatchOutOfRange
     /// when `newMax` is zero or above the ceiling. @custom:emits MaxGrantBatchSet.
     /// @param newMax New batch cap.
