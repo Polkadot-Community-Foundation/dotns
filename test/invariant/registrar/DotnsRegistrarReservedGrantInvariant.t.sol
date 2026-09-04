@@ -26,7 +26,7 @@ contract DotnsRegistrarReservedGrantInvariantTest is BaseDotns {
         handler.addActor(ed);
         handler.addActor(leonardo);
         handler.addActor(tiago);
-        // Seed one grant so the non-vacuity guards always have a target.
+        // Seed one grant so `mintGranted` has a target from the very first call.
         handler.grantName(0);
 
         targetContract(address(handler));
@@ -50,9 +50,11 @@ contract DotnsRegistrarReservedGrantInvariantTest is BaseDotns {
         excludeContract(address(popRules));
     }
 
-    /// @notice The campaign must actually grant and attempt, otherwise the gate invariants below
-    /// would hold vacuously over an empty set.
-    function invariant_reserved_grant_coverage_is_non_vacuous() public view {
+    /// @notice The campaign must actually grant, mint and attempt, otherwise the gate invariants
+    /// below would hold vacuously over an empty set. Coverage cannot be an `invariant_` function:
+    /// those are also evaluated once before the first action, where every counter is still zero.
+    /// `afterInvariant` runs at the end of each run, once the sequence has been played out.
+    function afterInvariant() public view {
         assertGt(handler.grantCount(), 0, "no grant was ever issued");
         assertGt(handler.mintCount(), 0, "no grant was ever minted");
         assertGt(handler.ungrantedAttemptCount(), 0, "the ungranted path was never exercised");
