@@ -351,18 +351,17 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_entry_point_format_rejections() public {
         _grantPopFull(ed);
 
-        // `reserveLiteName` admits priceWithCheck first because "michael"
-        // classifies as PopFull and ed is PopFull; the isLitePersonLabel
-        // guard then rejects the zero trailing digits.
+        // The shape check runs before any pricing, so "michael" is rejected for carrying no
+        // separator rather than for anything about its tier.
         vm.expectRevert(IDotnsPopController.InvalidLiteLabel.selector);
         _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({liteLabel: "michael", user: ed, chatKey: ""})
         );
 
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xaa));
-        // Multi-label string fails the canonical-label guard inside
-        // PopRules.priceWithCheck before reaching the controller's own
-        // isSingleLabel check.
+        // A multi-label string is neither a DNS label nor a lite label, so it fails the guard
+        // inside PopRules.classifyName before reaching the controller's own isSingleLabel
+        // check.
         vm.expectPartialRevert(IPopRules.PopError.selector);
         _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: "not.valid", user: ed, link: link})
@@ -395,8 +394,8 @@ contract DotnsPopControllerTests is BaseDotns {
 
     function test_gateway_reserved_name_rejects_public_register_by_other_user() public {
         _grantPopFull(tiago);
-        // Gateway reserves the bare stem; PopRules.priceWithCheck strips the two
-        // trailing digits from "longnamebob01" and matches against reservations["longnamebob"].
+        // The gateway reserves the stem, and the stem is what the reservation blocks: a public
+        // registrant contends for `longnamebob` itself.
         _reservePop(tiago, LITE_LABEL_A, _validChatKey(0x11), "longnamebob");
 
         (address holder,) = popRules.getBaseNameReservation("longnamebob");
@@ -405,7 +404,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // public controller pulls the price during register. We therefore drive
         // the commit-reveal flow by hand so the expectRevert cheatcode lands on
         // the register call rather than on makeCommitment (a view).
-        string memory label = "longnamebob01";
+        string memory label = "longnamebob";
         bytes32 secret = keccak256(abi.encodePacked(label, ed, block.timestamp));
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
@@ -435,8 +434,21 @@ contract DotnsPopControllerTests is BaseDotns {
         _grantPopFull(tiago);
         _reservePop(tiago, LITE_LABEL_A, _validChatKey(0x11), "longnamebob");
 
-        _commitAndRegister("longnamebob01", tiago, true);
-        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebob01"))), tiago);
+        _commitAndRegister("longnamebob", tiago, true);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebob"))), tiago);
+    }
+
+    /// @notice A digit-suffixed spelling of a reserved stem is an unrelated name.
+    /// @dev The reservation covers `longnamebob`. `longnamebob01` is measured as written, so it
+    ///      shares no stem with it and a stranger may take it. This is the guarantee that
+    ///      replaces the old cross-flow, where the two spellings collided.
+    function test_gateway_reservation_does_not_cover_a_digit_suffixed_name() public {
+        _grantPopFull(tiago);
+        _reservePop(tiago, LITE_LABEL_A, _validChatKey(0x11), "longnamebob");
+
+        _grantPopFull(ed);
+        _commitAndRegister("longnamebob01", ed, true);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebob01"))), ed);
     }
 
     function test_second_pop_lite_mint_of_same_label_reverts_at_registrar() public {
@@ -460,17 +472,18 @@ contract DotnsPopControllerTests is BaseDotns {
     }
 
     function test_public_register_after_pop_full_mint_reverts_at_registrar() public {
-        // "longnamebob01" is classification-NoStatus, so ed keeps default status.
+        // "longnamebobx" is classification-NoStatus, so ed keeps default status. A full-person
+        // label carries no digit suffix.
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xcf));
         _rootRegisterBaseName(
-            IDotnsPopController.FullRegistration({label: "longnamebob01", user: ed, link: link})
+            IDotnsPopController.FullRegistration({label: "longnamebobx", user: ed, link: link})
         );
 
-        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebob01"))), ed);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebobx"))), ed);
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: "longnamebob01",
+                label: "longnamebobx",
                 owner: tiago,
                 secret: keccak256("secret"),
                 reserved: true,
@@ -483,12 +496,12 @@ contract DotnsPopControllerTests is BaseDotns {
         dotnsRegistrarController.commit(commitment);
         vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
 
-        uint256 price = popRules.priceWithCheck("longnamebob01", tiago).price;
+        uint256 price = popRules.priceWithCheck("longnamebobx", tiago).price;
 
         vm.prank(tiago);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IDotnsRegistrarController.NameNotAvailable.selector, "longnamebob01"
+                IDotnsRegistrarController.NameNotAvailable.selector, "longnamebobx"
             )
         );
         dotnsRegistrarController.register{value: price}(registration);
@@ -602,8 +615,9 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_reserveBaseName_reverts_when_reserved_label_already_registered() public {
         // George worked example: ed reserves and then claims the base name, which frees the
         // stem slot on PopRules. A later lite candidate must not be able to queue a reservation
-        // over the now-registered name; the queue keys by stem, so an unclaimable reservation
-        // would lock every two-digit variant of the stem for the full reservation window.
+        // over the now-registered name: the queue keys by stem, so an unclaimable reservation
+        // would hold that stem for the full reservation window and block every lite name built
+        // on it.
         _grantPopFull(ed);
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0xaa), "longnamebob");
         _rootRegisterBaseName(
@@ -617,18 +631,24 @@ contract DotnsPopControllerTests is BaseDotns {
         _reservePop(tiago, LITE_LABEL_B, _validChatKey(0xbb), "longnamebob");
     }
 
-    function test_public_stranger_can_mint_after_claim_clears_reservation() public {
+    /// @dev Claiming the stem takes the name, so nothing is left for a stranger to register.
+    ///      What the claim releases is the reservation slot on PopRules, which is what this
+    ///      asserts; a digit-suffixed spelling would prove nothing, being an unrelated name.
+    function test_claim_clears_the_reservation_slot() public {
         _grantPopFull(ed);
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0xaa), "longnamebob");
+
+        (address beforeClaim,) = popRules.getBaseNameReservation("longnamebob");
+        assertEq(beforeClaim, ed, "reserved for the claimant");
 
         IDotnsPopController.Link memory link = _linkWithLite(LITE_LABEL_A);
         _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: "longnamebob", user: ed, link: link})
         );
-        // Now the stem is clear on PopRules, so tiago can register the
-        // digit-suffixed variant "longnamebob01" via the public flow.
-        _commitAndRegister("longnamebob01", tiago, true);
-        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebob01"))), tiago);
+
+        (address afterClaim,) = popRules.getBaseNameReservation("longnamebob");
+        assertEq(afterClaim, address(0), "slot released by the claim");
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebob"))), ed);
     }
 
     function test_public_stranger_can_mint_after_reservation_expires() public {
@@ -638,8 +658,9 @@ contract DotnsPopControllerTests is BaseDotns {
         vm.warp(block.timestamp + dotnsPopController.reservationDuration() + 1);
         dotnsPopController.expireReservation("longnamebob");
 
-        _commitAndRegister("longnamebob01", tiago, true);
-        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebob01"))), tiago);
+        _grantPopFull(tiago);
+        _commitAndRegister("longnamebob", tiago, true);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("longnamebob"))), tiago);
     }
 
     function test_registered_controller_without_root_origin_cannot_enter_pop_flow() public {

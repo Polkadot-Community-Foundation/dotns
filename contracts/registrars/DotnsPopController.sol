@@ -47,11 +47,13 @@ import {SystemUtils} from "../utils/SystemUtils.sol";
 /// commit-reveal controller is equally unaware of this one. Cross-flow collision handling
 /// relies on two distinct properties, neither of which requires the two controllers to know
 /// about each other:
-/// (1) Lite-person labels (`stem.NN`) occupy a namespace the public path cannot reach: a
-/// separator and a digit suffix are legal only on a lite label, so a lite name has no flat
-/// spelling for a public registrant to take. The two flows therefore cannot contend for the
-/// same label at all, and a reader can take a separator as meaning
-/// exactly one thing.
+/// (1) Lite-person labels (`stem.NN`) occupy a namespace the public path cannot reach: the
+/// separator is legal only on a lite label, and the public path rejects it, so no public
+/// registration can spell one. A digit suffix is not exclusive, but an ordinary label carrying
+/// one is measured as written and so is simply a different name. The two flows therefore cannot
+/// contend for the same label. This holds of labels the contracts minted, not of an arbitrary
+/// string: a subname stored under a digit-only parent reads the same way, which is why
+/// provenance is published through @custom:function isPopIssued rather than inferred.
 /// (2) Base-name reservations are synchronised into `IPopRules`. The head of this
 /// controller's reservation queue is written through `IPopRules.reserveBaseNameForPop` on
 /// every head transition; the slot is cleared through `IPopRules.releaseBaseName` when the
@@ -262,11 +264,11 @@ contract DotnsPopController is
         _advanceExpiredHead(labelhash);
 
         // Cross-flow guard: after the local queue has had a chance to release its own
-        // PopRules slot via head-advance, any remaining live slot belongs to a sibling
-        // controller (the public commit-reveal flow's PopLite-to-PopLite path). Reject
-        // when held by another user so PopRules is the single cross-flow authority in
-        // both directions; the public flow already gates on this slot through
-        // `priceWithCheck`.
+        // PopRules slot via head-advance, any remaining live slot was written by a sibling
+        // controller. Reject when held by another user so PopRules stays the single
+        // cross-flow authority in both directions; the public flow reads this slot through
+        // `priceWithCheck`. The public controller's own write is gated on a PopLite price, and
+        // PopLite is the separated form, which that path cannot submit, so it never writes.
         (bool slotLive, address slotOwner,) = rules.isBaseNameReserved(label);
         require(!slotLive || slotOwner == user, NotHolder(user, labelhash));
 
@@ -625,7 +627,8 @@ contract DotnsPopController is
     /// flow) can still settle their pending claim without bricking on `LabelAlreadyExists`.
     /// @param store Owner's `LabelStore` proxy.
     /// @param node `namehash(labelhash)` for the entry.
-    /// @param label Bare DNS label (no TLD); the TLD is appended on write.
+    /// @param label Bare label without the TLD, which is appended on write. A lite label
+    /// carries its separator, so this is not always a single DNS label.
     function _writeRecord(address store, bytes32 node, string memory label) internal {
         if (ILabelStore(store).isLocked(node)) return;
         ILabelStore(store).storeLabel(node, string.concat(label, protocolRegistry.tld()));
@@ -764,7 +767,7 @@ contract DotnsPopController is
         }
     }
 
-    /// @notice Validates a lite-person `NAMEXX` label and derives `(labelhash, node)`.
+    /// @notice Validates a lite-person `stem.NN` label and derives `(labelhash, node)`.
     function _validateLiteLabel(string memory liteLabel)
         internal
         view

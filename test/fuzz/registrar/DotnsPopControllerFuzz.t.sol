@@ -17,8 +17,8 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 ///      property assertion the fuzzer explores across inputs.
 contract DotnsPopControllerFuzz is BaseDotns {
     // Render `value` as a decimal string padded to at least two digits. Callers bound
-    // `value` to `[0, 99]` so the resulting suffix matches the `NAMEXX` contract used
-    // throughout the PoP controller tests.
+    // `value` to `[0, 99]` so the suffix is exactly two digits, which the `stem.NN` shape
+    // requires.
     function _twoDigitDecimal(uint256 value) internal pure returns (string memory s) {
         if (value < 10) {
             return string.concat("0", StringUtils.uintToString(value));

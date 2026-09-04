@@ -81,8 +81,9 @@ contract PopControllerHandler is Test {
         actors = actors_;
         // baselength 8, no trailing digits: PopFull classification.
         baseLabels.push("alicebob");
-        // baselength 10, 2 trailing digits: NoStatus classification.
-        baseLabels.push("wonderland01");
+        // length 12, no trailing digits: NoStatus classification. A reservable base label
+        // keys the reservation queue, which only ever holds a digit-free stem.
+        baseLabels.push("wonderlandxy");
         // baselength 10, no trailing digits: NoStatus classification.
         baseLabels.push("carolcarol");
 
@@ -340,14 +341,13 @@ contract PopControllerHandler is Test {
     }
 
     /// @notice Builds a classification-valid PoP lite label.
-    /// @dev Shape: `<tag><4 letters from actor><2 digits>`. Total baselength
-    ///      is 7 with exactly 2 trailing digits, which classifies as PopLite
-    ///      under PopRules. Tag disambiguates the reserve vs claim call sites
-    ///      so neither collides with the other in the ERC721 namespace. The
-    ///      letter block is derived from the actor address via keccak so each
-    ///      actor lives in its own lite namespace. Suffix wraps modulo 100 so
-    ///      the label stays within the 2-trailing-digit rule; collisions past
-    ///      100 reuses are swallowed by the caller's try/catch.
+    /// @dev Shape: `<tag><4 letters from actor>.<2 digits>`, the separated form the gateway
+    ///      accepts. The stem is 7 characters, which classifies as PopLite under PopRules, and
+    ///      the separator and digits are the suffix. Tag disambiguates the reserve vs claim call
+    ///      sites so neither collides with the other in the ERC721 namespace. The letter block
+    ///      is derived from the actor address via keccak so each actor lives in its own lite
+    ///      namespace. Suffix wraps modulo 100 so the label keeps exactly two digits;
+    ///      collisions past 100 reuses are swallowed by the caller's try/catch.
     function _buildLiteLabel(
         string memory tag,
         address actor,
@@ -366,7 +366,7 @@ contract PopControllerHandler is Test {
         uint256 twoDigit = uint256(suffix) % 100;
         string memory digits =
             twoDigit < 10 ? string.concat("0", vm.toString(twoDigit)) : vm.toString(twoDigit);
-        label = string.concat(tag, string(letters), digits);
+        label = string.concat(tag, string(letters), ".", digits);
     }
 
     /// @notice Selects an actor from the pool with wrap-around indexing.

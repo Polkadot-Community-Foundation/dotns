@@ -173,10 +173,10 @@ abstract contract BaseDotns is Test {
     /// @notice PoP full classification label fixture C.
     string internal constant BASE_LABEL_C = "carolboy";
 
-    // baselength >= 9 classifies as NoStatus with no suffix or exactly two trailing digits.
-    /// @notice NoStatus classification label fixture A. Nine-character stem, so it prices at D.
+    // Measured whole at 11, which is 9 or more, so these classify as NoStatus.
+    /// @notice NoStatus classification label fixture A. Eleven characters, measured whole.
     string internal constant NOSTATUS_LABEL_A = "nostatusa01";
-    /// @notice NoStatus classification label fixture B. Nine-character stem, so it prices at D.
+    /// @notice NoStatus classification label fixture B. Eleven characters, measured whole.
     string internal constant NOSTATUS_LABEL_B = "nostatusb02";
 
     /// @notice The bare TLD label the whole suite runs against.

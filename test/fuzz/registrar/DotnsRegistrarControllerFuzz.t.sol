@@ -88,9 +88,9 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
 
     function testFuzz_register_refunds_overpayment_inline(uint256 extra, uint256 salt) public {
         address registrant = tiago;
-        string memory nameLabel = _labelPopLitePriced(bound(salt, 0, 64));
+        string memory nameLabel = _labelPopFullPriced(bound(salt, 0, 64));
 
-        _grantPopLite(registrant);
+        _grantPopFull(registrant);
 
         IDotnsRegistrarController.Registration memory registration =
             _commitFor(nameLabel, registrant, false);
@@ -402,15 +402,16 @@ contract DotnsRegistrarControllerFuzzTest is BaseDotns {
         return string(abi.encodePacked("popful", _uintToAlphaFixed(salt, 2)));
     }
 
-    /// @notice Generate a NoStatus label with a nine-character stem, so it prices at the base
-    ///         fee D on the curve.
+    /// @notice Generate an 11-character NoStatus label, measured whole, so it prices at the
+    ///         base fee D on the curve.
     function _labelNoStatusPriced(uint256 salt) internal pure returns (string memory label) {
         return string(abi.encodePacked("nostatu", _uintToAlphaFixed(salt, 2), "01"));
     }
 
-    /// @notice Generate an 8-char PopLite-tier label (base length 6) that prices at 8D on the
-    ///         curve, so the amount is non-zero.
-    function _labelPopLitePriced(uint256 salt) internal pure returns (string memory label) {
+    /// @notice Generate an 8-character PopFull-tier label, measured whole, that prices above
+    ///         the floor so the amount is non-zero. A public fixture cannot be PopLite: that is
+    ///         the gateway's separated form and this path rejects a separator.
+    function _labelPopFullPriced(uint256 salt) internal pure returns (string memory label) {
         return string(abi.encodePacked("free", _uintToAlphaFixed(salt, 2), "01"));
     }
 

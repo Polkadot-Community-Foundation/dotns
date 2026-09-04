@@ -225,36 +225,23 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         assertTrue(ownerStore.isLocked(node));
     }
 
-    function test_register_poplite_reserves_base_name() public {
+    /// @notice A public registration reserves no stem, because no public label is PopLite.
+    /// @dev The stem reserve in `register` is gated on `priced.status == PopLite`, and PopLite is
+    ///      the gateway's separated form, which the public path cannot submit. So the branch is
+    ///      unreachable and a public registration leaves PopRules untouched. Asserted rather
+    ///      than deleted so that making PopLite publicly reachable again cannot silently
+    ///      reintroduce a reservation nobody expects.
+    function test_public_register_reserves_no_base_name() public {
         string memory nameLabel = "lights01";
         address nameOwner = ed;
 
-        _grantPopLite(nameOwner);
-        vm.startPrank(nameOwner);
+        _grantPopFull(nameOwner);
+        _commitAndRegister(nameLabel, nameOwner, true);
 
-        bytes32 secret = keccak256(abi.encodePacked(nameLabel, nameOwner, "lite"));
-        IDotnsRegistrarController.Registration memory registration =
-            IDotnsRegistrarController.Registration({
-                label: nameLabel,
-                owner: nameOwner,
-                secret: secret,
-                reserved: true,
-                maxPrice: type(uint256).max,
-                pricingVersion: popRules.pricingVersion()
-            });
+        assertEq(dotnsRegistrar.ownerOf(_tokenIdForLabel(nameLabel)), nameOwner);
 
-        bytes32 commitment = dotnsRegistrarController.makeCommitment(registration);
-        dotnsRegistrarController.commit(commitment);
-
-        vm.warp(block.timestamp + dotnsRegistrarController.minCommitmentAge() + 1);
-
-        uint256 registrationPrice = popRules.priceWithCheck(nameLabel, nameOwner).price;
-        dotnsRegistrarController.register{value: registrationPrice}(registration);
-        vm.stopPrank();
-
-        (bool isReserved, address reservationOwner,) = popRules.isBaseNameReserved("lights");
-        assertTrue(isReserved);
-        assertEq(reservationOwner, nameOwner);
+        (bool isReserved,,) = popRules.isBaseNameReserved(popRules.stripDigits(nameLabel));
+        assertFalse(isReserved, "no stem reserved by a public registration");
     }
 
     function test_register_does_not_overwrite_third_party_reverse_record() public {

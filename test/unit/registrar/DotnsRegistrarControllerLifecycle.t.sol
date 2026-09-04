@@ -19,13 +19,16 @@ import {ReentrantOverpaymentAttacker} from "../../helpers/ReentrantOverpaymentAt
 ///         escrow-position seeding, callback ordering, pull-payment refunds,
 ///         and reentrancy guarding.
 contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
-    function test_register_reclaim_succeeds_for_new_poplite_owner() public {
+    /// @dev The subject is the reclaim path, not the tier: release to escrow, withdraw, let the
+    ///      redeem window elapse, then a new owner reclaims. PopFull because `lights01` is
+    ///      measured whole at eight characters and no public label reaches PopLite.
+    function test_register_reclaim_succeeds_for_new_owner() public {
         string memory label = "lights01";
 
         address originalOwner = ed;
         address newOwner = leonardo;
-        _grantPopLite(originalOwner);
-        _grantPopLite(newOwner);
+        _grantPopFull(originalOwner);
+        _grantPopFull(newOwner);
 
         _commitAndRegister(label, originalOwner, true);
 
@@ -44,9 +47,8 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         // Reclaim opens on the redeem window elapsing, not on the withdrawal landing.
         vm.warp(block.timestamp + ESCROW_REDEEM_WINDOW + 1);
 
-        // Inline the new owner's commit-reveal because BaseDotns helpers quote
-        // priceWithCheck up-front, which reverts against the stale reservation.
-        // The controller's reclaim path is what garbage-collects the slot.
+        // Inline the new owner's commit-reveal so the register call is made directly, rather
+        // than through a helper that quotes priceWithCheck up-front.
         bytes32 secret = keccak256("new-owner-reclaim");
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
@@ -67,9 +69,10 @@ contract DotnsRegistrarControllerLifecycleTest is BaseDotns {
         dotnsRegistrarController.register{value: registrationPrice}(registration);
 
         assertEq(dotnsRegistrar.ownerOf(tokenId), newOwner);
-        (bool isReserved, address reservationOwner,) = popRules.isBaseNameReserved("lights");
-        assertTrue(isReserved, "new owner's reservation must take over");
-        assertEq(reservationOwner, newOwner, "stale reservation must not block reclaim");
+        // A public registration reserves no stem, so reclaim has no slot to take over and none
+        // to garbage-collect.
+        (bool isReserved,,) = popRules.isBaseNameReserved(popRules.stripDigits(label));
+        assertFalse(isReserved, "no stem reserved by either registration");
     }
 
     function test_register_cross_payer_charges_max_not_sum_of_price_and_reach() public {

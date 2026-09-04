@@ -40,7 +40,7 @@ interface IDotnsPopController is IDotnsController {
     }
 
     /// @notice Tagged union selecting the chat-key source for a full-person registration.
-    /// @param liteLabel Lite-person `NAMEXX` label (only read when `kind == LiteUsername`).
+    /// @param liteLabel Lite-person `stem.NN` label (only read when `kind == LiteUsername`).
     /// @param chatKey Chat key bytes (only read when `kind == None`).
     struct Link {
         LinkKind kind;
@@ -83,7 +83,8 @@ interface IDotnsPopController is IDotnsController {
     /// keeps stashing entries until a signed-origin @custom:function settlePendingClaims deploys
     /// the store and settles the entries. Each entry's deadline is measured from its own
     /// `mintedAt` against `reservationDuration`.
-    /// @param label Bare DNS label (no TLD); the TLD is appended at settlement time.
+    /// @param label Bare label without the TLD, which is appended at settlement time. A lite
+    /// claim carries its separator, so this is not always a single DNS label.
     /// @param mintedAt Timestamp of the originating mint.
     struct PendingClaim {
         string label;
@@ -94,7 +95,7 @@ interface IDotnsPopController is IDotnsController {
     /// @dev Single struct so the gateway can ABI-encode one tuple as the cross-chain payload
     /// and the contract decodes it directly out of `msg.data`. All fields are required;
     /// `chatKey` may be empty bytes to skip the resolver write.
-    /// @param liteLabel Lite-person `NAMEXX` label being minted.
+    /// @param liteLabel Lite-person `stem.NN` label being minted.
     /// @param user Beneficiary account on this chain.
     /// @param chatKey Chat-key bytes persisted on the PoP resolver. Empty leaves the slot unset.
     struct LiteRegistration {
@@ -198,7 +199,7 @@ interface IDotnsPopController is IDotnsController {
     ///      and reading `msg.sender` under one traps.
     error NotRoot();
 
-    /// @notice Thrown when a supplied lite-person label does not match `NAMEXX`.
+    /// @notice Thrown when a supplied lite-person label does not match `stem.NN`.
     error InvalidLiteLabel();
 
     /// @notice Thrown when a supplied base label is not a canonical DNS label.
@@ -327,7 +328,7 @@ interface IDotnsPopController is IDotnsController {
     /// new entry inherits its key from a prior lite-person username. The fresh-key branch
     /// rejects a chat key whose length is neither zero nor `CHAT_KEY_LENGTH` (otherwise
     /// @custom:reverts InvalidChatKey). The `LiteUsername` branch validates the lite label's
-    /// `NAMEXX` shape (otherwise @custom:reverts InvalidLiteLabel), requires the registrant to
+    /// `stem.NN` shape (otherwise @custom:reverts InvalidLiteLabel), requires the registrant to
     /// own the lite token (otherwise @custom:reverts LiteLabelNotOwnedByUser), reads the lite
     /// node's chat key from the resolver and copies it across; if the lite node carries no chat
     /// key the inherited value is empty and the full node's chat-key write is silently skipped

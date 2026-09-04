@@ -144,7 +144,8 @@ interface IDotnsPopLens {
     /// @dev Resolves the node internally, so a caller holding only the string needs no namehash
     /// implementation. Never reverts on an unknown name: absent fields read as zero or empty.
     /// This overload can populate `fullClaim` because it holds the label and so its labelhash.
-    /// @param name Bare DNS label (no TLD).
+    /// @param name Bare label without the TLD. A lite label carries its separator and resolves
+    /// here too, since the node is the hash of the whole string.
     /// @return detail The name's record; see @custom:struct NameDetail.
     function nameDetail(string calldata name) external view returns (NameDetail memory detail);
 

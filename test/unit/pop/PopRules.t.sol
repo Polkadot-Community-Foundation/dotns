@@ -4,6 +4,7 @@ pragma solidity ^0.8.34;
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {PopRules, IPopRules} from "../../../contracts/pop/PopRules.sol";
 import {IDotnsController} from "../../../contracts/registrars/IDotnsController.sol";
+import {IDotnsPricing} from "../../../contracts/pop/IDotnsPricing.sol";
 import {
     DotnsProtocolRegistry,
     IDotnsProtocolRegistry
@@ -90,10 +91,20 @@ contract PopRulesTests is BaseDotns {
     }
 
     /// @dev The gateway's suffix is not part of the name the candidate chose, so a lite label
-    ///      prices as its stem. Its flat spelling is a different, longer name and prices as one.
-    function test_a_lite_suffix_prices_as_its_stem() public view {
-        assertEq(popRules.price("andrew.01"), popRules.price("andrew"));
-        assertTrue(popRules.price("andrew01") != popRules.price("andrew"));
+    ///      prices as its stem, while its flat spelling is a different, longer name. The flat
+    ///      launch model charges one deposit at every length, so the rule is only observable on
+    ///      a length-sensitive curve; this switches to the scarcity model to see it.
+    function test_a_lite_suffix_prices_as_its_stem() public {
+        vm.startPrank(owner);
+        costModelRegistry.register(IDotnsPricing(address(scarcityPricing)));
+        costModelRegistry.setCurrentVersion(scarcityPricing.version());
+        vm.stopPrank();
+
+        assertEq(popRules.price("andrew.01"), popRules.price("andrew"), "lite prices as its stem");
+        assertTrue(
+            popRules.price("andrew01") != popRules.price("andrew"),
+            "the flat spelling is a longer name"
+        );
     }
 
     function test_verified_person_pays_the_deposit_for_premium() public {
