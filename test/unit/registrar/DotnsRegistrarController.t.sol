@@ -250,12 +250,10 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         dotnsRegistrarController.register(registration);
     }
 
-    /// @notice A public registration reserves no stem, because no public label is PopLite.
-    /// @dev The stem reserve in `register` is gated on `priced.status == PopLite`, and PopLite is
-    ///      the gateway's separated form, which the public path cannot submit. So the branch is
-    ///      unreachable and a public registration leaves PopRules untouched. Asserted rather
-    ///      than deleted so that making PopLite publicly reachable again cannot silently
-    ///      reintroduce a reservation nobody expects.
+    /// @notice A public registration reserves no stem.
+    /// @dev PopRules' reservation slot belongs to the gateway queue, and `register` writes none
+    ///      of its own. Pinned here because a stem the public path reserved silently would
+    ///      block the gateway's own registrant for the whole reservation window.
     function test_public_register_reserves_no_base_name() public {
         string memory nameLabel = "lights01";
         address nameOwner = ed;

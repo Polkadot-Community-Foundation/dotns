@@ -13,18 +13,17 @@ library StringUtils {
     using Strings for address;
 
     /// @notice Number of digits in a lite-person PoP label's suffix.
-    /// @dev Mirrors `pallet_resources::MIN_LITE_USERNAME_DIGITS` to avoid drift between what
-    ///      People Chain emits and what DotNS accepts. The pallet treats the value as a
-    ///      minimum; DotNS requires exactly this many, so a three-digit suffix is rejected
-    ///      here even though the pallet would accept it.
-    uint256 internal constant MIN_LITE_SUFFIX_DIGITS = 2;
+    /// @dev The count the gateway emits, and an exact requirement here: the separator sits at a
+    ///      fixed offset from the end, so a one or three digit suffix is rejected. The pallet
+    ///      reads its own constant as a minimum, so widening it there does not widen this.
+    uint256 internal constant LITE_SUFFIX_DIGITS = 2;
 
     /// @notice Maximum number of octets in a single DNS label.
     /// @dev RFC 1035 caps each label at 63 octets. Enforced inside @custom:function _isDnsLabel so
     ///      every public validator (@custom:function isSingleLabel, @custom:function isNamePath,
     ///      @custom:function isLitePersonLabel) inherits the bound and oversized labels never
     ///      reach the registrar. A lite label bounds its stem rather than the whole string, so
-    ///      it reaches `MAX_DNS_LABEL_OCTETS + MIN_LITE_SUFFIX_DIGITS + 1` octets. Its stem is
+    ///      it reaches `MAX_DNS_LABEL_OCTETS + LITE_SUFFIX_DIGITS + 1` octets. Its stem is
     ///      bounded here but checked in @custom:function _isLitePersonLabel, which is stricter
     ///      on charset than a DNS label: letters only.
     uint256 internal constant MAX_DNS_LABEL_OCTETS = 63;
@@ -83,7 +82,7 @@ library StringUtils {
     /// @notice Validates the lite-person PoP label format: `<stem>.<digits>`.
     /// @dev A lite-person label is a stem of lowercase ASCII letters, one
     ///      @custom:constant LABEL_SEPARATOR, then exactly
-    ///      @custom:constant MIN_LITE_SUFFIX_DIGITS digits (e.g. `joseph.42`). Letters only,
+    ///      @custom:constant LITE_SUFFIX_DIGITS digits (e.g. `joseph.42`). Letters only,
     ///      because the stem is the name a person chose and People Chain restricts that to
     ///      letters. How short a stem may be is policy rather than format, so it is left to the
     ///      governance-reserved band in @custom:function IPopRules.classifyName.
@@ -97,7 +96,7 @@ library StringUtils {
     ///      `joseph`. There is no flat spelling of a lite label for it to contend with.
     /// @param value Candidate label.
     /// @return isValid True if `value` is a stem of lowercase ASCII letters followed by a
-    ///         separator and exactly @custom:constant MIN_LITE_SUFFIX_DIGITS digits.
+    ///         separator and exactly @custom:constant LITE_SUFFIX_DIGITS digits.
     function isLitePersonLabel(string calldata value) internal pure returns (bool isValid) {
         return _isLitePersonLabel(bytes(value));
     }
@@ -108,7 +107,7 @@ library StringUtils {
     ///      store. Same predicate, different data location.
     /// @param value Candidate label held in memory.
     /// @return isValid True if `value` is a stem of lowercase ASCII letters followed by a
-    ///         separator and exactly @custom:constant MIN_LITE_SUFFIX_DIGITS digits.
+    ///         separator and exactly @custom:constant LITE_SUFFIX_DIGITS digits.
     function isLitePersonLabelMemory(string memory value) internal pure returns (bool isValid) {
         return _isLitePersonLabel(bytes(value));
     }
@@ -119,13 +118,13 @@ library StringUtils {
         // stem is not bounded below here: how short a name may be is policy, and PopRules
         // already holds it as the governance-reserved band. Mirroring People Chain's
         // `MinUsernameLength` would duplicate that and drift when the runtime changes it.
-        if (length < MIN_LITE_SUFFIX_DIGITS + 2) return false;
+        if (length < LITE_SUFFIX_DIGITS + 2) return false;
 
         // Fixing the separator's position is what enforces the exact digit count: a third
         // digit, a missing separator and a trailing separator all land a non-separator byte
         // here. The letters-only stem then admits no second separator, so exactly one is
         // possible without scanning for it.
-        uint256 separator = length - MIN_LITE_SUFFIX_DIGITS - 1;
+        uint256 separator = length - LITE_SUFFIX_DIGITS - 1;
         if (raw[separator] != LABEL_SEPARATOR) return false;
 
         // The stem is a name a person chose, so it follows the same letters-only rule as a

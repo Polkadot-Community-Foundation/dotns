@@ -224,7 +224,7 @@ contract DotnsPopController is
     /// which is the form People Chain holds, so no normalisation happens here. The shape check
     /// runs before classification so a malformed label reverts
     /// @custom:reverts InvalidLiteLabel, which the gateway pallet decodes by selector; letting
-    /// `_validateLiteLabel` catch it instead would surface an undecodable PopRules string.
+    /// `classifyName` catch it instead would surface an undecodable PopRules string.
     /// Takes the @custom:struct LiteRegistration struct directly so both call sites pass the same
     /// payload shape: the typed entrypoint forwards its own `params`, the `reserveBaseName`
     /// entrypoint forwards `params.lite`.
@@ -267,8 +267,7 @@ contract DotnsPopController is
         // PopRules slot via head-advance, any remaining live slot was written by a sibling
         // controller. Reject when held by another user so PopRules stays the single
         // cross-flow authority in both directions; the public flow reads this slot through
-        // `priceWithCheck`. The public controller's own write is gated on a PopLite price, and
-        // PopLite is the separated form, which that path cannot submit, so it never writes.
+        // `priceWithCheck` and writes none of its own.
         (bool slotLive, address slotOwner,) = rules.isBaseNameReserved(label);
         require(!slotLive || slotOwner == user, NotHolder(user, labelhash));
 
@@ -548,13 +547,8 @@ contract DotnsPopController is
         override(ERC165Upgradeable, IERC165)
         returns (bool)
     {
-        // Integrations built against the interface without `isPopIssued` probe a different id,
-        // so both are answered. An interface id is the XOR of its selectors, so the other one is
-        // derived by XORing that selector out rather than carried as a constant that could drift.
-        bytes4 legacyInterfaceId =
-            type(IDotnsPopController).interfaceId ^ IDotnsPopController.isPopIssued.selector;
         return interfaceId == type(IDotnsPopController).interfaceId
-            || interfaceId == legacyInterfaceId || super.supportsInterface(interfaceId);
+            || super.supportsInterface(interfaceId);
     }
 
     /// @notice Returns implementation version.

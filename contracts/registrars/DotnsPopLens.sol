@@ -108,16 +108,18 @@ contract DotnsPopLens is IDotnsPopLens {
     }
 
     /// @notice Whether `label` belongs in the lite listing (`wantLite`) or the full listing.
-    /// @dev Two questions, two signals. Whether a name is an identity at all is provenance, and
-    /// only the issuer knows it. Characters cannot answer it, and get it wrong in both
-    /// directions: a subname stored as `joseph.42` reads as a lite label, while a public
-    /// registration spelled `joseph42` reads as a full-person one. So each listing is gated on
-    /// @custom:function IDotnsPopController.isPopIssued, or each would admit its own impostor.
-    /// Which kind of identity it is, lite or full, is spelling: the gateway issues a lite name
-    /// with its separator and a full-person name without one, and provenance cannot tell them
-    /// apart because it covers both.
-    /// So the two listings together cover the names the gateway issued, one kind each, rather
-    /// than everything the account holds.
+    /// @dev Two questions, two signals, and a third guard the caller already applied. Whether a
+    /// name is an identity at all is provenance, so each listing is gated on
+    /// @custom:function IDotnsPopController.isPopIssued: characters alone would admit a public
+    /// registration spelled `joseph42`, which reads as a full-person name and is not one. Which
+    /// kind of identity it is, lite or full, is spelling: the gateway issues a lite name with
+    /// its separator and a full-person name without one, and provenance cannot tell them apart
+    /// because it covers both. A subname is excluded before either signal is read: the callers
+    /// keep only nodes the registrar says `user` owns, and a subname lives in the registry with
+    /// no token behind it. That matters because provenance is keyed by text, so a subname
+    /// rendering as `joseph.42` would otherwise borrow the answer belonging to the whole label.
+    /// So the two listings together cover the names the gateway issued and `user` holds, one
+    /// kind each, rather than everything the account holds.
     function _belongsToListing(string memory label, bool wantLite) internal view returns (bool) {
         if (!_controller().isPopIssued(label)) return false;
         return wantLite ? label.isLitePersonLabelMemory() : label.isSingleLabelMemory();

@@ -175,11 +175,10 @@ contract DotnsRegistrarController is
         string memory stem = rules.stripDigits(registration.label);
         bool stemCanonical = stem.isSingleLabelMemory();
         // Reclaim hands the name back from a prior occupant who may hold a sibling-controller's
-        // stem reservation; clear it so the new registrant's stem reserve at line 218 starts fresh.
-        // Non-reclaim paths intentionally leave an existing same-owner reservation in place so a
-        // sibling controller (e.g. the PoP queue head stamp) retains the slot's `controller` field
-        // through the refresh in `_writeReservation`. Replacing the slot from this controller
-        // would brick the sibling's release/advance paths.
+        // stem reservation, which is garbage once the name moves on, so clear it. Non-reclaim
+        // paths intentionally leave an existing reservation in place: the slot belongs to the
+        // sibling controller that wrote it (e.g. the PoP queue head stamp), and clearing it from
+        // here would brick that controller's release and advance paths.
         if (stemCanonical && isReclaim) {
             (address reservationOwner,) = rules.getBaseNameReservation(stem);
             address expectedOwner =
@@ -242,13 +241,6 @@ contract DotnsRegistrarController is
         }
 
         _settleEscrow(escrow, tokenId, registration.owner, isDirect, totalCharged);
-
-        if (
-            priced.status == IPopRules.PopStatus.PopLite
-                && priced.userStatus == IPopRules.PopStatus.PopLite && stemCanonical
-        ) {
-            rules.reserveBaseName(stem, registration.owner);
-        }
 
         if (msg.value > totalCharged) {
             uint256 refund = msg.value - totalCharged;

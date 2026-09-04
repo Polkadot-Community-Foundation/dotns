@@ -130,12 +130,14 @@ interface IPopRules {
     /// @return tier The account's personhood tier.
     function personhoodOf(address account) external view returns (PopStatus tier);
 
-    /// @notice Creates or refreshes a reservation entry for a PopLite-eligible stem.
-    /// @dev Commit-reveal reservation path. Only an authorised controller on the registrar may
-    ///      call this, otherwise @custom:reverts NotRegistry. The caller passes the
-    /// already-stripped stem; the contract enforces stem shape (no trailing digits) and
-    /// PopLite-eligibility
-    ///      (length in `[6, 8]`), and a non-canonical label or a label outside that shape triggers
+    /// @notice Creates or refreshes a reservation entry for a stem in the 6 to 8 band.
+    /// @dev Authorised-controller entry point: only a controller in the registrar's `controllers`
+    ///      set may call this, otherwise @custom:reverts NotRegistry. The gateway queue writes
+    ///      through @custom:function reserveBaseNameForPop and the public commit-reveal flow
+    ///      reads the slot rather than writing one, so this is the entry point for a sibling
+    ///      controller. Its length window bounds the stem and does not name a tier: PopLite is
+    ///      decided by the separated label shape. The caller passes the already-stripped stem; a
+    ///      non-canonical label, a trailing digit, or a length outside `[6, 8]` triggers
     ///      @custom:reverts PopError. Cross-user collision on a live slot triggers @custom:reverts
     ///      PopError so the caller cannot silently overwrite another user's reservation; same-user
     ///      refresh and writes into an empty or expired slot emit @custom:emits BaseNameReserved.

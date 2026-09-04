@@ -401,7 +401,7 @@ contract PopRules is
     function _stemEnd(string calldata name) private pure returns (uint256 stemEnd) {
         stemEnd = bytes(name).length;
         if (!name.isLitePersonLabel()) return stemEnd;
-        return stemEnd - StringUtils.MIN_LITE_SUFFIX_DIGITS - 1;
+        return stemEnd - StringUtils.LITE_SUFFIX_DIGITS - 1;
     }
 
     /// @notice The base length that pricing and classification both use to place a name in its
@@ -496,10 +496,11 @@ contract PopRules is
         return (PopStatus.NoStatus, "Available to all", baseLength);
     }
 
-    /// @notice Requires `stem` to be a canonical DNS label, carrying neither a separator nor a
-    ///         digit suffix.
-    /// @dev Reservation keys are stems, so a separator or a digit suffix here is a caller error
-    ///      rather than a lite name. @custom:function _requireLabel is the guard for full labels.
+    /// @notice Requires `stem` to be a canonical DNS label, carrying no separator.
+    /// @dev Reservation keys are stems, so a separator here is a caller error rather than a lite
+    ///      name. A digit suffix passes this check, because a DNS label admits digits; the entry
+    ///      points that write a reservation reject one themselves.
+    ///      @custom:function _requireLabel is the guard for full labels.
     function _requireStem(string calldata stem) internal pure {
         require(stem.isSingleLabel(), PopError("Name must be lowercase ASCII DNS label"));
     }

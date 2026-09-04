@@ -9,8 +9,9 @@ import {IDotnsController} from "./IDotnsController.sol";
 /// @dev Deliberately disjoint from @custom:contract IDotnsRegistrarController. The two
 /// controllers coexist on @custom:contract DotnsRegistrar via its multi-controller affordance
 /// and neither imports the other. Collision handling reduces to the registrar's ERC721
-/// availability check (first-to-mint wins). Reservation queuing for `reservedBaseLabel` is
-/// an intra-PoP coordination mechanism only; it does not block public registrations.
+/// availability check (first-to-mint wins). Reservation queuing for `reservedBaseLabel`
+/// mirrors its live head into PopRules, so a queued stem also blocks the public
+/// commit-reveal flow, which reads that slot when it prices a name.
 ///
 /// Label formats:
 /// Lite-person usernames (first argument to @custom:function reserveBaseName and the
@@ -305,12 +306,14 @@ interface IDotnsPopController is IDotnsController {
     /// @param params Registration request; see @custom:struct LiteRegistration.
     function reserveLiteName(LiteRegistration calldata params) external;
 
-    /// @notice Whether this controller minted `label`.
-    /// @dev The signal that separates a person from a subname. `joseph.42` is one whole label
-    /// when this returns true and a subname path (`joseph` under `42`) when it returns false,
-    /// and the string alone cannot tell them apart. Set at mint and never cleared, so it is
-    /// unaffected by a name later becoming transferable; the soulbound flag is a transfer rule
-    /// and cannot stand in for it.
+    /// @notice Whether this controller minted the whole-label reading of `label`.
+    /// @dev Keyed by text, so it answers about an interpretation rather than about a node: a
+    /// true answer covers `joseph.42` taken as one label, and says nothing about a subname
+    /// `joseph` under `42`, which renders as the same text. Both can exist at once, so a caller
+    /// holding a node must also check that node is `namehash(tldNode, keccak(label))` before
+    /// reading this answer as being about what it holds; node identity is what names the
+    /// object. Set at mint and never cleared, so it is unaffected by a name later becoming
+    /// transferable; the soulbound flag is a transfer rule and cannot stand in for it.
     /// @param label Bare label without the TLD, for example `joseph.42`.
     /// @return issued True when this controller minted `label`.
     function isPopIssued(string calldata label) external view returns (bool issued);
@@ -321,9 +324,9 @@ interface IDotnsPopController is IDotnsController {
     /// (otherwise @custom:reverts InvalidBaseLabel), and the label must not
     /// classify as governance-reserved (otherwise @custom:reverts InvalidBaseLabel). The
     /// gateway also defers to PopRules as the single cross-flow authority: when PopRules
-    /// carries a live base-name slot held by another user (stamped by the public commit-reveal
-    /// flow or this controller's prior queue head), the call reverts @custom:reverts NotHolder
-    /// before any queue mutation. Two orthogonal axes drive the state machine. The reservation
+    /// carries a live base-name slot held by another user (this controller's prior queue head,
+    /// or a sibling controller's write), the call reverts @custom:reverts NotHolder before any
+    /// queue mutation. Two orthogonal axes drive the state machine. The reservation
     /// axis treats the user as claiming if and only if they hold the live head-of-queue
     /// reservation on the base label: a claim wipes the entire queue, releases the PopRules
     /// slot, and @custom:emits BaseNameClaimed; a non-claim silently relinquishes any

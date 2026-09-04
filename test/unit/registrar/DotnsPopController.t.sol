@@ -468,6 +468,57 @@ contract DotnsPopControllerTests is BaseDotns {
         );
     }
 
+    /// @notice A lite name cannot host a subname.
+    /// @dev The registry derives a parent's node by splitting the path on the separator, so
+    ///      `michael.01` as a parent label resolves to `michael` beneath `01` and never to the
+    ///      node the gateway minted. The holder of a lite name therefore has no subname tree,
+    ///      and no caller can graft one onto their identity.
+    function test_lite_name_cannot_host_a_subname() public {
+        _grantPopLite(ed);
+        _rootReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: LITE_LABEL_A, user: ed, chatKey: _validChatKey(0xb4)
+            })
+        );
+
+        IDotnsRegistry.SubnodeRecord memory subnodeRecord = IDotnsRegistry.SubnodeRecord({
+            parentNode: _nodeOf(LITE_LABEL_A),
+            subLabel: "blog",
+            parentLabel: LITE_LABEL_A,
+            owner: ed
+        });
+
+        vm.prank(ed);
+        vm.expectRevert(IDotnsRegistry.ParentLabelMismatch.selector);
+        dotnsRegistry.setSubnodeOwner(subnodeRecord);
+    }
+
+    /// @notice A public registration blocks the gateway from the same label, and leaves no
+    ///         provenance behind.
+    /// @dev The reverse of the gateway-first case below. `_popIssued` is written before the mint
+    ///      inside the same call, so the assertion that it still reads false is what proves the
+    ///      failed mint took the provenance write with it. A public name that answered
+    ///      `isPopIssued` would pass for a person.
+    function test_pop_full_mint_after_public_register_reverts_and_writes_no_provenance() public {
+        string memory label = "longnamebobx";
+
+        _grantPopFull(tiago);
+        _commitAndRegister(label, tiago, true);
+
+        IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xd1));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IDotnsRegistrar.NameNotAvailable.selector, uint256(_nodeOf(label))
+            )
+        );
+        _rootRegisterBaseName(
+            IDotnsPopController.FullRegistration({label: label, user: ed, link: link})
+        );
+
+        assertFalse(dotnsPopController.isPopIssued(label), "provenance survived a failed mint");
+        assertFalse(dotnsRegistrar.isSoulbound(uint256(_nodeOf(label))), "public name locked");
+    }
+
     function test_public_register_after_pop_full_mint_reverts_at_registrar() public {
         // "longnamebobx" is classification-NoStatus, so ed keeps default status. A full-person
         // label carries no digit suffix.
@@ -967,17 +1018,12 @@ contract DotnsPopControllerTests is BaseDotns {
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0xa3), "Joseph");
     }
 
-    /// @notice Adding `isPopIssued` moved the ERC-165 id, so both must be answered.
-    /// @dev This ships as an upgrade, and an integration compiled against the previous ABI
-    ///      probes the old id. Answering only the new one would make the controller undetectable
-    ///      to every existing caller.
-    function test_supportsInterface_answers_the_pre_isPopIssued_id() public view {
-        bytes4 current = type(IDotnsPopController).interfaceId;
-        bytes4 legacy = current ^ IDotnsPopController.isPopIssued.selector;
-
-        assertTrue(current != legacy, "adding a function must move the id");
-        assertTrue(dotnsPopController.supportsInterface(current), "current id");
-        assertTrue(dotnsPopController.supportsInterface(legacy), "legacy id");
+    /// @notice The controller answers its own ERC-165 id and nothing else.
+    function test_supportsInterface_answers_the_controller_id() public view {
+        assertTrue(
+            dotnsPopController.supportsInterface(type(IDotnsPopController).interfaceId),
+            "controller id"
+        );
         assertFalse(dotnsPopController.supportsInterface(bytes4(0xdeadbeef)), "unrelated id");
     }
 
