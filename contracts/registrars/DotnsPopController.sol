@@ -252,14 +252,14 @@ contract DotnsPopController is
         address user = params.user;
         string calldata label = params.label;
 
+        (bytes32 labelhash, bytes32 node) = _validateBaseLabel(label);
+
         IPopRules rules = _popRules();
         (IPopRules.PopStatus required,) = rules.classifyName(label);
         require(
             required != IPopRules.PopStatus.Reserved && required != IPopRules.PopStatus.PopLite,
             InvalidBaseLabel()
         );
-
-        (bytes32 labelhash, bytes32 node) = _validateBaseLabel(label);
 
         _advanceExpiredHead(labelhash);
 
@@ -813,12 +813,13 @@ contract DotnsPopController is
         view
         returns (bytes32 labelhash, bytes32 node)
     {
+        (labelhash, node) = _validateBaseLabel(baseLabel);
+
         (IPopRules.PopStatus required,) = rules.classifyName(baseLabel);
         require(
             required != IPopRules.PopStatus.Reserved && rules.isBaseName(baseLabel),
             InvalidBaseLabel()
         );
-        (labelhash, node) = _validateBaseLabel(baseLabel);
         require(!_registrar().exists(uint256(node)), BaseNameAlreadyRegistered());
     }
 

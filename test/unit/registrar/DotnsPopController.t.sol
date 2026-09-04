@@ -931,7 +931,8 @@ contract DotnsPopControllerTests is BaseDotns {
     /// @notice A full-person name is letters only, the same rule a lite stem follows.
     /// @dev The hyphen and interior-digit cases are the ones a trailing-digit check misses:
     ///      `alice-bob` and `micha3l` are valid DNS labels and would otherwise be issued as
-    ///      identities, while being impossible as lite stems.
+    ///      identities, while being impossible as lite stems. All three revert with this
+    ///      interface's own error.
     function test_registerBaseName_rejects_a_label_that_is_not_letters_only() public {
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xa1));
 
@@ -964,6 +965,9 @@ contract DotnsPopControllerTests is BaseDotns {
 
         vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
         dotnsPopController.isReservedForClaim("micha3l");
+
+        vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
+        _reservePop(ed, LITE_LABEL_A, _validChatKey(0xa3), "Joseph");
     }
 
     /// @notice Adding `isPopIssued` moved the ERC-165 id, so both must be answered.
