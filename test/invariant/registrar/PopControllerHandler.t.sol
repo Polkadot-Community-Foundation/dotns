@@ -311,10 +311,14 @@ contract PopControllerHandler is Test {
     {
         _mockOriginIsRoot(true);
         try CONTROLLER.reserveBaseName(params) {
-            return true;
+            ok = true;
         } catch {
-            return false;
+            ok = false;
         }
+        // Restore before returning. The mock is campaign-scoped in an invariant run, and
+        // `DotnsRegistrarController.registerReserved` reads `originIsRoot` too, so leaving it
+        // `true` would put any later reserved registration on the Root branch.
+        _mockOriginIsRoot(false);
     }
 
     /// @notice Mirror of `_callReserveBaseName` for `registerBaseName`.
@@ -325,10 +329,11 @@ contract PopControllerHandler is Test {
     {
         _mockOriginIsRoot(true);
         try CONTROLLER.registerBaseName(params) {
-            return true;
+            ok = true;
         } catch {
-            return false;
+            ok = false;
         }
+        _mockOriginIsRoot(false);
     }
 
     /// @notice Mocks the revive `originIsRoot()` query to return `returnValue`.

@@ -25,7 +25,6 @@ DotnsProtocolRegistry
 DotnsNameEscrow
 DotnsPopController
 DotnsPopResolver
-DotnsRoleManager
 DotnsNameWhitelist
 DotnsCostModelRegistry
 DotnsFlatPricing
@@ -45,7 +44,6 @@ IDotnsNameEscrow
 IDotnsPopController
 IDotnsPopResolver
 IDotnsController
-IDotnsRoleManager
 IDotnsNameWhitelist
 IDotnsCostModelRegistry
 IDotnsPricing

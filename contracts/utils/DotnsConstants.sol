@@ -65,11 +65,6 @@ library DotnsConstants {
     ///      and callers page through larger sets with `offset`.
     uint256 internal constant MAX_PAGE_SIZE = 200;
 
-    /// @notice Operational role allowed to manage the public controller whitelist.
-    /// @dev Holders can grant or revoke whitelist entries, but cannot upgrade contracts
-    ///      or change protocol configuration.
-    bytes32 internal constant WHITELIST_OPERATOR_ROLE = keccak256("DOTNS_WHITELIST_OPERATOR_ROLE");
-
     /// @notice Default per-name live-claim cap the name whitelist starts with.
     /// @dev Governance retunes it on the whitelist within `WHITELIST_MAX_CLAIMANTS_LIMIT`.
     uint16 internal constant WHITELIST_DEFAULT_MAX_CLAIMANTS = 64;
@@ -188,9 +183,10 @@ library DotnsConstants {
 
     /// @notice Well-known key for the pre-launch name whitelist that binds a label to the
     ///         one address permitted to register it.
-    /// @dev Role: authority for label-bound registration grants. Both the public and PoP
-    ///      controllers resolve it here and read it at mint time; the whitelist stores the
-    ///      grants, the controllers only read them.
+    /// @dev Role: authority for label-bound registration grants. The public controller resolves
+    ///      it here and reads it on the reserved path, requiring a grant naming the intended owner
+    ///      unless the dispatch is Root, and consuming the grant on a successful mint. The PoP
+    ///      controller does not consult it.
     /// forge-lint: disable-next-line(unsafe-typecast)
     bytes32 internal constant NAME_WHITELIST = bytes32("nameWhitelist");
 }
