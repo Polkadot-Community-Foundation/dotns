@@ -36,7 +36,7 @@ Every name admitted to public sale costs the same refundable deposit: 10 DOT at 
 
 ### Base length and the digit rule
 
-Pricing and eligibility read a name's base length: the character count once a trailing number is set aside. A name carries no trailing digits or exactly two; one digit, or three or more, is rejected before pricing. The trailing digits come off before the length is measured, so `andrew` and `andrew01` both classify as a six-character name. Base length decides which band a name falls in and who may register it; under the flat model it does not change the amount.
+Pricing and eligibility read a name's base length. An ordinary name is measured as written, digits included, so `andrew` is six characters and `andrew01` is eight. A lite-person username issued by the PoP gateway carries a separator and two allocated digits (`andrew.01`), and those come off first, so it measures its six-character stem. Base length decides which band a name falls in and who may register it; under the flat model it does not change the amount.
 
 ### What a name costs
 
@@ -140,9 +140,9 @@ Dedicated controller for the Proof-of-Personhood gateway flow. Lives behind its 
 
 Today the Pop gateway does not write a standalone user-status mapping. It materialises the PoP flow through gateway-issued labels, PoP resolver records, and reservation queue state; user tier checks for public pricing still come from the personhood precompile/context read.
 
-The first, reserveBaseName, mints a lite-person username to a user. The gateway-facing input is a stem.suffix shape: a single DNS label followed by exactly one dot and a digits-only suffix of exactly two digits (for example michal.03). The controller normalises that input by stripping the dot before classification, pricing, and minting, so the on-chain label is always flat (michal.03 becomes michal03). Inputs with more than one dot, no dot, a non-digit suffix, or a suffix length other than two digits are rejected at the boundary. The stem may be any DNS-valid label of at least six characters, not only the 6 to 8 of the public PopLite tier; only governance-reserved stems (five characters or fewer) are rejected. A lite username whose stem is nine characters or longer classifies as NoStatus for public pricing, so its lite status is an issuance property rather than an economic tier. The call also persists the user's chat key on the PoP resolver and optionally enqueues a reservation for a full-person base name the user intends to claim later.
+The first, reserveBaseName, mints a lite-person username to a user. The gateway-facing input is a stem.suffix shape: a stem of lowercase ASCII letters, exactly one dot, then exactly two digits (for example michal.03). The stem is stricter than a DNS label, because it is the name a person chose and People Chain restricts that to letters: no digits, no hyphens, no uppercase. The same rule applies to a full-person name, which is the other name a person chooses, so `alice-bob` and `micha3l` are ordinary public names but cannot be issued as identities. How short a stem may be is not part of the shape; that is the governance-reserved band, applied by classification. The label is stored, minted and shown in that form, which is the form People Chain holds and the gateway pallet sends, so nothing is normalised at this boundary. Inputs with more than one dot, no dot, a non-digit suffix, or a suffix length other than two digits are rejected. The node is the hash of the whole string, so it can never collide with a subname built from the same characters. The stem is not limited to the 6 to 8 of the PopLite tier: a longer one is accepted, and a lite username whose stem is nine letters or more classifies as NoStatus for public pricing, so its lite status is an issuance property rather than an economic tier. A stem of five letters or fewer classifies as Reserved and is rejected on this path, which is the same governance gate that applies to short flat names. The call also persists the user's chat key on the PoP resolver and optionally enqueues a reservation for a full-person base name the user intends to claim later.
 
-The second, registerBaseName, mints a full-person username. Whether the call is a claim against a prior lite reservation or a fresh standalone registration is derived from on-chain reservation state; the caller does not choose. The link argument selects the chat-key source: inherit from a prior lite label, or accept a fresh one in the payload. When inheriting, the call also writes the liteLink (full => lite) and fullClaim (lite => full) records on the PoP resolver in the same transaction so downstream consumers can resolve either direction without scanning events.
+The second, registerBaseName, mints a full-person username. The label is lowercase ASCII letters only, the same rule the lite stem follows, so a hyphen or an interior digit is rejected even though both are valid in a public name. Whether the call is a claim against a prior lite reservation or a fresh standalone registration is derived from on-chain reservation state; the caller does not choose. The link argument selects the chat-key source: inherit from a prior lite label, or accept a fresh one in the payload. When inheriting, the call also writes the liteLink (full => lite) and fullClaim (lite => full) records on the PoP resolver in the same transaction so downstream consumers can resolve either direction without scanning events.
 
 Each base label carries a head/tail-indexed reservation queue with a capacity of MAX_RESERVATION_QUEUE and a governance-configurable reservationDuration. The queue head is mirrored into PopRules on every head transition (enqueue-from-empty, expiry-driven promotion, non-expiry head removal, claim-wipes-queue), so the public commit-reveal flow sees the same cross-flow lock through its existing PopRules price check. The gateway path is symmetric: registerBaseName consults the live PopRules slot before mint and rejects with `NotHolder` when another user holds the stem, so PopRules is the single cross-flow authority in both directions. registerBaseName additionally rejects lite-classified labels (those belong on reserveBaseName) and governance-reserved labels with `InvalidBaseLabel`. Expiry advancement is permissionless: anyone can call expireReservation to garbage-collect a stale head, which is what the pallet does on its own cadence.
 
@@ -168,24 +168,34 @@ The registry exposes isAuthorised(node, account) as the canonical check for whet
 
 ### PopRules
 
-PoP-aware name classification and pricing. Classification reads the label's **stem length** (the character count after stripping the trailing digit suffix) and the trailing digit count itself, then maps to one of four tiers: NoStatus (stem of 9+ characters, open to anyone at the cost-model price, with zero or exactly two trailing digits permitted), PopLite (stem of 6-8 characters with exactly two trailing digits, gateway-issued to lite-verified users), PopFull (stem of 6-8 characters with no trailing digits, requires full-person verification), and Reserved (stem of 5 characters or fewer, governed by the protocol). Labels carrying one trailing digit or more than two trailing digits are rejected at the classifier. The classification determines the price and the eligibility gate the commit-reveal controller enforces.
+PoP-aware name classification and pricing. Classification reads the label's **base length** and whether the label carries the gateway's separator, then maps to one of four tiers: NoStatus (base length 9 or more, open to anyone at the cost-model price), PopFull (base length 6-8, requires full-person verification), PopLite (a separated `stem.NN` label whose stem is 6-8 characters, gateway-issued to lite-verified users), and Reserved (base length 5 or fewer, governed by the protocol).
+
+A lite-person label is a stem of lowercase letters, one separator, then exactly two digits (`joseph.42`), mirroring what People Chain issues; the stem's length is bounded by the bands below rather than by the shape. Base length is the label measured as written, except for a lite label, whose separator and two allocated digits are removed first. The gateway allocates those digits to distinguish people who chose the same stem, so removing them recovers what the candidate picked; no such allocation stands behind the digits in an ordinary name, so `web3` is a four-character word rather than `web` with a counter. Digits carry no protocol meaning outside the separated form: any count is accepted on an ordinary label, and none makes it PopLite. The classification determines the price and the eligibility gate the commit-reveal controller enforces.
 
 #### Classification examples and failure modes
 
-The classifier bands on the stem, not the total label length. The stem is the label after removing any trailing digits. The trailing digit count must be zero or exactly two; a one-digit suffix and suffixes longer than two digits are invalid before tier eligibility is considered. The price column gives the flat deposit for a registrable example; a rejected or reserved name has no price.
+An ordinary label is measured as written; only a separated `stem.NN` label is shortened. The price column gives the flat deposit for a registrable example; a rejected or reserved name has no price.
 
-| Label | Stem | Trailing digits | Classification | Eligible public path | Price | Notes |
-| --- | --- | ---: | --- | --- | ---: | --- |
-| alice12 | alice | 2 | Reserved | Grant or Root only | Not sold; issued at 0 | The stem is five characters, so the two-digit suffix does not make it PopLite. |
-| andrew01 | andrew | 2 | PopLite | Pop gateway only | 10 DOT | Valid lite shape: six-character stem plus system-supplied two-digit suffix. Priced on the public paid path only while the short-name switch is on; the gateway grant is free. |
-| alicebob42 | alicebob | 2 | PopLite | Pop gateway only | 10 DOT | Eight-character stem plus two digits; total length is ten. Gateway grant is free. |
-| andrew | andrew | 0 | PopFull | PopFull user | 10 DOT | Canonical full-person base name; priced only while the short-name switch is on. |
-| andrew1 | andrew | 1 | Rejected | None | n/a | One trailing digit has no protocol meaning. |
-| andrewsays | andrewsays | 0 | NoStatus | Anyone | 10 DOT | Base length 10; the amount is the flat refundable deposit. |
-| andrewsays01 | andrewsays | 2 | NoStatus | Anyone | 10 DOT | Long stem remains NoStatus even with a two-digit suffix, and prices at the same flat deposit. |
-| andrew123 | andrew | 3 | Rejected | None | n/a | More than two trailing digits is invalid. |
-| andrew.01 | n/a | n/a | Rejected by public label validator | None | n/a | Dots are not valid in the public flat label. The Pop gateway accepts stem.suffix and normalises it to stemsuffix. |
-| Andrew01 | n/a | n/a | Rejected by canonical label validator | None | n/a | Labels must be lowercase ASCII DNS labels. |
+| Label | Base length | Classification | Eligible public path | Price | Notes |
+| --- | ---: | --- | --- | ---: | --- |
+| alice | 5 | Reserved | Grant or Root only | Not sold; issued at 0 | Five characters or fewer is governance-reserved. |
+| andrew.01 | 6 | PopLite | Pop gateway only | Gateway grant is free | The separated form. Its stem is six characters, and the separator with its two digits is the suffix. |
+| alicebob.42 | 8 | PopLite | Pop gateway only | Gateway grant is free | Eight-character stem; the whole label is eleven characters. |
+| andrewsays.01 | 10 | NoStatus | Pop gateway only | Gateway grant is free | A lite name with a long stem classifies NoStatus, so its lite status is an issuance property rather than an economic tier. |
+| andrew | 6 | PopFull | PopFull user | 10 DOT | Canonical full-person base name; priced only while the short-name switch is on. |
+| andrew01 | 8 | PopFull | PopFull user | 10 DOT | Measured whole. The digits are part of the name and do not make it lite. |
+| andrew1 | 7 | PopFull | PopFull user | 10 DOT | Any digit count is accepted on an ordinary label. |
+| web3 | 4 | Reserved | Grant or Root only | Not sold; issued at 0 | A four-character word, not `web` with a counter. |
+| andrewsays | 10 | NoStatus | Anyone | 10 DOT | The amount is the flat refundable deposit. |
+| andrewsays01 | 12 | NoStatus | Anyone | 10 DOT | Measured whole and still NoStatus, at the same flat deposit. |
+| Andrew01 | n/a | Rejected by canonical label validator | None | n/a | Labels must be lowercase ASCII DNS labels. |
+| andrew.4 | n/a | Rejected | None | n/a | A separator is legal only on a lite label, which carries exactly two digits. |
+| andrew.123 | n/a | Rejected | None | n/a | Three digits is not the lite suffix. |
+| alice.42 | 5 | Reserved | Pop gateway only | Not sold; not issued | A well-formed lite label whose five-letter stem is governance-reserved, so the gateway does not issue it. |
+| andr3w.01 | n/a | Rejected | None | n/a | The stem is letters only, so a digit in it is not a lite label. |
+| andrew-x.01 | n/a | Rejected | None | n/a | Hyphens are valid in a DNS label but not in a lite stem. |
+
+A separated label reaches the chain only through the PoP gateway: the public path requires a single DNS label, which admits no separator. That is what reserves the dotted space to the gateway, and it is why a reader cannot take the separator alone as proof of personhood for an arbitrary string. The controller publishes `isPopIssued(label)` for that.
 
 Tier assignment is read on every pricing call, not stored: PopRules queries the alias-accounts personhood precompile at DotnsConstants.PERSONHOOD with the dotns context (bytes32("dotns")), and translates the returned status byte into a PopStatus (0=NoStatus, 1=PopLite, 2=PopFull). Unknown tier bytes collapse to NoStatus, so a future precompile addition fails closed rather than silently being treated as a higher tier. There is no on-chain self-attestation; users obtain personhood off-chain through the People-chain ring proof and the alias-accounts pallet propagates the result via XCM.
 
@@ -199,9 +209,9 @@ A grant is a governance action. `grantName` is Root-only, so on a production net
 
 A grant does not register a name or bypass ownership rules; it only permits the named address to register that one label without a PoP status.
 
-PopRules also holds the cross-flow reservation table for base names. Two write paths share one mapping keyed by the bare stem. The first is used by the commit-reveal controller during a lite registration: it classifies the incoming label, strips the trailing digits, and writes the bare stem. The second is used by the PoP controller on every reservation-queue head transition: it takes a bare stem directly and rejects the update when the slot is held by a different user, so the caller's local queue bookkeeping never silently diverges from the PopRules state.
+PopRules also holds the cross-flow reservation table for base names, keyed by the bare stem. The PoP controller writes it on every reservation-queue head transition: it takes a bare stem directly and rejects the update when the slot is held by a different user, so the caller's local queue bookkeeping never silently diverges from the PopRules state. The commit-reveal controller has a second write path, gated on a PopLite price; since PopLite is the separated form and the public path cannot submit one, that path never fires.
 
-Two read paths, priceWithCheck and priceWithoutCheck, are what the public flow consults. Both strip trailing digits before looking up the reservation, so any live entry on a bare stem blocks registrations of any variant under that stem for the reservation window (12 weeks by default).
+Two read paths, priceWithCheck and priceWithoutCheck, are what the public flow consults. Both look the reservation up by stem, and only a separated label is shortened to reach one. So a live entry on `andrew` blocks `andrew` and `andrew.01`, while `andrew01` is a different name and is unaffected. Reservations run for 12 weeks by default.
 
 ### DotnsReverseResolver
 

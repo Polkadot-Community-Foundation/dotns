@@ -17,7 +17,7 @@ import {LabelUtils} from "../../contracts/utils/LabelUtils.sol";
 ///         downstream consumer walks starting from the lite username string.
 contract PopLifecycleFlow is BaseDotns {
     /// @notice Lite label fixture. Baselength 7 with 2 trailing digits classifies as PopLite.
-    string internal constant LITE_LABEL = "aliceli01";
+    string internal constant LITE_LABEL = "michael.01";
     /// @notice Full label fixture. Baselength 9 with no trailing digits classifies as PopFull.
     string internal constant FULL_LABEL = "alicefull";
     /// @notice Subname label used for the subnode portion of the flow.
@@ -157,7 +157,7 @@ contract PopLifecycleFlow is BaseDotns {
             string.concat(LITE_LABEL, protocolRegistry.tld())
         );
 
-        string memory secondLabel = "aliceli02";
+        string memory secondLabel = "michael.02";
         bytes memory secondKey =
             hex"04beefcafedeadbeefcafedeadbeefcafedeadbeefcafedeadbeefcafedeadbeefcafedeadbeefcafedeadbeefcafedeadbeefcafedeadbeefcafedeadbeefcafe";
         _rootReserveLiteName(

@@ -17,8 +17,8 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 ///      property assertion the fuzzer explores across inputs.
 contract DotnsPopControllerFuzz is BaseDotns {
     // Render `value` as a decimal string padded to at least two digits. Callers bound
-    // `value` to `[0, 99]` so the resulting suffix matches the `NAMEXX` contract used
-    // throughout the PoP controller tests.
+    // `value` to `[0, 99]` so the suffix is exactly two digits, which the `stem.NN` shape
+    // requires.
     function _twoDigitDecimal(uint256 value) internal pure returns (string memory s) {
         if (value < 10) {
             return string.concat("0", StringUtils.uintToString(value));
@@ -28,7 +28,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
 
     function testFuzz_reserveBaseName_accepts_any_two_digit_suffix(uint8 suffix) public {
         suffix = uint8(bound(uint256(suffix), 0, 99));
-        string memory label = string.concat("alicex", _twoDigitDecimal(uint256(suffix)));
+        string memory label = string.concat("joseph", ".", _twoDigitDecimal(uint256(suffix)));
 
         // Lite-tier label requires ed to hold PopLite (or PopFull) status so the
         // `priceWithCheck` guard inside the controller accepts the reservation.
@@ -47,7 +47,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         public
     {
         suffix = uint8(bound(uint256(suffix), 0, 99));
-        string memory label = string.concat("bobxyz", _twoDigitDecimal(uint256(suffix)));
+        string memory label = string.concat("joseph", ".", _twoDigitDecimal(uint256(suffix)));
 
         _grantPopLite(ed);
 
@@ -62,23 +62,24 @@ contract DotnsPopControllerFuzz is BaseDotns {
         }
     }
 
+    /// @dev The reservation covers the stem, and the stem is what a public registrant contends
+    ///      for: a digit-suffixed spelling is measured as written and so is an unrelated name
+    ///      the reservation never sees.
     function testFuzz_public_register_respects_popRules_reservation(bool reserveFirst) public {
         string memory stem = "longnamebob";
-        string memory fullLabel = "longnamebob01";
 
         if (reserveFirst) {
-            // The reserved base label `longnamebob` classifies as NoStatus
-            // (baselength 11); the lite label has to be PopLite-eligible. Tiago needs
-            // PopFull status so both `priceWithCheck` calls inside `reserveBaseName`
-            // succeed.
+            // The reserved base label `longnamebob` classifies as NoStatus (11 characters); the
+            // lite label has to be PopLite-eligible. Tiago needs PopFull status so both
+            // `priceWithCheck` calls inside `reserveBaseName` succeed.
             _grantPopFull(tiago);
             _reservePop(tiago, LITE_LABEL_A, "", stem);
         }
 
-        bytes32 secret = keccak256(abi.encodePacked(fullLabel, ed, block.timestamp));
+        bytes32 secret = keccak256(abi.encodePacked(stem, ed, block.timestamp));
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: fullLabel,
+                label: stem,
                 owner: ed,
                 secret: secret,
                 reserved: true,
@@ -100,10 +101,10 @@ contract DotnsPopControllerFuzz is BaseDotns {
             vm.prank(ed);
             dotnsRegistrarController.register{value: 1 ether}(registration);
         } else {
-            uint256 cost = popRules.priceWithCheck(fullLabel, ed).price;
+            uint256 cost = popRules.priceWithCheck(stem, ed).price;
             vm.prank(ed);
             dotnsRegistrarController.register{value: cost}(registration);
-            assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf(fullLabel))), ed);
+            assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf(stem))), ed);
         }
     }
 
@@ -148,7 +149,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         public
     {
         suffix = uint8(bound(uint256(suffix), 0, 99));
-        string memory label = string.concat("coldfu", _twoDigitDecimal(uint256(suffix)));
+        string memory label = string.concat("joseph", ".", _twoDigitDecimal(uint256(suffix)));
         bytes memory chatKey = _validChatKey(keySeed);
 
         _grantPopLite(ed);
@@ -174,7 +175,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         public
     {
         suffix = uint8(bound(uint256(suffix), 0, 99));
-        string memory label = string.concat("warmfu", _twoDigitDecimal(uint256(suffix)));
+        string memory label = string.concat("joseph", ".", _twoDigitDecimal(uint256(suffix)));
         bytes memory chatKey = _validChatKey(keySeed);
 
         _grantPopLite(ed);

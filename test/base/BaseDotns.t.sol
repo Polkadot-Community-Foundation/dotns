@@ -156,15 +156,17 @@ abstract contract BaseDotns is Test {
     bytes32 public constant ZERO_HASH = bytes32(0);
 
     // Classification-valid labels for the PoP path (post PopRules enforcement).
-    // baselength 7 with 2 trailing digits classifies as PopLite.
+    // A stem of 7 behind a two-digit suffix classifies as PopLite. These carry the gateway's
+    // separator, which reaches the chain only through the PoP path: the public path rejects a
+    // separator, so a dotted label is always gateway-issued.
     /// @notice PoP lite classification label fixture A.
-    string internal constant LITE_LABEL_A = "aliceli01";
+    string internal constant LITE_LABEL_A = "michael.01";
     /// @notice PoP lite classification label fixture B.
-    string internal constant LITE_LABEL_B = "alicoli02";
+    string internal constant LITE_LABEL_B = "matthew.02";
     /// @notice PoP lite classification label fixture C.
-    string internal constant LITE_LABEL_C = "boblilu03";
+    string internal constant LITE_LABEL_C = "william.03";
     /// @notice PoP lite classification label fixture D.
-    string internal constant LITE_LABEL_D = "carolli04";
+    string internal constant LITE_LABEL_D = "richard.04";
 
     // baselength 8 with no trailing digits classifies as PopFull.
     /// @notice PoP full classification label fixture A.
@@ -174,10 +176,10 @@ abstract contract BaseDotns is Test {
     /// @notice PoP full classification label fixture C.
     string internal constant BASE_LABEL_C = "carolboy";
 
-    // baselength >= 9 classifies as NoStatus with no suffix or exactly two trailing digits.
-    /// @notice NoStatus classification label fixture A. Nine-character stem, so it prices at D.
+    // Measured whole at 11, which is 9 or more, so these classify as NoStatus.
+    /// @notice NoStatus classification label fixture A. Eleven characters, measured whole.
     string internal constant NOSTATUS_LABEL_A = "nostatusa01";
-    /// @notice NoStatus classification label fixture B. Nine-character stem, so it prices at D.
+    /// @notice NoStatus classification label fixture B. Eleven characters, measured whole.
     string internal constant NOSTATUS_LABEL_B = "nostatusb02";
 
     /// @notice The bare TLD label the whole suite runs against.
@@ -508,7 +510,7 @@ abstract contract BaseDotns is Test {
         _rootReserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
-                    liteLabel: _toGatewayLiteLabel(liteLabel), user: user, chatKey: chatKey
+                    liteLabel: liteLabel, user: user, chatKey: chatKey
                 }),
                 reservedBaseLabel: reservedBaseLabel
             })
@@ -521,13 +523,11 @@ abstract contract BaseDotns is Test {
 
     /// @notice Dispatches the typed `reserveLiteName` call under a mocked Root origin.
     function _rootReserveLiteName(IDotnsPopController.LiteRegistration memory params) internal {
-        params.liteLabel = _toGatewayLiteLabel(params.liteLabel);
         _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_LITE_TYPED, params));
     }
 
     /// @notice Dispatches the typed `reserveBaseName` call under a mocked Root origin.
     function _rootReserveBaseName(IDotnsPopController.BaseReservation memory params) internal {
-        params.lite.liteLabel = _toGatewayLiteLabel(params.lite.liteLabel);
         _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_BASE_TYPED, params));
     }
 
@@ -539,11 +539,9 @@ abstract contract BaseDotns is Test {
     }
 
     /// @notice Dispatches the typed `registerBaseName` call under a mocked Root origin.
-    /// @dev Normalises any LiteUsername link to its dotted form before dispatch.
+    /// @dev Dispatches the label as written. The gateway sends what People Chain holds, so a
+    ///      helper that reshaped it would hide whether a fixture is a valid lite label.
     function _rootRegisterBaseName(IDotnsPopController.FullRegistration memory params) internal {
-        if (params.link.kind == IDotnsPopController.LinkKind.LiteUsername) {
-            params.link.liteLabel = _toGatewayLiteLabel(params.link.liteLabel);
-        }
         _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_REGISTER_BASE_TYPED, params));
     }
 
@@ -575,36 +573,8 @@ abstract contract BaseDotns is Test {
         returns (IDotnsPopController.Link memory)
     {
         return IDotnsPopController.Link({
-            kind: IDotnsPopController.LinkKind.LiteUsername,
-            liteLabel: _toGatewayLiteLabel(liteLabel),
-            chatKey: ""
+            kind: IDotnsPopController.LinkKind.LiteUsername, liteLabel: liteLabel, chatKey: ""
         });
-    }
-
-    /// @notice Normalises a lite label into its dotted gateway form.
-    /// @dev Inserts a `.` between the stem and the trailing two characters when
-    ///      `liteLabel` lacks a dot, mirroring how the gateway encodes labels.
-    function _toGatewayLiteLabel(string memory liteLabel) internal pure returns (string memory) {
-        bytes memory raw = bytes(liteLabel);
-        for (uint256 i = 0; i < raw.length; ++i) {
-            if (raw[i] == bytes1(0x2e)) {
-                return liteLabel;
-            }
-        }
-
-        if (raw.length < 3) return liteLabel;
-
-        bytes memory dotted = new bytes(raw.length + 1);
-        uint256 stemLength = raw.length - 2;
-
-        for (uint256 i = 0; i < stemLength; ++i) {
-            dotted[i] = raw[i];
-        }
-        dotted[stemLength] = bytes1(0x2e);
-        dotted[stemLength + 1] = raw[stemLength];
-        dotted[stemLength + 2] = raw[stemLength + 1];
-
-        return string(dotted);
     }
 
     /// @notice Constructs a `Link` carrying a fresh chat key (no lite inheritance).
