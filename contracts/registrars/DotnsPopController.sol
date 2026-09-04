@@ -50,7 +50,7 @@ import {SystemUtils} from "../utils/SystemUtils.sol";
 /// (1) Lite-person labels (`stem.NN`) occupy a namespace the public path cannot reach: a
 /// separator and a digit suffix are legal only on a lite label, so a lite name has no flat
 /// spelling for a public registrant to take. The two flows therefore cannot contend for the
-/// same label at all, and downstream tooling (dotli, dweb) can read a separator as meaning
+/// same label at all, and a reader can take a separator as meaning
 /// exactly one thing.
 /// (2) Base-name reservations are synchronised into `IPopRules`. The head of this
 /// controller's reservation queue is written through `IPopRules.reserveBaseNameForPop` on

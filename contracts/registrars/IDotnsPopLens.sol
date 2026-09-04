@@ -78,8 +78,9 @@ interface IDotnsPopLens {
     function protocolRegistry() external view returns (address registry);
 
     /// @notice Lists the lite-person names currently owned by `user`.
-    /// @dev Reads the user's `LabelStore` labels and pending claims, keeps the lite-person
-    /// shaped ones, and re-checks each against `registrar.ownerOf` so a name transferred away
+    /// @dev Reads the user's `LabelStore` labels and pending claims, keeps the gateway-issued
+    /// ones carrying a separator, and re-checks each against `registrar.ownerOf` so a name
+    /// transferred away
     /// drops out and a name transferred in shows under its current owner. Ordering follows the
     /// store then the pending queue. An `offset` past the end returns an empty array rather than
     /// reverting, and a short return means the slice ended. A gateway name transferred before it

@@ -348,9 +348,9 @@ interface IDotnsPopController is IDotnsController {
     /// so the next live head takes over without waiting for the next gateway call. Validates
     /// the DNS-label shape of `reservedBaseLabel` (otherwise @custom:reverts InvalidBaseLabel)
     /// and @custom:emits ReservationExpired for every expired entry reaped from the
-    /// head. Only base-shaped labels (no trailing digits) ever key a reservation queue, so a
-    /// lite-shaped label still passes the shape check but resolves to an empty queue and the
-    /// call is a no-op.
+    /// head. Only labels without trailing digits ever key a reservation queue, so one carrying
+    /// digits passes the shape check but resolves to an empty queue and the call is a no-op. A
+    /// lite label carries a separator and so fails the shape check outright.
     function expireReservation(string calldata reservedBaseLabel) external;
 
     /// @notice Lets the caller voluntarily drop their own active reservation.
@@ -377,7 +377,7 @@ interface IDotnsPopController is IDotnsController {
     /// @notice Returns the queue metadata (`head`, `tail`) for `labelhash`.
     /// @dev Read-only accessor over the per-label reservation queue. `head == tail` means
     /// the queue is empty; active entries occupy `[head, tail)`. Exposed on the interface
-    /// because invariant tests and off-chain consumers (dotli, dweb) use it to enumerate
+    /// because invariant tests and off-chain consumers use it to enumerate
     /// live queue state without scanning storage.
     /// @param labelhash Keccak-256 of the base label whose queue is being read.
     /// @return head Index of the live queue head.

@@ -98,9 +98,9 @@ interface IPopRules {
 
     /// @notice Classifies a name into a required PoP tier per DotNS naming rules.
     /// @dev Pure; inputs are the label bytes only. Callers use the returned tier to decide which
-    ///      pricing and verification branch applies. Non-canonical labels (anything other than a
-    ///      single lowercase ASCII DNS label) and labels with exactly one or more than two
-    ///      trailing digits both trigger @custom:reverts PopError.
+    ///      pricing and verification branch applies. A label that is neither a single lowercase
+    ///      ASCII DNS label nor a lite label triggers @custom:reverts PopError; a trailing-digit
+    ///      suffix of any length is accepted and classified by the length it leaves.
     /// @param name The name label being evaluated.
     /// @return requirement Required tier for registration.
     /// @return message Explanation of the classification result.
@@ -201,14 +201,15 @@ interface IPopRules {
         view
         returns (address owner, uint64 expires);
 
-    /// @notice Returns the bare stem of a label, i.e. the label with any trailing ASCII digits
-    ///         removed.
-    /// @dev Mirrors the normalisation that @custom:function reserveBaseName applies before writing
-    ///      a reservation, so callers can look up or release a reservation by passing the full
-    ///      label without re-implementing the digit-stripping rule. Non-canonical labels
-    ///      trigger @custom:reverts PopError.
-    /// @param name Full label (with or without trailing digits).
-    /// @return stem The label with trailing digits removed.
+    /// @notice Returns the reservation stem of a label: a lite label without its allocated
+    ///         suffix, or any other label unchanged.
+    /// @dev Mirrors the normalisation applied before a reservation is written, so callers can
+    ///      look up or release one by passing the full label. Only a lite label is shortened,
+    ///      because only the gateway allocates the digits it carries: `joseph.42` yields
+    ///      `joseph` while `joseph42` is an unrelated name and yields itself. Non-canonical
+    ///      labels trigger @custom:reverts PopError.
+    /// @param name Full label, lite or otherwise.
+    /// @return stem The reservation stem of `name`.
     function stripDigits(string calldata name) external pure returns (string memory stem);
 
     /// @notice Indicates whether a base name is currently reserved.
@@ -310,8 +311,8 @@ interface IPopRules {
     ///      the name's own curve price. The two components overlap on pure
     ///      tier mismatches, so the function takes their maximum rather than their sum to avoid
     ///      double-charging. Consumed by @custom:function DotnsRegistrar.quoteTransferFee.
-    ///      Non-canonical labels and labels with exactly one or more than two trailing digits
-    ///      trigger @custom:reverts PopError.
+    ///      A label that is neither a single lowercase ASCII DNS label nor a lite label triggers
+    ///      @custom:reverts PopError.
     /// @param name Domain label being transferred.
     /// @param from Current holder of the name.
     /// @param to Incoming holder of the name.
@@ -326,9 +327,9 @@ interface IPopRules {
         returns (uint256 floor);
 
     /// @notice Returns whether `name` is a base name under PoP rules.
-    /// @dev A base name has no trailing digits; lite-person labels always have exactly two
-    ///      trailing digits, so the two spaces are disjoint. Non-canonical labels trigger
-    ///      @custom:reverts PopError.
+    /// @dev A base name has no trailing digits, so it is what a reservation may be keyed by. A
+    ///      lite label always ends in two, so it is never a base name. Non-canonical labels
+    ///      trigger @custom:reverts PopError.
     /// @param name The label to check.
     /// @return isBase True when the label has no trailing digits.
     function isBaseName(string calldata name) external pure returns (bool isBase);

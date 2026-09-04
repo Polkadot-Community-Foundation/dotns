@@ -84,8 +84,8 @@ library StringUtils {
     ///      @custom:constant MIN_LITE_SUFFIX_DIGITS digits (e.g. `joseph.42`), mirroring the
     ///      form People Chain stores and the gateway pallet dispatches. It is the only label
     ///      shape in DotNS permitted to carry a separator, which is what reserves the dotted
-    ///      space to the gateway. A digit suffix is not exclusive: a public label may carry two
-    ///      trailing digits directly (`lights01`) and classifies the same way.
+    ///      space to the gateway. A digit suffix is not exclusive: an ordinary label may end in
+    ///      digits, but it is measured as written and so classifies by its full length.
     ///      Cross-flow priority is arbitrated on the stem, not on the whole label: a lite
     ///      label's stem is reserved as a base name through
     ///      @custom:function IPopRules.reserveBaseNameForPop, so `joseph.42` contends with
