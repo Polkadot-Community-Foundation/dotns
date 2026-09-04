@@ -43,6 +43,22 @@ contract DotnsRegistryInvariantTest is BaseDotns {
         excludeContract(address(dotnsRegistrar));
         excludeContract(address(popRules));
         excludeContract(address(storeFactory));
+
+        _seedCoverage();
+    }
+
+    /// @notice Drives subnode creation until both a created subnode and a rejected dotted
+    ///         sub-label exist.
+    /// @dev The assertions in @custom:function afterInvariant would otherwise depend on the
+    ///      fuzzer happening to generate a separator, which is a coin flip per run. Sub-labels
+    ///      come from a seed, so this walks seeds and stops at the first that satisfies both;
+    ///      seeding from `setUp` puts them in the snapshot every run starts from. The walk is
+    ///      bounded so a change to the alphabet fails the run loudly rather than hanging.
+    function _seedCoverage() internal {
+        for (uint256 seed; seed < 64; ++seed) {
+            if (handler.dottedSubLabelAttempts() > 0 && handler.subnodeCount() > 0) break;
+            handler.registerAndCreateSubnode(seed, seed, seed);
+        }
     }
 
     /// @notice Fails the run if the campaign never created a subnode or never offered a dotted
