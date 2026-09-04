@@ -4,13 +4,9 @@ pragma solidity ^0.8.34;
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
 import {DotnsNameWhitelist} from "../../../contracts/whitelist/DotnsNameWhitelist.sol";
 import {IDotnsNameWhitelist} from "../../../contracts/whitelist/IDotnsNameWhitelist.sol";
-import {IDotnsRoleManager} from "../../../contracts/access/IDotnsRoleManager.sol";
 import {IDotnsProtocolRegistry} from "../../../contracts/registry/IDotnsProtocolRegistry.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {
-    OwnableUpgradeable
-} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 /// @title DotnsNameWhitelist unit tests
@@ -251,7 +247,10 @@ contract DotnsNameWhitelistTests is BaseDotns {
             vm.prank(ed);
             (bool ok, bytes memory ret) = address(whitelist).call(calls[i]);
             assertFalse(ok, "a signed caller reached a governance entry point");
+            // Truncating to the leading four bytes is the point: `ret` is revert data and the
+            // selector is its first word.
             assertEq(
+                // forge-lint: disable-next-line(unsafe-typecast)
                 bytes4(ret),
                 IDotnsNameWhitelist.NotGovernance.selector,
                 "governance gate reverted with something other than NotGovernance"

@@ -349,10 +349,9 @@ abstract contract BaseDotns is Test {
             abi.encode(IPersonhood.PersonhoodInfo({status: 0, contextAlias: bytes32(0)}))
         );
         // Default the revive System precompile to a non-Root origin. Every governance-gated path
-        // reads it (`DotnsNameWhitelist.onlyGovernance`,
-        // `DotnsRegistrarController.registerReserved` and there is no code at the precompile
-        // address under forge, so an unmocked read decodes
-        // empty returndata and reverts. Tests exercising the Root branch override with
+        // reads it (`DotnsNameWhitelist.onlyGovernance`, `DotnsRegistrarController`'s reserved
+        // path), and there is no code at the precompile address under forge, so an unmocked read
+        // decodes empty returndata and reverts. Tests exercising the Root branch override with
         // `_mockOriginIsRoot(true)`.
         _mockOriginIsRoot(false);
     }

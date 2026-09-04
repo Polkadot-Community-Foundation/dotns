@@ -54,6 +54,7 @@ contract DotnsRegistrarReservedGrantInvariantTest is BaseDotns {
     /// would hold vacuously over an empty set.
     function invariant_reserved_grant_coverage_is_non_vacuous() public view {
         assertGt(handler.grantCount(), 0, "no grant was ever issued");
+        assertGt(handler.mintCount(), 0, "no grant was ever minted");
         assertGt(handler.ungrantedAttemptCount(), 0, "the ungranted path was never exercised");
     }
 

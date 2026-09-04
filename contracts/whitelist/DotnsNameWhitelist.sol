@@ -90,7 +90,7 @@ contract DotnsNameWhitelist is
     ///      signed account can hand out a name. `msg.sender` is never read here, which is also what
     ///      keeps every gated entry point callable under a Root origin, since Root has no account.
     modifier onlyGovernance() {
-        require(SystemUtils.originIsRoot(), NotGovernance());
+        _onlyGovernance();
         _;
     }
 
@@ -102,6 +102,11 @@ contract DotnsNameWhitelist is
             NotController(msg.sender)
         );
         _;
+    }
+
+    /// @notice Internal check enforcing the substrate Root gate.
+    function _onlyGovernance() internal view {
+        require(SystemUtils.originIsRoot(), NotGovernance());
     }
 
     /// @custom:oz-upgrades-unsafe-allow constructor

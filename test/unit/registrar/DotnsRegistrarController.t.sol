@@ -1073,10 +1073,12 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         dotnsRegistrarController.registerReserved(registration);
     }
 
-    /// @dev Same, under a Root dispatch. Root skips both the grant check and the consume, but the
-    /// whitelist is resolved before that branch is taken, so an unset key fails closed either way
-    /// rather than letting a Root mint proceed against an unconfigured protocol.
-    function test_root_also_reverts_when_the_whitelist_is_unconfigured() public {
+    /// @dev Root reads no grant and consumes none, so it does not need the whitelist wired. A
+    /// governance mint therefore works on a protocol whose registry is only partly configured,
+    /// which is what makes Root a usable recovery path rather than one gated on another key's
+    /// wiring having completed.
+    function test_root_mints_when_the_whitelist_is_unconfigured() public {
+        string memory nameLabel = "rootunconfigured01";
         vm.mockCall(
             address(protocolRegistry),
             abi.encodeWithSelector(
@@ -1086,12 +1088,13 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         );
 
         IDotnsRegistrarController.Registration memory registration =
-            _commitReserved("rootunconfigured01", ed, ed);
+            _commitReserved(nameLabel, ed, ed);
         _mockOriginIsRoot(true);
         vm.prank(ed);
-        vm.expectRevert(IDotnsRegistrarController.WhitelistNotConfigured.selector);
         dotnsRegistrarController.registerReserved(registration);
         _mockOriginIsRoot(false);
+
+        assertEq(dotnsRegistrar.ownerOf(_tokenIdForLabel(nameLabel)), ed);
     }
 
     // -------------------------------------------------------------------------------------------

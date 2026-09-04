@@ -4,11 +4,7 @@ pragma solidity ^0.8.34;
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
 import {IDotnsNameEscrow} from "../../../contracts/escrow/IDotnsNameEscrow.sol";
-import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
 import {IDotnsRoleManager} from "../../../contracts/access/IDotnsRoleManager.sol";
-import {
-    OwnableUpgradeable
-} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 /// @title DotnsRegistrarControllerFuzzTest
 /// @notice Property-based tests for @custom:contract DotnsRegistrarController role administration,

@@ -31,6 +31,7 @@ contract DotnsNameWhitelistInvariant is BaseDotns {
         );
         _mockOriginIsRoot(true);
         whitelist.setWindow(0, 3650 days);
+        _mockOriginIsRoot(false);
         vm.stopPrank();
 
         address[] memory actors = new address[](4);

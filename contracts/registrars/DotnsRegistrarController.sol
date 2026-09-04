@@ -303,8 +303,9 @@ contract DotnsRegistrarController is
         // against `registration.owner`, the commitment is keyed on its own hash, and the mint
         // targets the owner.
         bool isRoot = SystemUtils.originIsRoot();
-        IDotnsNameWhitelist whitelist = _nameWhitelist();
+        IDotnsNameWhitelist whitelist;
         if (!isRoot) {
+            whitelist = _nameWhitelist();
             require(
                 whitelist.isGrantedTo(registration.label, registration.owner),
                 NameNotGranted(registration.label, registration.owner)
@@ -316,6 +317,11 @@ contract DotnsRegistrarController is
 
         // Spend the grant before minting so a grant in the wrong state fails before any name is
         // issued. Root skips it: a governance mint must not consume a grant held by someone else.
+        //
+        // A consequence worth knowing: if Root mints a label that is `Claimed` or `Reserved` on
+        // the whitelist, that record survives the mint. The beneficiary's own `registerReserved`
+        // then fails `NameNotAvailable`, and the node stays in the whitelist's active set until
+        // governance calls `revokeName`. Nothing is lost, but the grant is stranded.
         if (!isRoot) {
             whitelist.consume(registration.label, registration.owner);
         }

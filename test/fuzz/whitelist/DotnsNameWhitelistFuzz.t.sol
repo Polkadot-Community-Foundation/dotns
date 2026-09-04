@@ -6,10 +6,6 @@ import {DotnsNameWhitelist} from "../../../contracts/whitelist/DotnsNameWhitelis
 import {IDotnsNameWhitelist} from "../../../contracts/whitelist/IDotnsNameWhitelist.sol";
 import {IDotnsProtocolRegistry} from "../../../contracts/registry/IDotnsProtocolRegistry.sol";
 import {StringUtils} from "../../../contracts/utils/StringUtils.sol";
-import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
-import {
-    OwnableUpgradeable
-} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 /// @title DotnsNameWhitelist fuzz tests
@@ -34,6 +30,8 @@ contract DotnsNameWhitelistFuzz is BaseDotns {
 
         // Configuration is Root-only, and the suite's own actions are governance calls, so it
         // runs under a Root origin throughout.
+        // The suite calls governance entry points directly, so it runs under a Root origin
+        // throughout rather than mocking per call.
         _mockOriginIsRoot(true);
         whitelist.setWindow(0, 365 days);
     }
