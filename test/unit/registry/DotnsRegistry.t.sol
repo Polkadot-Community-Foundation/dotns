@@ -74,10 +74,10 @@ contract DotnsRegistryTests is BaseDotns {
     /// @dev `michael.01` reads two ways: the whole label the gateway mints, and the subname
     ///      `michael` under `01`. The text alone cannot identify a person, since the node it
     ///      resolves to depends on which reading you take, and provenance is what tells them
-    ///      apart. No controller path can create the parent: the public and reserved paths
-    ///      require three characters, and both gateway paths are letters only. So the parent is
-    ///      minted straight on the registrar, which is reachable only by an authorised
-    ///      controller, and the test builds it there to pin what the two readings resolve to.
+    ///      apart. No production controller entry point can create the parent: the public and
+    ///      reserved paths require three characters, and both gateway paths are letters only.
+    ///      An owner-authorised controller can still call the registrar directly, which is what
+    ///      the test does to pin what the two readings resolve to.
     function test_subname_under_a_two_digit_name_does_not_collide_with_a_person() public {
         bytes32 twoDigitNode = _nodeOf("01");
 

@@ -224,9 +224,11 @@ contract DotnsRegistrarControllerTest is BaseDotns {
     /// @notice A two-digit second-level name is unreachable, which is what keeps a subname
     ///         from spelling a lite name.
     /// @dev `joseph.42` reads either as one label or as `joseph` beneath `42`, and the second
-    ///      reading needs `42` to exist. It cannot: this path requires three characters, and
-    ///      both gateway paths are letters only. Pinned here because the invariant rests on a
-    ///      length floor that reads as unrelated to lite names.
+    ///      reading needs `42` to exist. No production controller entry point can create it:
+    ///      this path requires three characters, and both gateway paths are letters only. An
+    ///      owner-authorised controller calling the registrar directly is not bound by either,
+    ///      so the invariant holds over entry points rather than over the registrar. Pinned
+    ///      here because it rests on a length floor that reads as unrelated to lite names.
     ///      `register` is called directly rather than through `_commitAndRegister`, which
     ///      quotes `priceWithCheck` first and would revert on the reserved tier instead. No
     ///      commitment is needed: the label is validated before one is consumed.
