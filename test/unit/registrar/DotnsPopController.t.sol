@@ -359,10 +359,7 @@ contract DotnsPopControllerTests is BaseDotns {
         );
 
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xaa));
-        // A multi-label string is neither a DNS label nor a lite label, so it fails the guard
-        // inside PopRules.classifyName before reaching the controller's own isSingleLabel
-        // check.
-        vm.expectPartialRevert(IPopRules.PopError.selector);
+        vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
         _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: "not.valid", user: ed, link: link})
         );
@@ -1275,9 +1272,7 @@ contract DotnsPopControllerTests is BaseDotns {
         _grantPopFull(ed);
 
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xaa));
-        // Classification runs first; empty string fails canonical label check
-        // in PopRules before reaching the PoP controller's own shape guard.
-        vm.expectPartialRevert(IPopRules.PopError.selector);
+        vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
         _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: "", user: ed, link: link})
         );
