@@ -31,6 +31,7 @@ import {
     IDotnsProtocolRegistry
 } from "../../contracts/registry/DotnsProtocolRegistry.sol";
 import {DotnsNameEscrow} from "../../contracts/escrow/DotnsNameEscrow.sol";
+import {DotnsNameWhitelist} from "../../contracts/whitelist/DotnsNameWhitelist.sol";
 import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 import {LabelUtils} from "../../contracts/utils/LabelUtils.sol";
 import {ISystem} from "../../contracts/external/revive/ISystem.sol";
@@ -130,6 +131,8 @@ abstract contract BaseDotns is Test {
 
     /// @notice Deployed name escrow instance.
     DotnsNameEscrow public dotnsNameEscrow;
+
+    DotnsNameWhitelist public dotnsNameWhitelist;
     /// @notice Base deposit the flat launch model charges for every admitted name.
     /// @dev Aliased to @custom:constant DotnsConstants.BASE_DEPOSIT so deploy scripts and the test
     ///      base see the same value; downstream test suites reference `BASE_DEPOSIT`
@@ -327,6 +330,7 @@ abstract contract BaseDotns is Test {
         protocolRegistry.set(DotnsConstants.POP_RESOLVER, dotnsPopResolverAddress);
         protocolRegistry.set(DotnsConstants.POP_CONTROLLER, dotnsPopControllerAddress);
         protocolRegistry.set(DotnsConstants.NAME_ESCROW, dotnsNameEscrowAddress);
+        _deployNameWhitelist();
 
         // Deploy the read-only lens last, once every sibling key it resolves
         // (POP_CONTROLLER, REGISTRAR, STORE_FACTORY, POP_RESOLVER, POP_RULES) is
@@ -344,6 +348,12 @@ abstract contract BaseDotns is Test {
             abi.encodeWithSelector(IPersonhood.personhoodStatus.selector),
             abi.encode(IPersonhood.PersonhoodInfo({status: 0, contextAlias: bytes32(0)}))
         );
+        // Default the revive System precompile to a non-Root origin. Every governance-gated path
+        // reads it (`DotnsNameWhitelist.onlyGovernance`, `DotnsRegistrarController`'s reserved
+        // path), and there is no code at the precompile address under forge, so an unmocked read
+        // decodes empty returndata and reverts. Tests exercising the Root branch override with
+        // `_mockOriginIsRoot(true)`.
+        _mockOriginIsRoot(false);
     }
 
     /// @notice Mocks revive's System precompile originIsRoot result.
@@ -449,19 +459,31 @@ abstract contract BaseDotns is Test {
         _setUserPopStatus(who, IPopRules.PopStatus.NoStatus);
     }
 
-    /// @notice Owner-prank shortcut that grants `WHITELIST_OPERATOR_ROLE` on the
-    ///         registrar controller.
-    /// @dev Centralises the prank-and-setRole boilerplate used by unit, fuzz, and
-    ///      integration suites.
-    function _grantWhitelistOperator(address account) internal {
-        vm.prank(owner);
-        dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, true);
+    /// @notice Deploys the name whitelist and registers it under `NAME_WHITELIST`.
+    /// @dev Its own function, taking no arguments and reading `protocolRegistry` from storage,
+    ///      because `setUp` is at the stack limit under via-ir: extending the live range of one
+    ///      more local there fails to compile.
+    function _deployNameWhitelist() private {
+        dotnsNameWhitelist = DotnsNameWhitelist(
+            Upgrades.deployUUPSProxy(
+                "DotnsNameWhitelist.sol:DotnsNameWhitelist",
+                abi.encodeCall(DotnsNameWhitelist.initialize, (protocolRegistry))
+            )
+        );
+        vm.label(address(dotnsNameWhitelist), "DotnsNameWhitelist");
+        protocolRegistry.set(DotnsConstants.NAME_WHITELIST, address(dotnsNameWhitelist));
     }
 
-    /// @notice Owner-prank shortcut that revokes `WHITELIST_OPERATOR_ROLE`.
-    function _revokeWhitelistOperator(address account) internal {
-        vm.prank(owner);
-        dotnsRegistrarController.setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, account, false);
+    /// @notice Grants `label` to `user` on the name whitelist under a mocked Root origin.
+    /// @dev The whitelist's admin surface is Root-only, so this mocks `originIsRoot` for the call
+    ///      and restores the default afterwards. The reserved registration path requires a grant
+    ///      naming the intended owner, so this is the setup step every `registerReserved` test
+    ///      needs. Restoring matters: `registerReserved` reads `originIsRoot` too, and a sticky
+    ///      `true` would put the registration itself on the Root branch.
+    function _grantName(string memory label, address user) internal {
+        _mockOriginIsRoot(true);
+        dotnsNameWhitelist.grantName(label, user);
+        _mockOriginIsRoot(false);
     }
 
     /// @notice Drives a PoP reservation under a Root origin and settles the resulting
@@ -532,6 +554,11 @@ abstract contract BaseDotns is Test {
         _mockOriginIsRoot(true);
 
         (bool ok, bytes memory data) = address(dotnsPopController).call(payload);
+        // Restore the default before unwinding, on both the success and revert paths.
+        // `DotnsRegistrarController.registerReserved` reads `originIsRoot` too, so a sticky
+        // `true` here would silently put a later reserved registration on the Root branch,
+        // skipping the grant check and the consume.
+        _mockOriginIsRoot(false);
         if (!ok) {
             assembly {
                 revert(add(data, 32), mload(data))
