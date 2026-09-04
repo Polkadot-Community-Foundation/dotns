@@ -153,15 +153,17 @@ abstract contract BaseDotns is Test {
     bytes32 public constant ZERO_HASH = bytes32(0);
 
     // Classification-valid labels for the PoP path (post PopRules enforcement).
-    // baselength 7 with 2 trailing digits classifies as PopLite.
+    // A stem of 7 behind a two-digit suffix classifies as PopLite. These carry the gateway's
+    // separator, which reaches the chain only through the PoP path: the public path rejects a
+    // separator, so a dotted label is always gateway-issued.
     /// @notice PoP lite classification label fixture A.
-    string internal constant LITE_LABEL_A = "aliceli01";
+    string internal constant LITE_LABEL_A = "michael.01";
     /// @notice PoP lite classification label fixture B.
-    string internal constant LITE_LABEL_B = "alicoli02";
+    string internal constant LITE_LABEL_B = "matthew.02";
     /// @notice PoP lite classification label fixture C.
-    string internal constant LITE_LABEL_C = "boblilu03";
+    string internal constant LITE_LABEL_C = "william.03";
     /// @notice PoP lite classification label fixture D.
-    string internal constant LITE_LABEL_D = "carolli04";
+    string internal constant LITE_LABEL_D = "richard.04";
 
     // baselength 8 with no trailing digits classifies as PopFull.
     /// @notice PoP full classification label fixture A.

@@ -47,11 +47,11 @@ import {SystemUtils} from "../utils/SystemUtils.sol";
 /// commit-reveal controller is equally unaware of this one. Cross-flow collision handling
 /// relies on two distinct properties, neither of which requires the two controllers to know
 /// about each other:
-/// (1) Lite-person labels (`NAMEXX`) share the public namespace: they are just DNS labels
-/// with exactly two trailing digits. First-to-mint wins at the ERC721 layer, so a lite-user
-/// and a public registrant cannot hold the same flat label simultaneously. Keeping one
-/// namespace removes the ambiguity downstream tooling (dotli, dweb) would see with a
-/// separate separator form.
+/// (1) Lite-person labels (`stem.NN`) occupy a namespace the public path cannot reach: a
+/// separator and a digit suffix are legal only on a lite label, so a lite name has no flat
+/// spelling for a public registrant to take. The two flows therefore cannot contend for the
+/// same label at all, and downstream tooling (dotli, dweb) can read a separator as meaning
+/// exactly one thing.
 /// (2) Base-name reservations are synchronised into `IPopRules`. The head of this
 /// controller's reservation queue is written through `IPopRules.reserveBaseNameForPop` on
 /// every head transition; the slot is cleared through `IPopRules.releaseBaseName` when the
@@ -132,8 +132,16 @@ contract DotnsPopController is
     /// entry's deadline is measured from its own `mintedAt` against `reservationDuration`.
     mapping(address user => PendingClaim[] queue) internal _pendingClaimQueue;
 
+    /// @notice Labels this controller minted, keyed by the bare label without the TLD.
+    /// @dev Provenance, not a transfer rule: written once at mint and never cleared, so it
+    ///      stays true if a name later becomes transferable. Keyed by the label text rather
+    ///      than the node because a reader holding only `joseph.42` cannot derive the node
+    ///      without first deciding whether the separator is part of the label or a subname
+    ///      boundary, which is the question it is asking.
+    mapping(string label => bool issued) internal _popIssued;
+
     /// @dev Reserved storage space to allow for layout changes in future upgrades.
-    uint256[50] private __gap;
+    uint256[49] private __gap;
 
     /// @notice Restricts calls to a substrate Root origin.
     modifier onlyRoot() {
@@ -171,6 +179,11 @@ contract DotnsPopController is
     }
 
     /// @inheritdoc IDotnsPopController
+    function isPopIssued(string calldata label) external view override returns (bool issued) {
+        return _popIssued[label];
+    }
+
+    /// @inheritdoc IDotnsPopController
     function reserveLiteName(LiteRegistration calldata params) external override onlyRoot {
         _reserveLite(_popRules(), params);
     }
@@ -205,29 +218,30 @@ contract DotnsPopController is
     /// @notice Lite-only mint shared by @custom:function reserveLiteName and the lite leg
     /// of @custom:function reserveBaseName.
     /// @dev Gateway attestation is the authority for personhood on this path; the on-chain
-    /// precompile is not consulted. The dotted-format check accepts only `stem.NN`, then
-    /// PopRules classification must place the flattened label outside the governance-reserved
-    /// tier before minting; any non-reserved two-digit lite label is accepted regardless of stem
-    /// length. Takes the @custom:struct LiteRegistration struct directly so both call sites pass
-    /// the same payload shape: the typed entrypoint forwards its own `params`, the
-    /// `reserveBaseName` entrypoint forwards `params.lite`.
+    /// precompile is not consulted. The label is stored in the `stem.NN` form the gateway sends,
+    /// which is the form People Chain holds, so no normalisation happens here. The shape check
+    /// runs before classification so a malformed label reverts
+    /// @custom:reverts InvalidLiteLabel, which the gateway pallet decodes by selector; letting
+    /// `_validateLiteLabel` catch it instead would surface an undecodable PopRules string.
+    /// Takes the @custom:struct LiteRegistration struct directly so both call sites pass the same
+    /// payload shape: the typed entrypoint forwards its own `params`, the `reserveBaseName`
+    /// entrypoint forwards `params.lite`.
     function _reserveLite(IPopRules rules, LiteRegistration calldata params) internal {
-        require(params.liteLabel.isSingleDotLiteLabel(), InvalidLiteLabel());
+        require(params.liteLabel.isLitePersonLabel(), InvalidLiteLabel());
         _requireValidChatKey(params.chatKey);
 
-        string memory liteLabel = params.liteLabel.stripDots();
-        (IPopRules.PopStatus required,) = rules.classifyName(liteLabel);
-        // `isSingleDotLiteLabel` guarantees exactly two trailing digits, so the flattened label
-        // classifies as PopLite (base 6-8), NoStatus (base >= 9), or Reserved (base <= 5). Accept
-        // the first two; governance-reserved short stems are still rejected.
+        (IPopRules.PopStatus required,) = rules.classifyName(params.liteLabel);
+        // The shape check fixes the suffix at a separator and two digits, so classification lands
+        // on PopLite (stem 6-8), NoStatus (stem >= 9), or Reserved (stem <= 5). Accept the first
+        // two; governance-reserved short stems are still rejected.
         require(required != IPopRules.PopStatus.Reserved, InvalidLiteLabel());
-        (bytes32 labelhash, bytes32 node) = _validateLiteLabel(liteLabel);
+        (bytes32 labelhash, bytes32 node) = _validateLiteLabel(params.liteLabel);
 
         _completeGatewayRegistration(
-            params.user, liteLabel, labelhash, node, params.chatKey, bytes32(0)
+            params.user, params.liteLabel, labelhash, node, params.chatKey, bytes32(0)
         );
 
-        emit LiteNameReserved(labelhash, params.user, liteLabel);
+        emit LiteNameReserved(labelhash, params.user, params.liteLabel);
     }
 
     /// @inheritdoc IDotnsPopController
@@ -282,9 +296,8 @@ contract DotnsPopController is
         bytes32 liteNode;
         bytes memory chatKeyToPersist;
         if (link.kind == LinkKind.LiteUsername) {
-            require(link.liteLabel.isSingleDotLiteLabel(), InvalidLiteLabel());
-            string memory liteLabel = link.liteLabel.stripDots();
-            (liteLabelhash, liteNode) = _validateLiteLabel(liteLabel);
+            require(link.liteLabel.isLitePersonLabel(), InvalidLiteLabel());
+            (liteLabelhash, liteNode) = _validateLiteLabel(link.liteLabel);
             IDotnsRegistrar registrar = _registrar();
             require(
                 registrar.exists(uint256(liteNode)) && registrar.ownerOf(uint256(liteNode)) == user,
@@ -533,8 +546,13 @@ contract DotnsPopController is
         override(ERC165Upgradeable, IERC165)
         returns (bool)
     {
+        // Integrations built against the interface without `isPopIssued` probe a different id,
+        // so both are answered. An interface id is the XOR of its selectors, so the other one is
+        // derived by XORing that selector out rather than carried as a constant that could drift.
+        bytes4 legacyInterfaceId =
+            type(IDotnsPopController).interfaceId ^ IDotnsPopController.isPopIssued.selector;
         return interfaceId == type(IDotnsPopController).interfaceId
-            || super.supportsInterface(interfaceId);
+            || interfaceId == legacyInterfaceId || super.supportsInterface(interfaceId);
     }
 
     /// @notice Returns implementation version.
@@ -568,6 +586,8 @@ contract DotnsPopController is
     )
         internal
     {
+        _popIssued[label] = true;
+
         RegistrationUtils.registerAndStore(
             RegistrationUtils.RegistrationContext({
                 protocolRegistry: protocolRegistry,
@@ -761,7 +781,10 @@ contract DotnsPopController is
         view
         returns (bytes32 labelhash, bytes32 node)
     {
-        require(baseLabel.isSingleLabel(), InvalidBaseLabel());
+        // A full-person label carries no digit suffix, matching `BaseLabel::is_valid_person` in
+        // the gateway pallet. The tier check alone does not cover it: a suffixed label with a
+        // stem of nine or more classifies NoStatus rather than PopLite and would otherwise pass.
+        require(baseLabel.isSingleLabel() && !baseLabel.hasDigitSuffix(), InvalidBaseLabel());
         (labelhash, node) = LabelUtils.deriveNode(protocolRegistry.tldNode(), baseLabel);
     }
 

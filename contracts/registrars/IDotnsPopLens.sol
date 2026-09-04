@@ -87,6 +87,12 @@ interface IDotnsPopLens {
     /// via @custom:function nameDetailByNode. Gas grows with the account's holdings, so call it
     /// off-chain. A page holds at most `DotnsConstants.MAX_PAGE_SIZE` entries, and the pending
     /// portion covers up to that many staged claims.
+    /// A name is listed only when @custom:function IDotnsPopController.isPopIssued confirms the
+    /// gateway minted it, so a name that merely resembles a lite label is not listed: neither a
+    /// public registration spelled `joseph42` nor a subname stored as `joseph.42`. Among issued
+    /// names the separator is what marks a lite one, since provenance covers full-person names
+    /// too. Identities minted before provenance was recorded have none to confirm, so they are
+    /// not listed and are re-issued through the gateway.
     /// @param user Account whose lite names are listed.
     /// @param offset Start index into the filtered sequence.
     /// @param limit Maximum entries to return.
@@ -101,8 +107,11 @@ interface IDotnsPopLens {
         returns (Name[] memory names);
 
     /// @notice Lists the full-person names currently owned by `user`.
-    /// @dev Same ownership-verified read as @custom:function liteNamesOf, keeping base-shaped
-    /// labels instead of lite-shaped ones.
+    /// @dev Same ownership-verified read as @custom:function liteNamesOf, and the same
+    /// provenance requirement: a name is listed only when the gateway minted it. It keeps the
+    /// labels without a separator, which is the form the gateway issues a full-person name in.
+    /// A public registration is not an identity and appears in neither listing, so the two
+    /// together cover what the gateway issued rather than everything the account holds.
     /// @param user Account whose full names are listed.
     /// @param offset Start index into the filtered sequence.
     /// @param limit Maximum entries to return.

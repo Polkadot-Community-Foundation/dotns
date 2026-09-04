@@ -5,12 +5,12 @@ pragma solidity ^0.8.34;
 /// @notice Proof of personhood interface defining Dotns price calculation, PoP-tier requirements,
 ///         and base-name reservation rules.
 /// @dev Classifies labels into the PoP tier required for registration and exposes reservation
-///      metadata. Length <= 5 is reserved for governance; lengths 6-8 require PopFull unless they
-///      carry exactly two trailing digits (PopLite, gateway-issued); lengths >= 9 are open to
-///      every caller as NoStatus when they carry zero or exactly two trailing digits. Any one-digit
-///      suffix, and any suffix longer than two digits, is invalid; internal digits do not affect
-///      classification. Reservations are keyed by the digit-stripped stem so `alice` and `alice42`
-///      share a slot.
+///      metadata. Every label is measured as written, except a gateway lite label, whose
+///      separator and allocated digits are removed first. Base length <= 5 is reserved for
+///      governance; 6-8 requires PopFull; >= 9 is open to every caller as NoStatus. PopLite is
+///      the separated form alone, so digits in an ordinary label carry no personhood meaning.
+///      Reservations are keyed by that same stem, so `joseph` and `joseph.42` share a slot while
+///      `joseph42` is an unrelated name.
 ///
 ///      Amounts come from the cost model registered under `DotnsConstants.COST_MODEL`, which owns
 ///      the curve; only the base length crosses that seam. Every caller pays the same amount for a
@@ -328,8 +328,8 @@ interface IPopRules {
     /// @notice Calculates registration cost for a label.
     /// @dev Prices the label by its base length through the cost model registered under
     ///      `DotnsConstants.COST_MODEL`. Ignores the caller's personhood status and reservation
-    ///      state. A label whose trailing-digit suffix is neither zero nor exactly two, and any
-    ///      non-canonical label, trigger @custom:reverts PopError.
+    ///      state. A non-canonical label triggers @custom:reverts PopError. An ordinary label is
+    ///      priced as written; only a lite label's allocated suffix is removed first.
     /// @param name Domain label to price.
     /// @return cost Registration cost in wei.
     function price(string calldata name) external view returns (uint256 cost);

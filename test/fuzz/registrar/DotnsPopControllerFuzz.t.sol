@@ -28,7 +28,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
 
     function testFuzz_reserveBaseName_accepts_any_two_digit_suffix(uint8 suffix) public {
         suffix = uint8(bound(uint256(suffix), 0, 99));
-        string memory label = string.concat("alicex", _twoDigitDecimal(uint256(suffix)));
+        string memory label = string.concat("joseph", ".", _twoDigitDecimal(uint256(suffix)));
 
         // Lite-tier label requires ed to hold PopLite (or PopFull) status so the
         // `priceWithCheck` guard inside the controller accepts the reservation.
@@ -47,7 +47,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         public
     {
         suffix = uint8(bound(uint256(suffix), 0, 99));
-        string memory label = string.concat("bobxyz", _twoDigitDecimal(uint256(suffix)));
+        string memory label = string.concat("joseph", ".", _twoDigitDecimal(uint256(suffix)));
 
         _grantPopLite(ed);
 
@@ -148,7 +148,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         public
     {
         suffix = uint8(bound(uint256(suffix), 0, 99));
-        string memory label = string.concat("coldfu", _twoDigitDecimal(uint256(suffix)));
+        string memory label = string.concat("joseph", ".", _twoDigitDecimal(uint256(suffix)));
         bytes memory chatKey = _validChatKey(keySeed);
 
         _grantPopLite(ed);
@@ -174,7 +174,7 @@ contract DotnsPopControllerFuzz is BaseDotns {
         public
     {
         suffix = uint8(bound(uint256(suffix), 0, 99));
-        string memory label = string.concat("warmfu", _twoDigitDecimal(uint256(suffix)));
+        string memory label = string.concat("joseph", ".", _twoDigitDecimal(uint256(suffix)));
         bytes memory chatKey = _validChatKey(keySeed);
 
         _grantPopLite(ed);

@@ -351,12 +351,12 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_entry_point_format_rejections() public {
         _grantPopFull(ed);
 
-        // `reserveLiteName` admits priceWithCheck first because "aliceli"
+        // `reserveLiteName` admits priceWithCheck first because "michael"
         // classifies as PopFull and ed is PopFull; the isLitePersonLabel
         // guard then rejects the zero trailing digits.
         vm.expectRevert(IDotnsPopController.InvalidLiteLabel.selector);
         _rootReserveLiteName(
-            IDotnsPopController.LiteRegistration({liteLabel: "aliceli", user: ed, chatKey: ""})
+            IDotnsPopController.LiteRegistration({liteLabel: "michael", user: ed, chatKey: ""})
         );
 
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xaa));
@@ -372,16 +372,16 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_same_stem_lite_and_base_occupy_distinct_registrar_tokens() public {
         _grantPopFull(ed);
         _reservePop(ed, LITE_LABEL_A, _validChatKey(0xaa), "");
-        // "aliceli" (baselength 7, no trailing digits) classifies as PopFull
+        // "michael" (baselength 7, no trailing digits) classifies as PopFull
         // and shares the lite's stem, so both tokens coexist on the registrar.
         _grantPopFull(tiago);
         IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xbb));
         _rootRegisterBaseName(
-            IDotnsPopController.FullRegistration({label: "aliceli", user: tiago, link: link})
+            IDotnsPopController.FullRegistration({label: "michael", user: tiago, link: link})
         );
 
         assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf(LITE_LABEL_A))), ed);
-        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("aliceli"))), tiago);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("michael"))), tiago);
     }
 
     function test_both_controllers_can_mint_on_shared_registrar() public {
@@ -810,11 +810,11 @@ contract DotnsPopControllerTests is BaseDotns {
 
         _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
-                liteLabel: "freshli01", user: fresh, chatKey: _validChatKey(0xcc)
+                liteLabel: "stephen.01", user: fresh, chatKey: _validChatKey(0xcc)
             })
         );
 
-        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("freshli01"))), fresh);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("stephen.01"))), fresh);
     }
 
     function test_reserveLiteName_reverts_for_non_lite_format() public {
@@ -834,16 +834,16 @@ contract DotnsPopControllerTests is BaseDotns {
         vm.expectRevert(IDotnsPopController.InvalidLiteLabel.selector);
         _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
-                liteLabel: "aliceli.001", user: ed, chatKey: _validChatKey(0xaa)
+                liteLabel: "michael.001", user: ed, chatKey: _validChatKey(0xaa)
             })
         );
     }
 
-    function test_reserveLiteName_reverts_when_flattened_label_is_governance_reserved() public {
+    function test_reserveLiteName_reverts_when_the_stem_is_governance_reserved() public {
         _grantPopFull(ed);
 
-        // `abcd.12` flattens to `abcd12`: base length 4 classifies as Reserved (governance), so the
-        // gateway lite path still rejects it even though the dotted format is valid.
+        // `abcd.12` has a stem of 4, which classifies as Reserved (governance), so the gateway
+        // lite path rejects it even though the shape is valid.
         vm.expectRevert(IDotnsPopController.InvalidLiteLabel.selector);
         _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
@@ -855,15 +855,145 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_reserveLiteName_succeeds_for_long_stem() public {
         _grantPopLite(ed);
 
-        // `andrewsays.01` flattens to `andrewsays01`: base length 10 classifies as NoStatus, which
-        // the gateway may issue as a lite username regardless of stem length.
+        // `andrewsays.01` has a stem of 10, which classifies as NoStatus. The gateway may issue
+        // it as a lite username regardless of stem length.
         _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
                 liteLabel: "andrewsays.01", user: ed, chatKey: _validChatKey(0xaa)
             })
         );
 
-        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("andrewsays01"))), ed);
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf("andrewsays.01"))), ed);
+    }
+
+    /// @notice A public registration is not an identity and appears in neither listing.
+    /// @dev Both listings require provenance, so a name the gateway never minted is absent from
+    ///      both however it is spelled. Without that, `joseph42` would read as a full-person
+    ///      identity purely because it is a single label.
+    function test_lens_omits_a_public_registration_from_both_listings() public {
+        _grantPopFull(ed);
+        _commitAndRegister("joseph42", ed, true);
+
+        assertFalse(dotnsPopController.isPopIssued("joseph42"), "the gateway did not mint it");
+
+        assertEq(dotnsPopLens.fullNamesOf(ed, 0, 10).length, 0, "not a full-person identity");
+        assertEq(dotnsPopLens.liteNamesOf(ed, 0, 10).length, 0, "nor a lite one");
+        assertEq(dotnsPopLens.fullNameCountOf(ed), 0);
+        assertEq(dotnsPopLens.liteNameCountOf(ed), 0);
+    }
+
+    /// @notice A full-person gateway name lists as full, not lite.
+    /// @dev `isPopIssued` covers every name the controller mints, lite and full alike, so it
+    ///      cannot say which kind a name is. The separator does that. Keying the lite listing on
+    ///      provenance alone would move every full-person identity into it.
+    function test_lens_lists_a_full_person_name_as_full() public {
+        _grantPopFull(ed);
+        _reservePop(ed, LITE_LABEL_A, _validChatKey(0x01), "");
+
+        IDotnsPopController.Link memory link = _linkWithLite(LITE_LABEL_A);
+        _rootRegisterBaseName(
+            IDotnsPopController.FullRegistration({label: BASE_LABEL_A, user: ed, link: link})
+        );
+
+        assertTrue(dotnsPopController.isPopIssued(BASE_LABEL_A), "both kinds carry provenance");
+        assertTrue(dotnsPopController.isPopIssued(LITE_LABEL_A), "both kinds carry provenance");
+
+        IDotnsPopLens.Name[] memory full = dotnsPopLens.fullNamesOf(ed, 0, 10);
+        assertEq(full.length, 1, "the full-person name is in the full listing");
+        assertEq(full[0].label, BASE_LABEL_A);
+
+        IDotnsPopLens.Name[] memory lite = dotnsPopLens.liteNamesOf(ed, 0, 10);
+        assertEq(lite.length, 1, "and the lite name is in the lite listing");
+        assertEq(lite[0].label, LITE_LABEL_A);
+    }
+
+    /// @notice Adding `isPopIssued` moved the ERC-165 id, so both must be answered.
+    /// @dev This ships as an upgrade, and an integration compiled against the previous ABI
+    ///      probes the old id. Answering only the new one would make the controller undetectable
+    ///      to every existing caller.
+    function test_supportsInterface_answers_the_pre_isPopIssued_id() public view {
+        bytes4 current = type(IDotnsPopController).interfaceId;
+        bytes4 legacy = current ^ IDotnsPopController.isPopIssued.selector;
+
+        assertTrue(current != legacy, "adding a function must move the id");
+        assertTrue(dotnsPopController.supportsInterface(current), "current id");
+        assertTrue(dotnsPopController.supportsInterface(legacy), "legacy id");
+        assertFalse(dotnsPopController.supportsInterface(bytes4(0xdeadbeef)), "unrelated id");
+    }
+
+    /// @notice The name reaches the chain in the form People Chain and the gateway hold it.
+    /// @dev The node is the hash of the whole string, so it is not the node a subname path
+    ///      would produce for the same text. Pinning both is what makes "keep the dot"
+    ///      concrete rather than cosmetic.
+    function test_reserveLiteName_stores_the_label_with_its_separator() public {
+        _grantPopLite(ed);
+        _rootReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: "michael.01", user: ed, chatKey: _validChatKey(0xaa)
+            })
+        );
+
+        bytes32 wholeLabelNode = _nodeOf("michael.01");
+        assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(wholeLabelNode)), ed);
+
+        bytes32 subnamePathNode = _namehash(_nodeOf("01"), keccak256(bytes("michael")));
+        assertTrue(wholeLabelNode != subnamePathNode, "whole label and subname path differ");
+    }
+
+    function test_isPopIssued_is_set_at_mint() public {
+        _grantPopLite(ed);
+        assertFalse(dotnsPopController.isPopIssued("michael.01"), "not issued before the mint");
+
+        _rootReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: "michael.01", user: ed, chatKey: _validChatKey(0xaa)
+            })
+        );
+
+        assertTrue(dotnsPopController.isPopIssued("michael.01"), "issued after the mint");
+    }
+
+    /// @dev The signal must be false for anything the gateway did not mint, or it cannot tell a
+    ///      person from a subname, which is the only reason it exists.
+    function test_isPopIssued_is_false_for_a_name_the_gateway_did_not_issue() public {
+        assertFalse(dotnsPopController.isPopIssued("michael.01"));
+        assertFalse(dotnsPopController.isPopIssued(NOSTATUS_LABEL_A));
+        assertFalse(dotnsPopController.isPopIssued(""));
+    }
+
+    /// @dev Provenance is written at mint, and the cold path mints before the store exists, so a
+    ///      name stashed as a pending claim must already answer true.
+    function test_isPopIssued_holds_across_cold_path_settlement() public {
+        address cold = makeAddr("coldClaimant");
+        _grantPopLite(cold);
+
+        _rootReserveLiteName(
+            IDotnsPopController.LiteRegistration({
+                liteLabel: "william.03", user: cold, chatKey: _validChatKey(0xbb)
+            })
+        );
+
+        assertTrue(dotnsPopController.isPopIssued("william.03"), "true while still pending");
+
+        vm.prank(cold);
+        dotnsPopController.claimLabelStore();
+        dotnsPopController.settlePendingClaims(cold, type(uint256).max);
+
+        assertTrue(dotnsPopController.isPopIssued("william.03"), "still true once settled");
+    }
+
+    /// @dev Provenance covers every name this controller mints, not only the lite ones, because
+    ///      it records who issued the name rather than which tier it sits in.
+    function test_isPopIssued_covers_full_person_names() public {
+        _grantPopFull(ed);
+        _reservePop(ed, LITE_LABEL_A, _validChatKey(0x01), "");
+
+        IDotnsPopController.Link memory link = _linkWithLite(LITE_LABEL_A);
+        _rootRegisterBaseName(
+            IDotnsPopController.FullRegistration({label: BASE_LABEL_A, user: ed, link: link})
+        );
+
+        assertTrue(dotnsPopController.isPopIssued(BASE_LABEL_A));
     }
 
     function test_reserveLiteName_reverts_when_origin_is_not_root() public {
@@ -1629,7 +1759,7 @@ contract DotnsPopControllerTests is BaseDotns {
         );
     }
 
-    function test_liteNamesOf_and_fullNamesOf_list_by_shape() public {
+    function test_liteNamesOf_and_fullNamesOf_split_issued_names_by_shape() public {
         // Settled names read back from the store; a pending gateway name reads from the queue with
         // a live deadline; the two shapes never cross into each other's list; an untouched account
         // returns empty lists and zero counts.

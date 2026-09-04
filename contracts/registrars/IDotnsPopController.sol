@@ -14,14 +14,17 @@ import {IDotnsController} from "./IDotnsController.sol";
 ///
 /// Label formats:
 /// Lite-person usernames (first argument to @custom:function reserveBaseName and the
-/// `liteLabel` of a `LinkKind.LiteUsername` link) are DNS labels with exactly two
-/// trailing digits (e.g. `alice42`) per @custom:function StringUtils.isLitePersonLabel.
-/// The gateway strips any separator before calling so the on-chain label is flat.
+/// `liteLabel` of a `LinkKind.LiteUsername` link) are a DNS stem, a separator, then exactly
+/// two digits (e.g. `joseph.42`) per @custom:function StringUtils.isLitePersonLabel. The
+/// label is stored in the form the gateway sends, which is the form People Chain holds, so
+/// nothing here normalises it.
 /// Full-person usernames (the `label` of @custom:function registerBaseName and the
 /// optional `reservedBaseLabel` of @custom:function reserveBaseName) follow the
 /// DNS-label rules enforced by @custom:function StringUtils.isSingleLabel (e.g.
-/// `alice`). Lite and public registrations share one namespace; first-to-mint wins at
-/// the ERC721 layer. Cross-flow priority on the stripped base stem is arbitrated by
+/// `alice`). A separator is what marks a lite label and is rejected everywhere else, so only
+/// the gateway can create a dotted name; a two-digit suffix on its own is not exclusive, since
+/// a public label may carry one directly.
+/// Cross-flow priority on the base stem is arbitrated by
 /// @custom:function IPopRules.reserveBaseNameForPop.
 /// @custom:security-contact admin@parity.io
 interface IDotnsPopController is IDotnsController {
@@ -241,8 +244,8 @@ interface IDotnsPopController is IDotnsController {
     /// and optionally enqueues a reservation for a base name they intend to
     /// claim as a full person later.
     /// @dev Callable only under a substrate Root origin (otherwise @custom:reverts NotRoot). The
-    /// lite leg validates the dotted `stem.NN` shape and requires the flattened label to classify
-    /// as PopLite (otherwise @custom:reverts InvalidLiteLabel), and rejects a
+    /// lite leg validates the `stem.NN` shape and requires the label to classify outside the
+    /// governance-reserved tier (otherwise @custom:reverts InvalidLiteLabel), and rejects a
     /// supplied chat key whose length is neither zero nor `CHAT_KEY_LENGTH`
     /// (otherwise @custom:reverts InvalidChatKey). On a warm-path mint (user already has a
     /// `LabelStore`) it @custom:emits LiteNameReserved and @custom:emits NameRegistered;
@@ -284,8 +287,8 @@ interface IDotnsPopController is IDotnsController {
     /// @notice Registers a lite-person username on behalf of the supplied
     /// user without touching the base-name reservation queue.
     /// @dev Callable only under a substrate Root origin (otherwise @custom:reverts NotRoot). The
-    /// supplied label must satisfy the dotted `stem.NN` shape and the flattened label must classify
-    /// as PopLite (otherwise @custom:reverts InvalidLiteLabel); a supplied chat
+    /// supplied label must satisfy the `stem.NN` shape and must classify outside the
+    /// governance-reserved tier (otherwise @custom:reverts InvalidLiteLabel); a supplied chat
     /// key whose length is neither zero nor `CHAT_KEY_LENGTH` reverts
     /// @custom:reverts InvalidChatKey before mint and resolver writes run. On a warm-path mint
     /// @custom:emits LiteNameReserved and @custom:emits NameRegistered. On a cold-path
@@ -295,6 +298,16 @@ interface IDotnsPopController is IDotnsController {
     /// call's payload, which Solidity decodes directly.
     /// @param params Registration request; see @custom:struct LiteRegistration.
     function reserveLiteName(LiteRegistration calldata params) external;
+
+    /// @notice Whether this controller minted `label`.
+    /// @dev The signal that separates a person from a subname. `joseph.42` is one whole label
+    /// when this returns true and a subname path (`joseph` under `42`) when it returns false,
+    /// and the string alone cannot tell them apart. Set at mint and never cleared, so it is
+    /// unaffected by a name later becoming transferable; the soulbound flag is a transfer rule
+    /// and cannot stand in for it.
+    /// @param label Bare label without the TLD, for example `joseph.42`.
+    /// @return issued True when this controller minted `label`.
+    function isPopIssued(string calldata label) external view returns (bool issued);
 
     /// @notice Registers a full-person username on behalf of the supplied user.
     /// @dev Callable only under a substrate Root origin (otherwise @custom:reverts NotRoot). The

@@ -108,12 +108,19 @@ contract DotnsPopLens is IDotnsPopLens {
     }
 
     /// @notice Whether `label` belongs in the lite listing (`wantLite`) or the full listing.
-    /// @dev A lite-person label is a single label with two trailing digits; a full-person label
-    /// is any other single label. The two sets are disjoint and together cover every single
-    /// label, so one predicate drives both listings.
-    function _matchesShape(string memory label, bool wantLite) internal pure returns (bool) {
-        bool lite = label.isLitePersonLabelMemory();
-        return wantLite ? lite : (!lite && label.isSingleLabelMemory());
+    /// @dev Two questions, two signals. Whether a name is an identity at all is provenance, and
+    /// only the issuer knows it: a subname stored as `joseph.42` and a public registration
+    /// spelled `joseph42` both read as lite labels from their characters alone, so
+    /// @custom:function IDotnsPopController.isPopIssued has to confirm the mint. Which kind of
+    /// identity it is, lite or full, is spelling: the gateway issues a lite name with its
+    /// separator and a full-person name without one, and provenance cannot tell them apart
+    /// because it covers both.
+    /// Both listings ask both questions. A name the gateway did not mint is not an identity of
+    /// either kind, so a public registration and a subname appear in neither, and the two
+    /// listings together cover the issued names rather than everything the account holds.
+    function _matchesShape(string memory label, bool wantLite) internal view returns (bool) {
+        if (!_controller().isPopIssued(label)) return false;
+        return wantLite ? label.isLitePersonLabelMemory() : label.isSingleLabelMemory();
     }
 
     /// @notice Counts the names currently owned by `user` that match the requested shape.
