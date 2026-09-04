@@ -525,7 +525,9 @@ contract PopControllerHandler is Test {
     ///      they display identically once the TLD is appended. The suffix parent is
     ///      governance-only on every production entry point, so it is minted straight from an
     ///      authorised controller: the point is to stand the rival hierarchy up and let the
-    ///      invariant show that only provenance tells the two apart.
+    ///      invariant show that the two nodes never converge, and that the text-keyed answer
+    ///      belongs to the whole-label reading rather than to whichever object shares its
+    ///      text.
     function createRivalSubname(uint256 liteIndex, uint256 toIndex) external {
         uint256 n = priorLiteLabels.length;
         if (n == 0) return;

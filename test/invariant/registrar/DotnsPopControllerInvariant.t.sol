@@ -55,12 +55,14 @@ contract DotnsPopControllerInvariant is BaseDotns {
         _seedCoverage();
     }
 
-    /// @notice Drives one of every action once so no ghost list starts empty.
+    /// @notice Drives the actions whose results the coverage assertions read.
     /// @dev Each invariant here iterates a handler list, so a list the campaign never fills
     ///      makes its assertions pass without reading any state. Seeding from `setUp` puts the
-    ///      first of each into the snapshot every run starts from, which makes the coverage
-    ///      assertions in @custom:function afterInvariant deterministic rather than a bet on
-    ///      the fuzzer's selector order.
+    ///      first entry of each such list into the snapshot every run starts from, which makes
+    ///      the coverage assertions in @custom:function afterInvariant deterministic rather
+    ///      than a bet on the fuzzer's selector order. The other actions (relinquish, expiry,
+    ///      warp, relink and the two settlement paths) fill no list of their own and are left
+    ///      to the campaign.
     function _seedCoverage() internal {
         // A reserve, then a claim on the same base label, so a lite name and a full-person name
         // both exist and the actor's store is settled.
@@ -149,10 +151,11 @@ contract DotnsPopControllerInvariant is BaseDotns {
     }
 
     /// @notice A label the gateway issued keeps answering `isPopIssued`.
-    /// @dev Provenance is what separates a person from a subname, so a cleared entry would make
-    ///      `joseph.42` read as `joseph` under `42` to every consumer. Nothing in the contract
-    ///      writes false, and the campaign moves names and settles claims underneath it, which
-    ///      is where a clear would come from if one existed.
+    /// @dev The answer is a person's only proof that the whole-label reading of their name was
+    ///      issued. A cleared entry does not create a subname, it removes that proof, leaving
+    ///      `joseph.42` indistinguishable from text a hierarchy could also produce. Nothing in
+    ///      the contract writes false, and the campaign moves names and settles claims
+    ///      underneath it, which is where a clear would come from if one existed.
     function invariant_popIssued_is_never_cleared() public view {
         uint256 n = handler.gatewayLabelCount();
         for (uint256 i = 0; i < n; i++) {
