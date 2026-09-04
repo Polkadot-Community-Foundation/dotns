@@ -4,21 +4,12 @@ pragma solidity ^0.8.34;
 import {BaseDotns, IDotnsRegistrarController} from "../../base/BaseDotns.t.sol";
 import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
 import {IDotnsNameEscrow} from "../../../contracts/escrow/IDotnsNameEscrow.sol";
-import {IDotnsRoleManager} from "../../../contracts/access/IDotnsRoleManager.sol";
 
 /// @title DotnsRegistrarControllerFuzzTest
 /// @notice Property-based tests for @custom:contract DotnsRegistrarController role administration,
 ///         payment handling and reverse-record behaviour.
 contract DotnsRegistrarControllerFuzzTest is BaseDotns {
     /// @notice The controller supports no roles of its own; operators live on the whitelist.
-    function testFuzz_controller_rejects_every_role(bytes32 role, address account) public {
-        vm.assume(account != address(0));
-
-        vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(IDotnsRoleManager.UnsupportedRole.selector, role));
-        dotnsRegistrarController.setRole(role, account, true);
-    }
-
     function testFuzz_register_pushes_overpayment_back_to_eoa_payer(
         uint256 extra,
         uint256 salt

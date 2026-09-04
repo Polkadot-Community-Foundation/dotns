@@ -9,15 +9,11 @@ import {IDotnsPricing} from "../../../contracts/pop/IDotnsPricing.sol";
 import {IDotnsCostModelRegistry} from "../../../contracts/pop/IDotnsCostModelRegistry.sol";
 import {ILabelStore} from "../../../contracts/store/ILabelStore.sol";
 import {DotnsConstants} from "../../../contracts/utils/DotnsConstants.sol";
-import {IDotnsRoleManager} from "../../../contracts/access/IDotnsRoleManager.sol";
 import {IDotnsNameEscrow} from "../../../contracts/escrow/IDotnsNameEscrow.sol";
 import {DotnsRegistrarController} from "../../../contracts/registrars/DotnsRegistrarController.sol";
 import {IDotnsProtocolRegistry} from "../../../contracts/registry/IDotnsProtocolRegistry.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {
-    OwnableUpgradeable
-} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 /// @title DotnsRegistrarControllerTest
 /// @notice Unit coverage for the public commit-reveal registrar controller:
@@ -359,26 +355,14 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         dotnsRegistrarController.registerReserved(registration);
     }
 
-    /// @dev The controller carries no roles at all: reserved registration reads grants from
-    /// `DotnsNameWhitelist`, whose own admin surface is Root-only.
-    function test_controller_supports_no_roles() public {
-        bytes32 anyRole = keccak256("DOTNS_ANY_ROLE");
-
-        vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(IDotnsRoleManager.UnsupportedRole.selector, anyRole));
-        dotnsRegistrarController.setRole(anyRole, leonardo, true);
-    }
-
-    function test_non_owner_cannot_grant_role() public {
-        vm.prank(ed);
-        vm.expectRevert(
-            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, ed)
+    /// @dev The controller exposes no role surface at all: reserved registration reads grants
+    /// from `DotnsNameWhitelist`, whose own admin surface is Root-only, so there is no role to
+    /// hold and nothing to advertise.
+    function test_controller_advertises_no_role_interface() public view {
+        assertTrue(
+            dotnsRegistrarController.supportsInterface(type(IDotnsRegistrarController).interfaceId)
         );
-        dotnsRegistrarController.grantRole(keccak256("DOTNS_ANY_ROLE"), leonardo);
-    }
-
-    function test_supports_idotnsrolemanager_interface() public view {
-        assertTrue(dotnsRegistrarController.supportsInterface(type(IDotnsRoleManager).interfaceId));
+        assertFalse(dotnsRegistrarController.supportsInterface(bytes4(0xdeadbeef)));
     }
 
     function test_granted_beneficiary_can_register_reserved() public {

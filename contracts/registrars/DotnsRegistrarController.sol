@@ -3,7 +3,12 @@ pragma solidity ^0.8.34;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {DotnsRoleManager} from "../access/DotnsRoleManager.sol";
+import {
+    OwnableUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {
+    ERC165Upgradeable
+} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
@@ -37,7 +42,8 @@ import {SystemUtils} from "../utils/SystemUtils.sol";
 contract DotnsRegistrarController is
     Initializable,
     UUPSUpgradeable,
-    DotnsRoleManager,
+    OwnableUpgradeable,
+    ERC165Upgradeable,
     ReentrancyGuardTransient,
     IDotnsRegistrarController
 {
@@ -101,8 +107,8 @@ contract DotnsRegistrarController is
         external
         initializer
     {
+        __ERC165_init();
         __Ownable_init(msg.sender);
-        _dotnsRoleManagerInit();
 
         require(minAge > 0, MinCommitmentAgeZero());
         require(maxAge > minAge, MaxCommitmentAgeTooLow());
@@ -339,7 +345,7 @@ contract DotnsRegistrarController is
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(DotnsRoleManager, IERC165)
+        override(ERC165Upgradeable, IERC165)
         returns (bool)
     {
         return interfaceId == type(IDotnsRegistrarController).interfaceId
@@ -462,13 +468,6 @@ contract DotnsRegistrarController is
         address configured = protocolRegistry.get(DotnsConstants.NAME_WHITELIST);
         require(configured != address(0), WhitelistNotConfigured());
         whitelist = IDotnsNameWhitelist(configured);
-    }
-
-    /// @dev The controller carries no roles. It reads grants from `DotnsNameWhitelist`, whose own
-    ///      admin surface is Root-only, so there is no role to hold anywhere and `setRole` here
-    ///      always @custom:reverts UnsupportedRole.
-    function _isSupportedRole(bytes32) internal view override returns (bool supported) {
-        return false;
     }
 
     /// @inheritdoc UUPSUpgradeable
