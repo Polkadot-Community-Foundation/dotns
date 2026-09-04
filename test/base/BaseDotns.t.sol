@@ -269,8 +269,9 @@ abstract contract BaseDotns is Test {
         popRules = PopRules(popRulesAddress);
         vm.label(popRulesAddress, "PopRules");
         // Open the short-name market so the band and registration suites exercise names below nine
-        // characters. The default-closed state is covered directly in PopRules unit tests.
-        popRules.setShortNamesEnabled(true);
+        // characters. Toggled as a Root origin because the setter is Root-gated. The default-closed
+        // state is covered directly in PopRules unit tests.
+        _setShortNames(true);
 
         address dotnsResolverAddress = Upgrades.deployUUPSProxy(
             "DotnsResolver.sol:DotnsResolver", abi.encodeCall(DotnsResolver.initialize, (registry))
@@ -364,6 +365,15 @@ abstract contract BaseDotns is Test {
             abi.encodeWithSelector(ISystem.originIsRoot.selector),
             abi.encode(returnValue)
         );
+    }
+
+    /// @notice Toggles the short-name market as a substrate Root origin.
+    /// @dev `setShortNamesEnabled` is Root-gated, so mock the System precompile's `originIsRoot`
+    ///      true for the call, then restore false so the default test origin stays non-Root.
+    function _setShortNames(bool enabled) internal {
+        _mockOriginIsRoot(true);
+        popRules.setShortNamesEnabled(enabled);
+        _mockOriginIsRoot(false);
     }
 
     /// @notice Computes the namehash of `parent` and `labelhash`.

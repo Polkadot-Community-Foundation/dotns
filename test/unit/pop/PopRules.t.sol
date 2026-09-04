@@ -9,9 +9,6 @@ import {
     IDotnsProtocolRegistry
 } from "../../../contracts/registry/DotnsProtocolRegistry.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
-import {
-    OwnableUpgradeable
-} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 /// @title PopRulesTests
 /// @notice Unit tests for PopRules name classification, pricing checks, and base-name reservation
@@ -166,8 +163,7 @@ contract PopRulesTests is BaseDotns {
     }
 
     function test_short_names_closed_reverts_direct_path() public {
-        vm.prank(owner);
-        popRules.setShortNamesEnabled(false);
+        _setShortNames(false);
         _grantPopFull(ed);
         vm.expectRevert(
             abi.encodeWithSelector(IPopRules.PopError.selector, "Short names are not for sale")
@@ -176,8 +172,7 @@ contract PopRulesTests is BaseDotns {
     }
 
     function test_short_names_closed_reverts_sponsored_path() public {
-        vm.prank(owner);
-        popRules.setShortNamesEnabled(false);
+        _setShortNames(false);
         vm.expectRevert(
             abi.encodeWithSelector(IPopRules.PopError.selector, "Short names are not for sale")
         );
@@ -185,35 +180,48 @@ contract PopRulesTests is BaseDotns {
     }
 
     function test_open_band_priced_while_short_names_closed() public {
-        vm.prank(owner);
-        popRules.setShortNamesEnabled(false);
+        _setShortNames(false);
         _grantPopLite(ed);
         // longnamehere is 12 characters, so the switch never gates it.
         assertEq(popRules.priceWithCheck("longnamehere", ed).price, BASE_DEPOSIT);
     }
 
     function test_enabling_short_names_opens_the_market() public {
-        vm.prank(owner);
-        popRules.setShortNamesEnabled(false);
+        _setShortNames(false);
         _grantPopFull(ed);
-        vm.prank(owner);
-        popRules.setShortNamesEnabled(true);
+        _setShortNames(true);
         assertEq(popRules.priceWithCheck("alicebob", ed).price, BASE_DEPOSIT);
     }
 
     function test_setShortNamesEnabled_emits() public {
+        _mockOriginIsRoot(true);
         vm.expectEmit(address(popRules));
         emit IPopRules.ShortNamesEnabledUpdated(false);
+        popRules.setShortNamesEnabled(false);
+    }
+
+    function test_setShortNamesEnabled_requires_root() public {
+        // A non-Root origin: originIsRoot returns false, so the setter reverts NotRoot regardless
+        // of the caller (owner included).
+        _mockOriginIsRoot(false);
+        vm.expectRevert(IPopRules.NotRoot.selector);
+        vm.prank(ed);
+        popRules.setShortNamesEnabled(false);
+    }
+
+    function test_setShortNamesEnabled_owner_reverts() public {
+        // The owner used to hold this switch. It is now Root-only, so the owner reverts NotRoot
+        // too.
+        _mockOriginIsRoot(false);
+        vm.expectRevert(IPopRules.NotRoot.selector);
         vm.prank(owner);
         popRules.setShortNamesEnabled(false);
     }
 
-    function test_setShortNamesEnabled_only_owner() public {
-        vm.prank(ed);
-        vm.expectRevert(
-            abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, ed)
-        );
-        popRules.setShortNamesEnabled(false);
+    function test_setShortNamesEnabled_root_succeeds() public {
+        _mockOriginIsRoot(true);
+        popRules.setShortNamesEnabled(true);
+        assertTrue(popRules.shortNamesEnabled());
     }
 
     function test_price_matches_model() public view {
