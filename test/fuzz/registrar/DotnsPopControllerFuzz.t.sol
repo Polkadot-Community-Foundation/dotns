@@ -62,23 +62,24 @@ contract DotnsPopControllerFuzz is BaseDotns {
         }
     }
 
+    /// @dev The reservation covers the stem, and the stem is what a public registrant contends
+    ///      for: a digit-suffixed spelling is measured as written and so is an unrelated name
+    ///      the reservation never sees.
     function testFuzz_public_register_respects_popRules_reservation(bool reserveFirst) public {
         string memory stem = "longnamebob";
-        string memory fullLabel = "longnamebob01";
 
         if (reserveFirst) {
-            // The reserved base label `longnamebob` classifies as NoStatus
-            // (baselength 11); the lite label has to be PopLite-eligible. Tiago needs
-            // PopFull status so both `priceWithCheck` calls inside `reserveBaseName`
-            // succeed.
+            // The reserved base label `longnamebob` classifies as NoStatus (11 characters); the
+            // lite label has to be PopLite-eligible. Tiago needs PopFull status so both
+            // `priceWithCheck` calls inside `reserveBaseName` succeed.
             _grantPopFull(tiago);
             _reservePop(tiago, LITE_LABEL_A, "", stem);
         }
 
-        bytes32 secret = keccak256(abi.encodePacked(fullLabel, ed, block.timestamp));
+        bytes32 secret = keccak256(abi.encodePacked(stem, ed, block.timestamp));
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: fullLabel,
+                label: stem,
                 owner: ed,
                 secret: secret,
                 reserved: true,
@@ -100,10 +101,10 @@ contract DotnsPopControllerFuzz is BaseDotns {
             vm.prank(ed);
             dotnsRegistrarController.register{value: 1 ether}(registration);
         } else {
-            uint256 cost = popRules.priceWithCheck(fullLabel, ed).price;
+            uint256 cost = popRules.priceWithCheck(stem, ed).price;
             vm.prank(ed);
             dotnsRegistrarController.register{value: cost}(registration);
-            assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf(fullLabel))), ed);
+            assertEq(IERC721(address(dotnsRegistrar)).ownerOf(uint256(_nodeOf(stem))), ed);
         }
     }
 
