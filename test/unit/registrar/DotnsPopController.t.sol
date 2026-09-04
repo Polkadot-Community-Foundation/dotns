@@ -546,7 +546,7 @@ contract DotnsPopControllerTests is BaseDotns {
         // A name minted through the public commit-reveal flow already has an owner, so a PoP
         // reservation over it could never be redeemed. The guard rejects it at reserve time
         // rather than admitting it and only failing at claim, which would have locked every
-        // two-digit variant of the stem for the full reservation window.
+        // lite name built on that stem for the full reservation window.
         _commitAndRegister("longnamebob", ed, true);
 
         _grantPopFull(tiago);
@@ -863,8 +863,8 @@ contract DotnsPopControllerTests is BaseDotns {
     function test_reserveLiteName_reverts_when_the_stem_is_governance_reserved() public {
         _grantPopFull(ed);
 
-        // `abcd.12` has a stem of 4, which classifies as Reserved (governance), so the gateway
-        // lite path rejects it even though the shape is valid.
+        // `abcd.12` is a well-formed lite label whose four-letter stem classifies as Reserved,
+        // so classification is what rejects it rather than the shape.
         vm.expectRevert(IDotnsPopController.InvalidLiteLabel.selector);
         _rootReserveLiteName(
             IDotnsPopController.LiteRegistration({
@@ -926,6 +926,44 @@ contract DotnsPopControllerTests is BaseDotns {
         IDotnsPopLens.Name[] memory lite = dotnsPopLens.liteNamesOf(ed, 0, 10);
         assertEq(lite.length, 1, "and the lite name is in the lite listing");
         assertEq(lite[0].label, LITE_LABEL_A);
+    }
+
+    /// @notice A full-person name is letters only, the same rule a lite stem follows.
+    /// @dev The hyphen and interior-digit cases are the ones a trailing-digit check misses:
+    ///      `alice-bob` and `micha3l` are valid DNS labels and would otherwise be issued as
+    ///      identities, while being impossible as lite stems.
+    function test_registerBaseName_rejects_a_label_that_is_not_letters_only() public {
+        IDotnsPopController.Link memory link = _linkFresh(_validChatKey(0xa1));
+
+        vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
+        _rootRegisterBaseName(
+            IDotnsPopController.FullRegistration({label: "alice-bob", user: ed, link: link})
+        );
+
+        vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
+        _rootRegisterBaseName(
+            IDotnsPopController.FullRegistration({label: "micha3l", user: ed, link: link})
+        );
+
+        vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
+        _rootRegisterBaseName(
+            IDotnsPopController.FullRegistration({label: "Joseph", user: ed, link: link})
+        );
+    }
+
+    /// @dev The reservation entrypoints share `_validateBaseLabel`, so a hyphen is rejected
+    ///      there too rather than resolving to an empty queue.
+    function test_reservation_entrypoints_reject_a_label_that_is_not_letters_only() public {
+        _grantPopFull(ed);
+
+        vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
+        _reservePop(ed, LITE_LABEL_A, _validChatKey(0xa2), "alice-bob");
+
+        vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
+        dotnsPopController.expireReservation("alice-bob");
+
+        vm.expectRevert(IDotnsPopController.InvalidBaseLabel.selector);
+        dotnsPopController.isReservedForClaim("micha3l");
     }
 
     /// @notice Adding `isPopIssued` moved the ERC-165 id, so both must be answered.

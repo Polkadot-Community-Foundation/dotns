@@ -45,14 +45,14 @@ contract PopRulesClassificationTests is Test {
     ///      allocated the digits. An ordinary label is measured as written. So the two spellings
     ///      are different names in different bands, and only the separated one is PopLite.
     function test_classify_differs_with_and_without_the_separator() public view {
-        _assertTier("alice.42", IPopRules.PopStatus.Reserved);
-        _assertTier("alice42", IPopRules.PopStatus.PopFull);
-
         _assertTier("joseph.42", IPopRules.PopStatus.PopLite);
         _assertTier("joseph42", IPopRules.PopStatus.PopFull);
 
         _assertTier("michael.01", IPopRules.PopStatus.PopLite);
         _assertTier("michael01", IPopRules.PopStatus.NoStatus);
+
+        _assertTier("elizabeth.42", IPopRules.PopStatus.NoStatus);
+        _assertTier("elizabeth42", IPopRules.PopStatus.NoStatus);
     }
 
     /// @notice The regression test for deriving the digit count by subtraction.
@@ -91,15 +91,21 @@ contract PopRulesClassificationTests is Test {
 
     /// @dev A lite label's suffix is fixed by its shape, so a wrong count fails the shape check
     ///      before the count check can see it.
+    /// @dev A separator is legal only on a lite label, so a string carrying one that misses
+    ///      the shape in any way is neither a DNS label nor a lite label.
     function test_classify_reverts_for_a_malformed_lite_label() public {
         _expectRevert(SHAPE_ERROR);
-        rules.classifyName("alice.4");
+        rules.classifyName("joseph.4");
 
         _expectRevert(SHAPE_ERROR);
-        rules.classifyName("alice.123");
+        rules.classifyName("joseph.123");
 
         _expectRevert(SHAPE_ERROR);
-        rules.classifyName("a.b.42");
+        rules.classifyName("jos.eph.42");
+
+        // A digit in the stem, which the letters-only rule excludes.
+        _expectRevert(SHAPE_ERROR);
+        rules.classifyName("jos3ph.42");
     }
 
     /// @dev Only a lite label is shortened, so `joseph.42` contends with a reservation on

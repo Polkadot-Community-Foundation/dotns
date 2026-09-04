@@ -488,7 +488,7 @@ abstract contract BaseDotns is Test {
         _rootReserveBaseName(
             IDotnsPopController.BaseReservation({
                 lite: IDotnsPopController.LiteRegistration({
-                    liteLabel: _toGatewayLiteLabel(liteLabel), user: user, chatKey: chatKey
+                    liteLabel: liteLabel, user: user, chatKey: chatKey
                 }),
                 reservedBaseLabel: reservedBaseLabel
             })
@@ -501,13 +501,11 @@ abstract contract BaseDotns is Test {
 
     /// @notice Dispatches the typed `reserveLiteName` call under a mocked Root origin.
     function _rootReserveLiteName(IDotnsPopController.LiteRegistration memory params) internal {
-        params.liteLabel = _toGatewayLiteLabel(params.liteLabel);
         _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_LITE_TYPED, params));
     }
 
     /// @notice Dispatches the typed `reserveBaseName` call under a mocked Root origin.
     function _rootReserveBaseName(IDotnsPopController.BaseReservation memory params) internal {
-        params.lite.liteLabel = _toGatewayLiteLabel(params.lite.liteLabel);
         _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_RESERVE_BASE_TYPED, params));
     }
 
@@ -519,11 +517,9 @@ abstract contract BaseDotns is Test {
     }
 
     /// @notice Dispatches the typed `registerBaseName` call under a mocked Root origin.
-    /// @dev Normalises any LiteUsername link to its dotted form before dispatch.
+    /// @dev Dispatches the label as written. The gateway sends what People Chain holds, so a
+    ///      helper that reshaped it would hide whether a fixture is a valid lite label.
     function _rootRegisterBaseName(IDotnsPopController.FullRegistration memory params) internal {
-        if (params.link.kind == IDotnsPopController.LinkKind.LiteUsername) {
-            params.link.liteLabel = _toGatewayLiteLabel(params.link.liteLabel);
-        }
         _dispatchFromRoot(abi.encodeWithSelector(SELECTOR_REGISTER_BASE_TYPED, params));
     }
 
@@ -550,36 +546,8 @@ abstract contract BaseDotns is Test {
         returns (IDotnsPopController.Link memory)
     {
         return IDotnsPopController.Link({
-            kind: IDotnsPopController.LinkKind.LiteUsername,
-            liteLabel: _toGatewayLiteLabel(liteLabel),
-            chatKey: ""
+            kind: IDotnsPopController.LinkKind.LiteUsername, liteLabel: liteLabel, chatKey: ""
         });
-    }
-
-    /// @notice Normalises a lite label into its dotted gateway form.
-    /// @dev Inserts a `.` between the stem and the trailing two characters when
-    ///      `liteLabel` lacks a dot, mirroring how the gateway encodes labels.
-    function _toGatewayLiteLabel(string memory liteLabel) internal pure returns (string memory) {
-        bytes memory raw = bytes(liteLabel);
-        for (uint256 i = 0; i < raw.length; ++i) {
-            if (raw[i] == bytes1(0x2e)) {
-                return liteLabel;
-            }
-        }
-
-        if (raw.length < 3) return liteLabel;
-
-        bytes memory dotted = new bytes(raw.length + 1);
-        uint256 stemLength = raw.length - 2;
-
-        for (uint256 i = 0; i < stemLength; ++i) {
-            dotted[i] = raw[i];
-        }
-        dotted[stemLength] = bytes1(0x2e);
-        dotted[stemLength + 1] = raw[stemLength];
-        dotted[stemLength + 2] = raw[stemLength + 1];
-
-        return string(dotted);
     }
 
     /// @notice Constructs a `Link` carrying a fresh chat key (no lite inheritance).

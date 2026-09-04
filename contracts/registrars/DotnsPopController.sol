@@ -233,9 +233,9 @@ contract DotnsPopController is
         _requireValidChatKey(params.chatKey);
 
         (IPopRules.PopStatus required,) = rules.classifyName(params.liteLabel);
-        // The shape check fixes the suffix at a separator and two digits, so classification lands
-        // on PopLite (stem 6-8), NoStatus (stem >= 9), or Reserved (stem <= 5). Accept the first
-        // two; governance-reserved short stems are still rejected.
+        // The shape check fixes the suffix, so classification lands on PopLite (stem 6-8),
+        // NoStatus (stem 9 or more), or Reserved (stem 5 or fewer). Accept the first two; a
+        // stem short enough to be governance-reserved is not issued from this path.
         require(required != IPopRules.PopStatus.Reserved, InvalidLiteLabel());
         (bytes32 labelhash, bytes32 node) = _validateLiteLabel(params.liteLabel);
 
@@ -768,6 +768,8 @@ contract DotnsPopController is
     }
 
     /// @notice Validates a lite-person `stem.NN` label and derives `(labelhash, node)`.
+    /// @dev The stem is lowercase letters only, so this rejects a stem carrying a digit or a
+    /// hyphen before any node is derived.
     function _validateLiteLabel(string memory liteLabel)
         internal
         view
@@ -778,28 +780,31 @@ contract DotnsPopController is
         node = LabelUtils.namehashUnder(protocolRegistry.tldNode(), labelhash);
     }
 
-    /// @notice Validates a base (full-person) DNS label and derives `(labelhash, node)`.
+    /// @notice Validates a base (full-person) label and derives `(labelhash, node)`.
+    /// @dev Letters only, so this is stricter than a DNS label: a hyphen or an interior digit
+    /// is rejected here even though @custom:function StringUtils.isSingleLabel would admit it.
     function _validateBaseLabel(string calldata baseLabel)
         internal
         view
         returns (bytes32 labelhash, bytes32 node)
     {
-        // A full-person label carries no digit suffix, matching `BaseLabel::is_valid_person` in
-        // the gateway pallet. The tier check alone does not cover it: a suffixed label with a
-        // stem of nine or more classifies NoStatus rather than PopLite and would otherwise pass.
-        require(baseLabel.isSingleLabel() && !baseLabel.hasDigitSuffix(), InvalidBaseLabel());
+        // Letters only, matching `BaseLabel::is_valid_person` in the gateway pallet: a
+        // full-person label is a name a person chose, so it admits no digits and no hyphens.
+        // Classification does not cover this on its own, since a suffixed label with nine or
+        // more characters lands on NoStatus and would otherwise pass.
+        require(baseLabel.isPersonLabel(), InvalidBaseLabel());
         (labelhash, node) = LabelUtils.deriveNode(protocolRegistry.tldNode(), baseLabel);
     }
 
     /// @notice Validates a base label as reservable and returns its hashes.
     /// @dev Shared by both reservation entrypoints so the guard cannot drift between them. Runs
     /// three checks and reverts on the first failure, before any reservation state is mutated: the
-    /// label must classify outside the governance-reserved tier and be a base name, be a canonical
-    /// single label, and have no owner on the registrar. The last check is the fix for a
-    /// reservation queued over an already-registered name: the queue keys by stem, so such a
-    /// reservation could never be redeemed yet would lock every two-digit variant of the stem for
-    /// the full reservation window. `exists` (owner set) mirrors exactly what makes the eventual
-    /// claim's mint revert, so a label that passes here is one a claim can still register.
+    /// label must classify outside the governance-reserved tier and be a base name, be a
+    /// letters-only person label, and have no owner on the registrar. The last check is the fix for
+    /// a reservation queued over an already-registered name: the queue keys by stem, so such a
+    /// reservation could never be redeemed yet would hold the stem, and so every lite name built
+    /// on it, for the full reservation window. `exists` (owner set) mirrors exactly what makes the
+    /// eventual claim's mint revert, so a label that passes here is one a claim can still register.
     function _validateReservableBaseLabel(
         IPopRules rules,
         string calldata baseLabel

@@ -14,16 +14,20 @@ import {IDotnsController} from "./IDotnsController.sol";
 ///
 /// Label formats:
 /// Lite-person usernames (first argument to @custom:function reserveBaseName and the
-/// `liteLabel` of a `LinkKind.LiteUsername` link) are a DNS stem, a separator, then exactly
-/// two digits (e.g. `joseph.42`) per @custom:function StringUtils.isLitePersonLabel. The
-/// label is stored in the form the gateway sends, which is the form People Chain holds, so
-/// nothing here normalises it.
+/// `liteLabel` of a `LinkKind.LiteUsername` link) are a stem of lowercase ASCII letters, a
+/// separator, then exactly two digits (e.g. `joseph.42`) per
+/// @custom:function StringUtils.isLitePersonLabel. The stem is stricter than a DNS label
+/// because People Chain restricts the name a person chooses to letters; a stem short enough to
+/// be governance-reserved is rejected by classification, not by the shape. The label is stored in
+/// the form the gateway sends, which is the form People Chain holds, so nothing here
+/// normalises it.
 /// Full-person usernames (the `label` of @custom:function registerBaseName and the
-/// optional `reservedBaseLabel` of @custom:function reserveBaseName) follow the
-/// DNS-label rules enforced by @custom:function StringUtils.isSingleLabel (e.g.
-/// `alice`). A separator is what marks a lite label and is rejected everywhere else, so only
-/// the gateway can create a dotted name; a two-digit suffix on its own is not exclusive, since
-/// a public label may carry one directly.
+/// optional `reservedBaseLabel` of @custom:function reserveBaseName) are lowercase ASCII
+/// letters only, per @custom:function StringUtils.isPersonLabel (e.g. `alice`). That is the
+/// same rule a lite stem follows and is stricter than a DNS label: no hyphens and no interior
+/// digits, because a full-person name is also a name a person chose. A separator marks a lite
+/// label and is rejected everywhere else, so only the gateway can create a dotted name; a
+/// digit suffix on its own is not exclusive, since a public label may carry one directly.
 /// Cross-flow priority on the base stem is arbitrated by
 /// @custom:function IPopRules.reserveBaseNameForPop.
 /// @custom:security-contact admin@parity.io
@@ -253,8 +257,8 @@ interface IDotnsPopController is IDotnsController {
     /// on a cold-path mint it @custom:emits LiteNameReserved and
     /// @custom:emits PendingClaimStashed, with @custom:emits NameRegistered deferred to
     /// @custom:function settlePendingClaims when the claim settles. The base-name leg only runs
-    /// when `reservedBaseLabel` is non-empty: it validates the DNS-label shape and requires a
-    /// true base label with no trailing digits (otherwise @custom:reverts InvalidBaseLabel) and
+    /// when `reservedBaseLabel` is non-empty: it requires a letters-only person label, which is
+    /// therefore also a true base label (otherwise @custom:reverts InvalidBaseLabel), and
     /// with no owner on the registrar (otherwise @custom:reverts BaseNameAlreadyRegistered),
     /// since a name that already has an owner could never be claimed. This validation runs
     /// before both the lite mint and any queue mutation, so an already-registered
@@ -278,7 +282,8 @@ interface IDotnsPopController is IDotnsController {
     /// gateway flow: @custom:function reserveLiteName mints the lite username first, then this
     /// function reserves the full/base label in a separate transaction so proof-size stays below
     /// per-call limits. Reverts with @custom:reverts InvalidBaseLabel when the label is empty,
-    /// non-canonical, digit-suffixed, or governance-reserved, and with
+    /// is not lowercase ASCII letters (so a hyphen or any digit rejects it), or is
+    /// governance-reserved, and with
     /// @custom:reverts BaseNameAlreadyRegistered when the label already has an owner on the
     /// registrar and so could never be claimed. The caller remains agnostic about
     /// backend batching; it simply exposes a small retryable primitive.
@@ -312,7 +317,7 @@ interface IDotnsPopController is IDotnsController {
 
     /// @notice Registers a full-person username on behalf of the supplied user.
     /// @dev Callable only under a substrate Root origin (otherwise @custom:reverts NotRoot). The
-    /// base label must satisfy the DNS-label shape and be a true base label with no trailing digits
+    /// base label must be a letters-only person label, and therefore a true base label,
     /// (otherwise @custom:reverts InvalidBaseLabel), and the label must not
     /// classify as governance-reserved (otherwise @custom:reverts InvalidBaseLabel). The
     /// gateway also defers to PopRules as the single cross-flow authority: when PopRules
@@ -347,11 +352,13 @@ interface IDotnsPopController is IDotnsController {
     /// @notice Permissionlessly removes expired entries from the head of a reservation queue.
     /// @dev Permissionless on purpose: anyone (typically a UI or a bot) can poke a stale queue
     /// so the next live head takes over without waiting for the next gateway call. Validates
-    /// the DNS-label shape of `reservedBaseLabel` (otherwise @custom:reverts InvalidBaseLabel)
+    /// `reservedBaseLabel` as a letters-only person label (otherwise
+    /// @custom:reverts InvalidBaseLabel)
     /// and @custom:emits ReservationExpired for every expired entry reaped from the
-    /// head. Only labels without trailing digits ever key a reservation queue, so one carrying
-    /// digits passes the shape check but resolves to an empty queue and the call is a no-op. A
-    /// lite label carries a separator and so fails the shape check outright.
+    /// head. A label carrying a digit or a hyphen is not a person label and
+    /// @custom:reverts InvalidBaseLabel, as does a lite label, since a separator is not one
+    /// either. Only a letters-only label reaches the queue, and one that was never reserved
+    /// resolves to an empty queue so the call is a no-op.
     function expireReservation(string calldata reservedBaseLabel) external;
 
     /// @notice Lets the caller voluntarily drop their own active reservation.
@@ -363,7 +370,7 @@ interface IDotnsPopController is IDotnsController {
     function relinquishReservation() external;
 
     /// @notice Returns whether a label currently has a live reservation at the queue head.
-    /// @dev Validates the DNS-label shape of `reservedBaseLabel` (otherwise
+    /// @dev Validates `reservedBaseLabel` as a letters-only person label (otherwise
     /// @custom:reverts InvalidBaseLabel) before inspecting the queue.
     function isReservedForClaim(string calldata reservedBaseLabel)
         external
