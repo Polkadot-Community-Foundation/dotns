@@ -221,6 +221,33 @@ contract DotnsRegistrarControllerTest is BaseDotns {
         assertTrue(ownerStore.isLocked(node));
     }
 
+    /// @notice A two-digit second-level name is unreachable, which is what keeps a subname
+    ///         from spelling a lite name.
+    /// @dev `joseph.42` reads either as one label or as `joseph` beneath `42`, and the second
+    ///      reading needs `42` to exist. It cannot: this path requires three characters, and
+    ///      both gateway paths are letters only. Pinned here because the invariant rests on a
+    ///      length floor that reads as unrelated to lite names.
+    ///      `register` is called directly rather than through `_commitAndRegister`, which
+    ///      quotes `priceWithCheck` first and would revert on the reserved tier instead. No
+    ///      commitment is needed: the label is validated before one is consumed.
+    function test_register_rejects_a_two_digit_label() public {
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: "42",
+                owner: ed,
+                secret: keccak256("two-digit"),
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
+            });
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IDotnsRegistrarController.LabelTooShort.selector, "42")
+        );
+        vm.prank(ed);
+        dotnsRegistrarController.register(registration);
+    }
+
     /// @notice A public registration reserves no stem, because no public label is PopLite.
     /// @dev The stem reserve in `register` is gated on `priced.status == PopLite`, and PopLite is
     ///      the gateway's separated form, which the public path cannot submit. So the branch is
