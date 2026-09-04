@@ -143,7 +143,7 @@ contract DotnsPopController is
     mapping(string label => bool issued) internal _popIssued;
 
     /// @dev Reserved storage space to allow for layout changes in future upgrades.
-    uint256[49] private __gap;
+    uint256[50] private __gap;
 
     /// @notice Restricts calls to a substrate Root origin.
     modifier onlyRoot() {

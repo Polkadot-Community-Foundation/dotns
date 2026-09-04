@@ -107,15 +107,42 @@ contract DotnsPopControllerInvariant is BaseDotns {
         }
     }
 
-    /// @notice Every token the handler minted (lite or full) carries a
-    ///         non-empty `labelOf`, proving the canonical string->tokenId
-    ///         recovery path was populated by registrar.register on every mint.
-    function invariant_every_minted_tokenId_has_nonempty_label() public view {
+    /// @notice Every token the handler minted (lite or full) can recover its label string.
+    /// @dev The gateway registers with an empty label because the Root origin cannot deploy the
+    ///      user's `LabelStore`, so the string lives in one of two places: the store the
+    ///      registrar reads through `labelOf`, or the owner's pending-claim queue until they
+    ///      settle. A token in neither is unrecoverable, which is the corruption this guards
+    ///      against.
+    function invariant_every_minted_tokenId_has_recoverable_label() public view {
         uint256 n = handler.mintedLiteTokenCount();
         for (uint256 i = 0; i < n; i++) {
             uint256 tokenId = handler.mintedLiteTokenIds(i);
-            assertGt(bytes(dotnsRegistrar.labelOf(tokenId)).length, 0, "empty labelOf");
+            if (bytes(dotnsRegistrar.labelOf(tokenId)).length != 0) continue;
+
+            address holder = dotnsRegistrar.ownerOf(tokenId);
+            assertTrue(_pendingClaimCovers(holder, tokenId), "label neither stored nor pending");
         }
+    }
+
+    /// @notice Whether one of `holder`'s pending claims carries the label for `tokenId`.
+    /// @dev Matches on the node the label hashes to rather than on queue position, because the
+    ///      handler tracks minted ids and lite labels in separate lists that do not align.
+    function _pendingClaimCovers(
+        address holder,
+        uint256 tokenId
+    )
+        private
+        view
+        returns (bool covered)
+    {
+        bytes32 tldNode = protocolRegistry.tldNode();
+        IDotnsPopController.PendingClaim[] memory pending =
+            dotnsPopController.pendingClaims(holder, 0, type(uint256).max);
+        for (uint256 i = 0; i < pending.length; i++) {
+            bytes32 node = keccak256(abi.encodePacked(tldNode, keccak256(bytes(pending[i].label))));
+            if (uint256(node) == tokenId) return true;
+        }
+        return false;
     }
 
     /// @notice For every historic (liteLabelhash, fullNode) pair the resolver's

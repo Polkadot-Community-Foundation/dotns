@@ -69,20 +69,11 @@ contract DotnsRegistrarController is
     ///      from this stamp.
     mapping(bytes32 hash => uint256 version) public committedPricingVersion;
 
-    /// @dev Holds the slot the removed `registerReserved` address allowlist occupied. Reserved
-    ///      registration reads grants from `DotnsNameWhitelist` now, so nothing writes or reads
-    ///      this. It exists so `protocolRegistry` and everything below it stay on the slots a
-    ///      deployed proxy already uses: deleting it outright shifts them by one, and a
-    ///      subsequent `upgradeToAndCall` would read `protocolRegistry` as zero.
-    /// @custom:oz-renamed-from whiteList
-    // forge-lint: disable-next-line(mixed-case-variable)
-    mapping(address user => bool unused) private __deprecatedWhiteList;
-
     /// @notice Protocol-level address registry for all DotNS contracts.
     IDotnsProtocolRegistry public protocolRegistry;
 
     /// @dev Reserved storage space to allow for layout changes in the future.
-    uint256[49] private __gap;
+    uint256[50] private __gap;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
