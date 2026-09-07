@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.34;
 
-import {Test, Vm} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {
     DotnsRegistrarController,
     IDotnsRegistrarController
@@ -20,11 +20,6 @@ contract EscrowHandler is Test {
     /// @notice Namehash of the .dot TLD.
     bytes32 private constant DOT_NODE =
         0x3fce7d1364a893e213bc4212792b517ffc88f5b13b86c8ef9c8d390c3a1370ce;
-
-    /// @notice Escrow cooldown period used by handler-driven flows; mirrors the
-    ///         test base and the deploy script so warps to clear the cooldown stay
-    ///         consistent with the escrow's enforced upper bound.
-    uint256 private constant ESCROW_COOLDOWN = 15 minutes;
 
     /// @notice The registrar controller under test.
     DotnsRegistrarController public controller;
@@ -56,16 +51,11 @@ contract EscrowHandler is Test {
     /// @notice Label used to register each tokenId; required for re-registration after finalise.
     mapping(uint256 tokenId => string label) public labelByTokenId;
 
-    /// @notice Cumulative native amount credited into the insurance fund by handler-driven flows.
-    /// @dev Increments via cross-tier register (`depositInsurance`) and payable `transferFrom`
-    ///      (`chargeTransferFee`). Counterpart to `ghost_insurancePaidOut`.
-    uint256 public ghost_insurancePaidIn;
-
-    /// @notice Cumulative native amount drawn out of the insurance fund.
-    /// @dev Updated by parsing `InsuranceDraw` events emitted from `withdraw()`. The
-    ///      conservation invariant asserts `ghost_insurancePaidIn - ghost_insurancePaidOut
-    ///      == escrow.insuranceFund()`.
-    uint256 public ghost_insurancePaidOut;
+    /// @notice Cumulative native amount credited into protocol fees by handler-driven flows.
+    /// @dev Increments via cross-tier register (`depositProtocolFee`) and payable `transferFrom`
+    ///      (`chargeTransferFee`). Protocol fees only ever accrue, so a conservation invariant
+    ///      asserts this equals `escrow.protocolFees()`.
+    uint256 public ghost_protocolFeesPaidIn;
 
     /// @notice Cumulative native amount credited to recipients via `withdraw()`.
     uint256 public ghost_pendingCredits;
@@ -75,6 +65,9 @@ contract EscrowHandler is Test {
 
     /// @notice List of actor addresses used for testing.
     address[] public actors;
+
+    /// @notice Membership set backing the `actors` list, keeping it free of duplicates.
+    mapping(address actor => bool present) private _isActor;
 
     /// @notice Counter for generating unique labels.
     uint256 public labelNonce;
@@ -97,8 +90,14 @@ contract EscrowHandler is Test {
     }
 
     /// @notice Adds an actor address.
+    /// @dev Idempotent. `totalPendingWithdrawals` sums a per-actor ledger across `actors`, so a
+    ///      repeated address would count the same balance twice and break a solvency assertion for
+    ///      a reason unrelated to solvency.
     /// @param actor The actor address to add.
     function addActor(address actor) external {
+        if (_isActor[actor]) return;
+
+        _isActor[actor] = true;
         actors.push(actor);
     }
 
@@ -120,7 +119,12 @@ contract EscrowHandler is Test {
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: actor, secret: secret, reserved: true
+                label: label,
+                owner: actor,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = controller.makeCommitment(registration);
@@ -156,7 +160,7 @@ contract EscrowHandler is Test {
     /// @dev Bounds inputs with `bound()` to keep handler runs within meaningful state.
     ///      Picks a payer and an owner from the actor set (different where possible),
     ///      randomly aligns or splits their PoP statuses, and dispatches the controller
-    ///      `register()` call from the payer. Routes to the deposit, depositInsurance,
+    ///      `register()` call from the payer. Routes to the deposit, depositProtocolFee,
     ///      or skip branch depending on the resulting tier prices. Revert-safe: if the
     ///      computed price is zero on both sides (PoPLite/PoPFull no-cost path) the call
     ///      still completes but ghost state is only updated where state actually changed.
@@ -192,7 +196,12 @@ contract EscrowHandler is Test {
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: ownerAddr, secret: secret, reserved: true
+                label: label,
+                owner: ownerAddr,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = controller.makeCommitment(registration);
@@ -214,10 +223,9 @@ contract EscrowHandler is Test {
 
         // Under the A1 max-not-sum rule the controller charges
         // `max(priced.price, friction)` on the cross-payer path and routes the
-        // whole charge into the insurance fund via `depositInsurance`. The
+        // whole charge into protocol fees via `depositProtocolFee`. The
         // refundable deposit position is seeded at zero amount, so the only
-        // mutation invariant tracking has to mirror here is the insurance leg.
-        uint256 priorInsurance = escrow.insuranceFund();
+        // mutation invariant tracking has to mirror here is the protocol-fee leg.
         bytes32 labelhash = keccak256(bytes(label));
         bytes32 node = keccak256(abi.encodePacked(DOT_NODE, labelhash));
         uint256 tokenId = uint256(node);
@@ -231,29 +239,22 @@ contract EscrowHandler is Test {
         uint256 charge = ownerPrice > frictionForCharge ? ownerPrice : frictionForCharge;
 
         // Skip when no value moves: a zero charge produces a free zero-amount
-        // position with no insurance or reserves delta, so adding it to the
+        // position with no protocol-fee or reserves delta, so adding it to the
         // ghost-state token set adds noise without exercising any new branch.
         if (charge == 0) return;
 
-        vm.recordLogs();
         vm.prank(payer);
         try controller.register{value: charge}(registration) {
-            Vm.Log[] memory logs = vm.getRecordedLogs();
-            uint256 newInsurance = escrow.insuranceFund();
-
             _depositedTokenIds.push(tokenId);
             labelByTokenId[tokenId] = label;
             // Cross-payer registrations seed a zero-amount refundable position;
             // ghost-state mirrors that by leaving `depositAmounts` at zero.
             depositAmounts[tokenId] = 0;
 
-            if (newInsurance > priorInsurance) {
-                ghost_insurancePaidIn += (newInsurance - priorInsurance);
-            }
-
-            // Track InsuranceDraw outflows surfaced by this transaction (defensive; the
-            // register path itself does not draw insurance, but recordLogs is already on).
-            _accountInsuranceDraws(logs);
+            // The whole cross-payer charge becomes protocol fee. Accumulate the
+            // independently-computed `charge` so the conservation invariant verifies the
+            // escrow credited exactly what the caller was charged, not an echo of its own state.
+            ghost_protocolFeesPaidIn += charge;
         } catch {
             return;
         }
@@ -269,13 +270,9 @@ contract EscrowHandler is Test {
         uint256 index = tokenSeed % _depositedTokenIds.length;
         uint256 tokenId = _depositedTokenIds[index];
 
-        // Only release if the deposit has a non-zero amount (NoStatus names with a refundable
-        // position)
-        if (depositAmounts[tokenId] == 0) {
-            _removeDeposited(index);
-            return;
-        }
-
+        // Zero-amount positions are released too. They used to be skipped here, which meant the
+        // fuzzer never explored the exact state the reclaim deadlock lived in: a released position
+        // with nothing to withdraw, and therefore no reason for its holder ever to call `withdraw`.
         address tokenOwner = registrar.ownerOf(tokenId);
 
         IDotnsNameEscrow.ReleasePosition memory positionBefore = escrow.getReleasePosition(tokenId);
@@ -307,8 +304,7 @@ contract EscrowHandler is Test {
 
     /// @notice Withdraws refund for a released token after cooldown.
     /// @dev Picks from _releasedTokenIds, warps past cooldown, withdraws.
-    ///      Moves the token to _withdrawnTokenIds. Records pending credits and any
-    ///      `InsuranceDraw` event amounts via `vm.recordLogs`.
+    ///      Moves the token to _withdrawnTokenIds and records the pending credit.
     /// @param tokenSeed Seed for selecting which released token to withdraw.
     function withdrawRefund(uint256 tokenSeed) external {
         if (_releasedTokenIds.length == 0) return;
@@ -326,16 +322,106 @@ contract EscrowHandler is Test {
 
         uint256 owed = position.amount;
 
-        vm.recordLogs();
         vm.prank(recipient);
         escrow.withdraw(tokenId);
-        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        // A zero-amount position settles nothing: no value moves, and the position stays released
+        // and unwithdrawn, so its holder can still redeem it for the rest of the window. Filing it
+        // as withdrawn would take it out of `_releasedTokenIds` and hide it from `redeemReleased`,
+        // leaving redeem-after-a-zero-amount-withdraw unreachable for the fuzzer. Leave it in the
+        // released set so that path stays explorable.
+        if (owed == 0) return;
 
         // Update ghost state after the inner call so a revert leaves accounting intact.
         _withdrawnTokenIds.push(tokenId);
         _removeReleased(index);
         ghost_pendingCredits += owed;
-        _accountInsuranceDraws(logs);
+    }
+
+    /// @notice Redeems a released token back to its previous holder inside the redeem window.
+    /// @dev Picks from `_releasedTokenIds` and only acts while the position is still redeemable
+    ///      (released, unwithdrawn, inside the window). Moves the token back to
+    ///      `_depositedTokenIds` because a redeem restores the pre-release state exactly: the
+    ///      deposit is still locked and the name is releasable again. No value moves, so no ghost
+    ///      accounting changes.
+    /// @param tokenSeed Seed for selecting which released token to redeem.
+    function redeemReleased(uint256 tokenSeed) external {
+        if (_releasedTokenIds.length == 0) return;
+
+        uint256 index = tokenSeed % _releasedTokenIds.length;
+        uint256 tokenId = _releasedTokenIds[index];
+
+        IDotnsNameEscrow.ReleasePosition memory position = escrow.getReleasePosition(tokenId);
+        if (!position.released || position.claimed) return;
+        if (block.timestamp >= position.redeemableUntil) return;
+
+        vm.prank(position.recipient);
+        escrow.redeem(tokenId);
+
+        _depositedTokenIds.push(tokenId);
+        _removeReleased(index);
+    }
+
+    /// @notice Re-registers a released token whose window elapsed, without any prior withdrawal.
+    /// @dev The path the old `released && claimed` gate made unreachable, and the reason this
+    ///      action exists separately from `reRegisterReclaimed`: that one draws from
+    ///      `_withdrawnTokenIds`, so nothing ever exercised reclaim against an unwithdrawn
+    ///      position. Reclaim settles any outstanding deposit onto the previous recipient's
+    ///      pull-payment balance, so the credit is mirrored into `ghost_pendingCredits`.
+    /// @param tokenSeed Seed for selecting which released token to re-register.
+    /// @param actorSeed Seed selecting the new registrant.
+    function reRegisterReleased(uint256 tokenSeed, uint256 actorSeed) external {
+        if (_releasedTokenIds.length == 0 || actors.length == 0) return;
+
+        uint256 index = tokenSeed % _releasedTokenIds.length;
+        uint256 tokenId = _releasedTokenIds[index];
+        string memory label = labelByTokenId[tokenId];
+        address actor = actors[actorSeed % actors.length];
+
+        IDotnsNameEscrow.ReleasePosition memory position = escrow.getReleasePosition(tokenId);
+        if (!position.released) return;
+        if (block.timestamp < position.redeemableUntil) {
+            vm.warp(position.redeemableUntil);
+        }
+
+        // Outstanding value on the position is what reclaim will settle. A position already
+        // withdrawn carries a zero amount, so this is naturally zero for those.
+        uint256 outstanding = position.amount;
+
+        bytes32 secret = keccak256(abi.encodePacked(label, actor, block.timestamp, labelNonce));
+
+        IDotnsRegistrarController.Registration memory registration =
+            IDotnsRegistrarController.Registration({
+                label: label,
+                owner: actor,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
+            });
+
+        bytes32 commitment = controller.makeCommitment(registration);
+
+        vm.prank(actor);
+        controller.commit(commitment);
+
+        uint256 minAge = controller.minCommitmentAge();
+        vm.warp(block.timestamp + minAge + 1);
+
+        uint256 price = popRules.priceWithCheck(label, actor).price;
+
+        vm.prank(actor);
+        try controller.register{value: price}(registration) {
+            _removeReleased(index);
+            _depositedTokenIds.push(tokenId);
+            depositAmounts[tokenId] = price;
+            depositRecipients[tokenId] = address(0);
+            labelByTokenId[tokenId] = label;
+
+            ghost_pendingCredits += outstanding;
+        } catch {
+            return;
+        }
     }
 
     /// @notice Pulls the caller's accumulated pending refund balance.
@@ -412,11 +498,24 @@ contract EscrowHandler is Test {
         string memory label = labelByTokenId[tokenId];
         address actor = actors[actorSeed % actors.length];
 
+        // Reclaim is gated on the redeem window, not on the withdrawal. Without this warp every
+        // attempt would revert NotReclaimable and be swallowed by the try/catch below, so the
+        // action would look like it was running while covering nothing.
+        IDotnsNameEscrow.ReleasePosition memory position = escrow.getReleasePosition(tokenId);
+        if (block.timestamp < position.redeemableUntil) {
+            vm.warp(position.redeemableUntil);
+        }
+
         bytes32 secret = keccak256(abi.encodePacked(label, actor, block.timestamp, labelNonce));
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: actor, secret: secret, reserved: true
+                label: label,
+                owner: actor,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = controller.makeCommitment(registration);
@@ -455,7 +554,7 @@ contract EscrowHandler is Test {
 
         // Zero-value transfer path: skip whenever the registrar's quote returns a
         // non-zero fee. The quote folds in both the price-delta path and the
-        // reach-floor path, so the handler stays in sync with whatever fee
+        // transfer-fee path, so the handler stays in sync with whatever fee
         // branches the contract grows over time.
         string memory label = labelByTokenId[tokenId];
         // Read once for documentation continuity; the actual gating check uses the quote.
@@ -506,7 +605,7 @@ contract EscrowHandler is Test {
         if (to == address(0)) return;
 
         // Use the registrar's own quote so the value attached matches whatever the
-        // contract actually requires. This includes the reach-floor branch: when
+        // contract actually requires. This includes the transfer-fee branch: when
         // the recipient's verification level is below the label's required tier,
         // the registrar charges the flat NoStatus deposit even though the
         // price-delta path returns zero. Using `quoteTransferFee` makes the handler
@@ -514,24 +613,13 @@ contract EscrowHandler is Test {
         uint256 requiredFee = registrar.quoteTransferFee(tokenId, to);
         if (requiredFee == 0) return;
 
-        uint256 priorInsurance = escrow.insuranceFund();
-
-        vm.recordLogs();
         vm.prank(currentOwner);
         try registrar.transferFrom{value: requiredFee}(currentOwner, to, tokenId) {
-            Vm.Log[] memory logs = vm.getRecordedLogs();
-
-            // Read the on-chain insurance delta rather than predicting it. The
-            // chargeTransferFee path credits the reach floor to insurance; when
-            // the NFT is leaving its prior position recipient the position is
-            // rebound to the new holder rather than refunded, so reserves stay
-            // put and only insurance moves. Mirroring the formula in the handler
-            // would re-create the drift this guard is meant to prevent.
-            uint256 newInsurance = escrow.insuranceFund();
-            if (newInsurance > priorInsurance) {
-                ghost_insurancePaidIn += (newInsurance - priorInsurance);
-            }
-            _accountInsuranceDraws(logs);
+            // The transfer fee is credited in full to protocol fees: the position rebinds
+            // to the new holder rather than refunding, so reserves stay put. Accumulate the
+            // independently-quoted `requiredFee` so the conservation invariant verifies the
+            // escrow credited exactly the quoted fee.
+            ghost_protocolFeesPaidIn += requiredFee;
 
             // Sync the amount as a safety net against future downgrade paths.
             // Under the deposit-follows-name design the leaving-recipient branch
@@ -579,7 +667,7 @@ contract EscrowHandler is Test {
 
     /// @notice Returns the sum of pending pull-payment balances across all actors.
     /// @dev Used by the full-solvency invariant to assert escrow native balance covers
-    ///      `reserves + insuranceFund + outstanding-pending-balances`.
+    ///      `reserves + protocolFees + outstanding-pending-balances`.
     /// @return total Aggregate pending balance owed to the actor set.
     function totalPendingWithdrawals() external view returns (uint256 total) {
         uint256 length = actors.length;
@@ -591,7 +679,7 @@ contract EscrowHandler is Test {
     /// @notice Returns the sum of outstanding time-locked refund entries across all actors.
     /// @dev Used by the full-solvency invariant to capture overpayment refunds that
     ///      @custom:function chargeTransferFee credits via @custom:function _creditRefund when the
-    ///      attached value exceeds the reach floor. Under the deposit-follows-name model the
+    ///      attached value exceeds the transfer fee. Under the deposit-follows-name model the
     ///      deposit itself never lands on this ledger; only payer overpayments do. Iterates each
     ///      actor's entry list and sums each entry's amount.
     /// @return total Aggregate refund-ledger liability owed to the actor set.
@@ -665,25 +753,6 @@ contract EscrowHandler is Test {
             if (candidate != exclude) return candidate;
         }
         return address(0);
-    }
-
-    /// @notice Scans recorded logs for `InsuranceDraw` events and accumulates the amount
-    ///         drawn into `ghost_insurancePaidOut`.
-    /// @dev Single canonical accounting helper used by every handler call that may trigger a draw
-    ///      (currently `withdraw()`). Other inner calls forward an empty log array, which
-    ///      is a no-op.
-    /// @param logs Recorded logs from the most recent inner call.
-    function _accountInsuranceDraws(Vm.Log[] memory logs) internal {
-        // keccak256("InsuranceDraw(uint256,uint256)")
-        bytes32 sig = keccak256("InsuranceDraw(uint256,uint256)");
-        uint256 length = logs.length;
-        for (uint256 i; i < length; ++i) {
-            Vm.Log memory entry = logs[i];
-            if (entry.emitter != address(escrow)) continue;
-            if (entry.topics.length == 0 || entry.topics[0] != sig) continue;
-            uint256 amount = abi.decode(entry.data, (uint256));
-            ghost_insurancePaidOut += amount;
-        }
     }
 
     /// @notice Allows the handler to receive ETH refunds.

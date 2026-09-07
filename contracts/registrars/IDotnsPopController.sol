@@ -70,17 +70,16 @@ interface IDotnsPopController is IDotnsController {
     }
 
     /// @notice Deferred per-user binding of a freshly minted name to its `LabelStore`.
-    /// @dev Recorded by the gateway path when the user has no `LabelStore`. The user
-    /// later settles the binding via @custom:function claimLabelStore, which deploys
-    /// the store from a signed origin and writes the stashed label. PoP-resolver records
-    /// (chat key, lite link) are persisted eagerly at mint time on
-    /// @custom:contract IDotnsPopResolver, not at settlement, so the resolver carries
-    /// the full identity record regardless of whether the user has settled their Store.
-    /// A user accumulates one entry per deferred name: the Root gateway path cannot deploy a
-    /// `LabelStore` (contract creation is forbidden from the Root origin), so it keeps stashing
-    /// entries until a signed-origin @custom:function claimLabelStore deploys the store and
-    /// settles every entry at once. Each entry's expiry is measured from its own `mintedAt`
-    /// against `reservationDuration`.
+    /// @dev Recorded by the gateway path when the user has no `LabelStore`. The binding later
+    /// settles via @custom:function settlePendingClaims, which deploys the store from a signed
+    /// origin and writes the stashed label. PoP-resolver records (chat key, lite link) are
+    /// persisted eagerly at mint time on @custom:contract IDotnsPopResolver, not at settlement,
+    /// so the resolver carries the full identity record regardless of whether the user has
+    /// settled their Store. A user accumulates one entry per deferred name: the Root gateway path
+    /// cannot deploy a `LabelStore` (contract creation is forbidden from the Root origin), so it
+    /// keeps stashing entries until a signed-origin @custom:function settlePendingClaims deploys
+    /// the store and settles the entries. Each entry's deadline is measured from its own
+    /// `mintedAt` against `reservationDuration`.
     /// @param label Bare DNS label (no TLD); the TLD is appended at settlement time.
     /// @param mintedAt Timestamp of the originating mint.
     struct PendingClaim {
@@ -117,7 +116,7 @@ interface IDotnsPopController is IDotnsController {
     /// @notice Base-name reservation payload for the split gateway flow.
     /// @dev This is the reservation-only primitive. The lite username mint is handled by
     /// @custom:function reserveLiteName, and LabelStore settlement is handled by
-    /// @custom:function claimLabelStoreFor or the user fallback @custom:function claimLabelStore.
+    /// @custom:function settlePendingClaims.
     /// @param user Beneficiary account that will hold the reservation.
     /// @param reservedBaseLabel Base label to enqueue for a later full-person claim.
     struct BaseNameReservation {
@@ -172,13 +171,17 @@ interface IDotnsPopController is IDotnsController {
     /// pending-claim mapping because the user has no store yet.
     event PendingClaimStashed(address indexed user, bytes32 indexed labelhash, string label);
 
-    /// @notice Emitted when a user settles a deferred binding by deploying their
-    /// `LabelStore` and backfilling the stashed label and chat key.
-    event PendingClaimSettled(address indexed user, bytes32 indexed labelhash, address store);
-
-    /// @notice Emitted when a deferred binding is reaped because it sat unsettled past
-    /// `reservationDuration`.
-    event PendingClaimExpired(address indexed user, bytes32 indexed labelhash);
+    /// @notice Emitted when a pending claim is written into a `LabelStore`.
+    /// @dev Fires once per settled entry from @custom:function settlePendingClaims. `settledBy`
+    /// is the caller: it equals `user` for a self-settlement and is any other address for a
+    /// third-party settlement, so consumers can tell the two apart from the log alone.
+    /// @param user Account the settled name belongs to.
+    /// @param labelhash Labelhash of the settled name.
+    /// @param store The `LabelStore` the label was written into.
+    /// @param settledBy Caller that performed and paid for the settlement.
+    event PendingClaimSettled(
+        address indexed user, bytes32 indexed labelhash, address store, address indexed settledBy
+    );
 
     /// @notice Emitted when a reservation queue's head transitions to a new user, either via
     /// expiry of the prior head or via the explicit relinquish path.
@@ -203,6 +206,10 @@ interface IDotnsPopController is IDotnsController {
     /// @notice Thrown when a supplied base label is not a canonical DNS label.
     error InvalidBaseLabel();
 
+    /// @notice Thrown when a reserved base label already has an owner on the registrar, so the
+    /// queued reservation could never be redeemed at mint time.
+    error BaseNameAlreadyRegistered();
+
     /// @notice Thrown when a supplied chat key is non-empty and not exactly 65 bytes long.
     /// @dev Mirrors the resolver's `InvalidChatKeyLength` so the controller surfaces a
     /// controller-local error before the mint runs.
@@ -221,16 +228,6 @@ interface IDotnsPopController is IDotnsController {
     /// @notice Thrown when someone tries to mint a base label in standalone mode while another user
     /// holds the live head-of-queue reservation.
     error NotHolder(address user, bytes32 labelhash);
-
-    /// @notice Thrown when @custom:function claimLabelStore is called by a user with no
-    /// recorded pending-claim entries.
-    /// @param user Caller observed by the controller.
-    error NoPendingClaim(address user);
-
-    /// @notice Thrown when @custom:function expirePendingClaim is invoked but the user holds
-    /// no entry past its `mintedAt + reservationDuration` deadline.
-    /// @param user Address whose entries are being inspected.
-    error PendingClaimNotExpired(address user);
 
     /// @notice Thrown when a lite-link inheritance does not match the registrar-side owner
     /// of the lite label.
@@ -254,17 +251,22 @@ interface IDotnsPopController is IDotnsController {
     /// to classify as PopLite (otherwise @custom:reverts InvalidLiteLabel), and rejects a
     /// supplied chat key whose length is neither zero nor `CHAT_KEY_LENGTH`
     /// (otherwise @custom:reverts InvalidChatKey). On a warm-path mint (user already has a
-    /// `LabelStore`) it emits @custom:emits LiteNameReserved and @custom:emits NameRegistered;
-    /// on a cold-path mint it emits @custom:emits LiteNameReserved and
+    /// `LabelStore`) it @custom:emits LiteNameReserved and @custom:emits NameRegistered;
+    /// on a cold-path mint it @custom:emits LiteNameReserved and
     /// @custom:emits PendingClaimStashed, with @custom:emits NameRegistered deferred to
-    /// @custom:function claimLabelStore when the user settles. The base-name leg only runs
+    /// @custom:function settlePendingClaims when the claim settles. The base-name leg only runs
     /// when `reservedBaseLabel` is non-empty: it validates the DNS-label shape and requires a
-    /// true base label with no trailing digits (otherwise @custom:reverts InvalidBaseLabel)
-    /// before any queue mutation so a bad reservation never touches the queue, advances the
-    /// head past expired entries (emitting @custom:emits ReservationExpired for each one),
+    /// true base label with no trailing digits (otherwise @custom:reverts InvalidBaseLabel) and
+    /// with no owner on the registrar (otherwise @custom:reverts BaseNameAlreadyRegistered),
+    /// since a name that already has an owner could never be claimed. This validation runs
+    /// before both the lite mint and any queue mutation, so an already-registered
+    /// `reservedBaseLabel` aborts the whole call and the candidate receives no lite username
+    /// either; callers should validate the reserved label before attesting rather than relying
+    /// on this revert. It then advances the
+    /// head past expired entries (@custom:emits ReservationExpired for each one),
     /// removes the user from any prior queue position so a single user holds at most one live
-    /// reservation across all labels, and enqueues a fresh entry (emitting
-    /// @custom:emits ReservationQueued). The enqueue rejects with @custom:reverts
+    /// reservation across all labels, and enqueues a fresh entry
+    /// (@custom:emits ReservationQueued). The enqueue rejects with @custom:reverts
     /// AlreadyReserved when the user already holds a reservation that was not cleared by the
     /// prior removal and with @custom:reverts QueueFull when the per-label queue has reached
     /// `MAX_RESERVATION_QUEUE`. Cross-chain callers pass the ABI-encoded reservation tuple as
@@ -280,7 +282,8 @@ interface IDotnsPopController is IDotnsController {
     /// typed overload's full revert surface bubbles up byte-for-byte: gateway-only access
     /// (otherwise @custom:reverts NotGateway), lite-label shape (otherwise
     /// @custom:reverts InvalidLiteLabel), base-label shape (otherwise
-    /// @custom:reverts InvalidBaseLabel), duplicate-reservation guard (otherwise
+    /// @custom:reverts InvalidBaseLabel), already-registered base label (otherwise
+    /// @custom:reverts BaseNameAlreadyRegistered), duplicate-reservation guard (otherwise
     /// @custom:reverts AlreadyReserved), and queue capacity (otherwise
     /// @custom:reverts QueueFull). The success path likewise emits the same events as the
     /// typed call: @custom:emits LiteNameReserved and @custom:emits NameRegistered on the lite
@@ -296,7 +299,9 @@ interface IDotnsPopController is IDotnsController {
     /// gateway flow: @custom:function reserveLiteName mints the lite username first, then this
     /// function reserves the full/base label in a separate transaction so proof-size stays below
     /// per-call limits. Reverts with @custom:reverts InvalidBaseLabel when the label is empty,
-    /// non-canonical, digit-suffixed, or governance-reserved. The caller remains agnostic about
+    /// non-canonical, digit-suffixed, or governance-reserved, and with
+    /// @custom:reverts BaseNameAlreadyRegistered when the label already has an owner on the
+    /// registrar and so could never be claimed. The caller remains agnostic about
     /// backend batching; it simply exposes a small retryable primitive.
     /// @param params Reservation request; see @custom:struct BaseNameReservation.
     function reserveBaseNameOnly(BaseNameReservation calldata params) external;
@@ -314,11 +319,11 @@ interface IDotnsPopController is IDotnsController {
     /// must classify as PopLite (otherwise @custom:reverts InvalidLiteLabel); a supplied chat
     /// key whose length is neither zero nor `CHAT_KEY_LENGTH` reverts
     /// @custom:reverts InvalidChatKey before mint and resolver writes run. On a warm-path mint
-    /// emits @custom:emits LiteNameReserved and @custom:emits NameRegistered. On a cold-path
-    /// mint emits @custom:emits LiteNameReserved and @custom:emits PendingClaimStashed, with
-    /// @custom:emits NameRegistered deferred to @custom:function claimLabelStore when the user
-    /// settles. Cross-chain callers pass the ABI-encoded lite-registration tuple as the call's
-    /// payload, which Solidity decodes directly.
+    /// @custom:emits LiteNameReserved and @custom:emits NameRegistered. On a cold-path
+    /// mint @custom:emits LiteNameReserved and @custom:emits PendingClaimStashed, with
+    /// @custom:emits NameRegistered deferred to @custom:function settlePendingClaims when the
+    /// claim settles. Cross-chain callers pass the ABI-encoded lite-registration tuple as the
+    /// call's payload, which Solidity decodes directly.
     /// @param params Registration request; see @custom:struct LiteRegistration.
     function reserveLiteName(LiteRegistration calldata params) external;
 
@@ -353,9 +358,9 @@ interface IDotnsPopController is IDotnsController {
     /// before any queue mutation. Two orthogonal axes drive the state machine. The reservation
     /// axis treats the user as claiming if and only if they hold the live head-of-queue
     /// reservation on the base label: a claim wipes the entire queue, releases the PopRules
-    /// slot, and emits @custom:emits BaseNameClaimed; a non-claim silently relinquishes any
-    /// pending entry the user holds and emits @custom:emits StandaloneNameRegistered. Advancing
-    /// the queue head past expired entries emits @custom:emits ReservationExpired for each
+    /// slot, and @custom:emits BaseNameClaimed; a non-claim silently relinquishes any
+    /// pending entry the user holds and @custom:emits StandaloneNameRegistered. Advancing
+    /// the queue head past expired entries @custom:emits ReservationExpired for each
     /// one. The chat-key axis selects whether a fresh key is persisted on the resolver or the
     /// new entry inherits its key from a prior lite-person username. The fresh-key branch
     /// rejects a chat key whose length is neither zero nor `CHAT_KEY_LENGTH` (otherwise
@@ -364,14 +369,14 @@ interface IDotnsPopController is IDotnsController {
     /// own the lite token (otherwise @custom:reverts LiteLabelNotOwnedByUser), reads the lite
     /// node's chat key from the resolver and copies it across; if the lite node carries no chat
     /// key the inherited value is empty and the full node's chat-key write is silently skipped
-    /// (the `LiteToFullLinked` event still fires). Emits @custom:emits LiteToFullLinked
+    /// (the `LiteToFullLinked` event still fires). @custom:emits LiteToFullLinked
     /// alongside the registration event. On a warm-path mint the event order is
     /// @custom:emits NameRegistered first (from the inner mint), then
     /// @custom:emits BaseNameClaimed or @custom:emits StandaloneNameRegistered, then
     /// @custom:emits LiteToFullLinked when applicable. On a cold-path mint
     /// @custom:emits PendingClaimStashed replaces the initial @custom:emits NameRegistered;
     /// the deferred @custom:emits NameRegistered fires later from @custom:function
-    /// claimLabelStore. Cross-chain callers pass the ABI-encoded full-registration tuple as
+    /// settlePendingClaims. Cross-chain callers pass the ABI-encoded full-registration tuple as
     /// the call's payload, which Solidity decodes directly.
     /// @param params Registration request; see @custom:struct FullRegistration.
     function registerBaseName(FullRegistration calldata params) external;
@@ -398,7 +403,7 @@ interface IDotnsPopController is IDotnsController {
     /// @dev Permissionless on purpose: anyone (typically a UI or a bot) can poke a stale queue
     /// so the next live head takes over without waiting for the next gateway call. Validates
     /// the DNS-label shape of `reservedBaseLabel` (otherwise @custom:reverts InvalidBaseLabel)
-    /// and emits @custom:emits ReservationExpired for every expired entry reaped from the
+    /// and @custom:emits ReservationExpired for every expired entry reaped from the
     /// head. Only base-shaped labels (no trailing digits) ever key a reservation queue, so a
     /// lite-shaped label still passes the shape check but resolves to an empty queue and the
     /// call is a no-op.
@@ -408,7 +413,7 @@ interface IDotnsPopController is IDotnsController {
     /// @dev Reverts with @custom:reverts NoActiveReservation when the caller holds no live
     /// reservation. On success the caller's entry is removed from its queue and
     /// @custom:emits ReservationRelinquished is emitted; if the removed entry was the queue
-    /// head, head advancement may additionally emit @custom:emits ReservationExpired for any
+    /// head, head advancement may additionally @custom:emits ReservationExpired for any
     /// stale entries reaped behind it.
     function relinquishReservation() external;
 
@@ -462,61 +467,92 @@ interface IDotnsPopController is IDotnsController {
         view
         returns (UserReservation memory reservation);
 
-    /// @notice Settles the caller's deferred bindings by writing every stashed label into
-    /// the caller's `LabelStore`, deploying the store first if the caller doesn't yet
-    /// have one.
-    /// @dev User-signed entrypoint: `pallet-revive` charges any `LabelStore` storage
-    /// deposit against `msg.sender`'s balance through the runtime's configured deposit
-    /// backend. This is the only path that can create the store, because the Root gateway
-    /// origin cannot instantiate contracts. Reverts with @custom:reverts NoPendingClaim when
-    /// the caller holds no live stashed entries. Reuses any existing `LabelStore` returned by
-    /// the factory (settling via this controller after a concurrent public-flow mint, or
-    /// settling twice through this controller, both find a live store and skip deployment),
-    /// otherwise deploys a fresh store via the protocol-registered factory. Writes each live
-    /// label keyed by its `node` (namehash), clears the pending-claim entries, and emits
-    /// @custom:emits PendingClaimSettled and @custom:emits NameRegistered per settled name.
-    /// Chat-key and lite-link records are not touched here; they are persisted on the PoP
-    /// resolver at mint time, not at settlement.
-    function claimLabelStore() external;
+    /// @notice Returns the base label a reservation queue is keyed under.
+    /// @dev Reverse lookup from the `bytes32` queue key to its label string, so a consumer that
+    /// observed a queue by labelhash (for example from a reservation event) can recover the
+    /// human-readable label without holding its preimage. Returns an empty string when no
+    /// reservation was ever enqueued under `labelhash`.
+    /// @param labelhash Keccak-256 of the base label.
+    /// @return baseLabel The base label string, or empty when unknown.
+    function reservedBaseLabelOf(bytes32 labelhash) external view returns (string memory baseLabel);
 
-    /// @notice Gateway-driven variant of @custom:function claimLabelStore for split workflows.
-    /// @dev Callable only via the registered PoP gateway. It settles the pending LabelStore claim
-    /// for `user` without requiring a user transaction. The user-signed
-    /// @custom:function claimLabelStore remains as a permissioned-by-origin fallback if gateway
-    /// dispatch fails.
-    /// @param user Account whose pending claim should be settled.
-    function claimLabelStoreFor(address user) external;
+    /// @notice Returns the window, in seconds, after which a queue or pending-claim entry lapses.
+    /// @dev Governance-configurable via @custom:function setReservationDuration. Read by the lens
+    /// to compute each pending claim's settlement deadline.
+    /// @return duration Reservation duration in seconds.
+    function reservationDuration() external view returns (uint64 duration);
 
-    /// @notice Permissionlessly reaps a user's deferred bindings that sat unsettled past
-    /// `reservationDuration`.
-    /// @dev Permissionless on purpose: anyone (typically a UI or a bot) can poke stale
-    /// entries so the user's pile cannot grow without bound. Sweeps every expired entry,
-    /// leaving any still-live ones in place; the user is removed from the enumeration set
-    /// only when no entries remain. Reverts with @custom:reverts NoPendingClaim when the
-    /// user holds no entries and with @custom:reverts PendingClaimNotExpired when none of
-    /// the held entries have lapsed. Emits @custom:emits PendingClaimExpired per swept name.
-    /// @param user Address whose pending claims are being swept.
-    function expirePendingClaim(address user) external;
+    /// @notice Settles up to `limit` of a user's pending claims, writing each stashed label into
+    /// the user's `LabelStore` and deploying that store when the user has none yet.
+    /// @dev Permissionless: any caller may settle any user's claims and bears the full cost,
+    /// including the `LabelStore` storage deposit, which `pallet-revive` charges to the
+    /// transaction signer. Settlement is never destructive: the name is already minted, so this
+    /// only completes the deferred label write. Each settled entry is removed from the queue and
+    /// the user leaves the pending-claim enumeration set once their queue empties. At most
+    /// `limit` entries are processed so a large queue cannot exceed the block gas limit;
+    /// `moreRemaining` reports whether entries are left for a follow-up call, and a `limit` of
+    /// zero settles nothing. Writes are idempotent on an already-locked store slot, so a claim
+    /// whose label was independently written settles harmlessly. Emits
+    /// @custom:emits PendingClaimSettled and @custom:emits NameRegistered per settled entry, with
+    /// `settledBy` set to the caller so a third-party settlement is distinguishable from a
+    /// self-settlement.
+    /// @param user Account whose pending claims are settled.
+    /// @param limit Maximum number of entries to settle in this call.
+    /// @return settledCount Number of entries settled.
+    /// @return moreRemaining Whether the user still holds unsettled entries.
+    function settlePendingClaims(
+        address user,
+        uint256 limit
+    )
+        external
+        returns (uint256 settledCount, bool moreRemaining);
 
-    /// @notice Returns `user`'s pending-claim entries.
-    /// @dev An empty array means the user has no pending claims. A user accumulates one
-    /// entry per deferred name until a signed-origin @custom:function claimLabelStore
-    /// settles them.
-    /// @param user Account whose pending claims are being read.
-    /// @return claims Per-user pending-claim entries; see @custom:struct PendingClaim.
-    function pendingClaims(address user) external view returns (PendingClaim[] memory claims);
+    /// @notice Settles the caller's own pending claims into their `LabelStore`.
+    /// @dev Convenience for a user settling their own store: equivalent to
+    /// @custom:function settlePendingClaims with `msg.sender` and a bounded batch. The caller
+    /// deploys and pays for their store on the first write. Settles at most one bounded batch so
+    /// the call cannot exceed the block gas limit; `moreRemaining` reports whether the caller
+    /// still holds unsettled entries, in which case they call again. Emits the same
+    /// @custom:emits PendingClaimSettled and @custom:emits NameRegistered as
+    /// @custom:function settlePendingClaims.
+    /// @return moreRemaining Whether the caller still holds unsettled entries.
+    function claimLabelStore() external returns (bool moreRemaining);
+
+    /// @notice Returns a paginated slice of a user's pending claims in queue order.
+    /// @dev An empty array means the user has no pending claims at `offset`. Each entry carries
+    /// its `mintedAt`; the settlement deadline is `mintedAt + reservationDuration`. An `offset`
+    /// past the end returns an empty array rather than reverting, and a page holds at most
+    /// `DotnsConstants.MAX_PAGE_SIZE` entries.
+    /// @param user Account whose pending claims are read.
+    /// @param offset Start index into the queue.
+    /// @param limit Maximum entries to return.
+    /// @return claims Page of the user's pending claims; see @custom:struct PendingClaim.
+    function pendingClaims(
+        address user,
+        uint256 offset,
+        uint256 limit
+    )
+        external
+        view
+        returns (PendingClaim[] memory claims);
+
+    /// @notice Returns the number of pending claims currently staged for `user`.
+    /// @param user Account whose pending claims are counted.
+    /// @return count Number of staged pending claims.
+    function pendingClaimCountOf(address user) external view returns (uint256 count);
 
     /// @notice Returns the number of users with at least one live pending claim.
-    /// @dev Exact live count, not an all-time tally: fully settled and fully expired users
-    /// are removed from the enumeration set so off-chain consumers can page through every
-    /// stalled user without filtering.
+    /// @dev Exact live count, not an all-time tally: fully settled users are removed from the
+    /// enumeration set so off-chain consumers can page through every stalled user without
+    /// filtering.
     /// @return count Number of users currently holding a pending claim.
     function pendingClaimUserCount() external view returns (uint256 count);
 
     /// @notice Returns a paginated slice of users with at least one live pending claim.
     /// @dev Pair with @custom:function pendingClaims to read each user's stashed entries.
     /// Ordering is not chronological; callers MUST NOT assume `mintedAt` is monotonic
-    /// across the slice. Returns an empty array when `offset` is past the live count.
+    /// across the slice. Returns an empty array when `offset` is past the live count, and a page
+    /// holds at most `DotnsConstants.MAX_PAGE_SIZE` entries.
     /// @param offset Start index.
     /// @param limit Maximum entries to return.
     /// @return users Slice of users currently holding a pending claim.

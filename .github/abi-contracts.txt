@@ -1,0 +1,52 @@
+# Contracts and interfaces whose ABIs ship in the release artifact.
+#
+# Read by .github/workflows/publish-release.yml and publish-prerelease.yml. The
+# release surface is a deliberate decision, so it is listed explicitly here rather
+# than globbed from contracts/**, which would make it a side effect of the directory
+# layout. Listing it once keeps the two workflows from drifting apart.
+#
+# One name per line, matching the artifact path out/<name>.sol/<name>.json. Blank
+# lines and # comments are ignored. A name with no build artifact fails the release.
+#
+# Adding a contract? Add it and its interface here, or its ABI never reaches
+# consumers. See the protocol-registry section of CONTRIBUTING.md.
+
+StoreFactory
+LabelStore
+UserStore
+DotnsRegistrar
+DotnsReverseResolver
+DotnsRegistry
+DotnsContentResolver
+DotnsResolver
+PopRules
+DotnsRegistrarController
+DotnsProtocolRegistry
+DotnsNameEscrow
+DotnsPopController
+DotnsPopResolver
+DotnsRoleManager
+RootGatewayDispatcher
+DotnsNameWhitelist
+DotnsCostModelRegistry
+DotnsFlatPricing
+
+IStoreFactory
+ILabelStore
+IUserStore
+IDotnsRegistrar
+IDotnsRegistrarController
+IDotnsRegistry
+IDotnsReverseResolver
+IDotnsContentResolver
+IDotnsResolver
+IPopRules
+IDotnsProtocolRegistry
+IDotnsNameEscrow
+IDotnsPopController
+IDotnsPopResolver
+IDotnsController
+IDotnsRoleManager
+IDotnsNameWhitelist
+IDotnsCostModelRegistry
+IDotnsPricing

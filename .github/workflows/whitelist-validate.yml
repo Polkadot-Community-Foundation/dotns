@@ -120,9 +120,11 @@ jobs:
           if echo "$RESULT" | jq -e . > /dev/null 2>&1; then
             IS_MAPPED=$(echo "$RESULT" | jq -r '.isMapped')
             EVM_ADDRESS=$(echo "$RESULT" | jq -r '.evmAddress')
-            echo "valid=true" >> "$GITHUB_OUTPUT"
-            echo "is_mapped=$IS_MAPPED" >> "$GITHUB_OUTPUT"
-            echo "evm_mapped=$EVM_ADDRESS" >> "$GITHUB_OUTPUT"
+            {
+              echo "valid=true"
+              echo "is_mapped=$IS_MAPPED"
+              echo "evm_mapped=$EVM_ADDRESS"
+            } >> "$GITHUB_OUTPUT"
 
             if echo "$ADDRESS" | grep -qE '^0x[0-9a-fA-F]{40}$'; then
               echo "type=evm" >> "$GITHUB_OUTPUT"
@@ -130,9 +132,11 @@ jobs:
               echo "type=substrate" >> "$GITHUB_OUTPUT"
             fi
           else
-            echo "valid=false" >> "$GITHUB_OUTPUT"
-            echo "is_mapped=false" >> "$GITHUB_OUTPUT"
-            echo "type=unknown" >> "$GITHUB_OUTPUT"
+            {
+              echo "valid=false"
+              echo "is_mapped=false"
+              echo "type=unknown"
+            } >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build validation message

@@ -10,7 +10,7 @@ pragma solidity ^0.8.34;
 interface IDotnsRegistry {
     /// @notice Record describing a subnode creation request.
     /// @param subLabel Human readable subnode label e.g "alice".
-    /// @param parentLabel Canonical parent name without the `.dot` suffix e.g. bob or child.bob.
+    /// @param parentLabel Canonical parent name without the TLD suffix e.g. bob or child.bob.
     /// @param owner Address to assign as owner of the created subnode.
     struct SubnodeRecord {
         bytes32 parentNode;
@@ -60,7 +60,7 @@ interface IDotnsRegistry {
 
     /// @notice Record describing a subnode resolver update request.
     /// @param subLabel Human-readable subnode label e.g "alice".
-    /// @param parentLabel Canonical parent name without `.dot` suffix e.g bob or child.bob.
+    /// @param parentLabel Canonical parent name without the TLD suffix e.g bob or child.bob.
     /// @param resolver Resolver contract address (zero clears).
     struct SubnodeResolverRecord {
         bytes32 parentNode;

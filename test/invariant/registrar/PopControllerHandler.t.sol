@@ -20,6 +20,10 @@ import {IPersonhood} from "../../../contracts/external/personhood/IPersonhood.so
 contract PopControllerHandler is Test {
     /// @notice The PoP controller under test.
     DotnsPopController public immutable CONTROLLER;
+    /// @notice Node hash of the suite's TLD, injected from the deployed protocol registry.
+    /// @dev Keeps the handler rooted at the same TLD the protocol under test uses, without a
+    ///      second TLD definition.
+    bytes32 private immutable TLD_NODE;
     /// @notice Mirrors the controller's MAX_RESERVATION_QUEUE for queue-bound
     ///         assertions without re-importing the contract constant.
     uint16 public constant MAX_QUEUE = 64;
@@ -70,8 +74,10 @@ contract PopControllerHandler is Test {
     ///         every action call admits both lite and base classifications.
     /// @param controller_ The PoP controller under test.
     /// @param actors_ Pool of accounts the handler cycles through.
-    constructor(DotnsPopController controller_, address[] memory actors_) {
+    /// @param tldNode_ Node hash of the suite's TLD, from the deployed protocol registry.
+    constructor(DotnsPopController controller_, address[] memory actors_, bytes32 tldNode_) {
         CONTROLLER = controller_;
+        TLD_NODE = tldNode_;
         actors = actors_;
         // baselength 8, no trailing digits: PopFull classification.
         baseLabels.push("alicebob");
@@ -176,9 +182,7 @@ contract PopControllerHandler is Test {
 
         if (_callReserveBaseName(params, useBytes)) {
             if (attachReservation) _track(keccak256(bytes(reservedBase)));
-            bytes32 node = LabelUtils.namehashUnder(
-                DotnsConstants.DOT_NODE, LabelUtils.labelhashMemory(liteLabel)
-            );
+            bytes32 node = LabelUtils.namehashUnder(TLD_NODE, LabelUtils.labelhashMemory(liteLabel));
             mintedLiteTokenIds.push(uint256(node));
             priorLiteLabels.push(liteLabel);
             _trackPendingActor(actor);
@@ -215,7 +219,7 @@ contract PopControllerHandler is Test {
         // registration below takes the warm path; the pending-claim mechanism
         // forbids a second stash for the same user.
         vm.prank(actor);
-        try CONTROLLER.claimLabelStore() {} catch {}
+        try CONTROLLER.settlePendingClaims(actor, type(uint256).max) {} catch {}
 
         IDotnsPopController.Link memory link = IDotnsPopController.Link({
             kind: IDotnsPopController.LinkKind.LiteUsername, liteLabel: liteLabel, chatKey: ""
@@ -225,14 +229,10 @@ contract PopControllerHandler is Test {
         if (!_callRegisterBaseName(fullParams, useBytes)) return;
 
         bytes32 liteLabelhash = LabelUtils.labelhashMemory(liteLabel);
-        bytes32 fullNode = LabelUtils.namehashUnder(
-            DotnsConstants.DOT_NODE, LabelUtils.labelhashMemory(baseLabel)
-        );
+        bytes32 fullNode = LabelUtils.namehashUnder(TLD_NODE, LabelUtils.labelhashMemory(baseLabel));
         claimedLiteLabelhashes.push(liteLabelhash);
         claimedFullNodes.push(fullNode);
-        mintedLiteTokenIds.push(
-            uint256(LabelUtils.namehashUnder(DotnsConstants.DOT_NODE, liteLabelhash))
-        );
+        mintedLiteTokenIds.push(uint256(LabelUtils.namehashUnder(TLD_NODE, liteLabelhash)));
         mintedLiteTokenIds.push(uint256(fullNode));
         priorLiteLabels.push(liteLabel);
     }
@@ -270,9 +270,7 @@ contract PopControllerHandler is Test {
         if (!_callRegisterBaseName(params, useBytes)) return;
 
         bytes32 liteLabelhash = LabelUtils.labelhashMemory(liteLabel);
-        bytes32 fullNode = LabelUtils.namehashUnder(
-            DotnsConstants.DOT_NODE, LabelUtils.labelhashMemory(baseLabel)
-        );
+        bytes32 fullNode = LabelUtils.namehashUnder(TLD_NODE, LabelUtils.labelhashMemory(baseLabel));
         claimedLiteLabelhashes.push(liteLabelhash);
         claimedFullNodes.push(fullNode);
         mintedLiteTokenIds.push(uint256(fullNode));
@@ -297,22 +295,28 @@ contract PopControllerHandler is Test {
         vm.warp(block.timestamp + (secondsForward % (30 days)));
     }
 
-    /// @notice Settles a pending claim for the picked actor.
+    /// @notice Settles the picked actor's own pending claims.
     /// @dev The actor signs the call; `pallet-revive` charges the storage
-    ///      deposit against their balance in production. Swallowed reverts
-    ///      cover the no-pending-claim and lapsed-entry branches.
+    ///      deposit against their balance in production. Settlement never reverts
+    ///      on an empty or lapsed queue, so no branch needs swallowing; the
+    ///      try/catch guards only against unrelated dispatch reverts.
     function settlePendingClaim(uint256 actorIndex) external {
         address actor = _actor(actorIndex);
         vm.prank(actor);
-        try CONTROLLER.claimLabelStore() {} catch {}
+        try CONTROLLER.settlePendingClaims(actor, type(uint256).max) {} catch {}
     }
 
-    /// @notice Permissionlessly sweeps an expired pending claim for the picked actor.
-    /// @dev Caller is the handler itself; the entrypoint is permissionless by
-    ///      design so any address can clear a stale slot.
-    function sweepPendingClaim(uint256 actorIndex) external {
+    /// @notice Settles the picked actor's pending claims from a different actor.
+    /// @dev Settlement is permissionless: any account may settle another user's
+    ///      claims and bears the cost. The settler is a distinct actor from the
+    ///      beneficiary so the third-party path is exercised alongside the
+    ///      self-settlement path above.
+    function settlePendingClaimByThirdParty(uint256 actorIndex, uint256 settlerIndex) external {
         address actor = _actor(actorIndex);
-        try CONTROLLER.expirePendingClaim(actor) {} catch {}
+        address settler = _actor(settlerIndex);
+        if (settler == actor) settler = _actor(settlerIndex + 1);
+        vm.prank(settler);
+        try CONTROLLER.settlePendingClaims(actor, type(uint256).max) {} catch {}
     }
 
     /// @notice Calls `reserveBaseName` through the typed or bytes overload.

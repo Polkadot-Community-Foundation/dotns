@@ -8,8 +8,11 @@
     "deploy": "./scripts/deploy/run.sh",
     "deploy:anvil": "forge clean && forge build && ./scripts/deploy/run.sh",
     "deploy:testnet": "./scripts/deploy/run.sh '--timeout 1000'",
+    "deploy:factory": "./scripts/deploy/factory.sh",
+    "deploy:all": "./scripts/deploy/deployall.sh",
     "postinstall": "./setup.bash",
-    "reset": "forge clean"
+    "reset": "forge clean",
+    "deployments:verify": "bun scripts/js/release-metadata.mjs verify"
   },
   "engines": {
     "bun": ">=1.2.6"

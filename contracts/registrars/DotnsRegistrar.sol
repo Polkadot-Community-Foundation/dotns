@@ -102,7 +102,15 @@ contract DotnsRegistrar is
     function available(uint256 id) public view override returns (bool isAvailable) {
         address holder = _ownerOf(id);
         if (holder == address(0)) return true;
-        return holder == protocolRegistry.get(DotnsConstants.NAME_ESCROW);
+
+        address escrow = protocolRegistry.get(DotnsConstants.NAME_ESCROW);
+        if (holder != escrow) return false;
+
+        // Escrow custody on its own does not mean registrable: a released name inside its redeem
+        // window still belongs to its previous holder. The escrow owns that lifecycle and is asked
+        // directly, so availability here and reclaimability there cannot drift apart and start
+        // advertising names whose registration would revert.
+        return IDotnsNameEscrow(payable(escrow)).isReclaimable(id);
     }
 
     /// @inheritdoc IDotnsRegistrar
@@ -136,7 +144,7 @@ contract DotnsRegistrar is
     function labelOf(uint256 tokenId) external view override returns (string memory) {
         address holder = _ownerOf(tokenId);
         if (holder == address(0)) return "";
-        return LabelUtils.stripDotTld(_readLabel(tokenId, holder));
+        return LabelUtils.stripTld(protocolRegistry.tld(), _readLabel(tokenId, holder));
     }
 
     /// @inheritdoc IDotnsRegistrar
@@ -251,7 +259,7 @@ contract DotnsRegistrar is
             _syncRecipientStore(factory, to, from, tokenId);
         }
 
-        (uint256 reachFloor, uint256 requiredFee) =
+        (uint256 transferFee, uint256 requiredFee) =
             _quoteTransferFeeFor(registry, factory, isEscrowTouching, from, to, tokenId);
         if (requiredFee != 0) {
             require(msg.value >= requiredFee, TransferFeeRequired(tokenId, to, requiredFee));
@@ -270,11 +278,13 @@ contract DotnsRegistrar is
             positionSyncNeeded = position.recipient != address(0) && to != position.recipient;
         }
 
-        if (requiredFee == 0 && msg.value == 0 && !positionSyncNeeded) return from;
+        if (requiredFee == 0 && msg.value == 0 && !positionSyncNeeded) {
+            return from;
+        }
 
         IDotnsNameEscrow(payable(escrow)).chargeTransferFee{value: msg.value}(
             IDotnsNameEscrow.ChargeTransferFeeParams({
-                tokenId: tokenId, reachFloor: reachFloor, payer: msg.sender, to: to
+                tokenId: tokenId, transferFee: transferFee, payer: msg.sender, to: to
             })
         );
 
@@ -352,13 +362,14 @@ contract DotnsRegistrar is
     /// the registry would have already broken every other call site).
     function _writeOwnerLabel(address owner, uint256 tokenId, string calldata label) private {
         _storeFactory()
-            .writeLabel(owner, bytes32(tokenId), string.concat(label, DotnsConstants.TLD));
+            .writeLabel(owner, bytes32(tokenId), string.concat(label, protocolRegistry.tld()));
     }
 
     /// @notice Quotes the friction fee required for a transfer.
-    /// @dev Required fee is the reach floor returned by @custom:function PopRules.transferFloor.
-    /// It is paid by the sender on every downward or cross-reach transfer and settles to the
-    /// insurance fund. Any prior deposit travels with the NFT: the escrow rebinds the position to
+    /// @dev Required fee is the name's own price returned by @custom:function
+    /// PopRules.transferFloor. It is paid by the sender on every downward or cross-reach transfer
+    /// and settles to the
+    /// protocol fee pot. Any prior deposit travels with the NFT: the escrow rebinds the position to
     /// the new holder rather than refunding the sender, so transferring a funded name forfeits the
     /// locked deposit to the recipient. Self-transfers and escrow-touching transfers return zero.
     function _quoteTransferFee(
@@ -368,7 +379,7 @@ contract DotnsRegistrar is
     )
         private
         view
-        returns (address escrow, uint256 reachFloor, uint256 requiredFee)
+        returns (address escrow, uint256 transferFee, uint256 requiredFee)
     {
         if (from == to) return (address(0), 0, 0);
 
@@ -378,7 +389,7 @@ contract DotnsRegistrar is
 
         bool isEscrowTouching = to == escrow || from == escrow;
         IStoreFactory factory = IStoreFactory(registry.get(DotnsConstants.STORE_FACTORY));
-        (reachFloor, requiredFee) =
+        (transferFee, requiredFee) =
             _quoteTransferFeeFor(registry, factory, isEscrowTouching, from, to, tokenId);
     }
 
@@ -396,7 +407,7 @@ contract DotnsRegistrar is
     )
         private
         view
-        returns (uint256 reachFloor, uint256 requiredFee)
+        returns (uint256 transferFee, uint256 requiredFee)
     {
         if (isEscrowTouching) return (0, 0);
 
@@ -404,12 +415,15 @@ contract DotnsRegistrar is
         // No label means there is no label-derived price to charge against; treat as a zero-fee
         // move (typical of gateway-cold PoP mints that have not yet claimed a `LabelStore`).
         if (bytes(fullName).length == 0) return (0, 0);
-        string memory label = LabelUtils.stripDotTld(fullName);
-        if (bytes(label).length == 0) return (0, 0);
+        // A stored full name always carries the registry TLD suffix, so an empty strip means the
+        // name is malformed for this registry (a wrong or missing suffix); fail loudly rather than
+        // mis-pricing the move as zero-fee.
+        string memory label = LabelUtils.stripTld(registry.tld(), fullName);
+        require(bytes(label).length != 0, InvalidLabel());
 
-        reachFloor =
+        transferFee =
             IPopRules(registry.get(DotnsConstants.POP_RULES)).transferFloor(label, from, to);
-        requiredFee = reachFloor;
+        requiredFee = transferFee;
     }
 
     /// @inheritdoc UUPSUpgradeable

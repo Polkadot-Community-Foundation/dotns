@@ -39,9 +39,9 @@ jobs:
         id: run
         run: |
           if [ "${{ steps.title.outcome }}" == "success" ]; then
-            echo "result=PR Title Valid" >> $GITHUB_OUTPUT
+            echo "result=PR Title Valid" >> "$GITHUB_OUTPUT"
           else
-            echo "result=Invalid - Use type(scope): description (e.g. feat(registry): add protocol lookup)" >> $GITHUB_OUTPUT
+            echo "result=Invalid - Use type(scope): description (e.g. feat(registry): add protocol lookup)" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Update PR comment

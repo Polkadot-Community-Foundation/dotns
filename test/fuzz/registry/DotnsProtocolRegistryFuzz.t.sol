@@ -2,11 +2,34 @@
 pragma solidity ^0.8.34;
 
 import {BaseDotns} from "../../base/BaseDotns.t.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {DotnsProtocolRegistry} from "../../../contracts/registry/DotnsProtocolRegistry.sol";
+import {IDotnsProtocolRegistry} from "../../../contracts/registry/IDotnsProtocolRegistry.sol";
 
 /// @title DotnsProtocolRegistryFuzzTest
 /// @notice Property-based tests for @custom:contract DotnsProtocolRegistry reference-counted
-/// registration.
+/// registration, plus TLD-initialisation guards.
 contract DotnsProtocolRegistryFuzzTest is BaseDotns {
+    /// @notice Deploys an uninitialised registry behind a bare proxy.
+    /// @dev Wires the proxy directly so `initialize` is called in the open and its revert
+    ///      surfaces raw, rather than wrapped by the upgrades plugin's deploy helper.
+    function _uninitialisedRegistry() internal returns (DotnsProtocolRegistry registry) {
+        DotnsProtocolRegistry implementation = new DotnsProtocolRegistry();
+        registry = DotnsProtocolRegistry(address(new ERC1967Proxy(address(implementation), "")));
+    }
+
+    function test_initialise_reverts_on_empty_tld() public {
+        DotnsProtocolRegistry registry = _uninitialisedRegistry();
+        vm.expectRevert(IDotnsProtocolRegistry.InvalidTld.selector);
+        registry.initialize("");
+    }
+
+    function test_initialise_reverts_on_multi_label_tld() public {
+        DotnsProtocolRegistry registry = _uninitialisedRegistry();
+        vm.expectRevert(IDotnsProtocolRegistry.InvalidTld.selector);
+        registry.initialize("bad.label");
+    }
+
     function testFuzz_isRegisteredAddress_matches_ground_truth(
         bytes32 k1,
         bytes32 k2,

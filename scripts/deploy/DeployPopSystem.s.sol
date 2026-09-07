@@ -3,7 +3,6 @@ pragma solidity ^0.8.34;
 
 import {console} from "forge-std/Script.sol";
 import {BaseDeployer} from "./BaseDeployer.s.sol";
-import {DeploymentNetwork} from "./DeploymentNetwork.sol";
 
 import {DotnsPopResolver} from "../../contracts/resolvers/DotnsPopResolver.sol";
 import {DotnsPopController} from "../../contracts/registrars/DotnsPopController.sol";
@@ -25,13 +24,14 @@ contract DeployPopSystem is BaseDeployer {
         address owner = msg.sender;
         vm.label(owner, "OWNER");
 
-        initDeployment(DeploymentNetwork.folder(block.chainid), vm.toString(block.chainid));
+        initDeployment(networkFolder(), vm.toString(block.chainid));
 
         address protocolRegistry = _readAddress("DotnsProtocolRegistry");
 
         _deployPopResolver(owner, protocolRegistry);
         address popController = _deployPopController(owner, protocolRegistry);
         _deployGatewayDispatcher(owner, popController);
+        _deployPopLens(owner, protocolRegistry);
 
         saveDeployments();
 
@@ -94,6 +94,26 @@ contract DeployPopSystem is BaseDeployer {
             "RootGatewayDispatcher.sol:RootGatewayDispatcher",
             abi.encode(popController),
             "RootGatewayDispatcher"
+        );
+    }
+
+    /// @notice Deploys the read-only PoP lens bound to the protocol registry and records it on
+    ///         the manifest for the wire-up stage to register.
+    /// @dev A plain CREATE3 deployment, like the dispatcher: the lens holds no state beyond the
+    ///      registry it resolves siblings through, so it needs no proxy. Registry registration is
+    ///      the wire-up stage's job.
+    /// @param owner Broadcasting account.
+    /// @param protocolRegistry Protocol registry the lens reads through.
+    /// @return lens Address of the deployed lens.
+    function _deployPopLens(
+        address owner,
+        address protocolRegistry
+    )
+        internal
+        returns (address lens)
+    {
+        lens = _broadcastDeployCreate3(
+            owner, "DotnsPopLens.sol:DotnsPopLens", abi.encode(protocolRegistry), "DotnsPopLens"
         );
     }
 }

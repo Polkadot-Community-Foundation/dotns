@@ -56,9 +56,7 @@ jobs:
 
       - id: foundry_toolchain
         continue-on-error: true
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
+        uses: ./.github/actions/setup-foundry
       - name: Retry Foundry install on transient failure
         if: steps.foundry_toolchain.outcome == 'failure'
         run: |
@@ -68,7 +66,7 @@ jobs:
           fi
           for attempt in 1 2 3; do
             echo "Retrying Foundry nightly install (attempt $attempt/3)..."
-            if $HOME/.foundry/bin/foundryup --install stable; then
+            if "$HOME/.foundry/bin/foundryup" --install stable; then
               exit 0
             fi
             sleep 5
@@ -194,10 +192,12 @@ jobs:
           [ -f "$PR_REPORT" ] || MISSING="${MISSING} pr"
           [ -f "$MAIN_REPORT" ] || MISSING="${MISSING} master"
           if [ -n "$MISSING" ]; then
-            echo "missing=${MISSING}" >> "$GITHUB_OUTPUT"
-            echo "success=false" >> "$GITHUB_OUTPUT"
-            echo "result=Failed - missing shard:${MISSING}" >> "$GITHUB_OUTPUT"
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "missing=${MISSING}"
+              echo "success=false"
+              echo "result=Failed - missing shard:${MISSING}"
+              echo "has_changes=false"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           cp "$PR_REPORT" pr-gas-report.txt
@@ -211,9 +211,11 @@ jobs:
           if python3 scripts/reports/gas-report.py master-gas-report.txt pr-gas-report.txt; then
             echo "success=true" >> "$GITHUB_OUTPUT"
           else
-            echo "success=false" >> "$GITHUB_OUTPUT"
-            echo "result=Failed - report generation error" >> "$GITHUB_OUTPUT"
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "success=false"
+              echo "result=Failed - report generation error"
+              echo "has_changes=false"
+            } >> "$GITHUB_OUTPUT"
           fi
 
       - name: Set deploy path
