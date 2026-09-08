@@ -1,0 +1,89 @@
+name: Deploy CREATE3 factory to devnet
+
+# One-shot, manual: deploys the PCF CREATE3 factory on the devnet Asset Hub from the
+# single-purpose factory key held as a repository secret, so the key never leaves CI.
+# factory.sh asserts the deployer is at nonce 0 and that the resulting address equals
+# EXPECTED_CREATE3_FACTORY (the Create3Factory entry of the canonical manifest); when the
+# factory already exists it skips the deploy and just reports the address. The rest of the
+# pipeline (deploy:all / run.sh with CREATE3_FACTORY set) runs from the owner key elsewhere.
+
+on:
+  workflow_dispatch:
+    inputs:
+      rpc_url:
+        description: "ETH-RPC of the target chain"
+        required: true
+        default: "https://eth-rpc-testnet.polkadot.io"
+      canonical:
+        description: "Manifest whose Create3Factory entry the deploy must reproduce"
+        required: true
+        default: "deployments/pcf-devnet/420420417.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-devnet-factory
+  cancel-in-progress: false
+
+jobs:
+  factory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Resolve the expected factory address
+        run: |
+          FACTORY=$(jq -r '.Create3Factory // empty' "${{ inputs.canonical }}")
+          if [[ ! "$FACTORY" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::${{ inputs.canonical }} has no usable Create3Factory entry."
+            exit 1
+          fi
+          echo "EXPECTED_CREATE3_FACTORY=$FACTORY" >> "$GITHUB_ENV"
+          echo "Expecting the factory at $FACTORY on ${{ inputs.rpc_url }}."
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.6"
+          no-cache: true
+
+      - name: Install Foundry
+        uses: ./.github/actions/setup-foundry
+
+      - name: Install dependencies
+        run: chmod +x setup.bash && bun install
+
+      - name: Deploy (or confirm) the factory
+        env:
+          RPC_URL: ${{ inputs.rpc_url }}
+          # factory.sh / _account.sh: the factory keystore is imported from PRIVATE_KEY on
+          # first use under ACCOUNT_NAME; the password is runner-local and disposable.
+          ACCOUNT_NAME: dotns-factory
+          ACCOUNT_PASSWORD: runner-local-password
+          PRIVATE_KEY: ${{ secrets.FACTORY_DEPLOYER_KEY }}
+        run: |
+          if [ -z "$PRIVATE_KEY" ]; then
+            echo "::error::FACTORY_DEPLOYER_KEY secret is not available."
+            exit 1
+          fi
+          set +e
+          bun run deploy:factory --timeout 1000 > factory.log 2>&1
+          STATUS=$?
+          unset PRIVATE_KEY ACCOUNT_PASSWORD
+          # Never echo raw output: redact anything key-shaped before it reaches the log.
+          sed -E 's/0x[0-9a-fA-F]{64}/0x<redacted>/g' factory.log
+          exit $STATUS
+
+      - name: Verify on chain
+        env:
+          RPC_URL: ${{ inputs.rpc_url }}
+        run: |
+          CODE=$(cast code "$EXPECTED_CREATE3_FACTORY" --rpc-url "$RPC_URL")
+          if [ "$CODE" = "0x" ]; then
+            echo "::error::no code at $EXPECTED_CREATE3_FACTORY after the deploy."
+            exit 1
+          fi
+          echo "Create3Factory live at $EXPECTED_CREATE3_FACTORY ($(( (${#CODE}-2)/2 )) bytes)."
