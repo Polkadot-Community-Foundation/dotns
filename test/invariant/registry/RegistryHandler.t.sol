@@ -18,8 +18,10 @@ import {IPersonhood} from "../../../contracts/external/personhood/IPersonhood.so
 /// @notice Executes bounded random actions on the registry: register base domains,
 ///         create subnodes, reassign subnodes, set resolvers, and transfer base domains.
 contract RegistryHandler is Test {
-    /// @notice Namehash of the .dot TLD.
-    bytes32 private constant DOT_NODE = DotnsConstants.DOT_NODE;
+    /// @notice Node hash of the suite's TLD, injected from the deployed protocol registry.
+    /// @dev Keeps the handler rooted at the same TLD the protocol under test uses, without a
+    ///      second TLD definition.
+    bytes32 private immutable TLD_NODE;
 
     /// @notice The registrar controller driving registrations.
     DotnsRegistrarController public controller;
@@ -54,6 +56,29 @@ contract RegistryHandler is Test {
     /// @notice Current subnode owner (updated on reassignment).
     address[] internal _subnodeOwners;
 
+    /// @notice Sub-label text for each subnode (same index).
+    /// @dev Kept as the string the call carried so a reassignment addresses the same node and
+    ///      the separator invariants can read what the registry accepted.
+    string[] internal _subnodeLabels;
+
+    /// @notice Parent label text for each subnode (same index).
+    string[] internal _subnodeParentLabels;
+
+    /// @notice Sub-labels the registry rejected.
+    uint256 public rejectedSubLabelCount;
+
+    /// @notice Sub-labels carrying a separator that the campaign submitted.
+    /// @dev The separator invariant iterates what the registry accepted, so it passes for free
+    ///      if no dotted sub-label was ever offered. This counts the offers, and
+    ///      `afterInvariant` requires at least one.
+    uint256 public dottedSubLabelAttempts;
+
+    /// @notice Dotted sub-labels the registry rejected.
+    /// @dev Counted apart from `rejectedSubLabelCount`, which pools every rejection reason. Held
+    ///      equal to `dottedSubLabelAttempts` by `afterInvariant`, which is the statement that
+    ///      the separator is what the registry turned away.
+    uint256 public dottedSubLabelRejections;
+
     /// @notice Monotonic counter ensuring each generated label is unique.
     uint256 public labelNonce;
 
@@ -65,12 +90,15 @@ contract RegistryHandler is Test {
     /// @param _registry The hierarchical registry.
     /// @param _registrar The base registrar.
     /// @param _popRules The PoP rules contract.
+    /// @param _tldNode Node hash of the suite's TLD, from the deployed protocol registry.
     constructor(
         DotnsRegistrarController _controller,
         DotnsRegistry _registry,
         DotnsRegistrar _registrar,
-        IPopRules _popRules
+        IPopRules _popRules,
+        bytes32 _tldNode
     ) {
+        TLD_NODE = _tldNode;
         controller = _controller;
         registry = _registry;
         registrar = _registrar;
@@ -109,9 +137,19 @@ contract RegistryHandler is Test {
     }
 
     /// @notice Register a base domain and create a subnode under it.
+    /// @dev The sub-label is drawn from an alphabet that includes the separator, so the campaign
+    ///      puts a dotted sub-label in front of the registry rather than assuming one is
+    ///      impossible. A rejected sub-label is counted and the action returns.
     /// @param actorSeed Seed selecting the base domain owner.
     /// @param subnodeOwnerSeed Seed selecting the subnode owner.
-    function registerAndCreateSubnode(uint256 actorSeed, uint256 subnodeOwnerSeed) external {
+    /// @param subLabelSeed Seed generating the sub-label.
+    function registerAndCreateSubnode(
+        uint256 actorSeed,
+        uint256 subnodeOwnerSeed,
+        uint256 subLabelSeed
+    )
+        external
+    {
         if (actors.length < 2) return;
 
         address domainOwner = actors[actorSeed % actors.length];
@@ -121,7 +159,7 @@ contract RegistryHandler is Test {
         _registerBaseDomain(label, domainOwner);
         bytes32 parentNode = _computeNode(label);
 
-        _createSubnode(parentNode, "sub", label, domainOwner, subnodeOwner);
+        _createSubnode(parentNode, _buildSubLabel(subLabelSeed), label, domainOwner, subnodeOwner);
     }
 
     /// @notice Reassign an existing subnode to a different owner.
@@ -155,7 +193,10 @@ contract RegistryHandler is Test {
         address newOwner = actors[newOwnerSeed % actors.length];
 
         IDotnsRegistry.SubnodeRecord memory record = IDotnsRegistry.SubnodeRecord({
-            parentNode: parentNode, subLabel: "sub", parentLabel: parentLabel, owner: newOwner
+            parentNode: parentNode,
+            subLabel: _subnodeLabels[index],
+            parentLabel: parentLabel,
+            owner: newOwner
         });
 
         vm.prank(parentOwner);
@@ -191,6 +232,21 @@ contract RegistryHandler is Test {
         _registeredOwners[index] = recipient;
     }
 
+    /// @notice Sub-label text recorded for the subnode at `index`.
+    function subnodeLabelAt(uint256 index) external view returns (string memory) {
+        return _subnodeLabels[index];
+    }
+
+    /// @notice Parent label text recorded for the subnode at `index`.
+    function subnodeParentLabelAt(uint256 index) external view returns (string memory) {
+        return _subnodeParentLabels[index];
+    }
+
+    /// @notice Number of subnodes the handler has created.
+    function subnodeCount() external view returns (uint256) {
+        return _subnodeHashes.length;
+    }
+
     /// @notice Returns the recorded subnode hashes.
     function getSubnodeHashes() external view returns (bytes32[] memory) {
         return _subnodeHashes;
@@ -219,7 +275,12 @@ contract RegistryHandler is Test {
             keccak256(abi.encodePacked(label, domainOwner, block.timestamp, labelNonce));
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: domainOwner, secret: secret, reserved: true
+                label: label,
+                owner: domainOwner,
+                secret: secret,
+                reserved: false,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = controller.makeCommitment(registration);
@@ -257,24 +318,59 @@ contract RegistryHandler is Test {
             owner: subnodeOwner
         });
 
+        bytes memory subLabelBytes = bytes(subLabel);
+        bool dotted;
+        for (uint256 i; i < subLabelBytes.length; ++i) {
+            if (subLabelBytes[i] == bytes1(0x2e)) {
+                dotted = true;
+                ++dottedSubLabelAttempts;
+                break;
+            }
+        }
+
         vm.prank(parentOwner);
-        bytes32 subnode = registry.setSubnodeOwner(record);
+        bytes32 subnode;
+        try registry.setSubnodeOwner(record) returns (bytes32 created) {
+            subnode = created;
+        } catch {
+            ++rejectedSubLabelCount;
+            if (dotted) ++dottedSubLabelRejections;
+            return;
+        }
 
         _subnodeHashes.push(subnode);
         _subnodeParents.push(parentNode);
         _subnodeOwners.push(subnodeOwner);
+        _subnodeLabels.push(subLabel);
+        _subnodeParentLabels.push(parentLabel);
     }
 
-    /// @notice Computes the namehash for `label` under the .dot TLD.
+    /// @notice Builds a sub-label from an alphabet that includes the separator and digits.
+    /// @dev Lengths of one to eight cover the shapes a caller could pass: a plain label, one
+    ///      carrying a separator, an all-digit label, and a hyphen in any position.
+    function _buildSubLabel(uint256 seed) internal pure returns (string memory subLabel) {
+        bytes memory alphabet = "abcdefghijklmnopqrstuvwxyz0123456789-.";
+        uint256 length = 1 + (seed % 8);
+        bytes memory out = new bytes(length);
+        for (uint256 i; i < length; ++i) {
+            seed = uint256(keccak256(abi.encode(seed, i)));
+            out[i] = alphabet[seed % alphabet.length];
+        }
+        return string(out);
+    }
+
+    /// @notice Computes the namehash for `label` under the suite's TLD.
     /// @param label Label whose node hash is required.
-    function _computeNode(string memory label) internal pure returns (bytes32) {
-        return LabelUtils.namehashUnder(DOT_NODE, LabelUtils.labelhashMemory(label));
+    function _computeNode(string memory label) internal view returns (bytes32) {
+        return LabelUtils.namehashUnder(TLD_NODE, LabelUtils.labelhashMemory(label));
     }
 
     /// @notice Generates a unique label for each registration in the run.
-    /// @dev Uses an incrementing nonce to ensure uniqueness across calls.
+    /// @dev The nonce keeps each label unique across calls, and the prefix keeps every label at
+    ///      nine characters or more so it classifies NoStatus and any actor in the pool can
+    ///      register it whatever tier they hold.
     function _generateUniqueLabel() internal returns (string memory) {
-        string memory label = string(abi.encodePacked("inv", vm.toString(labelNonce)));
+        string memory label = string(abi.encodePacked("invariant", vm.toString(labelNonce)));
         ++labelNonce;
         return label;
     }

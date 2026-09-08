@@ -38,9 +38,11 @@ jobs:
             *)     [ -n "$labels" ] && labels="$labels,P3" || labels="P3" ;;
           esac
 
-          echo "labels=$labels" >> $GITHUB_OUTPUT
-          echo "component=$comp" >> $GITHUB_OUTPUT
-          echo "priority=$priority" >> $GITHUB_OUTPUT
+          {
+            echo "labels=$labels"
+            echo "component=$comp"
+            echo "priority=$priority"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Apply labels
         if: steps.extract.outputs.labels != ''

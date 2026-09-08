@@ -1,0 +1,31 @@
+name: Release Metadata
+
+# The release generates deployments.json and release-manifest.json from the committed
+# manifests and the contract list. Without this, a duplicate address, a missing
+# Create3Factory or a malformed manifest would only surface when a release is cut. No
+# contract build is needed: manifest checks read JSON, and listed contract names are
+# resolved against sources.
+on:
+  pull_request:
+    paths:
+      - "deployments/**"
+      - ".github/abi-contracts.txt"
+      - "scripts/js/release-metadata.mjs"
+      - ".github/workflows/release-metadata.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.6"
+          no-cache: true
+
+      - name: Validate deployment manifests and the contract list
+        run: bun scripts/js/release-metadata.mjs validate

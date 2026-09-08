@@ -35,7 +35,7 @@ library RegistrationUtils {
     /// @param user Address receiving the name.
     /// @param label Human-readable label (without the TLD).
     /// @param labelhash `keccak256(bytes(label))`.
-    /// @param node `namehash(DOT_NODE, labelhash)`.
+    /// @param node `namehash(tldNode, labelhash)`.
     struct RegistrationContext {
         IDotnsProtocolRegistry protocolRegistry;
         address user;

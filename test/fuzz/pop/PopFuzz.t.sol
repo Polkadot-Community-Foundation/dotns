@@ -10,7 +10,9 @@ import {IPopRules} from "../../../contracts/pop/IPopRules.sol";
 contract PopRulesFuzzTest is BaseDotns {
     function testFuzz_popfull_user_can_access_poplite(uint256 seed, uint256 length) public {
         length = bound(length, 6, 8);
-        string memory nameLabel = string(abi.encodePacked(_makeAlpha(seed, length), "01"));
+        // PopLite is the gateway's separated form, so the stem carries the separator; `length`
+        // bounds the stem, which is what sets the band.
+        string memory nameLabel = string(abi.encodePacked(_makeAlpha(seed, length), ".01"));
 
         _grantPopFull(ed);
 
@@ -22,6 +24,7 @@ contract PopRulesFuzzTest is BaseDotns {
 
     function testFuzz_popfull_user_can_access_nostatus(uint256 seed, uint256 length) public {
         length = bound(length, 9, 14);
+        // Measured whole, so the suffix only lengthens it and the band stays NoStatus.
         string memory nameLabel = string(abi.encodePacked(_makeAlpha(seed, length), "01"));
 
         _grantPopFull(ed);
@@ -39,6 +42,22 @@ contract PopRulesFuzzTest is BaseDotns {
 
         vm.expectPartialRevert(IPopRules.PopError.selector);
         popRules.priceWithCheck(nameLabel, ed);
+    }
+
+    function testFuzz_price_matches_flat_model(uint256 seed, uint256 length) public view {
+        length = bound(length, 3, 63);
+        string memory nameLabel = _makeAlpha(seed, length);
+
+        // The launch model prices every length at the flat deposit.
+        assertEq(popRules.price(nameLabel), BASE_DEPOSIT);
+    }
+
+    function testFuzz_price_is_monotonic_and_floored(uint256 seed, uint256 length) public view {
+        length = bound(length, 3, 62);
+        uint256 shorter = popRules.price(_makeAlpha(seed, length));
+        uint256 longer = popRules.price(_makeAlpha(seed, length + 1));
+        assertGe(shorter, longer, "price must not increase with length");
+        assertGe(longer, MIN_PRICE, "price must never fall below the floor");
     }
 
     function testFuzz_governance_names_always_revert(

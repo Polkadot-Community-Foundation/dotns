@@ -26,10 +26,18 @@ contract DotnsPopControllerInvariant is BaseDotns {
             handlerActors[i] = makeAddr(string.concat("popActor", vm.toString(i)));
         }
 
-        handler = new PopControllerHandler(dotnsPopController, handlerActors);
+        handler = new PopControllerHandler(
+            dotnsPopController,
+            dotnsRegistrarController,
+            dotnsRegistrar,
+            popRules,
+            dotnsRegistry,
+            handlerActors,
+            protocolRegistry.tldNode()
+        );
         targetContract(address(handler));
 
-        bytes4[] memory selectors = new bytes4[](8);
+        bytes4[] memory selectors = new bytes4[](12);
         selectors[0] = handler.reserve.selector;
         selectors[1] = handler.relinquish.selector;
         selectors[2] = handler.expire.selector;
@@ -37,8 +45,144 @@ contract DotnsPopControllerInvariant is BaseDotns {
         selectors[4] = handler.claim.selector;
         selectors[5] = handler.reLink.selector;
         selectors[6] = handler.settlePendingClaim.selector;
-        selectors[7] = handler.sweepPendingClaim.selector;
+        selectors[7] = handler.settlePendingClaimByThirdParty.selector;
+        selectors[8] = handler.publicRegister.selector;
+        selectors[9] = handler.attemptTransfer.selector;
+        selectors[10] = handler.createSubname.selector;
+        selectors[11] = handler.createRivalSubname.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
+
+        _seedCoverage();
+    }
+
+    /// @notice Drives the actions whose results the coverage assertions read.
+    /// @dev Each invariant here iterates a handler list, so a list the campaign never fills
+    ///      makes its assertions pass without reading any state. Seeding from `setUp` puts the
+    ///      first entry of each such list into the snapshot every run starts from, which makes
+    ///      the coverage assertions in @custom:function afterInvariant deterministic rather
+    ///      than a bet on the fuzzer's selector order. The other actions (relinquish, expiry,
+    ///      warp, relink and the two settlement paths) fill no list of their own and are left
+    ///      to the campaign.
+    function _seedCoverage() internal {
+        // A reserve, then a claim on the same base label, so a lite name and a full-person name
+        // both exist and the actor's store is settled.
+        handler.reserve(0, 0, true);
+        handler.claim(0, 0);
+
+        // An odd base index takes a label of the public path's own, which the gateway cannot
+        // have claimed; the transfer then picks the public token that registration minted.
+        handler.publicRegister(1, 1);
+        handler.attemptTransfer(handler.mintedLiteTokenCount(), 0);
+
+        handler.createRivalSubname(0, 0);
+
+        // Sub-labels come from a seed and most are not valid DNS labels, so walk seeds until
+        // one is accepted under a full-person parent.
+        for (uint256 seed; seed < 64 && handler.subnodeCreatedCount() == 0; ++seed) {
+            handler.createSubname(seed, seed, seed);
+        }
+    }
+
+    /// @notice Fails the run if any action the invariants read from never happened.
+    /// @dev The counterpart to `_seedCoverage`: it catches a seed that stops working, which
+    ///      would otherwise leave the assertions above iterating empty lists and passing.
+    function afterInvariant() public view {
+        assertGt(handler.gatewayLabelCount(), 0, "campaign issued no gateway name");
+        assertGt(handler.publicLabelCount(), 0, "campaign took no label publicly");
+        assertGt(handler.transferSuccessCount(), 0, "campaign moved no name");
+        assertGt(handler.subnodeCreatedCount(), 0, "campaign created no subname");
+        assertGt(handler.rivalSubnodeCount(), 0, "campaign built no rival hierarchy");
+    }
+
+    /// @notice The two readings of a lite name's text stay distinct, and the text-keyed signal
+    ///         answers for the whole-label one.
+    /// @dev `michael.01` is one label to the gateway and `michael` under `01` to the registry,
+    ///      and both render as the same text. `isPopIssued` is keyed by that text, so a true
+    ///      answer proves the whole-label reading was issued and says nothing about the rival
+    ///      standing beside it: the two coexist here, which is exactly why the node is what
+    ///      names the object. The first assertion pins that the nodes never converge; the
+    ///      soulbound flag is node-keyed, so it does discriminate between them, and is asserted
+    ///      in both directions.
+    function invariant_rival_hierarchy_never_passes_for_a_person() public view {
+        uint256 n = handler.rivalSubnodeCount();
+        for (uint256 i = 0; i < n; i++) {
+            string memory text = handler.rivalTexts(i);
+            bytes32 rival = handler.rivalSubnodes(i);
+            bytes32 person = _nodeOf(text);
+
+            assertTrue(rival != person, "rival hierarchy reached the person's node");
+            assertTrue(dotnsPopController.isPopIssued(text), "person lost their provenance");
+            assertTrue(dotnsRegistrar.isSoulbound(uint256(person)), "person's name is unlocked");
+            assertFalse(dotnsRegistrar.isSoulbound(uint256(rival)), "rival reads as gateway-minted");
+        }
+    }
+
+    /// @notice A subname never lands on a name the gateway issued.
+    /// @dev The two readings of `joseph.42`, one whole label or `joseph` beneath `42`, are what
+    ///      the separated form has to keep apart. The registry derives a parent's node by
+    ///      splitting the path on the separator, so a lite name's own node is unreachable as a
+    ///      parent and no subname can be created under one at all; the second assertion pins
+    ///      that, and the first pins that no subnode collides with an issued name either way.
+    function invariant_subnames_never_reach_a_gateway_node() public view {
+        uint256 subnodeCount = handler.subnodeCreatedCount();
+        uint256 gatewayCount = handler.gatewayLabelCount();
+
+        for (uint256 i = 0; i < subnodeCount; i++) {
+            bytes32 subnode = handler.subnodesCreated(i);
+            for (uint256 j = 0; j < gatewayCount; j++) {
+                assertTrue(
+                    subnode != _nodeOf(handler.gatewayLabelsSeen(j)),
+                    "subnode collided with a gateway name"
+                );
+            }
+            assertFalse(
+                _carriesSeparator(handler.subnameParents(i)), "subname created under a lite name"
+            );
+        }
+    }
+
+    /// @notice Whether `value` carries the label separator.
+    function _carriesSeparator(string memory value) internal pure returns (bool carries) {
+        bytes memory raw = bytes(value);
+        for (uint256 i = 0; i < raw.length; i++) {
+            if (raw[i] == bytes1(0x2e)) return true;
+        }
+        return false;
+    }
+
+    /// @notice A label the gateway issued keeps answering `isPopIssued`.
+    /// @dev The answer is a person's only proof that the whole-label reading of their name was
+    ///      issued. A cleared entry does not create a subname, it removes that proof, leaving
+    ///      `joseph.42` indistinguishable from text a hierarchy could also produce. Nothing in
+    ///      the contract writes false, and the campaign moves names and settles claims
+    ///      underneath it, which is where a clear would come from if one existed.
+    function invariant_popIssued_is_never_cleared() public view {
+        uint256 n = handler.gatewayLabelCount();
+        for (uint256 i = 0; i < n; i++) {
+            string memory label = handler.gatewayLabelsSeen(i);
+            assertTrue(dotnsPopController.isPopIssued(label), "gateway provenance cleared");
+        }
+    }
+
+    /// @notice No label carries both provenances, and soulbound agrees with `isPopIssued`.
+    /// @dev First to mint holds the name: the loser reverts on the registrar's availability
+    ///      check, so a label cannot be both gateway-issued and publicly registered. The second
+    ///      half pins the two signals together, because a public name reading as gateway-issued
+    ///      is the impersonation this provenance flag exists to prevent.
+    function invariant_gateway_and_public_provenance_are_disjoint() public view {
+        uint256 publicCount = handler.publicLabelCount();
+        for (uint256 i = 0; i < publicCount; i++) {
+            string memory label = handler.publicLabelsRegistered(i);
+            assertFalse(dotnsPopController.isPopIssued(label), "public label reads as gateway");
+            assertFalse(dotnsRegistrar.isSoulbound(uint256(_nodeOf(label))), "public name locked");
+        }
+
+        uint256 gatewayCount = handler.gatewayLabelCount();
+        for (uint256 i = 0; i < gatewayCount; i++) {
+            string memory label = handler.gatewayLabelsSeen(i);
+            assertFalse(handler.isPublicLabel(label), "gateway label taken publicly");
+            assertTrue(dotnsRegistrar.isSoulbound(uint256(_nodeOf(label))), "gateway name free");
+        }
     }
 
     /// @notice Every tracked reservation queue stays bounded by MAX_RESERVATION_QUEUE.
@@ -78,6 +222,17 @@ contract DotnsPopControllerInvariant is BaseDotns {
             (address popHolder,) = popRules.getBaseNameReservation(baseLabel);
             if (expected != address(0)) {
                 assertEq(popHolder, expected, "PopRules head != queue head");
+                continue;
+            }
+
+            // Zero direction. Only a head transition releases the slot, so a slot that outlives
+            // its queue reads as free to nobody and blocks the label for everybody, and the
+            // equality check above never sees it. Restricted to an empty queue: a queue still
+            // holding entries can legitimately have no live head, because expiry alone releases
+            // nothing until someone calls `expireReservation`.
+            if (head >= tail) {
+                (bool slotLive,,) = popRules.isBaseNameReserved(baseLabel);
+                assertFalse(slotLive, "PopRules slot outlived an empty queue");
             }
         }
     }
@@ -103,17 +258,6 @@ contract DotnsPopControllerInvariant is BaseDotns {
             (address entryOwner,) =
                 dotnsPopController.reservationEntry(reservation.labelhash, reservation.index);
             assertEq(entryOwner, actor, "reservation entry owner mismatch");
-        }
-    }
-
-    /// @notice Every token the handler minted (lite or full) carries a
-    ///         non-empty `labelOf`, proving the canonical string->tokenId
-    ///         recovery path was populated by registrar.register on every mint.
-    function invariant_every_minted_tokenId_has_nonempty_label() public view {
-        uint256 n = handler.mintedLiteTokenCount();
-        for (uint256 i = 0; i < n; i++) {
-            uint256 tokenId = handler.mintedLiteTokenIds(i);
-            assertGt(bytes(dotnsRegistrar.labelOf(tokenId)).length, 0, "empty labelOf");
         }
     }
 
@@ -182,7 +326,7 @@ contract DotnsPopControllerInvariant is BaseDotns {
 
         for (uint256 i = 0; i < enumerated.length; i++) {
             assertGt(
-                dotnsPopController.pendingClaims(enumerated[i]).length,
+                dotnsPopController.pendingClaimCountOf(enumerated[i]),
                 0,
                 "enumerated user has no pending claim"
             );
@@ -191,7 +335,7 @@ contract DotnsPopControllerInvariant is BaseDotns {
         uint256 seen = handler.pendingClaimActorsSeenCount();
         for (uint256 i = 0; i < seen; i++) {
             address actor = handler.pendingClaimActorsSeen(i);
-            if (dotnsPopController.pendingClaims(actor).length == 0) continue;
+            if (dotnsPopController.pendingClaimCountOf(actor) == 0) continue;
             bool found;
             for (uint256 j = 0; j < enumerated.length; j++) {
                 if (enumerated[j] == actor) {
@@ -204,8 +348,9 @@ contract DotnsPopControllerInvariant is BaseDotns {
     }
 
     /// @notice A user with a deployed `LabelStore` cannot simultaneously hold a
-    ///         pending claim: settlement deploys the store and clears the
-    ///         entry in the same call, expiry clears without deploying.
+    ///         pending claim: every settlement in this suite drains the whole
+    ///         queue and deploys the store in the same call, and a warm user's
+    ///         later gateway mints write straight into the store without stashing.
     function invariant_pending_claim_and_label_store_are_mutually_exclusive() public view {
         IStoreFactory factory = IStoreFactory(address(storeFactory));
         uint256 seen = handler.pendingClaimActorsSeenCount();
@@ -213,7 +358,7 @@ contract DotnsPopControllerInvariant is BaseDotns {
             address actor = handler.pendingClaimActorsSeen(i);
             if (factory.getLabelStore(actor) == address(0)) continue;
             assertEq(
-                dotnsPopController.pendingClaims(actor).length,
+                dotnsPopController.pendingClaimCountOf(actor),
                 0,
                 "actor has both store and pending claim"
             );
@@ -229,30 +374,35 @@ contract DotnsPopControllerInvariant is BaseDotns {
         assertEq(page.length, count, "count != enumeration length");
     }
 
-    /// @notice An expired pending-claim entry can always be swept. Asserts that
-    ///         for every tracked actor whose `mintedAt` has lapsed past
-    ///         `reservationDuration`, a permissionless `expirePendingClaim`
-    ///         clears the entry without revert.
-    /// @dev Cannot mutate state inside an invariant assertion, so the property
-    ///      is asserted indirectly: if the entry is past its deadline, the
-    ///      handler has had opportunities to sweep it during the run; under a
-    ///      sufficient depth the post-state must show such entries cleared.
-    ///      A stronger formulation would require a depth-bounded sweep
-    ///      guarantee, which is out of scope for view-only invariants.
-    function invariant_no_stuck_lapsed_pending_claims() public view {
-        uint64 duration = dotnsPopController.reservationDuration();
-        if (duration == 0) return;
-        uint256 seen = handler.pendingClaimActorsSeenCount();
-        for (uint256 i = 0; i < seen; i++) {
-            address actor = handler.pendingClaimActorsSeen(i);
+    /// @notice Settlement writes labels and never strands a minted name. Every
+    ///         minted token is either settled, with its label readable in the
+    ///         owner's store, or still staged in the owner's pending queue.
+    ///         Age never drops an entry, so a minted name is never left in
+    ///         neither place.
+    /// @dev The stranded case the old model allowed, a lapsed entry swept out of
+    ///      the queue with nothing written, is now unreachable: settlement always
+    ///      writes the label regardless of the reservation deadline.
+    function invariant_settled_names_written_and_never_stranded() public view {
+        uint256 n = handler.mintedLiteTokenCount();
+        for (uint256 i = 0; i < n; i++) {
+            uint256 tokenId = handler.mintedLiteTokenIds(i);
+            if (!dotnsRegistrar.exists(tokenId)) continue;
+
+            // A settled name reads its label back from the owner's store.
+            if (bytes(dotnsRegistrar.labelOf(tokenId)).length != 0) continue;
+
+            // Otherwise the name must still be staged in its owner's pending queue.
+            address nameOwner = dotnsRegistrar.ownerOf(tokenId);
             IDotnsPopController.PendingClaim[] memory pending =
-                dotnsPopController.pendingClaims(actor);
+                dotnsPopController.pendingClaims(nameOwner, 0, type(uint256).max);
+            bool staged;
             for (uint256 j = 0; j < pending.length; j++) {
-                uint256 deadline = uint256(pending[j].mintedAt) + uint256(duration);
-                assertLe(
-                    block.timestamp, deadline + uint256(duration), "lapsed entry stuck past grace"
-                );
+                if (_nodeOf(pending[j].label) == bytes32(tokenId)) {
+                    staged = true;
+                    break;
+                }
             }
+            assertTrue(staged, "minted name neither settled nor staged");
         }
     }
 }

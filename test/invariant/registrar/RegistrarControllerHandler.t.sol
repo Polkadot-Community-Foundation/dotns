@@ -21,8 +21,11 @@ import {IPersonhood} from "../../../contracts/external/personhood/IPersonhood.so
 /// @dev Maintains ghost state to track registrations, commitments, transfers,
 ///      and actors for invariant checks.
 contract RegistrarControllerHandler is Test {
-    /// @notice Namehash of the .dot TLD.
-    bytes32 private constant DOT_NODE = DotnsConstants.DOT_NODE;
+    /// @notice Node hash of the suite's TLD, injected from the deployed protocol registry.
+    /// @dev Keeps the handler rooted at the same TLD the protocol under test uses, without a
+    ///      second TLD definition.
+    bytes32 private immutable TLD_NODE;
+
     /// @notice The registrar controller under test.
     IDotnsRegistrarController public controller;
 
@@ -44,8 +47,18 @@ contract RegistrarControllerHandler is Test {
     /// @notice Actor pool the handler cycles through.
     address[] public actors;
 
+    /// @notice Returns the full actor list.
+    /// @dev Exists so invariants can sum a per-actor ledger across every actor rather than probing
+    ///      `actors(i)` up to a hardcoded index and silently ignoring the rest.
+    function getActors() external view returns (address[] memory list) {
+        list = actors;
+    }
+
     /// @notice Tracks the PoP status assigned to each registered actor.
     mapping(address actor => IPopRules.PopStatus status) public actorStatus;
+
+    /// @notice Membership set backing the `actors` list, keeping it free of duplicates.
+    mapping(address actor => bool present) private _isActor;
 
     /// @notice Labels successfully registered through the handler.
     string[] internal _registeredLabels;
@@ -58,6 +71,11 @@ contract RegistrarControllerHandler is Test {
 
     /// @notice Owners of reserved registrations (same index as `_reservedLabels`).
     address[] internal _reservedOwners;
+
+    /// @notice Labels whose original owner holds a forward-confirmed reverse record pointing at
+    ///         them. Transferring such a label away would clear that owner's reverse resolution, so
+    ///         the transfer actions leave these names with their owner.
+    mapping(bytes32 labelhash => bool backsReverse) private _backsReverse;
 
     /// @notice Commitments consumed by a successful registration.
     bytes32[] internal _consumedCommitments;
@@ -96,14 +114,17 @@ contract RegistrarControllerHandler is Test {
     /// @param _reverseResolver The reverse resolver.
     /// @param _popRules The PoP rules contract.
     /// @param _storeFactory The store factory.
+    /// @param _tldNode Node hash of the suite's TLD, from the deployed protocol registry.
     constructor(
         DotnsRegistrarController _controller,
         IDotnsRegistry _registry,
         DotnsRegistrar _registrar,
         IDotnsReverseResolver _reverseResolver,
         IPopRules _popRules,
-        IStoreFactory _storeFactory
+        IStoreFactory _storeFactory,
+        bytes32 _tldNode
     ) {
+        TLD_NODE = _tldNode;
         controller = _controller;
         registry = _registry;
         registrar = _registrar;
@@ -116,10 +137,27 @@ contract RegistrarControllerHandler is Test {
     }
 
     /// @notice Adds an actor with a specific PoP status.
+    /// @dev Idempotent on the actor list. Invariants sum per-actor ledger balances across `actors`,
+    ///      so a repeated address would count the same balance twice and break a conservation
+    ///      equality for a reason that has nothing to do with solvency. Re-adding an existing actor
+    ///      still updates their status.
     /// @param actor The actor address.
     /// @param status The PoP status to assign.
     function addActor(address actor, IPopRules.PopStatus status) external {
-        actors.push(actor);
+        // Actors model real users, so reject the zero address and any contract. The fuzzer's
+        // address dictionary contains protocol contracts, and if the escrow were admitted as an
+        // actor a name could be transferred into it: an escrow-touching transfer skips the label
+        // mirror, leaving the escrow as a recipient with no store and breaking the recipient-store
+        // invariant for a reason unrelated to user transfers.
+        if (actor == address(0) || actor.code.length != 0) return;
+
+        if (!_isActor[actor]) {
+            _isActor[actor] = true;
+            actors.push(actor);
+            // Fund the actor so the paid registration path is exercised rather than reverting on a
+            // zero balance. Far above any registration deposit, so it never runs dry over a run.
+            vm.deal(actor, 1_000_000_000 ether);
+        }
         actorStatus[actor] = status;
 
         if (status != IPopRules.PopStatus.NoStatus) {
@@ -162,7 +200,12 @@ contract RegistrarControllerHandler is Test {
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: actor, secret: secret, reserved: reserved
+                label: label,
+                owner: actor,
+                secret: secret,
+                reserved: reserved,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = controller.makeCommitment(registration);
@@ -178,6 +221,10 @@ contract RegistrarControllerHandler is Test {
         // Get price and register
         uint256 price = popRules.priceWithCheck(label, actor).price;
 
+        // The controller sets a default reverse record for a reserved self-registration only when
+        // the owner has none, so only this first name becomes the owner's reverse entry.
+        bool setsReverse = reserved && bytes(reverseResolver.nameOf(actor)).length == 0;
+
         vm.prank(actor);
         controller.register{value: price}(registration);
 
@@ -189,9 +236,10 @@ contract RegistrarControllerHandler is Test {
         labelRegistered[keccak256(bytes(label))] = true;
         ++registrationCount;
 
-        if (reserved) {
+        if (setsReverse) {
             _reservedLabels.push(label);
             _reservedOwners.push(actor);
+            _backsReverse[keccak256(bytes(label))] = true;
         }
     }
 
@@ -208,7 +256,12 @@ contract RegistrarControllerHandler is Test {
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: actor, secret: secret, reserved: true
+                label: label,
+                owner: actor,
+                secret: secret,
+                reserved: true,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = controller.makeCommitment(registration);
@@ -241,7 +294,12 @@ contract RegistrarControllerHandler is Test {
 
         IDotnsRegistrarController.Registration memory registration =
             IDotnsRegistrarController.Registration({
-                label: label, owner: actor, secret: secret, reserved: reserved
+                label: label,
+                owner: actor,
+                secret: secret,
+                reserved: reserved,
+                maxPrice: type(uint256).max,
+                pricingVersion: popRules.pricingVersion()
             });
 
         bytes32 commitment = controller.makeCommitment(registration);
@@ -253,6 +311,10 @@ contract RegistrarControllerHandler is Test {
 
         uint256 price = popRules.priceWithCheck(label, actor).price;
         uint256 balanceBefore = actor.balance;
+
+        // The controller sets a default reverse record for a reserved self-registration only when
+        // the owner has none, so only this first name becomes the owner's reverse entry.
+        bool setsReverse = reserved && bytes(reverseResolver.nameOf(actor)).length == 0;
 
         vm.prank(actor);
         controller.register{value: price + overpayment}(registration);
@@ -268,9 +330,10 @@ contract RegistrarControllerHandler is Test {
         labelRegistered[keccak256(bytes(label))] = true;
         ++registrationCount;
 
-        if (reserved) {
+        if (setsReverse) {
             _reservedLabels.push(label);
             _reservedOwners.push(actor);
+            _backsReverse[keccak256(bytes(label))] = true;
         }
     }
 
@@ -326,13 +389,16 @@ contract RegistrarControllerHandler is Test {
 
         uint256 index = registrationSeed % _registeredLabels.length;
         string memory label = _registeredLabels[index];
+        // Leave a reverse-backing name with its owner: moving it clears their forward-confirmed
+        // reverse resolution, which the reserved-name invariant relies on.
+        if (_backsReverse[keccak256(bytes(label))]) return;
         address currentOwner = _registeredOwners[index];
 
         address recipient = _pickDifferentActor(currentOwner, recipientSeed);
         if (recipient == address(0)) return;
 
         bytes32 labelhash = keccak256(bytes(label));
-        bytes32 node = LabelUtils.namehashUnder(DOT_NODE, labelhash);
+        bytes32 node = LabelUtils.namehashUnder(TLD_NODE, labelhash);
         uint256 tokenId = uint256(node);
 
         vm.prank(currentOwner);
@@ -356,10 +422,13 @@ contract RegistrarControllerHandler is Test {
 
         uint256 index = registrationSeed % _registeredLabels.length;
         string memory label = _registeredLabels[index];
+        // Leave a reverse-backing name with its owner: moving it clears their forward-confirmed
+        // reverse resolution, which the reserved-name invariant relies on.
+        if (_backsReverse[keccak256(bytes(label))]) return;
         address currentOwner = _registeredOwners[index];
 
         bytes32 labelhash = keccak256(bytes(label));
-        bytes32 node = LabelUtils.namehashUnder(DOT_NODE, labelhash);
+        bytes32 node = LabelUtils.namehashUnder(TLD_NODE, labelhash);
         uint256 tokenId = uint256(node);
 
         // Transfer through 2 to 4 hops
@@ -415,8 +484,26 @@ contract RegistrarControllerHandler is Test {
     /// @dev Uses incrementing nonce to ensure uniqueness across calls.
     /// @return label A unique label string with minimum 3 characters.
     function _generateUniqueLabel() internal returns (string memory label) {
-        label = string(abi.encodePacked("name", vm.toString(labelNonce)));
+        // A NoStatus-eligible label: all lowercase letters and eleven or more characters, so it
+        // carries no trailing digits, sits in the open band, and any funded actor can register it.
+        // A digit-suffixed or short label would classify as reserved or rejected and the register
+        // call would revert before it exercised anything.
+        label = string(abi.encodePacked("reginvname", _uniqueAlpha(labelNonce)));
         ++labelNonce;
+    }
+
+    /// @notice Encodes `n` as a non-empty base-26 lowercase-letter string, so successive nonces
+    ///         yield distinct all-letter suffixes.
+    /// @param n Value to encode.
+    /// @return alpha Lowercase-letter encoding of `n`.
+    function _uniqueAlpha(uint256 n) internal pure returns (string memory alpha) {
+        bytes memory buf;
+        uint256 value = n;
+        do {
+            buf = abi.encodePacked(bytes1(uint8(97 + (value % 26))), buf);
+            value /= 26;
+        } while (value > 0);
+        alpha = string(buf);
     }
 
     /// @notice Removes a commitment from the active commitments array.

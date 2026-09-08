@@ -3,7 +3,6 @@ pragma solidity ^0.8.34;
 
 import {console} from "forge-std/Script.sol";
 import {BaseDeployer} from "./BaseDeployer.s.sol";
-import {DeploymentNetwork} from "./DeploymentNetwork.sol";
 
 import {DotnsPopResolver} from "../../contracts/resolvers/DotnsPopResolver.sol";
 import {DotnsPopController} from "../../contracts/registrars/DotnsPopController.sol";
@@ -25,13 +24,13 @@ contract DeployPopSystem is BaseDeployer {
         address owner = msg.sender;
         vm.label(owner, "OWNER");
 
-        initDeployment(DeploymentNetwork.folder(block.chainid), vm.toString(block.chainid));
+        initDeployment(networkFolder(), vm.toString(block.chainid));
 
         address protocolRegistry = _readAddress("DotnsProtocolRegistry");
 
         _deployPopResolver(owner, protocolRegistry);
         address popController = _deployPopController(owner, protocolRegistry);
-        _deployGatewayDispatcher(owner, popController);
+        _deployPopLens(owner, protocolRegistry);
 
         saveDeployments();
 
@@ -71,29 +70,23 @@ contract DeployPopSystem is BaseDeployer {
         );
     }
 
-    /// @notice Deploys the Root gateway dispatcher bound to the PoP
-    ///         controller proxy and records it on the manifest for the
-    ///         wire-up stage to register on the protocol registry.
-    /// @dev The dispatcher's target is immutable and must be set to the
-    ///      controller proxy at construction. Registry registration is the
-    ///      wire-up stage's job, following the same pattern as every other
-    ///      protocol address, so this script only deploys and logs.
+    /// @notice Deploys the read-only PoP lens bound to the protocol registry and records it on
+    ///         the manifest for the wire-up stage to register.
+    /// @dev A plain CREATE3 deployment: the lens holds no state beyond the
+    ///      registry it resolves siblings through, so it needs no proxy. Registry registration is
+    ///      the wire-up stage's job.
     /// @param owner Broadcasting account.
-    /// @param popController Address of the controller proxy from the previous
-    ///        deploy step.
-    /// @return dispatcher Address of the deployed Root gateway dispatcher.
-    function _deployGatewayDispatcher(
+    /// @param protocolRegistry Protocol registry the lens reads through.
+    /// @return lens Address of the deployed lens.
+    function _deployPopLens(
         address owner,
-        address popController
+        address protocolRegistry
     )
         internal
-        returns (address dispatcher)
+        returns (address lens)
     {
-        dispatcher = _broadcastDeployCreate3(
-            owner,
-            "RootGatewayDispatcher.sol:RootGatewayDispatcher",
-            abi.encode(popController),
-            "RootGatewayDispatcher"
+        lens = _broadcastDeployCreate3(
+            owner, "DotnsPopLens.sol:DotnsPopLens", abi.encode(protocolRegistry), "DotnsPopLens"
         );
     }
 }

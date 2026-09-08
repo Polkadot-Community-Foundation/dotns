@@ -15,7 +15,9 @@ services:
       - "8545:8545"
     command:
       - "--node-rpc-url"
-      - "wss://summit-asset-hub-rpc.polkadot.io"
+      # PCF fork: the local ETH-RPC adapter fronts the devnet Asset Hub (same
+      # endpoint as the whitelist workflows), not Parity's previewnet.
+      - "wss://asset-hub-paseo-rpc.n.dwellir.com"
       - "--rpc-port"
       - "8545"
       - "--rpc-external"

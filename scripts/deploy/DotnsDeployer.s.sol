@@ -5,9 +5,14 @@ import {console} from "forge-std/Script.sol";
 import {BaseDeployer} from "./BaseDeployer.s.sol";
 
 import {PopRules} from "../../contracts/pop/PopRules.sol";
+import {DotnsFlatPricing} from "../../contracts/pop/DotnsFlatPricing.sol";
+import {DotnsCostModelRegistry} from "../../contracts/pop/DotnsCostModelRegistry.sol";
+import {IDotnsPricing} from "../../contracts/pop/IDotnsPricing.sol";
+import {IDotnsCostModelRegistry} from "../../contracts/pop/IDotnsCostModelRegistry.sol";
 import {DotnsRegistrar} from "../../contracts/registrars/DotnsRegistrar.sol";
 import {DotnsRegistrarController} from "../../contracts/registrars/DotnsRegistrarController.sol";
 import {DotnsPopController} from "../../contracts/registrars/DotnsPopController.sol";
+import {DotnsNameWhitelist} from "../../contracts/whitelist/DotnsNameWhitelist.sol";
 import {DotnsNameEscrow} from "../../contracts/escrow/DotnsNameEscrow.sol";
 import {IDotnsController} from "../../contracts/registrars/IDotnsController.sol";
 import {DotnsRegistry} from "../../contracts/registry/DotnsRegistry.sol";
@@ -42,13 +47,13 @@ contract DotnsDeployer is BaseDeployer {
     ///      post-deploy via @custom:function DotnsNameEscrow.updateCooldown.
     uint256 public constant ESCROW_COOLDOWN = 15 minutes;
 
-    /// @notice Operator address granted `WHITELIST_OPERATOR_ROLE` on the
-    ///         registrar controller at fresh-deploy time.
-    /// @dev Permits managing the public-controller whitelist via
-    ///      `DotnsRegistrarController.whiteListAddress` without upgrade or
-    ///      configuration authority. The owner rotates, grants, or revokes the
-    ///      role at any time via `DotnsRegistrarController.setRole`.
-    string internal constant WHITELIST_OPERATOR_ENV = "WHITELIST_OPERATOR";
+    /// @notice Default redeem window for the freshly-deployed name escrow.
+    /// @dev The period after a release in which only the previous holder may act: they alone may
+    ///      `redeem` the name back, and `available` reports false so nobody wastes a commitment on
+    ///      it. Once it elapses, reclaim is permissionless. Well below the escrow's
+    ///      @custom:constant MAX_REDEEM_WINDOW ceiling. The protocol owner rotates this post-deploy
+    ///      via @custom:function DotnsNameEscrow.updateRedeemWindow.
+    uint256 public constant ESCROW_REDEEM_WINDOW = 1 days;
 
     StoreFactory public storeFactory;
 
@@ -61,6 +66,7 @@ contract DotnsDeployer is BaseDeployer {
     DotnsPopResolver public dotnsPopResolver;
     DotnsRegistrarController public dotnsRegistrarController;
     DotnsPopController public dotnsPopController;
+    DotnsNameWhitelist public dotnsNameWhitelist;
     DotnsNameEscrow public dotnsNameEscrow;
     DotnsProtocolRegistry public protocolRegistry;
 
@@ -75,17 +81,22 @@ contract DotnsDeployer is BaseDeployer {
         address contentResolver;
         address resolver;
         address popRules;
+        address costModel;
+        address costModelRegistry;
         address registrarController;
         address protocolRegistry;
         address nameEscrow;
         address popResolver;
         address popController;
+        address popLens;
+        address nameWhitelist;
     }
 
     /// @notice Deploys the full DotNS contract set, wires the protocol registry,
     ///         and writes the resulting manifest under `deployments/`.
-    /// @dev Network-specific output folder is chosen from `block.chainid`; see
-    ///      {_getDeploymentFolder}. The broadcasting account becomes the owner
+    /// @dev Network-specific output folder comes from `networkFolder`, honouring
+    ///      the `DEPLOYMENT_NETWORK` override and otherwise the `block.chainid`
+    ///      default. The broadcasting account becomes the owner
     ///      of every proxy. PoP-controller auth is gated on the substrate
     ///      `Root` origin via revive's System precompile, so no on-chain
     ///      gateway address is configured here.
@@ -96,12 +107,10 @@ contract DotnsDeployer is BaseDeployer {
 
         console.log("Current blocktime", block.timestamp);
 
-        initDeployment(_getDeploymentFolder(), vm.toString(chainId));
+        initDeployment(networkFolder(), vm.toString(chainId));
 
         address OWNER = msg.sender;
         vm.label(OWNER, "OWNER");
-        address whitelistOperator = vm.envAddress(WHITELIST_OPERATOR_ENV);
-        vm.label(whitelistOperator, "WHITELIST_OPERATOR");
 
         // Each `_deploy*` step wraps its own `Upgrades.deployUUPSProxy` call in
         // a dedicated `vm.startBroadcast / vm.stopBroadcast` pair. Running each
@@ -118,18 +127,20 @@ contract DotnsDeployer is BaseDeployer {
         deployment.registry = _deployRegistry(OWNER, deployment.protocolRegistry);
         deployment.contentResolver = _deployContentResolver(OWNER, deployment.protocolRegistry);
         deployment.resolver = _deployResolver(OWNER, deployment.protocolRegistry);
+        (deployment.costModel, deployment.costModelRegistry) = _deployCostModelStack(OWNER);
         deployment.popRules = _deployPopRules(OWNER, deployment.protocolRegistry);
         deployment.nameEscrow = _deployNameEscrow(OWNER, deployment.protocolRegistry);
         deployment.registrarController =
             _deployRegistrarController(OWNER, deployment.protocolRegistry);
         deployment.popResolver = _deployPopResolver(OWNER, deployment.protocolRegistry);
         deployment.popController = _deployPopController(OWNER, deployment.protocolRegistry);
+        deployment.popLens = _deployPopLens(OWNER, deployment.protocolRegistry);
+        deployment.nameWhitelist = _deployNameWhitelist(OWNER, deployment.protocolRegistry);
 
         _authoriseControllers(OWNER, deployment);
         _wireProtocolRegistryKeys(OWNER, deployment);
-        _bootstrapWhitelistOperator(OWNER, deployment, whitelistOperator);
 
-        _verifyDeployment(deployment, OWNER, whitelistOperator);
+        _verifyDeployment(deployment, OWNER);
 
         saveDeployments();
     }
@@ -138,7 +149,7 @@ contract DotnsDeployer is BaseDeployer {
         proxy = _broadcastDeployUups(
             owner,
             "DotnsProtocolRegistry.sol:DotnsProtocolRegistry",
-            abi.encodeCall(DotnsProtocolRegistry.initialize, ()),
+            abi.encodeCall(DotnsProtocolRegistry.initialize, (tldLabel())),
             "DotnsProtocolRegistry"
         );
         protocolRegistry = DotnsProtocolRegistry(proxy);
@@ -258,6 +269,34 @@ contract DotnsDeployer is BaseDeployer {
         dotnsResolver = DotnsResolver(proxy);
     }
 
+    function _deployCostModelStack(address owner)
+        internal
+        returns (address model, address registry)
+    {
+        model = _broadcastDeployCreate3(
+            owner,
+            "DotnsFlatPricing.sol:DotnsFlatPricing",
+            abi.encode(DotnsConstants.BASE_DEPOSIT),
+            "DotnsFlatPricing"
+        );
+        registry = _broadcastDeployCreate3(
+            owner,
+            "DotnsCostModelRegistry.sol:DotnsCostModelRegistry",
+            abi.encode(owner),
+            "DotnsCostModelRegistry"
+        );
+
+        // Idempotent for pipeline resume: re-running against an already-deployed
+        // chain finds this version registered, so register only when it is absent
+        // rather than reverting with AlreadyRegistered.
+        IDotnsPricing pricing = IDotnsPricing(model);
+        if (address(DotnsCostModelRegistry(registry).modelOf(pricing.version())) == address(0)) {
+            vm.startBroadcast(owner);
+            DotnsCostModelRegistry(registry).register(pricing);
+            vm.stopBroadcast();
+        }
+    }
+
     function _deployPopRules(
         address owner,
         address protocolRegistryProxy
@@ -268,10 +307,7 @@ contract DotnsDeployer is BaseDeployer {
         proxy = _broadcastDeployUups(
             owner,
             "PopRules.sol:PopRules",
-            abi.encodeCall(
-                PopRules.initialize,
-                (DotnsConstants.RENT_PRICE, IDotnsProtocolRegistry(protocolRegistryProxy))
-            ),
+            abi.encodeCall(PopRules.initialize, (IDotnsProtocolRegistry(protocolRegistryProxy))),
             "PopRules"
         );
         popRules = PopRules(proxy);
@@ -308,7 +344,11 @@ contract DotnsDeployer is BaseDeployer {
             "DotnsNameEscrow.sol:DotnsNameEscrow",
             abi.encodeCall(
                 DotnsNameEscrow.initialize,
-                (IDotnsProtocolRegistry(protocolRegistryProxy), ESCROW_COOLDOWN)
+                (
+                    IDotnsProtocolRegistry(protocolRegistryProxy),
+                    ESCROW_COOLDOWN,
+                    ESCROW_REDEEM_WINDOW
+                )
             ),
             "DotnsNameEscrow"
         );
@@ -352,6 +392,39 @@ contract DotnsDeployer is BaseDeployer {
         dotnsPopController = DotnsPopController(proxy);
     }
 
+    function _deployPopLens(
+        address owner,
+        address protocolRegistryProxy
+    )
+        internal
+        returns (address lens)
+    {
+        lens = _broadcastDeployCreate3(
+            owner,
+            "DotnsPopLens.sol:DotnsPopLens",
+            abi.encode(protocolRegistryProxy),
+            "DotnsPopLens"
+        );
+    }
+
+    function _deployNameWhitelist(
+        address owner,
+        address protocolRegistryProxy
+    )
+        internal
+        returns (address proxy)
+    {
+        proxy = _broadcastDeployUups(
+            owner,
+            "DotnsNameWhitelist.sol:DotnsNameWhitelist",
+            abi.encodeCall(
+                DotnsNameWhitelist.initialize, (IDotnsProtocolRegistry(protocolRegistryProxy))
+            ),
+            "DotnsNameWhitelist"
+        );
+        dotnsNameWhitelist = DotnsNameWhitelist(proxy);
+    }
+
     function _authoriseControllers(address owner, Deployment memory deployment) internal {
         vm.startBroadcast(owner);
         dotnsRegistrar.addController(IDotnsController(deployment.registrarController));
@@ -367,59 +440,33 @@ contract DotnsDeployer is BaseDeployer {
         protocolRegistry.set(DotnsConstants.REVERSE_RESOLVER, deployment.reverseResolver);
         protocolRegistry.set(DotnsConstants.RESOLVER, deployment.resolver);
         protocolRegistry.set(DotnsConstants.CONTENT_RESOLVER, deployment.contentResolver);
+        // Point at the cost-model registry before PopRules so no pricing read resolves an unset
+        // key.
+        protocolRegistry.set(DotnsConstants.COST_MODEL, deployment.costModelRegistry);
         protocolRegistry.set(DotnsConstants.POP_RULES, deployment.popRules);
         protocolRegistry.set(DotnsConstants.STORE_FACTORY, deployment.storeFactory);
         protocolRegistry.set(DotnsConstants.NAME_ESCROW, deployment.nameEscrow);
         protocolRegistry.set(DotnsConstants.POP_CONTROLLER, deployment.popController);
         protocolRegistry.set(DotnsConstants.POP_RESOLVER, deployment.popResolver);
+        protocolRegistry.set(DotnsConstants.POP_LENS, deployment.popLens);
+        protocolRegistry.set(DotnsConstants.NAME_WHITELIST, deployment.nameWhitelist);
         vm.stopBroadcast();
         console.log("Protocol registry keys set");
     }
 
-    function _bootstrapWhitelistOperator(
-        address owner,
-        Deployment memory deployment,
-        address whitelistOperator
-    )
-        internal
-    {
-        vm.startBroadcast(owner);
-        DotnsRegistrarController(deployment.registrarController)
-            .setRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator, true);
-        vm.stopBroadcast();
-        console.log("Whitelist operator role granted to", whitelistOperator);
-    }
-
-    function _verifyDeployment(
-        Deployment memory deployment,
-        address expectedOwner,
-        address whitelistOperator
-    )
-        internal
-        view
-    {
+    function _verifyDeployment(Deployment memory deployment, address expectedOwner) internal view {
         _verifyOwnership(deployment, expectedOwner);
         _verifyRegistryKeys(deployment, expectedOwner);
         _verifyRegistryPointers(deployment);
         _verifyControllerAuthorisation(deployment);
-        _verifyWhitelistOperator(deployment, whitelistOperator);
 
         require(DotnsRegistry(deployment.registry).recordExists(bytes32(0)), "Root record missing");
-        console.log("=== Deployment verification complete ===");
-    }
-
-    function _verifyWhitelistOperator(
-        Deployment memory deployment,
-        address whitelistOperator
-    )
-        internal
-        view
-    {
         require(
-            DotnsRegistrarController(deployment.registrarController)
-                .hasRole(DotnsConstants.WHITELIST_OPERATOR_ROLE, whitelistOperator),
-            "WhitelistOperator: role not granted"
+            IDotnsCostModelRegistry(deployment.costModelRegistry).priceForBaseLength(9)
+                == DotnsConstants.BASE_DEPOSIT,
+            "CostModel: launch price mismatch"
         );
+        console.log("=== Deployment verification complete ===");
     }
 
     function _verifyOwnership(Deployment memory deployment, address expectedOwner) internal view {
@@ -488,10 +535,13 @@ contract DotnsDeployer is BaseDeployer {
             DotnsConstants.CONTENT_RESOLVER, deployment.contentResolver, "Key: contentResolver"
         );
         _assertKey(DotnsConstants.POP_RULES, deployment.popRules, "Key: popRules");
+        _assertKey(DotnsConstants.COST_MODEL, deployment.costModelRegistry, "Key: costModel");
         _assertKey(DotnsConstants.STORE_FACTORY, deployment.storeFactory, "Key: storeFactory");
         _assertKey(DotnsConstants.NAME_ESCROW, deployment.nameEscrow, "Key: nameEscrow");
+        _assertKey(DotnsConstants.NAME_WHITELIST, deployment.nameWhitelist, "Key: nameWhitelist");
         _assertKey(DotnsConstants.POP_CONTROLLER, deployment.popController, "Key: popController");
         _assertKey(DotnsConstants.POP_RESOLVER, deployment.popResolver, "Key: popResolver");
+        _assertKey(DotnsConstants.POP_LENS, deployment.popLens, "Key: popLens");
     }
 
     function _assertKey(bytes32 key, address expected, string memory label) internal view {
@@ -550,6 +600,11 @@ contract DotnsDeployer is BaseDeployer {
             expected,
             "PopResolver: not wired"
         );
+        _assertPointer(
+            address(DotnsNameWhitelist(deployment.nameWhitelist).protocolRegistry()),
+            expected,
+            "NameWhitelist: not wired"
+        );
     }
 
     function _assertPointer(address actual, address expected, string memory label) internal pure {
@@ -567,19 +622,5 @@ contract DotnsDeployer is BaseDeployer {
                 .controllers(IDotnsController(deployment.popController)),
             "PopController not added to registrar"
         );
-    }
-
-    function _getDeploymentFolder() internal view returns (string memory directory) {
-        directory = "localhost";
-        if (block.chainid == 420420422) {
-            directory = "passethub-testnet";
-        } else if (block.chainid == 420420417) {
-            directory = "summit-asset-hub";
-        } else if (block.chainid == 420420420) {
-            directory = "paseo-local";
-        }
-        // Chains sharing an EVM chain id (paseo-next vs summit, both 420420417)
-        // are disambiguated via the same override DeploymentNetwork.folder honors.
-        directory = vm.envOr("DOTNS_DEPLOYMENT_FOLDER", directory);
     }
 }

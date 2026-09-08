@@ -53,9 +53,7 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
+      - uses: ./.github/actions/setup-foundry
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -120,7 +118,7 @@ jobs:
 
           python3 scripts/reports/test-report.py test.log
 
-          if [ $TEST -ne 0 ]; then
+          if [ "$TEST" -ne 0 ]; then
             exit 1
           fi
 

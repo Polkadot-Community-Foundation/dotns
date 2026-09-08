@@ -61,12 +61,12 @@ contract StoreIntegrationTest is BaseDotns {
             chatKey[i] = bytes1(uint8(i + 1));
         }
 
-        _gatewayRegisterBaseName(
+        _rootRegisterBaseName(
             IDotnsPopController.FullRegistration({label: base, user: ed, link: _linkFresh(chatKey)})
         );
 
         vm.prank(ed);
-        dotnsPopController.claimLabelStore();
+        dotnsPopController.settlePendingClaims(ed, type(uint256).max);
 
         address storeAddr = storeFactory.getLabelStore(ed);
         assertTrue(storeAddr != address(0));

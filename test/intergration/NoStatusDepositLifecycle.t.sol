@@ -16,25 +16,25 @@ import {IDotnsNameEscrow} from "../../contracts/escrow/IDotnsNameEscrow.sol";
 ///      unbounded number of NoStatus names over time.
 contract NoStatusDepositLifecycle is BaseDotns {
     /// @notice NoStatus label fixture (baselength >= 9 classifies as NoStatus).
-    string internal constant DEPOSIT_LABEL = "depositname01";
+    string internal constant DEPOSIT_LABEL = "depositxy01";
 
     function test_NoStatus_register_then_transfer_then_holder_claims_refund() public {
         address depositor = ed;
         address recipient = leonardo;
 
         uint256 ownerPrice = popRules.priceWithCheck(DEPOSIT_LABEL, depositor).price;
-        assertEq(ownerPrice, RENT_PRICE, "NoStatus price baseline must match RENT_PRICE");
+        assertEq(ownerPrice, BASE_DEPOSIT, "NoStatus price baseline must match BASE_DEPOSIT");
 
-        // Register pays D = RENT_PRICE into the depositor's position.
+        // Register pays D = BASE_DEPOSIT into the depositor's position.
         _commitAndRegister(DEPOSIT_LABEL, depositor, false);
         uint256 tokenId = _tokenIdForLabel(DEPOSIT_LABEL);
 
         IDotnsNameEscrow.ReleasePosition memory atMint = dotnsNameEscrow.getReleasePosition(tokenId);
-        assertEq(atMint.amount, RENT_PRICE, "position must hold full RENT_PRICE deposit");
+        assertEq(atMint.amount, BASE_DEPOSIT, "position must hold full BASE_DEPOSIT deposit");
         assertEq(atMint.recipient, depositor, "position recipient must be the depositor at mint");
         assertEq(
             dotnsNameEscrow.reserves(address(0)),
-            RENT_PRICE,
+            BASE_DEPOSIT,
             "tokenReserved must reflect the seeded deposit"
         );
         assertEq(
@@ -55,14 +55,14 @@ contract NoStatusDepositLifecycle is BaseDotns {
         IDotnsNameEscrow.ReleasePosition memory afterTransfer =
             dotnsNameEscrow.getReleasePosition(tokenId);
         assertEq(
-            afterTransfer.amount, RENT_PRICE, "deposit must travel with the NFT, not be cleared"
+            afterTransfer.amount, BASE_DEPOSIT, "deposit must travel with the NFT, not be cleared"
         );
         assertEq(
             afterTransfer.recipient, recipient, "position recipient must rebind to the new holder"
         );
         assertEq(
             dotnsNameEscrow.reserves(address(0)),
-            RENT_PRICE,
+            BASE_DEPOSIT,
             "tokenReserved must not move while the deposit follows the NFT"
         );
         assertEq(
@@ -108,7 +108,7 @@ contract NoStatusDepositLifecycle is BaseDotns {
 
         assertEq(
             dotnsNameEscrow.pendingWithdrawal(recipient),
-            RENT_PRICE,
+            BASE_DEPOSIT,
             "deposit lands on the current holder's pull-payment ledger"
         );
         assertEq(
@@ -121,10 +121,10 @@ contract NoStatusDepositLifecycle is BaseDotns {
         vm.prank(recipient);
         uint256 claimed = dotnsNameEscrow.claimWithdrawal();
 
-        assertEq(claimed, RENT_PRICE, "claim must return the full deposit");
+        assertEq(claimed, BASE_DEPOSIT, "claim must return the full deposit");
         assertEq(
             recipient.balance - balanceBefore,
-            RENT_PRICE,
+            BASE_DEPOSIT,
             "current holder balance must increase by the full deposit"
         );
         assertEq(

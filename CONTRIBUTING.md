@@ -1,6 +1,6 @@
 # Contributing to DotNS
 
-These guidelines apply to the DotNS repository ("dotns"). Contributions are welcome via issues, pull requests, reviews, and testing feedback. Protocol behaviour and the deployments table live in [README.md](./README.md); this file is the contributor mechanics.
+These guidelines apply to the DotNS repository ("dotns"). Contributions are welcome via issues, pull requests, reviews, and testing feedback. Protocol behaviour is documented in [README.md](./README.md) and network addresses in `deployments/<network>/<chain-id>.json`; this file is the contributor mechanics.
 
 ## Types of contributing
 
@@ -56,13 +56,19 @@ Before opening a pull request:
    - Interfaces should describe public/external functions with NatSpec.
    - Keep implementations aligned with the interface surface area. Avoid unused methods.
 
-3. Tests
+3. Comments
+   - Comments explain behaviour. Decorative separator comments are not allowed: a comment whose
+     content is a run of rule characters, such as a line of dashes, equals, hashes, or asterisks
+     under or around a heading. Group code with functions and NatSpec, not with drawn rules. The
+     pre-commit check rejects them.
+
+4. Tests
    - Add unit tests for behaviour changes.
    - Use fuzz tests where they add meaningful coverage.
    - Prefer readable, behaviour-oriented test names and assertions.
    - Keep tests deterministic unless explicitly fuzzing.
 
-4. Commit hygiene
+5. Commit hygiene
    - Keep commits logically grouped.
    - Squash when appropriate to keep history clean (maintainers may squash on merge).
 
@@ -127,7 +133,7 @@ Example query paths. Each row starts from a small set of known contracts; every 
 
 Any new contract address that other contracts need to read must be looked up through `DotnsProtocolRegistry` at the point of use. Do not hardcode it in a constructor, store it in an `immutable`, or expose a one-off `setX(address)` setter. The protocol registry is the only address a contract may hold directly; everything else is fetched on demand so rotation is a single `protocolRegistry.set(KEY, newAddress)` call with no upgrade.
 
-If you are adding a new contract category, add a `bytes32` key for it in `DotnsConstants.sol` and wire it up in `WireDeployments.s.sol`. Read it the same way every existing contract does.
+If you are adding a new contract category, add a `bytes32` key for it in `DotnsConstants.sol`, wire it up in `WireDeployments.s.sol`, and list the contract and its interface in `.github/abi-contracts.txt` so their ABIs ship in the release artifact. Read it the same way every existing contract does.
 
 Bad — the registrar address is frozen at construction, so rotating it needs an upgrade:
 
@@ -269,8 +275,7 @@ forge test --no-match-path 'test/fork/**'
 2. Delete the paired fork test under `test/fork/`.
 3. Delete every `*Old.sol` and `I*Old.sol` referenced only by the upgrade script.
 4. Delete temporary forge artefacts: `broadcast/<Script>.s.sol/` and `cache/<Script>.s.sol/`.
-5. Update `deployments/<network>/<chainid>.json` with any new proxy addresses.
-6. Update the README's deployments table with new proxy addresses (and any new EOA-registered keys).
+5. Update `deployments/<network>/<chainid>.json` with any new addresses. It is the only place they are recorded, so nothing else needs editing.
 
 ## Code of conduct
 

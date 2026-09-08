@@ -5,7 +5,7 @@ import {IDotnsController} from "./IDotnsController.sol";
 import {IPopRules} from "../pop/IPopRules.sol";
 
 /// @title Dotns Registrar Controller
-/// @notice Interface for registering .dot labels using a commit reveal scheme.
+/// @notice Interface for registering top-level labels using a commit reveal scheme.
 /// @dev Defines allocation only; forward resolution, reverse lookup, pricing mechanics, PoP
 /// validation, and store writing are handled by external contracts. Users commit a hash of
 /// registration parameters and, after a minimum delay, reveal the same parameters to register.
@@ -19,13 +19,24 @@ interface IDotnsRegistrarController is IDotnsController {
     /// @param owner Beneficiary the registered name is minted to.
     /// @param secret Caller-chosen entropy that hides the registration intent in the commit
     /// hash; revealed verbatim at registration time.
-    /// @param reserved True when the registration flows through the whitelisted reserved
-    /// pipeline (`registerReserved`); false for the standard public flow (`register`).
+    /// @param reserved Opts a direct @custom:function register into a default reverse record, set
+    /// only when the caller registers under their own key and holds no primary yet.
+    /// @custom:function registerReserved does not read this field: that path is gated on a name
+    /// grant and never writes a reverse record.
+    /// @param maxPrice Ceiling in wei the caller accepts for this registration; a reveal charged
+    /// above it reverts, closing the gap between the price at commit and the price at reveal.
+    /// @param pricingVersion Cost-model version the caller committed to; the reveal prices the name
+    /// at this version, so a model change between commit and reveal leaves the amount unchanged. It
+    /// must equal the version current when `commit` ran, which that call stamps on the commitment;
+    /// a reveal whose `pricingVersion` differs reverts, so the caller cannot bind an earlier,
+    /// cheaper version.
     struct Registration {
         string label;
         address owner;
         bytes32 secret;
         bool reserved;
+        uint256 maxPrice;
+        uint256 pricingVersion;
     }
 
     /// @notice Emitted when a commitment is submitted.
@@ -42,14 +53,16 @@ interface IDotnsRegistrarController is IDotnsController {
         address store
     );
 
-    /// @notice Emitted when an address is added to or removed from the whitelist.
-    event WhiteListed(address indexed who, bool indexed whiteListStatus);
-
     /// @notice Emitted when overpayment is refunded to the payer at registration entry.
     event OverpaymentRefunded(address indexed payer, uint256 amount);
 
-    /// @notice Thrown when the caller is not whitelisted or the owner.
-    error NotWhiteListedOrOwner(address caller);
+    /// @notice Thrown when a reserved registration names a label not granted to its owner.
+    /// @param label The label being registered.
+    /// @param owner The intended owner the grant was checked against.
+    error NameNotGranted(string label, address owner);
+
+    /// @notice Thrown when the protocol registry has no name whitelist configured.
+    error WhitelistNotConfigured();
 
     /// @notice Thrown when an unexpired commitment already exists.
     error UnexpiredCommitmentExists(bytes32 commitment);
@@ -72,33 +85,17 @@ interface IDotnsRegistrarController is IDotnsController {
     /// @param label Caller-supplied label that failed the minimum-length policy.
     error LabelTooShort(string label);
 
-    /// @notice Thrown when attempting to register a name whose base stem is held as a live
-    /// reservation by another user.
-    error NameReserved(string label);
-
-    /// @notice Thrown when attempting to register a label that classifies as
-    /// governance-reserved at the protocol level.
-    /// @dev Distinct from @custom:reverts NameReserved so off-chain consumers can tell
-    /// "wait for the holder to relinquish" apart from "this label is permanently held by
-    /// governance".
-    /// @param label Caller-supplied label that the rules engine classifies as governance-reserved.
-    error GovernanceReserved(string label);
-
-    /// @notice Thrown on the cross-payer path when the owner's recorded PoP tier does not
-    /// meet the label's required tier. The direct path's @custom:contract IPopRules
-    /// `priceWithCheck` covers this same condition via its own revert.
-    /// @param label Label whose tier requirement was unmet.
-    /// @param userStatus Owner's recorded tier.
-    /// @param required Required tier for the label.
-    error OwnerStatusInsufficient(
-        string label, IPopRules.PopStatus userStatus, IPopRules.PopStatus required
-    );
-
     /// @notice Thrown when a label is not a canonical lowercase ASCII DNS label.
     error InvalidLabel();
 
     /// @notice Thrown when supplied payment is insufficient.
     error InsufficientValue();
+
+    /// @notice Thrown when the total charge exceeds the ceiling the caller committed to.
+    /// @param label Label whose charge exceeded the ceiling.
+    /// @param charged Total charge computed at reveal.
+    /// @param maxPrice Ceiling the caller committed to.
+    error PriceExceedsMax(string label, uint256 charged, uint256 maxPrice);
 
     /// @notice Thrown when escrow is not configured in the protocol registry.
     error EscrowNotConfigured();
@@ -121,8 +118,10 @@ interface IDotnsRegistrarController is IDotnsController {
 
     /// @notice Computes the commitment hash for a registration.
     /// @dev Uses `abi.encode` so the variable-width `label` is length-prefixed and the boundary
-    /// between `label` and the fixed-width `owner`, `secret`, and `reserved` fields is
-    /// unambiguous, binding the commitment to the exact tuple.
+    /// between `label` and the fixed-width `owner`, `secret`, `reserved`, `maxPrice`, and
+    /// `pricingVersion` fields is unambiguous, binding the commitment to the exact tuple. The
+    /// price ceiling and cost-model version are part of that tuple, so neither can be altered
+    /// between commit and reveal.
     function makeCommitment(Registration calldata registration)
         external
         pure
@@ -136,7 +135,10 @@ interface IDotnsRegistrarController is IDotnsController {
     /// (`committedAt + maxCommitmentAge <= block.timestamp` overwrites) and exclusive on the
     /// reveal side (`register` rejects at the same instant with @custom:reverts
     /// CommitmentTooOld), so the slot is overwritable from exactly the timestamp at which
-    /// reveal begins rejecting it. Emits @custom:emits NameCommitted on success.
+    /// reveal begins rejecting it. Stamps the cost model's current version on the commitment, so
+    /// the reveal binds to the version live now and rejects a `pricingVersion` bound to an earlier
+    /// one with @custom:reverts PricingVersionMismatch. Emits @custom:emits NameCommitted on
+    /// success.
     function commit(bytes32 commitment) external;
 
     /// @notice Registers a name after the commitment delay.
@@ -154,12 +156,13 @@ interface IDotnsRegistrarController is IDotnsController {
     /// `priceWithCheck` but applies it directly via @custom:reverts OwnerStatusInsufficient
     /// when the owner's recorded tier does not meet the label's required tier, and still
     /// rejects governance-reserved labels with @custom:reverts GovernanceReserved and live
-    /// cross-user stem reservations with @custom:reverts NameReserved. The total
-    /// charge on the cross-payer path is the greater of the owner-side registration price and
-    /// the owner-tier `transferFloor` friction (never their sum); friction is computed against
-    /// the owner's tier so a verified payer cannot pay around an unverified owner. The entire
-    /// charge routes to the escrow insurance fund while seeding a zero-amount deposit slot so
-    /// the release lifecycle stays reachable. The caller must supply at least the charge
+    /// cross-user stem reservations with @custom:reverts NameReserved. The cross-payer charge is
+    /// the owner-side registration price; the path applies no separate transfer friction. The
+    /// charge routes to the escrow protocol fee pot while seeding a zero-amount deposit slot so
+    /// the release lifecycle stays reachable. The reveal prices the name at the committed
+    /// `pricingVersion`, so a model change between commit and reveal leaves the amount unchanged,
+    /// and rejects a total charge above the committed ceiling with @custom:reverts PriceExceedsMax
+    /// before checking payment. The caller must supply at least the charge
     /// (otherwise @custom:reverts InsufficientValue); any overpayment is pushed back to
     /// `msg.sender` inline and, on failure, credited to the escrow's pull-payment ledger so
     /// contract receivers cannot block registration. Emits @custom:emits OverpaymentRefunded
@@ -167,25 +170,28 @@ interface IDotnsRegistrarController is IDotnsController {
     /// fallback, and @custom:emits NameRegistered on success.
     function register(Registration calldata registration) external payable;
 
-    /// @notice Registers a name after the commitment delay.
-    /// @dev Whitelisted issuance path used to seed reserved labels at zero base cost: skips the
-    /// PoP price check and the escrow deposit, but reuses the same commit-reveal pipeline so
-    /// the same anti-front-running guarantees apply. Restricted to whitelisted callers and the
-    /// owner (otherwise @custom:reverts NotWhiteListedOrOwner). Validates the label shape
-    /// (otherwise @custom:reverts InvalidLabel) and ERC721 availability (otherwise
-    /// @custom:reverts NameNotAvailable), then consumes the prior commitment, which fails with
-    /// @custom:reverts CommitmentNotFound, @custom:reverts CommitmentTooNew, or
+    /// @notice Registers a granted name after the commitment delay, at zero base cost.
+    /// @dev Grant-backed issuance path: skips the PoP price check and the escrow deposit, but
+    /// reuses the same commit-reveal pipeline so the same anti-front-running guarantees apply.
+    ///
+    /// Authority is either a substrate Root dispatch or a grant naming `registration.owner` on the
+    /// name whitelist registered under `DotnsConstants.NAME_WHITELIST`; anything else
+    /// @custom:reverts NameNotGranted, and an unset registry key
+    /// @custom:reverts WhitelistNotConfigured. The gate reads `registration.owner` rather than the
+    /// caller, so a relayer may submit on the beneficiary's behalf: the name can only mint to the
+    /// granted address, so no caller proof is needed. On the non-Root path the grant is consumed,
+    /// making it single use; a Root dispatch skips consumption so a governance mint does not spend
+    /// a grant held by someone else.
+    ///
+    /// No reverse record is written. `IDotnsReverseResolver.setReverseName` overwrites
+    /// unconditionally and the submitter is not necessarily the beneficiary, so a third party must
+    /// not be able to relabel another address here. The owner sets their own record through
+    /// @custom:function IDotnsReverseResolver.claimReverseRecord, which checks ownership.
+    ///
+    /// Validates the label shape (otherwise @custom:reverts InvalidLabel) and ERC721 availability
+    /// (otherwise @custom:reverts NameNotAvailable), then consumes the prior commitment, which
+    /// fails with @custom:reverts CommitmentNotFound, @custom:reverts CommitmentTooNew, or
     /// @custom:reverts CommitmentTooOld under the same conditions as @custom:function register.
-    /// Emits
-    /// @custom:emits NameRegistered on success.
+    /// Emits @custom:emits NameRegistered on success.
     function registerReserved(Registration calldata registration) external;
-
-    /// @notice Checks if the given address is whitelisted to call `registerReserved`.
-    function isWhiteListed(address who) external view returns (bool isWhiteListed);
-
-    /// @notice Adds or removes an address from the whitelist for `registerReserved`.
-    /// @dev Callable by the owner or an account holding `DotnsConstants.WHITELIST_OPERATOR_ROLE`;
-    /// any other caller reverts with @custom:reverts IDotnsRoleManager.NotRoleOrOwner. Emits
-    /// @custom:emits WhiteListed on success.
-    function whiteListAddress(address who, bool whiteListStatus) external;
 }

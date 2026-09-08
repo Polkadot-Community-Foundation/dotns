@@ -5,15 +5,16 @@ pragma solidity ^0.8.34;
 /// @notice Proof of personhood interface defining Dotns price calculation, PoP-tier requirements,
 ///         and base-name reservation rules.
 /// @dev Classifies labels into the PoP tier required for registration and exposes reservation
-///      metadata. Length <= 5 is reserved for governance; lengths 6-8 require PopFull unless they
-///      carry exactly two trailing digits (PopLite, gateway-issued); lengths >= 9 are open to
-///      every caller as NoStatus when they carry zero or exactly two trailing digits. Any one-digit
-///      suffix, and any suffix longer than two digits, is invalid; internal digits do not affect
-///      classification. Reservations are keyed by the digit-stripped stem so `alice` and `alice42`
-///      share a slot.
+///      metadata. Every label is measured as written, except a gateway lite label, whose
+///      separator and allocated digits are removed first. Base length <= 5 is reserved for
+///      governance; 6-8 requires PopFull; >= 9 is open to every caller as NoStatus. PopLite is
+///      the separated form alone, so digits in an ordinary label carry no personhood meaning.
+///      Reservations are keyed by that same stem, so `joseph` and `joseph.42` share a slot while
+///      `joseph42` is an unrelated name.
 ///
-///      Pricing is a flat per-name deposit on the NoStatus tier; verified PopLite and PopFull
-///      users pay zero.
+///      Amounts come from the cost model registered under `DotnsConstants.COST_MODEL`, which owns
+///      the curve; only the base length crosses that seam. Every caller pays the same amount for a
+///      given length; personhood only unlocks the premium band.
 /// @custom:security-contact admin@parity.io
 interface IPopRules {
     /// @notice Proof-of-Personhood eligibility tier.
@@ -33,22 +34,47 @@ interface IPopRules {
     /// @param expires UNIX timestamp when the reservation expires.
     event BaseNameReserved(string indexed baseName, address indexed owner, uint64 expires);
 
-    /// @notice Emitted when the spam-deterrent NoStatus starting price is rotated.
-    /// @dev Owner-only setter @custom:function updateStartingPrice; the new value is consumed
-    ///      by `_priceValidatedName` on the next pricing read.
-    /// @param oldPrice Previous wei value.
-    /// @param newPrice New wei value.
-    event StartingPriceUpdated(uint256 oldPrice, uint256 newPrice);
+    /// @notice Emitted when the public market for names shorter than nine characters is opened or
+    ///         closed.
+    /// @dev Set by the Root-gated @custom:function setShortNamesEnabled.
+    /// @param enabled Whether names shorter than nine characters may now be bought.
+    event ShortNamesEnabledUpdated(bool enabled);
 
     /// @notice Thrown when a name violates PoP-tier or reservation requirements.
     /// @param reason Human-readable explanation of the failure condition.
     error PopError(string reason);
 
+    /// @notice Thrown when @custom:function setShortNamesEnabled is called without a substrate
+    /// Root origin.
+    /// @dev Carries no caller parameter: a Root origin has no account to report, and reading
+    /// `msg.sender` under one traps.
+    error NotRoot();
+
     /// @notice Thrown when a caller is not an authorised controller on the registrar.
     error NotRegistry();
 
+    /// @notice Thrown when registering a name whose base stem is held as a live reservation by
+    /// another user.
+    /// @param label Caller-supplied label whose stem is reserved.
+    error NameReserved(string label);
+
+    /// @notice Thrown when registering a label that classifies as governance-reserved at the
+    /// protocol level.
+    /// @dev Distinct from @custom:reverts NameReserved so off-chain consumers can tell "wait for
+    /// the holder to relinquish" apart from "this label is permanently held by governance".
+    /// @param label Caller-supplied label that classifies as governance-reserved.
+    error GovernanceReserved(string label);
+
+    /// @notice Thrown on the cross-payer path when the owner's recorded PoP tier does not meet the
+    /// label's required tier. The direct path's `priceWithCheck` covers this same condition via its
+    /// own revert.
+    /// @param label Label whose tier requirement was unmet.
+    /// @param userStatus Owner's recorded tier.
+    /// @param required Required tier for the label.
+    error OwnerStatusInsufficient(string label, PopStatus userStatus, PopStatus required);
+
     /// @notice Bundle returned from metadata-aware pricing queries.
-    /// @param price Registration cost; typically non-zero only for NoStatus users.
+    /// @param price Registration cost from the current cost model for the label's base length.
     /// @param status Required PoP tier for this name.
     /// @param userStatus Current PoP status recorded for the querying user.
     /// @param message Human-readable classification description.
@@ -72,9 +98,9 @@ interface IPopRules {
 
     /// @notice Classifies a name into a required PoP tier per DotNS naming rules.
     /// @dev Pure; inputs are the label bytes only. Callers use the returned tier to decide which
-    ///      pricing and verification branch applies. Non-canonical labels (anything other than a
-    ///      single lowercase ASCII DNS label) and labels with exactly one or more than two
-    ///      trailing digits both trigger @custom:reverts PopError.
+    ///      pricing and verification branch applies. A label that is neither a single lowercase
+    ///      ASCII DNS label nor a lite label triggers @custom:reverts PopError; a trailing-digit
+    ///      suffix of any length is accepted and classified by the length it leaves.
     /// @param name The name label being evaluated.
     /// @return requirement Required tier for registration.
     /// @return message Explanation of the classification result.
@@ -83,21 +109,35 @@ interface IPopRules {
         pure
         returns (PopStatus requirement, string memory message);
 
-    /// @notice Updates the spam-deterrent starting price for NoStatus pricing.
-    /// @dev Owner-only; unauthorised callers trigger @custom:reverts
-    ///      OwnableUnauthorizedAccount. `newStartingPrice` must be strictly positive, otherwise
-    ///      @custom:reverts PopError. The new value flows into `_priceValidatedName` on the next
-    ///      pricing read; no redeploy. Emits @custom:emits StartingPriceUpdated with the prior
-    ///      and new values.
-    /// @param newStartingPrice New base price in wei.
-    function updateStartingPrice(uint256 newStartingPrice) external;
+    /// @notice Opens or closes the public market for names shorter than nine characters.
+    /// @dev Restricted to a substrate Root origin; any other caller triggers @custom:reverts
+    ///      NotRoot. Short names are otherwise issued through the PoP gateway, so this flag is the
+    ///      Root-only lever that additionally admits them on the public paid path.
+    ///      While closed, which is the deploy default, @custom:function priceWithCheck and
+    ///      @custom:function priceWithoutCheck trigger @custom:reverts PopError for a base length
+    ///      below nine, so no public caller buys a short name. The gateway free grant and the
+    ///      registrar's registerReserved path do not read this flag. Emits @custom:emits
+    ///      ShortNamesEnabledUpdated.
+    /// @param enabled Whether names shorter than nine characters may be bought.
+    function setShortNamesEnabled(bool enabled) external;
 
-    /// @notice Creates or refreshes a reservation entry for a PopLite-eligible stem.
-    /// @dev Commit-reveal reservation path. Only an authorised controller on the registrar may
-    ///      call this, otherwise @custom:reverts NotRegistry. The caller passes the
-    /// already-stripped stem; the contract enforces stem shape (no trailing digits) and
-    /// PopLite-eligibility
-    ///      (length in `[6, 8]`), and a non-canonical label or a label outside that shape triggers
+    /// @notice Returns the personhood tier recorded for an account.
+    /// @dev Reads the account's dotns-scoped tier from the personhood precompile and maps it to a
+    ///      `PopStatus`. This is the direct account-tier read; the same tier otherwise surfaces
+    ///      only as the `userStatus` field of a pricing query. Never returns `Reserved`, so the
+    ///      result is one of `NoStatus`, `PopLite`, or `PopFull`.
+    /// @param account Address whose tier is read.
+    /// @return tier The account's personhood tier.
+    function personhoodOf(address account) external view returns (PopStatus tier);
+
+    /// @notice Creates or refreshes a reservation entry for a stem in the 6 to 8 band.
+    /// @dev Authorised-controller entry point: only a controller in the registrar's `controllers`
+    ///      set may call this, otherwise @custom:reverts NotRegistry. The gateway queue writes
+    ///      through @custom:function reserveBaseNameForPop and the public commit-reveal flow
+    ///      reads the slot rather than writing one, so this is the entry point for a sibling
+    ///      controller. Its length window bounds the stem and does not name a tier: PopLite is
+    ///      decided by the separated label shape. The caller passes the already-stripped stem; a
+    ///      non-canonical label, a trailing digit, or a length outside `[6, 8]` triggers
     ///      @custom:reverts PopError. Cross-user collision on a live slot triggers @custom:reverts
     ///      PopError so the caller cannot silently overwrite another user's reservation; same-user
     ///      refresh and writes into an empty or expired slot emit @custom:emits BaseNameReserved.
@@ -163,14 +203,15 @@ interface IPopRules {
         view
         returns (address owner, uint64 expires);
 
-    /// @notice Returns the bare stem of a label, i.e. the label with any trailing ASCII digits
-    ///         removed.
-    /// @dev Mirrors the normalisation that @custom:function reserveBaseName applies before writing
-    ///      a reservation, so callers can look up or release a reservation by passing the full
-    ///      label without re-implementing the digit-stripping rule. Non-canonical labels
-    ///      trigger @custom:reverts PopError.
-    /// @param name Full label (with or without trailing digits).
-    /// @return stem The label with trailing digits removed.
+    /// @notice Returns the reservation stem of a label: a lite label without its allocated
+    ///         suffix, or any other label unchanged.
+    /// @dev Mirrors the normalisation applied before a reservation is written, so callers can
+    ///      look up or release one by passing the full label. Only a lite label is shortened,
+    ///      because only the gateway allocates the digits it carries: `joseph.42` yields
+    ///      `joseph` while `joseph42` is an unrelated name and yields itself. Non-canonical
+    ///      labels trigger @custom:reverts PopError.
+    /// @param name Full label, lite or otherwise.
+    /// @return stem The reservation stem of `name`.
     function stripDigits(string calldata name) external pure returns (string memory stem);
 
     /// @notice Indicates whether a base name is currently reserved.
@@ -186,17 +227,39 @@ interface IPopRules {
         returns (bool reservedStatus, address owner, uint64 expires);
 
     /// @notice Calculates price with PoP classification and reservation enforcement.
-    /// @dev Reverting pricing path used by the commit-reveal controller. Price is a spam
-    ///      deterrent and is significant only for NoStatus users; verified users pay zero.
-    ///      Non-canonical labels, a base stem held live by another user, a governance-reserved
-    ///      label, or a `userAddress` whose personhood tier does not meet the label's required
-    ///      tier each trigger @custom:reverts PopError.
+    /// @dev Reverting pricing path used by the commit-reveal controller. Price is the scarcity
+    ///      curve for the label's base length and is charged to every caller, verified or not;
+    ///      personhood only unlocks the premium band. Non-canonical
+    ///      labels, a base stem held live by another user, a governance-reserved label, or a
+    ///      `userAddress` whose personhood tier does not meet the label's required tier each
+    ///      trigger @custom:reverts PopError.
     /// @param name Domain label.
     /// @param userAddress Registering user for the given label.
     /// @return metadata Price with PoP requirements and classification.
     function priceWithCheck(
         string calldata name,
         address userAddress
+    )
+        external
+        view
+        returns (PriceWithMeta memory metadata);
+
+    /// @notice Calculates price at a specific cost-model version with PoP classification and
+    ///         reservation enforcement.
+    /// @dev The versioned counterpart of @custom:function priceWithCheck: identical classification,
+    ///      tier gating, and reservation rules, but the amount comes from the model registered for
+    ///      `pricingVersionValue` rather than the current one. The commit-reveal controller prices
+    ///      a reveal at the version bound into its commitment, so a model change between commit and
+    ///      reveal does not move the amount. @custom:reverts UnknownVersion when the version was
+    ///      never registered.
+    /// @param name Domain label.
+    /// @param userAddress Registering user for the given label.
+    /// @param pricingVersionValue Cost-model version to price against.
+    /// @return metadata Price with PoP requirements and classification.
+    function priceWithCheckAtVersion(
+        string calldata name,
+        address userAddress,
+        uint256 pricingVersionValue
     )
         external
         view
@@ -222,29 +285,40 @@ interface IPopRules {
         view
         returns (PriceWithMeta memory metadata);
 
-    /// @notice Friction fee owed when `account` reaches into a label tier above its verification
-    /// level.
-    /// @dev Non-zero only when `account` cannot meet the label's required PoP tier; the value is
-    ///      the flat NoStatus deposit. Acts as cross-payer friction at registration time. Use
-    ///      @custom:function transferFloor for transfer-time friction, which folds in the
-    ///      sender-tier-downgrade component as well. Non-canonical labels and labels with exactly
-    ///      one or more than two trailing digits trigger @custom:reverts PopError.
-    /// @param name Domain label being acted on.
-    /// @param account Account whose verification reach is being measured.
-    function reachFee(string calldata name, address account) external view returns (uint256 fee);
+    /// @notice Calculates price at a specific cost-model version with PoP classification and
+    ///         reservation metadata, without reverting on conflicts.
+    /// @dev The versioned counterpart of @custom:function priceWithoutCheck: same non-reverting
+    ///      preview behaviour, but the amount comes from the model registered for
+    ///      `pricingVersionValue`. @custom:reverts UnknownVersion when the version was never
+    ///      registered.
+    /// @param name Domain label.
+    /// @param userAddress Registering user for the given label.
+    /// @param pricingVersionValue Cost-model version to price against.
+    /// @return metadata Price with PoP requirements and classification.
+    function priceWithoutCheckAtVersion(
+        string calldata name,
+        address userAddress,
+        uint256 pricingVersionValue
+    )
+        external
+        view
+        returns (PriceWithMeta memory metadata);
 
-    /// @notice Transfer-time friction floor: the greater of the recipient-reach component and
-    ///         the sender-tier-downgrade component.
-    /// @dev Returns the flat NoStatus deposit when either (i) the recipient does not meet the
-    ///      label's required tier, or (ii) the recipient's personhood tier is strictly below the
-    ///      sender's. Returns zero when neither condition holds. The two components overlap on
-    ///      pure tier mismatches, so the function takes their maximum rather than their sum to
-    ///      avoid double-charging. Consumed by @custom:function DotnsRegistrar.quoteTransferFee.
-    ///      Non-canonical labels and labels with exactly one or more than two trailing digits
-    ///      trigger @custom:reverts PopError.
+    /// @notice Transfer-time floor: the greater of the recipient-reach component and the
+    ///         sender-tier-downgrade component, each priced at the name's own length.
+    /// @dev Re-prices the name at its own length on every move: returns the name's curve price when
+    ///      either (i) the recipient does not meet the label's required tier, or (ii) the
+    ///      recipient's personhood tier is strictly below the sender's, and zero when neither
+    ///      holds. Passing a name to a wallet that could never have registered it therefore costs
+    ///      the name's own curve price. The two components overlap on pure
+    ///      tier mismatches, so the function takes their maximum rather than their sum to avoid
+    ///      double-charging. Consumed by @custom:function DotnsRegistrar.quoteTransferFee.
+    ///      A label that is neither a single lowercase ASCII DNS label nor a lite label triggers
+    ///      @custom:reverts PopError.
     /// @param name Domain label being transferred.
     /// @param from Current holder of the name.
     /// @param to Incoming holder of the name.
+    /// @return floor Transfer-time floor in wei: the name's own curve price, or zero.
     function transferFloor(
         string calldata name,
         address from,
@@ -255,18 +329,27 @@ interface IPopRules {
         returns (uint256 floor);
 
     /// @notice Returns whether `name` is a base name under PoP rules.
-    /// @dev A base name has no trailing digits; lite-person labels always have exactly two
-    ///      trailing digits, so the two spaces are disjoint. Non-canonical labels trigger
-    ///      @custom:reverts PopError.
+    /// @dev A base name has no trailing digits, so it is what a reservation may be keyed by. A
+    ///      lite label always ends in two, so it is never a base name. Non-canonical labels
+    ///      trigger @custom:reverts PopError.
     /// @param name The label to check.
     /// @return isBase True when the label has no trailing digits.
     function isBaseName(string calldata name) external pure returns (bool isBase);
 
     /// @notice Calculates registration cost for a label.
-    /// @dev Returns zero for any label shorter than 9 characters; lengths >= 9 pay the flat
-    ///      `startingPrice` deposit. Ignores the caller's personhood status and reservation
-    ///      state. Non-canonical labels trigger @custom:reverts PopError.
+    /// @dev Prices the label by its base length through the cost model registered under
+    ///      `DotnsConstants.COST_MODEL`. Ignores the caller's personhood status and reservation
+    ///      state. A non-canonical label triggers @custom:reverts PopError. An ordinary label is
+    ///      priced as written; only a lite label's allocated suffix is removed first.
     /// @param name Domain label to price.
     /// @return cost Registration cost in wei.
     function price(string calldata name) external view returns (uint256 cost);
+
+    /// @notice Returns the current cost-model version.
+    /// @dev The current version held by the registry under `DotnsConstants.COST_MODEL`. The
+    ///      commit-reveal controller binds it into a commitment and prices the reveal at that
+    ///      version, so a model change between commit and reveal leaves the committed amount
+    ///      unchanged. @custom:reverts PopError when no registry is configured.
+    /// @return modelVersion Identifier of the current cost model and its parameters.
+    function pricingVersion() external view returns (uint256 modelVersion);
 }

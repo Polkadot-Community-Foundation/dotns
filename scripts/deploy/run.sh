@@ -13,7 +13,7 @@
 # Local usage:
 #   1. cp .env.example .env
 #   2. set PRIVATE_KEY and ACCOUNT_PASSWORD in .env (and adjust
-#      ACCOUNT_NAME, WHITELIST_OPERATOR, or RPC_URL if the defaults are
+#      ACCOUNT_NAME or RPC_URL if the defaults are
 #      not what you want)
 #   3. bun run deploy   (or ./scripts/deploy/run.sh)
 #   4. on success, the script deletes .env automatically
@@ -32,8 +32,6 @@
 #                      Defaults to `dotns-deploy`.
 #   ACCOUNT_PASSWORD   Password passed to cast/forge as --password. Prompted
 #                      interactively when not set.
-#   WHITELIST_OPERATOR Address granted whitelist management permission.
-#                      Defaults to the team-wide operator in .env.example.
 #   PRIVATE_KEY        Hex-encoded deployer private key, with or without 0x.
 #                      Required only when ACCOUNT_NAME has not yet been
 #                      imported into the Foundry keystore.
@@ -46,61 +44,25 @@
 
 set -euo pipefail
 
-ENV_FILE="${ENV_FILE:-.env}"
+# Resolve the deployer keystore account, RPC alias, broadcasting address, and
+# chain id (importing from a one-off .env on first run). Shared with the factory
+# deploy so both use identical account handling.
+# shellcheck source=scripts/deploy/_account.sh
+. "$(dirname "$0")/_account.sh"
 
-if [ -f "$ENV_FILE" ]; then
-  set -a
-  # shellcheck source=/dev/null
-  . "$ENV_FILE"
-  set +a
+# Pipeline-only default; .env has already been loaded by _account.sh.
+
+# TLD the protocol registry initialises with. DeployCore reads it through
+# vm.envString("DOTNS_TLD"), so it has to be exported: sourcing .env does not
+# auto-export, matching DEPLOYMENT_NETWORK below. No default is applied; a
+# missing TLD must abort in the Solidity stage rather than silently land the
+# wrong one, which no setter can correct afterwards.
+if [ -n "${DOTNS_TLD:-}" ]; then
+  export DOTNS_TLD
 fi
 
-# Defaults for the values that do not need to be re-entered between
-# deploys. Override either via .env (during bootstrap) or via the shell
-# environment.
-: "${ACCOUNT_NAME:=dotns-deploy}"
-: "${WHITELIST_OPERATOR:=0xd908e5a6c88e9263f8fd0756bd0b77916008bb72}"
-: "${RPC_URL:=paseo_local}"
-export ACCOUNT_NAME WHITELIST_OPERATOR
-
-# Prompt for the keystore password when it has not been supplied by
-# .env or the shell. Reading once into a bash variable keeps the prompt
-# to a single keystroke per deploy even though every stage receives
-# --password on its forge invocation.
-if [ -z "${ACCOUNT_PASSWORD:-}" ]; then
-  if [ ! -t 0 ]; then
-    echo "ACCOUNT_PASSWORD is required (set in $ENV_FILE or as env var, or run from a terminal that can prompt)" >&2
-    exit 1
-  fi
-  read -rsp "Password for Foundry keystore '$ACCOUNT_NAME': " ACCOUNT_PASSWORD
-  echo
-fi
-
-extra="${1:-}"
-
-KEYSTORE_DIR="${FOUNDRY_KEYSTORES_DIR:-$HOME/.foundry/keystores}"
-KEYSTORE_PATH="$KEYSTORE_DIR/$ACCOUNT_NAME"
-
-if [ ! -f "$KEYSTORE_PATH" ]; then
-  if [ -z "${PRIVATE_KEY:-}" ]; then
-    echo "PRIVATE_KEY is required once to import missing account '$ACCOUNT_NAME'" >&2
-    echo "see .env.example for the expected shape" >&2
-    exit 1
-  fi
-
-  # Strip 0x prefix if present. `cast wallet import` accepts both, but one
-  # normalised shell value keeps the command shape predictable.
-  PK="${PRIVATE_KEY#0x}"
-
-  cast wallet import "$ACCOUNT_NAME" \
-    --private-key "$PK" \
-    --unsafe-password "$ACCOUNT_PASSWORD" >/dev/null
-
-  unset PK PRIVATE_KEY
-fi
-
-SENDER=$(cast wallet address --account "$ACCOUNT_NAME" --password "$ACCOUNT_PASSWORD")
-CHAIN_ID=$(cast chain-id --rpc-url "$RPC_URL")
+# Forward every extra forge flag (word-split), not just the first token.
+extra="$*"
 
 if [ "${DOTNS_DEPLOY_SKIP_CLEAN_BUILD:-0}" != "1" ]; then
   echo "=== Rebuilding full Foundry artifacts for OpenZeppelin validation ==="
@@ -108,17 +70,47 @@ if [ "${DOTNS_DEPLOY_SKIP_CLEAN_BUILD:-0}" != "1" ]; then
   forge build
 fi
 
-case "$CHAIN_ID" in
-  420420422) DEPLOYMENT_FOLDER="passethub-testnet" ;;
-  420420417) DEPLOYMENT_FOLDER="summit-asset-hub" ;;
-  420420420) DEPLOYMENT_FOLDER="paseo-local" ;;
-  *) DEPLOYMENT_FOLDER="localhost" ;;
-esac
+# Manifest subdirectory. Two chains can present the same chain id (for example
+# a previewnet and a next environment both reached through the local ETH-RPC
+# adapter); chain id alone then aliases their manifests onto one file, so a
+# later deploy silently overwrites an earlier one. DEPLOYMENT_NETWORK names the
+# subdirectory explicitly so each upstream keeps its own manifest. When unset,
+# fall back to the chain-id default, which must match DeploymentNetwork.folder
+# on the Solidity side. The variable is exported (only when set) so every forge
+# stage resolves the same folder through BaseDeployer.networkFolder.
+# PCF fork: DOTNS_DEPLOYMENT_FOLDER predates upstream's DEPLOYMENT_NETWORK and
+# names the same subdirectory. Honour it as an alias so existing devnet deploy
+# invocations keep working; DEPLOYMENT_NETWORK wins when both are set.
+if [ -z "${DEPLOYMENT_NETWORK:-}" ] && [ -n "${DOTNS_DEPLOYMENT_FOLDER:-}" ]; then
+  DEPLOYMENT_NETWORK="$DOTNS_DEPLOYMENT_FOLDER"
+fi
 
-# Chains sharing an EVM chain id (paseo-next vs summit, both 420420417) are
-# disambiguated with DOTNS_DEPLOYMENT_FOLDER; the Solidity stage scripts honor
-# the same override (DeploymentNetwork.folder / _getDeploymentFolder).
-DEPLOYMENT_FOLDER="${DOTNS_DEPLOYMENT_FOLDER:-$DEPLOYMENT_FOLDER}"
+if [ -n "${DEPLOYMENT_NETWORK:-}" ]; then
+  DEPLOYMENT_FOLDER="$DEPLOYMENT_NETWORK"
+  export DEPLOYMENT_NETWORK
+else
+  unset DEPLOYMENT_NETWORK
+  case "$CHAIN_ID" in
+    420420422) DEPLOYMENT_FOLDER="passethub-testnet" ;;
+    420420417) DEPLOYMENT_FOLDER="summit-asset-hub" ;;
+    420420420) DEPLOYMENT_FOLDER="paseo-local" ;;
+    *) DEPLOYMENT_FOLDER="localhost" ;;
+  esac
+fi
+
+# Reuse a pre-deployed CREATE3 factory when its address is supplied. Every DotNS
+# address derives from the factory address, and the factory's own address is
+# nonce-derived, so a key that also runs upgrades cannot keep it stable across
+# chain resets. Deploy the factory once from a single-purpose key at nonce 0
+# (scripts/deploy/DeployCreate3Factory.s.sol) and export its address as
+# CREATE3_FACTORY; DeployCore then reuses it instead of minting a new one, so
+# the pipeline key's nonce no longer affects any address. Exported (only when
+# set) so every forge stage resolves it through BaseDeployer.
+if [ -n "${CREATE3_FACTORY:-}" ]; then
+  export CREATE3_FACTORY
+else
+  unset CREATE3_FACTORY
+fi
 
 MANIFEST_PATH="deployments/$DEPLOYMENT_FOLDER/$CHAIN_ID.json"
 mkdir -p "$(dirname "$MANIFEST_PATH")"
@@ -177,18 +169,9 @@ if [ "${DOTNS_DEPLOY_KEEP_MANIFEST:-0}" != "1" ] && [ -f "$MANIFEST_PATH" ]; the
   echo "Archived existing manifest for fresh deploy: $ARCHIVE_PATH"
 fi
 
-common=(
-  --rpc-url "$RPC_URL"
-  --account "$ACCOUNT_NAME"
-  --password "$ACCOUNT_PASSWORD"
-  --sender "$SENDER"
-  --broadcast
-  --slow
-  --legacy
-  --gas-limit 2000000000
-  --gas-estimate-multiplier 10000
-  -vvvvv
-)
+# Broadcast flags shared with factory.sh (defined in _account.sh); each stage
+# also gets full verbosity.
+common=("${FORGE_DEPLOY_ARGS[@]}" -vvvvv)
 
 stages=(
   DeployCore
@@ -212,6 +195,8 @@ for stage in "${stages[@]}"; do
     echo "Restored manifest after invalid stage output: $stage" >&2
     exit 1
   fi
+  # Stage succeeded; drop its rollback backup so successful runs leave no temp files.
+  [ -n "$manifest_backup" ] && rm -f "$manifest_backup"
 done
 
 echo "=== Pipeline complete ==="
