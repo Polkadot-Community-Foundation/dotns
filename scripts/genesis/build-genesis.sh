@@ -33,7 +33,10 @@ GENESIS_OUT=""   # set once DOTNS_TLD is validated, below
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOYMENT_FILE="deployments/localhost/31337.json"
-CANONICAL_MANIFEST="deployments/paseo-assethub/420420417.json"
+# The committed address set this build must reproduce. Defaults to the PCF canonical
+# manifest (see deploy-contracts.yml, which asserts the same file); override with
+# CANONICAL_MANIFEST to build a genesis against another deployment's set.
+CANONICAL_MANIFEST="${CANONICAL_MANIFEST:-deployments/pcf-devnet/420420417.json}"
 
 # Who OWNS the contracts in the genesis state (REQUIRED, one of the three below).
 #
