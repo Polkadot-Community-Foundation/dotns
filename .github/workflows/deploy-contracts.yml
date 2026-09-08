@@ -39,8 +39,8 @@ jobs:
       # to DotnsProtocolRegistry.initialize as init calldata, which does not affect
       # any CREATE3 address, so the reproduction still lands the canonical set.
       DOTNS_TLD: dot
-      FACTORY_DEPLOYER: "0xd498F7BC5bB3cBdd0068c3deEbbd814b69C3F164"
-      CANONICAL: deployments/paseo-assethub/420420417.json
+      FACTORY_DEPLOYER: "0x70C9D7d8d5618f488FA2889B48BB12a8c1445F1a"
+      CANONICAL: deployments/pcf-devnet/420420417.json
       MANIFEST: deployments/paseo-local/420420420.json
 
     steps:

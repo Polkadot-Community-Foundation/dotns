@@ -395,11 +395,11 @@ The manifest folder defaults to a mapping from the current chain id:
 | Chain id | Default manifest folder |
 | ---: | --- |
 | 420420422 | deployments/passethub-testnet |
-| 420420417 | deployments/summit-asset-hub |
+| 420420417 | deployments/pcf-devnet |
 | 420420420 | deployments/paseo-local |
 | other | deployments/localhost |
 
-Some environments cannot be told apart by chain id alone. A previewnet and a next environment reached through the same local ETH-RPC adapter both report 420420417, so the default mapping would write both to `deployments/summit-asset-hub/420420417.json`, and each fresh deploy would overwrite the previous network's manifest.
+Some environments cannot be told apart by chain id alone. A previewnet and a next environment reached through the same local ETH-RPC adapter both report 420420417, so the default mapping would write both to `deployments/pcf-devnet/420420417.json`, and each fresh deploy would overwrite the previous network's manifest.
 
 Set `DEPLOYMENT_NETWORK` to name the subdirectory explicitly and keep each upstream's manifest separate:
 
@@ -414,7 +414,7 @@ The manifest filename is the numeric chain id with a .json extension.
 Examples:
 
 ```text
-deployments/summit-asset-hub/420420417.json
+deployments/pcf-devnet/420420417.json
 deployments/paseo-local/420420420.json
 ```
 
