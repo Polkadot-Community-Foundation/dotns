@@ -54,11 +54,17 @@ contract DeterministicDeploymentTest is Test {
         _assertAdoptionRejected("Multicall3.sol:Multicall3", "", "Multicall3");
     }
 
-    /// @notice The same rejection applies to an artefact carrying constructor-set immutables,
-    ///         which is the case the check cannot answer by codehash alone.
-    /// @dev `StoreFactory` bakes its beacon addresses into runtime code, so two honest deploys
-    ///      differ. The check masks the immutable ranges rather than comparing lengths: a length
-    ///      comparison accepts any occupant padded to the same size.
+    /// @notice The same rejection applies to an artefact carrying immutables, which is the case
+    ///         the check cannot answer by codehash alone.
+    /// @dev `StoreFactory` carries `UUPSUpgradeable.__self`, so two honest deploys of the
+    ///      implementation differ. The check masks the immutable ranges rather than comparing
+    ///      lengths: a length comparison accepts any occupant padded to the same size.
+    ///
+    ///      Synthetic fixture: production deploys `StoreFactory` behind a proxy through the
+    ///      `:implementation` and `:proxy` salts with `initialize`, so no stage uses this
+    ///      `:contract` salt or these constructor bytes any more. The rejection is salt-agnostic,
+    ///      which is what this pins; the production UUPS shape is covered by
+    ///      `StoreBeaconVerification` and the `_deployCore` suite below.
     function test_foreign_occupant_is_rejected_for_an_immutable_carrying_artefact() public {
         bytes32 salt = deployer.create3Salt("StoreFactory", "contract");
 
@@ -71,13 +77,13 @@ contract DeterministicDeploymentTest is Test {
         );
     }
 
-    /// @notice A real `StoreFactory` deployed against an attacker's constructor arguments is
+    /// @notice A real `DotnsPopLens` deployed against an attacker's constructor arguments is
     ///         rejected, not adopted.
     /// @dev The case bytecode comparison alone cannot answer. The occupant is the genuine
     ///      artefact, so its length and shape match; only the values its constructor baked in
-    ///      differ. Comparing against a reference built with this run's arguments catches it,
-    ///      while the beacons `StoreFactory` deploys itself vary on every honest deploy and are
-    ///      necessarily skipped.
+    ///      differ. Comparing against a reference built with this run's arguments catches it:
+    ///      `DotnsPopLens.protocolRegistry` is constructor-set, so it stays inside the
+    ///      comparison rather than being masked as address-derived.
     function test_same_artefact_with_foreign_constructor_args_is_rejected() public {
         address attacker = makeAddr("attacker");
         address realRegistry = address(new DotnsProtocolRegistry());
