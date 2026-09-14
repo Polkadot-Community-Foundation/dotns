@@ -33,7 +33,7 @@ GENESIS_OUT=""   # set once DOTNS_TLD is validated, below
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOYMENT_FILE="deployments/localhost/31337.json"
-CANONICAL_MANIFEST="deployments/paseo-assethub/420420417.json"
+CANONICAL_MANIFEST="deployments/expected.json"
 
 # Who OWNS the contracts in the genesis state (REQUIRED, one of the three below).
 #
@@ -58,7 +58,7 @@ ADMIN_KEY="${DOTNS_ADMIN_KEY:-}"
 # a pure function of the Create3Factory address, and the factory address is
 # keccak(deployer, nonce 0) — see "Deterministic addresses (CREATE3)" in
 # DEPLOYMENTS.md. Deploying the factory from this key as its first transaction is
-# what makes the genesis addresses equal the live ones, which is asserted below.
+# what makes the genesis addresses equal the expected set, which is asserted below.
 FACTORY_DEPLOYER_KEY="${FACTORY_DEPLOYER_KEY:-}"
 
 # TLD the genesis registry initialises with. Required by DeployCore, which reads
@@ -232,19 +232,22 @@ echo ""
 [ -f "$DEPLOYMENT_FILE" ] \
     || { echo "Error: no deployment manifest at $DEPLOYMENT_FILE — a stage failed above" >&2; exit 1; }
 
-# ---- Address parity with the live deployment ----
-# The committed manifest is the only source of truth for DotNS addresses, so this is a
-# hard failure, not a warning: a genesis built from a different factory key carries a
-# different address set, and nothing downstream would notice.
+# ---- Address parity with the expected set ----
+# The committed expected set (deployments/expected.json) records what a fresh deploy of
+# this revision lands through the pinned factory, so this is a hard failure, not a
+# warning: a genesis built from a different factory key carries a different address set,
+# and nothing downstream would notice. A genesis is a fresh chain, which is exactly what
+# the expected set describes; per-network manifests record live networks instead and are
+# not consulted here.
 #
-# Underscore-prefixed keys are metadata rather than contracts (`_seed`, and
-# `_deployedFrom` once dotns-releases#12 lands), so they are filtered by prefix.
+# Underscore-prefixed keys are metadata rather than contracts (`_seed` in a fresh
+# deploy's output), so they are filtered by prefix.
 #
-# Compared entry-by-entry: the local manifest may carry newer contracts not yet deployed
-# live, so only the canonical entries are asserted.
+# Compared entry-by-entry: the local manifest may carry newer contracts not yet in the
+# expected set, so only the expected entries are asserted.
 #
 if [ ! -f "$CANONICAL_MANIFEST" ]; then
-    echo "Error: no canonical manifest at $CANONICAL_MANIFEST." >&2
+    echo "Error: no expected-address set at $CANONICAL_MANIFEST." >&2
     echo "       Addresses cannot be verified, so the genesis would ship unchecked." >&2
     exit 1
 fi
@@ -260,7 +263,7 @@ ACTUAL=$(jq -r --slurpfile canon "$CANONICAL_MANIFEST" '
 if ! diff -u -L "expected ($CANONICAL_MANIFEST)" -L "actual (this build)" \
         <(printf '%s\n' "$EXPECTED") <(printf '%s\n' "$ACTUAL"); then
     {
-        echo "Error: the deploy no longer reproduces the committed address set."
+        echo "Error: the deploy no longer reproduces the expected address set."
         echo "       Lines marked -/+ above differ from $CANONICAL_MANIFEST."
         echo ""
         echo "       Two things cause this:"
@@ -272,7 +275,7 @@ if ! diff -u -L "expected ($CANONICAL_MANIFEST)" -L "actual (this build)" \
     } >&2
     exit 1
 fi
-echo "  ✓ all live addresses reproduced ($(jq 'with_entries(select(.key | startswith("_") | not)) | length' "$CANONICAL_MANIFEST") contracts)"
+echo "  ✓ all expected addresses reproduced ($(jq 'with_entries(select(.key | startswith("_") | not)) | length' "$CANONICAL_MANIFEST") contracts)"
 echo ""
 
 # ---- Dump anvil state and extract ----
