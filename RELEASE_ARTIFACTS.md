@@ -13,7 +13,7 @@ What each release publishes, what the files guarantee, and how to consume them.
 | `abi-diff.json` | Selector-level ABI changes since the previous release, machine readable |
 | `dotns-abis-<tag>.zip` | The same files in one archive |
 
-The first three are attached to the release individually, at the top level, with no folder. The zip holds the ABIs under `abis/` and the two JSON files at its root.
+Every JSON asset is attached to the release individually, at the top level, with no folder. The zip holds the ABIs under `abis/` and the JSON files at its root, except `abi-diff.json`, which is generated with the release body and attached individually only.
 
 The release surface is decided in `.github/abi-contracts.txt` so a contract reaches consumers only when it is listed there.
 

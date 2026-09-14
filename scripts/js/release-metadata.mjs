@@ -18,7 +18,7 @@
 
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -217,8 +217,14 @@ function changedset(args) {
   const previousHashes = previous?.hashes;
   if (!previousHashes) fail(`${args.previous} has no 'hashes' map`);
   const current = builtCodehashes();
-  for (const [name, hash] of Object.entries(current)) {
-    if ((previousHashes[name] ?? "").toLowerCase() !== hash.toLowerCase()) console.log(name);
+  // Union, not just the current set: a contract only in the previous release was removed and a
+  // contract only in this one is new. Neither is coverable by an in-place upgrade, so both must
+  // surface and force the coverage gate to refuse rather than dropping out of the diff.
+  const names = new Set([...Object.keys(current), ...Object.keys(previousHashes)]);
+  for (const name of [...names].sort()) {
+    if ((previousHashes[name] ?? "").toLowerCase() !== (current[name] ?? "").toLowerCase()) {
+      console.log(name);
+    }
   }
 }
 
@@ -251,11 +257,14 @@ function signaturesByKind(abi) {
   return kinds;
 }
 
+// Reads what the directory actually holds rather than what the current contract list names:
+// the previous release can carry contracts this release no longer publishes, and those must
+// surface as removals instead of silently dropping out of the diff.
 function readAbiDir(dir) {
   const abis = new Map();
-  for (const name of readContractNames()) {
-    const path = join(dir, `${name}.json`);
-    if (existsSync(path)) abis.set(name, JSON.parse(readFileSync(path, "utf8")));
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith(".json")) continue;
+    abis.set(basename(file, ".json"), JSON.parse(readFileSync(join(dir, file), "utf8")));
   }
   return abis;
 }

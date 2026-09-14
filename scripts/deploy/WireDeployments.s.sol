@@ -33,6 +33,7 @@ import {DotnsConstants} from "../../contracts/utils/DotnsConstants.sol";
 /// @custom:security-contact admin@parity.io
 contract WireDeployments is BaseDeployer {
     struct Addresses {
+        address create3Factory;
         address storeFactory;
         address registrar;
         address reverseResolver;
@@ -84,6 +85,7 @@ contract WireDeployments is BaseDeployer {
     }
 
     function _loadAddresses() internal view returns (Addresses memory addr) {
+        addr.create3Factory = _readAddress("Create3Factory");
         addr.storeFactory = _readAddress("StoreFactory");
         addr.registrar = _readAddress("DotnsRegistrar");
         addr.reverseResolver = _readAddress("DotnsReverseResolver");
@@ -149,10 +151,14 @@ contract WireDeployments is BaseDeployer {
         pure
         returns (RegistryEntry[] memory entries)
     {
-        entries = new RegistryEntry[](15);
+        entries = new RegistryEntry[](16);
         entries[0] = RegistryEntry(
             DotnsConstants.PROTOCOL_REGISTRY, addr.protocolRegistry, "protocolRegistry"
         );
+        // Registered by DeployCore when the factory is created or adopted, so it is part of
+        // the declared set even though this stage never sets the key itself.
+        entries[15] =
+            RegistryEntry(DotnsConstants.CREATE3_FACTORY, addr.create3Factory, "create3Factory");
         entries[1] = RegistryEntry(DotnsConstants.REGISTRAR, addr.registrar, "registrar");
         entries[2] =
             RegistryEntry(DotnsConstants.CONTROLLER, addr.registrarController, "controller");
@@ -268,6 +274,10 @@ contract WireDeployments is BaseDeployer {
         require(
             registry.get(DotnsConstants.PROTOCOL_REGISTRY) == addr.protocolRegistry,
             "Key: protocolRegistry"
+        );
+        require(
+            registry.get(DotnsConstants.CREATE3_FACTORY) == addr.create3Factory,
+            "Key: create3Factory"
         );
         require(registry.get(DotnsConstants.REGISTRAR) == addr.registrar, "Key: registrar");
         require(

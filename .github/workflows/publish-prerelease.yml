@@ -43,8 +43,10 @@ jobs:
           fi
           # The suffix is restricted to characters GitHub keeps verbatim in an asset
           # name; a space, for instance, is rewritten to a dot and would fail the
-          # asset check after a full build.
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.]+$ ]]; then
+          # asset check after a full build. Segmented like run.sh's semver check
+          # (dot-separated, non-empty identifiers), so no tag can be published
+          # here that the deploy pipeline would then refuse.
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*$ ]]; then
             echo "::error::Pre-release version must look like v1.2.3-rc1, got '$TAG'."
             exit 1
           fi
