@@ -13,7 +13,7 @@ What each release publishes, what the files guarantee, and how to consume them.
 | `abi-diff.json` | Selector-level ABI changes since the previous release, machine readable |
 | `dotns-abis-<tag>.zip` | The same files in one archive |
 
-Every JSON asset is attached to the release individually, at the top level, with no folder. The zip holds the ABIs under `abis/` and the JSON files at its root, except `abi-diff.json`, which is generated with the release body and attached individually only.
+Every JSON asset is attached to the release individually, at the top level, with no folder. The zip holds the ABIs under `abis/` plus `deployments.json`, `release-manifest.json`, and `codehashes.json` at its root; `abi-diff.json` is generated together with the release body and attached individually.
 
 The release surface is decided in `.github/abi-contracts.txt` so a contract reaches consumers only when it is listed there.
 
@@ -71,7 +71,7 @@ The release surface is decided in `.github/abi-contracts.txt` so a contract reac
 ```
 
 - `hashes` maps each deployable contract to the keccak256 of its built runtime bytecode with the trailing CBOR metadata stripped, so a comment-only edit does not read as a code change. Comparing two releases' files tells you exactly which contracts a release changed; an upgrade must cover that whole set before the release may be declared on a network (see `DEPLOYMENT_CHECKLIST.md`).
-- These are artifact-side hashes for comparing builds with builds. They are not the value `eth_getCode` or `EXTCODEHASH` reports for the deployed contract, and no tooling in this repository compares the two; bridging that gap (matching a live chain against a release's artifacts) is `dotns check-version` in the SDK.
+- These are artifact-side hashes, for comparing builds with builds. A deployed contract hashes differently on chain (its bytecode carries the metadata and any immutable values), so compare this file against another release's copy of it.
 - `build` records the toolchain inputs. The same source under a different toolchain hashes differently, and that difference is a real code change on chain, so treat the hashes as comparable only alongside their build inputs.
 
 ## `abi-diff.json`
@@ -106,7 +106,7 @@ To check the addresses against a chain:
 bun run deployments:verify --network paseo-assethub --rpc <eth-rpc-url>
 ```
 
-It reads the well-known keys from `DotnsConstants.sol`, resolves each through the protocol registry, and checks that every resolved address is one the manifest records and has code, that every recorded contract is pointed at by some key. The beacons are reported as unverifiable, since nothing in the registry points at them. The `protocolRegistry` key (the registry registering itself, so its implementation has a declared codehash) is new; a network that predates it leaves the key unset, and verify skips that rather than treating it as a mismatch — except under `--tag`, which asserts a post-declaration network, so a missing self-key is an error there. That self-declared hash is sloppy-drift detection only — the declaration lives inside the contract it describes — so the trustless check against release artifacts stays with `dotns check-version`. `multicall3` is skipped unconditionally, for the opposite reason: it is deliberately never registered, since registry membership is a trust signal and Multicall3 is a generic call forwarder.
+It reads the well-known keys from `DotnsConstants.sol`, resolves each through the protocol registry, and checks that every resolved address is one the manifest records and has code, that every recorded contract is pointed at by some key. The beacons are reported as unverifiable, since nothing in the registry points at them. The `protocolRegistry` key (the registry registering itself, so its implementation has a declared codehash) is new; a network that predates it leaves the key unset, and verify skips that rather than treating it as a mismatch — except under `--tag`, which asserts a post-declaration network, so a missing self-key is an error there. That self-declared hash is sloppy-drift detection only — the declaration lives inside the contract it describes — so the trustless check against release artifacts stays off chain. `multicall3` is skipped unconditionally, for the opposite reason: it is deliberately never registered, since registry membership is a trust signal and Multicall3 is a generic call forwarder.
 
 It compares the two sides as sets, so it does not check that a given key holds the contract you would expect; that pairing is asserted when a deployment is wired. It reads a committed manifest rather than a published asset, so run it from a checkout at the tag.
 

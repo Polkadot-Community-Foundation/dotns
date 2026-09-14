@@ -214,7 +214,7 @@ jobs:
             echo ""
             echo "- **Addresses:** [deployments.json]($ASSET_BASE/deployments.json)"
             echo "- **Release contents:** [release-manifest.json]($ASSET_BASE/release-manifest.json)"
-            echo "- **Code identity:** [codehashes.json]($ASSET_BASE/codehashes.json) (stripped-metadata build hashes; input to \`dotns check-version\` and upgrade checks)"
+            echo "- **Code identity:** [codehashes.json]($ASSET_BASE/codehashes.json) (stripped-metadata build hashes of this release's contracts; input to upgrade checks)"
 
             # The genesis is TLD-specific, so the body has to say which TLD it carries —
             # a reader choosing an artifact for their chain needs that before they download it.

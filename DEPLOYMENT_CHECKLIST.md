@@ -194,8 +194,8 @@ consumer that reads them is lied to:
 - Store implementations sit behind the factory's beacons, so a beacon upgrade
   (`upgradeLabelStoreImplementation` / `upgradeUserStoreImplementation`) moves
   no declared hash: `expectedCodehash(storeFactory)` covers the factory's own
-  code only. Store code identity is audited through the beacons by
-  `dotns check-version`, not by the registry declarations. Note also that this
+  code only. Store code identity has to be audited through the beacons, not
+  via the registry declarations. Note also that this
   release changed `UserStore.initialize`'s shape, so upgrading the user-store
   beacon under a pre-existing factory breaks new claims: crossing this release
   for stores means a fresh factory, which is wipe territory, not an upgrade.
@@ -204,8 +204,8 @@ consumer that reads them is lied to:
   declaration standing (under-claiming, which clients handle) rather than a
   false new one.
 - The declarations are claims, not proofs. `verify --tag` checks the chain
-  against them; checking the chain against the *release artifacts* (the
-  trustless version) is `dotns check-version` in the SDK.
+  against them. A trustless check needs to compare the chain against the release's
+  `codehashes.json` instead.
 
 - [ ] `verify --network <folder> --rpc <url> --tag vX.Y.Z` passes after the
   upgrade.
