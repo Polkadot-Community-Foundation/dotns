@@ -288,8 +288,15 @@ function diffAbi(previous, current) {
       if (old && now) {
         const oldOnly = [...old].filter((s) => !now.has(s)).sort();
         const nowOnly = [...now].filter((s) => !old.has(s)).sort();
-        if (oldOnly.length > 0 || nowOnly.length > 0) {
+        // Differing on both sides is a moved selector, the bare-revert case the changed banner
+        // warns about. A one-sided difference is an overload added or removed: the remaining
+        // selectors still exist, so callers of them are unaffected and the entry belongs with
+        // the additions or removals instead.
+        if (oldOnly.length > 0 && nowOnly.length > 0) {
           changed.push({ name, was: oldOnly, now: nowOnly });
+        } else {
+          added.push(...nowOnly);
+          removed.push(...oldOnly);
         }
       } else if (now) {
         added.push(...now);
