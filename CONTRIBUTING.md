@@ -135,6 +135,8 @@ Any new contract address that other contracts need to read must be looked up thr
 
 If you are adding a new contract category, add a `bytes32` key for it in `DotnsConstants.sol`, wire it up in `WireDeployments.s.sol`, and list the contract and its interface in `.github/abi-contracts.txt` so their ABIs ship in the release artifact. Read it the same way every existing contract does.
 
+A change that moves or adds an address (a new salt, a new contract, a contract restructured behind a proxy) must update `deployments/expected.json` in the same PR — that diff is where review sees the move — and must NOT touch any `deployments/<network>/<chainId>.json`. Those are records of live networks, updated only by a real deploy on that network; editing one from a code PR publishes an address nothing is deployed at. The two files diverging is normal and means a redeploy or migration is owed on that network — see "Two address files, two roles" in `DEPLOYMENTS.md`.
+
 Bad — the registrar address is frozen at construction, so rotating it needs an upgrade:
 
 ```solidity

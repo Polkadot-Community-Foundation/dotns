@@ -281,6 +281,16 @@ forge test --match-path 'test/fork/**' -vvvvv
 
 If the deployment was intended to update a public environment, update the address tables in this file from the deployment manifest in the same change that updates the generated deployment JSON.
 
+### Two address files, two roles: network manifests and the expected set
+
+`deployments/<network>/<chainId>.json` is a **network record**: what is deployed on that live network right now. It is updated only by a real deploy or migration on that network, never by a code change. Everything that answers for reality reads these files: releases copy their addresses verbatim, and pointing tooling or the wire stage at an address with nothing behind it breaks whatever reads it.
+
+`deployments/expected.json` is the **expected set**: the addresses a fresh deploy of the current revision lands through the pinned CREATE3 factory. It is a property of the code, not of any network; the CI deploy job and `scripts/genesis/build-genesis.sh` verify against it, and releases never publish it.
+
+The two files can legitimately disagree: after a code change moves an address, the expected set carries the new address while every network manifest keeps the old one until that network actually redeploys. The difference between them is the migration backlog, readable as a diff, and it is resolved per network by the event that relocates the contract: a wipe-and-redeploy on a test network, a deliberate migration on one that never wipes.
+
+Before deploying to a live network, diff its manifest against `deployments/expected.json`. If any address diverges, run the pipeline against that network only as that planned wipe or migration: run outside it, the pipeline deploys the diverged contracts beside the live ones with empty state and repoints their registry keys, stranding any state behind the old addresses. After the planned deploy, commit the manifest it writes and update the address tables in this file in the same change.
+
 ## Name grants (whitelisting)
 
 Reserved registration is gated on `DotnsNameWhitelist`. A grant binds one label to one beneficiary address and is single use: `registerReserved` requires a grant naming `registration.owner`, spends it on the mint, and refuses a second attempt. See the [README economics section](./README.md#economics) for what a grant does and does not confer; this section covers the mechanics.
