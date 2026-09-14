@@ -356,10 +356,6 @@ contract DotnsRegistrarTests is BaseDotns {
         assertEq(afterPos.amount, before.amount);
     }
 
-    function test_version_string() public view {
-        assertEq(dotnsRegistrar.version(), "1.0.0");
-    }
-
     function test_initialize_cannot_be_called_twice() public {
         // OZ InvalidInitialization
         vm.expectRevert();

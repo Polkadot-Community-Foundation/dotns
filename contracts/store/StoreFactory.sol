@@ -145,7 +145,8 @@ contract StoreFactory is Ownable, IStoreFactory {
             AlreadyDeployed(msg.sender, _userStores[msg.sender])
         );
 
-        bytes memory initData = abi.encodeCall(IUserStore.initialize, (msg.sender));
+        bytes memory initData =
+            abi.encodeCall(IUserStore.initialize, (msg.sender, protocolRegistry));
         store = address(new BeaconProxy(userStoreBeacon, initData));
         require(IDotnsStore(store).owner() == msg.sender, ImplementationBindingMismatch());
         _userStores[msg.sender] = store;
@@ -185,10 +186,15 @@ contract StoreFactory is Ownable, IStoreFactory {
         emit UserStoreImplementationUpgraded(newImplementation);
     }
 
-    /// @notice Returns implementation version.
-    /// @return versionString Current version string.
-    function version() external pure virtual returns (string memory versionString) {
-        versionString = "1.0.0";
+    /// @notice Returns the release this network declares it runs, read live from the protocol
+    ///         registry so every DotNS contract reports one synchronised value.
+    /// @dev Mirror of `IDotnsProtocolRegistry.protocolVersion`, kept under the historical
+    ///      `version()` selector for ABI compatibility. It reports the network's declaration,
+    ///      not this contract's build; per-contract identity is the codehash declared on the
+    ///      registry.
+    /// @return versionString Declared release as bare semver, empty when never declared.
+    function version() external view virtual returns (string memory versionString) {
+        versionString = IDotnsProtocolRegistry(protocolRegistry).protocolVersion();
     }
 
     /// @notice Internal authorisation check deferred from the `onlyOwnerOrProtocol` modifier.

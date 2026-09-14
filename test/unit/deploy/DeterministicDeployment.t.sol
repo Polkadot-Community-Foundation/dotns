@@ -107,9 +107,11 @@ contract DeterministicDeploymentTest is Test {
         bytes memory first = template;
         bytes memory second = bytes.concat(template);
 
-        // `StoreFactory`'s first immutable range: 32 bytes at 509. Differ in exactly one byte,
-        // as two addresses sharing every other byte in that word would.
-        uint256 start = 509;
+        // `StoreFactory`'s first immutable range: 32 bytes at 460 (read it from
+        // `deployedBytecode.immutableReferences` in the artifact after a code change moves it).
+        // Differ in exactly one byte, as two addresses sharing every other byte in that word
+        // would.
+        uint256 start = 460;
         uint256 length = 32;
         second[start + 21] = second[start + 21] == bytes1(0x01) ? bytes1(0x02) : bytes1(0x01);
 
