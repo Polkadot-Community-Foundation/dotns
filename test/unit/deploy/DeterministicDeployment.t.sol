@@ -113,11 +113,12 @@ contract DeterministicDeploymentTest is Test {
         bytes memory first = template;
         bytes memory second = bytes.concat(template);
 
-        // `StoreFactory`'s first immutable range: 32 bytes at 1882, one of the two sites
-        // `UUPSUpgradeable.__self` is read from. Differ in exactly one byte, as two addresses
-        // sharing every other byte in that word would.
-        uint256 start = 1882;
-        uint256 length = 32;
+        // `StoreFactory`'s first immutable range, one of the sites `UUPSUpgradeable.__self`
+        // is read from. Taken from the artifact rather than hardcoded, so a code change moving
+        // it cannot stale this test. Differ in exactly one byte, as two addresses sharing
+        // every other byte in that word would.
+        (uint256 start, uint256 length) =
+            deployer.firstImmutableRange("StoreFactory.sol:StoreFactory");
         second[start + 21] = second[start + 21] == bytes1(0x01) ? bytes1(0x02) : bytes1(0x01);
 
         bool[] memory skip =

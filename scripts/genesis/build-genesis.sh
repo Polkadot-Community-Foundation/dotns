@@ -217,6 +217,25 @@ echo "Stages, from scripts/deploy/run.sh: $(printf '%s ' $STAGES)"
 # signer becomes the owner of every contract in the genesis storage, so it must stay the admin
 # key. Substituting the test key would hand control of a published genesis to a key printed in
 # Foundry's docs.
+# WireDeployments declares the release on the protocol registry and requires
+# DOTNS_RELEASE_TAG. This build runs the stages directly rather than through
+# run.sh, so it resolves the value itself: an explicit DOTNS_RELEASE_TAG wins,
+# then the publish workflows' RELEASE_TAG, then the tag the checkout sits
+# exactly on (a manual run of this script from a release tag must not bake a
+# placeholder into a genesis someone publishes), then 0.0.0 for genuinely
+# tag-less contexts such as the genesis-extractor CI, where the throwaway
+# chain's declaration is unmistakably not a release. Leading v stripped.
+if [ -z "${DOTNS_RELEASE_TAG:-}" ]; then
+    DOTNS_RELEASE_TAG="${RELEASE_TAG:-}"
+fi
+if [ -z "$DOTNS_RELEASE_TAG" ]; then
+    DOTNS_RELEASE_TAG="$(git describe --tags --exact-match 2>/dev/null || true)"
+fi
+DOTNS_RELEASE_TAG="${DOTNS_RELEASE_TAG#v}"
+: "${DOTNS_RELEASE_TAG:=0.0.0}"
+export DOTNS_RELEASE_TAG
+echo "Genesis declares protocol version: $DOTNS_RELEASE_TAG"
+
 echo "=== Baking TLD .$DOTNS_TLD into the genesis registry ==="
 for stage in $STAGES; do
     echo "  === $stage ==="
