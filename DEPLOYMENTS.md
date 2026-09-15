@@ -281,6 +281,16 @@ forge test --match-path 'test/fork/**' -vvvvv
 
 If the deployment was intended to update a public environment, update the address tables in this file from the deployment manifest in the same change that updates the generated deployment JSON.
 
+### Network manifests and the expected set
+
+`deployments/<network>/<chainId>.json` is a **network record**: what is deployed on that live network right now. It is updated only by a real deploy or migration on that network, never by a code change. Everything that answers for reality reads these files: releases copy their addresses verbatim, and pointing tooling or the wire stage at an address with nothing behind it breaks whatever reads it.
+
+`deployments/expected.json` is the **expected set**: the addresses a fresh deploy of the current revision lands through the pinned CREATE3 factory. It is a property of the code, not of any network; the CI deploy job and `scripts/genesis/build-genesis.sh` verify against it, and releases never publish it.
+
+The expected set can legitimately disagree with a network manifest: after a code change moves an address, the expected set carries the new address while every network manifest keeps the old one until that network actually redeploys. The difference between them is the migration backlog, readable as a diff, and it is resolved per network by the event that relocates the contract: a wipe-and-redeploy on a test network, a deliberate migration on one that never wipes.
+
+Before deploying to a live network, diff its manifest against `deployments/expected.json`. If any address diverges, run the pipeline against that network only as that planned wipe or migration: run outside it, the pipeline deploys the diverged contracts beside the live ones with empty state and repoints their registry keys, stranding any state behind the old addresses. After the planned deploy, commit the manifest it writes and update the address tables in this file in the same change.
+
 ## Name grants (whitelisting)
 
 Reserved registration is gated on `DotnsNameWhitelist`. A grant binds one label to one beneficiary address and is single use: `registerReserved` requires a grant naming `registration.owner`, spends it on the mint, and refuses a second attempt. See the [README economics section](./README.md#economics) for what a grant does and does not confer; this section covers the mechanics.
@@ -357,7 +367,7 @@ Choosing and changing addresses:
 - To intentionally move the entire address set (a clean re-deploy that must not collide with the previous one), bump `CREATE3_SALT_NAMESPACE` (`v1` becomes `v2`). Every address shifts together.
 - Do not reuse a `label` for a different contract. The wire stage and external tooling key off stable labels, so a reused label silently repoints them.
 
-Two other manifest entries are not CREATE3-derived: `LabelStoreBeacon` and `UserStoreBeacon`. They are deployed inside the `StoreFactory` constructor (and owned by it, so the factory owner can upgrade store implementations), so their addresses are `keccak(StoreFactory, nonce)`. They stay put across resets while `StoreFactory`'s bytecode is unchanged, but a change to that constructor can move them. This is deliberate: only the core CREATE3 contracts are guaranteed stable, so do not treat the beacon addresses as network-stable, read them from the manifest or the factory.
+Two other manifest entries are not CREATE3-derived: `LabelStoreBeacon` and `UserStoreBeacon`. They are deployed inside the `StoreFactory` initialiser, which runs by delegatecall from the proxy constructor, so they are owned by the `StoreFactory` proxy and their addresses are `keccak(StoreFactory proxy, nonce)`. Owning them from the proxy is what keeps store-implementation upgrades available across a factory upgrade: the beacons answer to an address whose logic can be replaced, rather than to the code deployed on day one. They stay put across resets while the initialiser is unchanged, but a change to it can move them. This is deliberate: only the core CREATE3 contracts are guaranteed stable, so do not treat the beacon addresses as network-stable, read them from the manifest or the factory.
 
 The one address that is not CREATE3-derived is the CREATE3 factory itself: it bootstraps the scheme, so it cannot deploy itself. The first deploy stage deploys it directly and records it on the protocol registry under the `CREATE3_FACTORY` key; every later stage resolves it from there rather than from an environment variable. Because every other address is derived from the factory's address, the factory must sit at the same address on each chain for the rest of the set to match. Deploy it as the deployer's first transaction on a fresh account (or through a deterministic singleton deployer) so its nonce-derived address is identical across chains.
 
@@ -374,9 +384,9 @@ Matching works in two steps, in `BaseDeployer._requireExpectedCode`:
 
 The reference copies are throwaway and are deployed with broadcasting paused, so they are never sent as transactions.
 
-That second step is what rejects a genuine artefact deployed against someone else's constructor arguments: a real `StoreFactory` pointed at an attacker's protocol registry has the right length and shape, and differs only in the values its constructor wrote.
+That second step is what rejects a genuine artefact deployed against someone else's constructor arguments: a real `DotnsPopLens` pointed at an attacker's protocol registry has the right length and shape, and differs only in the values its constructor wrote.
 
-**What the bytecode check cannot cover.** Immutables whose values are address-derived are indistinguishable between an honest deploy and any other, because they legitimately differ every time. `StoreFactory` is the case that matters: it deploys its own beacons, so `labelStoreBeacon` and `userStoreBeacon` differ on every deploy and are skipped by the comparison. Its `protocolRegistry`, which is an immutable set from a constructor argument, is part of that comparison. Its owner is not: `Ownable` keeps that in storage rather than in runtime code, so it is caught by the wire stage's `owner()` assertions instead.
+**What the bytecode check cannot cover.** Immutables whose values are address-derived are indistinguishable between an honest deploy and any other, because they legitimately differ every time. Only `UUPSUpgradeable.__self` is in that class now, and every UUPS implementation carries it, so the masking handles it uniformly. `StoreFactory` used to be the case that mattered, because it minted its own beacons into immutables; behind a proxy it holds the beacons and `protocolRegistry` in storage and carries no immutables of its own, so its implementation compares exactly. Immutables set from a constructor argument stay inside the comparison, which is what rejects an artefact built against someone else's addresses: `DotnsPopLens.protocolRegistry` and `DotnsFlatPricing.deposit` are the two that remain. An owner is never covered here, since `Ownable` keeps it in storage rather than runtime code; the wire stage's `owner()` assertions cover it instead.
 
 The beacons are checked separately. The verification stage asserts that each beacon's code is the `UpgradeableBeacon` artefact, that the factory owns it, and that its implementation is the `LabelStore` or `UserStore` artefact this release builds. None of the three contracts carries immutables, so each comparison is exact.
 

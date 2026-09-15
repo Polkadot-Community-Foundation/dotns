@@ -27,7 +27,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const CONTRACT_LIST = join(ROOT, ".github", "abi-contracts.txt");
 const CONSTANTS_SOL = join(ROOT, "contracts", "utils", "DotnsConstants.sol");
 
-// Deployed by the StoreFactory constructor, so no registry key points at them.
+// Deployed by the StoreFactory initialiser, so no registry key points at them.
 const UNVERIFIABLE = ["LabelStoreBeacon", "UserStoreBeacon"];
 
 // Keys the forward check tolerates as unset. Multicall3 is deliberately never registered:

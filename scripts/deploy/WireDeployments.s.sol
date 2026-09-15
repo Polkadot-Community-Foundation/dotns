@@ -264,8 +264,6 @@ contract WireDeployments is BaseDeployer {
             DotnsProtocolRegistry(addr.protocolRegistry).owner() == expectedOwner,
             "ProtocolRegistry: wrong owner"
         );
-        // Ownable rather than UUPS, so it sits outside the proxy list above, but it
-        // owns the beacons behind every user store and belongs in the same check.
         require(
             StoreFactory(addr.storeFactory).owner() == expectedOwner, "StoreFactory: wrong owner"
         );
@@ -317,7 +315,7 @@ contract WireDeployments is BaseDeployer {
             "PopController: not authorised"
         );
 
-        _verifyStoreImplementations(addr.storeFactory);
+        _verifyStoreImplementations(addr.storeFactory, addr.protocolRegistry);
 
         // Every declared codehash must match the code actually executing for its key, and no
         // key may be left undeclared, so the network never ships half-claimed.

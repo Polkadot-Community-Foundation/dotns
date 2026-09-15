@@ -195,10 +195,11 @@ consumer that reads them is lied to:
   (`upgradeLabelStoreImplementation` / `upgradeUserStoreImplementation`) moves
   no declared hash: `expectedCodehash(storeFactory)` covers the factory's own
   code only. Store code identity has to be audited through the beacons, not
-  via the registry declarations. Note also that this
-  release changed `UserStore.initialize`'s shape, so upgrading the user-store
-  beacon under a pre-existing factory breaks new claims: crossing this release
-  for stores means a fresh factory, which is wipe territory, not an upgrade.
+  via the registry declarations. Note also that this release changed
+  `UserStore.initialize`'s shape, so a user-store beacon upgrade that crosses
+  it must land together with a factory implementation upgrade (the factory is
+  a UUPS proxy owning its beacons): new store code with the old factory's
+  one-argument claim calldata breaks every claim that follows.
 - Declare the release last: `setProtocolVersion("X.Y.Z")` only once every
   upgraded contract verifies. An aborted upgrade then leaves the previous
   declaration standing (under-claiming, which clients handle) rather than a

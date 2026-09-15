@@ -4,6 +4,7 @@ pragma solidity ^0.8.34;
 import {Test} from "forge-std/Test.sol";
 
 import {Create3Factory} from "../../../contracts/deploy/Create3Factory.sol";
+import {DotnsPopLens} from "../../../contracts/registrars/DotnsPopLens.sol";
 import {DotnsRegistrar} from "../../../contracts/registrars/DotnsRegistrar.sol";
 import {DotnsRegistry} from "../../../contracts/registry/DotnsRegistry.sol";
 import {DotnsProtocolRegistry} from "../../../contracts/registry/DotnsProtocolRegistry.sol";
@@ -53,11 +54,17 @@ contract DeterministicDeploymentTest is Test {
         _assertAdoptionRejected("Multicall3.sol:Multicall3", "", "Multicall3");
     }
 
-    /// @notice The same rejection applies to an artefact carrying constructor-set immutables,
-    ///         which is the case the check cannot answer by codehash alone.
-    /// @dev `StoreFactory` bakes its beacon addresses into runtime code, so two honest deploys
-    ///      differ. The check masks the immutable ranges rather than comparing lengths: a length
-    ///      comparison accepts any occupant padded to the same size.
+    /// @notice The same rejection applies to an artefact carrying immutables, which is the case
+    ///         the check cannot answer by codehash alone.
+    /// @dev `StoreFactory` carries `UUPSUpgradeable.__self`, so two honest deploys of the
+    ///      implementation differ. The check masks the immutable ranges rather than comparing
+    ///      lengths: a length comparison accepts any occupant padded to the same size.
+    ///
+    ///      Synthetic fixture: production deploys `StoreFactory` behind a proxy through the
+    ///      `:implementation` and `:proxy` salts with `initialize`, so no stage uses this
+    ///      `:contract` salt or these constructor bytes any more. The rejection is salt-agnostic,
+    ///      which is what this pins; the production UUPS shape is covered by
+    ///      `StoreBeaconVerification` and the `_deployCore` suite below.
     function test_foreign_occupant_is_rejected_for_an_immutable_carrying_artefact() public {
         bytes32 salt = deployer.create3Salt("StoreFactory", "contract");
 
@@ -70,27 +77,26 @@ contract DeterministicDeploymentTest is Test {
         );
     }
 
-    /// @notice A real `StoreFactory` deployed against an attacker's constructor arguments is
+    /// @notice A real `DotnsPopLens` deployed against an attacker's constructor arguments is
     ///         rejected, not adopted.
     /// @dev The case bytecode comparison alone cannot answer. The occupant is the genuine
     ///      artefact, so its length and shape match; only the values its constructor baked in
-    ///      differ. Comparing against a reference built with this run's arguments catches it,
-    ///      while the beacons `StoreFactory` deploys itself vary on every honest deploy and are
-    ///      necessarily skipped.
+    ///      differ. Comparing against a reference built with this run's arguments catches it:
+    ///      `DotnsPopLens.protocolRegistry` is constructor-set, so it stays inside the
+    ///      comparison rather than being masked as address-derived.
     function test_same_artefact_with_foreign_constructor_args_is_rejected() public {
         address attacker = makeAddr("attacker");
         address realRegistry = address(new DotnsProtocolRegistry());
         address foreignRegistry = address(new DotnsProtocolRegistry());
 
-        bytes32 salt = deployer.create3Salt("StoreFactory", "contract");
+        bytes32 salt = deployer.create3Salt("DotnsPopLens", "contract");
         vm.prank(attacker);
         factory.deploy(
-            salt,
-            abi.encodePacked(type(StoreFactory).creationCode, abi.encode(foreignRegistry, attacker))
+            salt, abi.encodePacked(type(DotnsPopLens).creationCode, abi.encode(foreignRegistry))
         );
 
         _assertAdoptionRejected(
-            "StoreFactory.sol:StoreFactory", abi.encode(realRegistry, owner), "StoreFactory"
+            "DotnsPopLens.sol:DotnsPopLens", abi.encode(realRegistry), "DotnsPopLens"
         );
     }
 
@@ -107,11 +113,11 @@ contract DeterministicDeploymentTest is Test {
         bytes memory first = template;
         bytes memory second = bytes.concat(template);
 
-        // `StoreFactory`'s first immutable range: 32 bytes at 460 (read it from
-        // `deployedBytecode.immutableReferences` in the artifact after a code change moves it).
-        // Differ in exactly one byte, as two addresses sharing every other byte in that word
-        // would.
-        uint256 start = 460;
+        // `StoreFactory`'s first immutable range: 32 bytes at 2051, one of the two sites
+        // `UUPSUpgradeable.__self` is read from (recompute from the artifact's
+        // `deployedBytecode.immutableReferences` after a code change moves it). Differ in
+        // exactly one byte, as two addresses sharing every other byte in that word would.
+        uint256 start = 2051;
         uint256 length = 32;
         second[start + 21] = second[start + 21] == bytes1(0x01) ? bytes1(0x02) : bytes1(0x01);
 
@@ -128,20 +134,15 @@ contract DeterministicDeploymentTest is Test {
     /// @notice A resumed run adopts its own earlier deployment of an artefact carrying
     ///         immutables. The reject cases below exercise the reference-diff path; this is the
     ///         one that proves it still says yes to an honest resume.
-    /// @dev `StoreFactory` is the demanding case: its constructor deploys fresh beacons every
-    ///      time, so the second run's reference copies differ from the occupant exactly where
-    ///      the comparison must skip. A check that compared those bytes would force a salt bump
-    ///      on every interrupted run.
+    /// @dev `StoreFactory` is the demanding case: as a UUPS implementation it bakes its own
+    ///      address into `UUPSUpgradeable.__self`, so the second run's reference copies differ
+    ///      from the occupant exactly where the comparison must skip. A check that compared
+    ///      those bytes would force a salt bump on every interrupted run.
     function test_resume_adopts_an_immutable_carrying_artefact() public {
-        address protocolRegistry = address(new DotnsProtocolRegistry());
-        bytes memory constructorData = abi.encode(protocolRegistry, owner);
-
-        address first = deployer.deployCreate3(
-            owner, "StoreFactory.sol:StoreFactory", constructorData, "StoreFactory"
-        );
-        address second = deployer.deployCreate3(
-            owner, "StoreFactory.sol:StoreFactory", constructorData, "StoreFactory"
-        );
+        address first =
+            deployer.deployCreate3(owner, "StoreFactory.sol:StoreFactory", "", "StoreFactory");
+        address second =
+            deployer.deployCreate3(owner, "StoreFactory.sol:StoreFactory", "", "StoreFactory");
 
         assertEq(second, first, "an honest resume of an immutable artefact was not adopted");
     }
@@ -436,10 +437,10 @@ contract DeterministicDeploymentTest is Test {
         addr.multicall3 =
             deployer.deployCreate3(owner, "Multicall3.sol:Multicall3", bytes(""), "Multicall3");
 
-        addr.storeFactory = deployer.deployCreate3(
+        addr.storeFactory = deployer.deployUups(
             owner,
             "StoreFactory.sol:StoreFactory",
-            abi.encode(addr.protocolRegistry, owner),
+            abi.encodeCall(StoreFactory.initialize, (owner, addr.protocolRegistry)),
             "StoreFactory"
         );
 
