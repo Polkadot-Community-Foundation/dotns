@@ -38,6 +38,11 @@
 #   RPC_URL            Foundry rpc alias (see [rpc_endpoints] in foundry.toml)
 #                      or full https/wss URL. Defaults to `paseo_local`.
 #   ENV_FILE           Path to env file. Defaults to `.env`.
+#   DOTNS_TLD          Bare TLD label the protocol registry initialises with.
+#                      Required; no default (see below).
+#   DOTNS_RELEASE_TAG  Release the final stage declares on chain, bare semver.
+#                      Defaults to the tag the checkout sits exactly on;
+#                      required otherwise (see below).
 #
 # Extra forge flags are forwarded verbatim to every stage, e.g.
 #   ./scripts/deploy/run.sh '--slow --timeout 1000'

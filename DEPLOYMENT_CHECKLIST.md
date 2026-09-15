@@ -145,6 +145,10 @@ Confirm these keys are present:
 - [ ] `LabelStoreBeacon`
 - [ ] `UserStoreBeacon`
 - [ ] `Multicall3`
+- [ ] `Create3Factory`
+- [ ] `DotnsCostModelRegistry`
+- [ ] `DotnsFlatPricing`
+- [ ] `DotnsPopLens`
 
 The wiring stage already asserts every protocol-registry binding, so a green deploy means they
 are set. One is worth confirming by hand, because it is the only key whose absence surfaces to

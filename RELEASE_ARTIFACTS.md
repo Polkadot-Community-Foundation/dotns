@@ -127,5 +127,6 @@ The order for a release that changes contract code:
 2. Deploy that tag from [`dotns-releases`](https://github.com/paritytech/dotns-releases). Deploying a tag rather than a branch is what ties the addresses to the code that produced them.
 3. Record the resulting addresses in `deployments/<network>/<chain-id>.json`.
 4. Cut the release from a commit that differs from the deployed tag only by that record, and run `deployments:verify` against the network first.
+5. Re-declare the final tag on chain: the deploy declared the pre-release version (`protocolVersion()` returns e.g. `0.7.1-rc.1`), and the code is the same, so the owner runs `setProtocolVersion("0.7.1")` once the release exists. No codehash re-declaration is involved, since no code moved. `deployments:verify --tag` with the final tag confirms it.
 
 A release that changes no contract code needs none of this: nothing is deployed, addresses have not moved, and the existing record is still correct.
