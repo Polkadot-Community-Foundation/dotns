@@ -29,6 +29,7 @@ DotnsPopLens
 DotnsNameWhitelist
 DotnsCostModelRegistry
 DotnsFlatPricing
+Create3Factory
 
 IStoreFactory
 ILabelStore

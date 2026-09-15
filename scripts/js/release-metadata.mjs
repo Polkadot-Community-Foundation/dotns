@@ -655,9 +655,15 @@ function verify(args) {
   // The registry registers itself these days (so its implementation has a declared codehash),
   // but networks deployed before that carry no such key, so it stays tolerated here as
   // unpointed. Nothing points at the beacons on any network.
-  // Multicall3 is in the manifest for consumers but deliberately holds no registry key,
-  // so the reverse check must not read it as an orphan.
-  const unpointed = [registry, contracts.Multicall3, ...UNVERIFIABLE.map((label) => contracts[label])]
+  // Multicall3 is in the manifest for consumers but deliberately holds no registry key, and
+  // pricing models are reached through DotnsCostModelRegistry rather than a key of their own,
+  // so the reverse check must not read either as an orphan.
+  const unpointed = [
+    registry,
+    contracts.Multicall3,
+    contracts.DotnsFlatPricing,
+    ...UNVERIFIABLE.map((label) => contracts[label]),
+  ]
     .filter(Boolean)
     .map((address) => address.toLowerCase());
   const notExpected = new Set(unpointed);

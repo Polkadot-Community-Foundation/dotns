@@ -197,7 +197,7 @@ contract StoreFactory is Initializable, UUPSUpgradeable, OwnableUpgradeable, ISt
     /// @inheritdoc IStoreFactory
     function upgradeUserStoreImplementation(address newImplementation) external override onlyOwner {
         require(newImplementation != address(0), InvalidImplementation(newImplementation));
-        IUserStore(newImplementation).getKeyCount();
+        IUserStore(newImplementation).protocolRegistry();
         UpgradeableBeacon(userStoreBeacon).upgradeTo(newImplementation);
         emit UserStoreImplementationUpgraded(newImplementation);
     }
