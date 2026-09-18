@@ -11,8 +11,15 @@
 #
 # On return the following are set and exported:
 #   ACCOUNT_NAME, ACCOUNT_PASSWORD, RPC_URL, SENDER, CHAIN_ID
+# plus FORGE_DEPLOY_ARGS (forge broadcast flags) and CAST_SIGNER_ARGS (cast send
+# signer flags) for the resolved signer.
 #
 # Env vars honoured (read from `.env` if present, otherwise the shell):
+#   DEPLOY_SIGNER      keystore (default) or gcp. gcp signs with a Cloud KMS
+#                      key through forge/cast --gcp: no keystore, no password,
+#                      and the sender is read from the key. Requires
+#                      GCP_PROJECT_ID, GCP_LOCATION, GCP_KEY_RING, GCP_KEY_NAME;
+#                      GCP_KEY_VERSION defaults to 1.
 #   ACCOUNT_NAME       Foundry keystore account passed to forge as --account.
 #   ACCOUNT_PASSWORD   Keystore password. Prompted interactively when unset.
 #   PRIVATE_KEY        Deployer key, only needed to import a missing account.
@@ -50,6 +57,43 @@ fi
 : "${ACCOUNT_NAME:=dotns-deploy}"
 : "${RPC_URL:=paseo_local}"
 export ACCOUNT_NAME
+
+DEPLOY_SIGNER="${DEPLOY_SIGNER:-keystore}"
+
+if [ "$DEPLOY_SIGNER" = "gcp" ]; then
+  for _v in GCP_PROJECT_ID GCP_LOCATION GCP_KEY_RING GCP_KEY_NAME; do
+    if [ -z "${!_v:-}" ]; then
+      echo "DEPLOY_SIGNER=gcp requires $_v" >&2
+      exit 1
+    fi
+  done
+  # Every KMS path passes the mode/key/chain guard before touching the key.
+  # shellcheck source=scripts/deploy/_production.sh
+  . "$(dirname "${BASH_SOURCE[0]}")/_production.sh"
+  guard_chain_key
+  : "${GCP_KEY_VERSION:=1}"
+  # forge and cast read the key coordinates from the environment.
+  export GCP_PROJECT_ID GCP_LOCATION GCP_KEY_RING GCP_KEY_NAME GCP_KEY_VERSION
+  SENDER=$(cast wallet address --gcp)
+  # shellcheck disable=SC2034  # consumed by the sourcing scripts
+  CHAIN_ID=$(cast chain-id --rpc-url "$RPC_URL")
+  # shellcheck disable=SC2034  # consumed by the sourcing scripts
+  CAST_SIGNER_ARGS=(--gcp)
+  # shellcheck disable=SC2034  # consumed by the sourcing scripts (run.sh, factory.sh)
+  FORGE_DEPLOY_ARGS=(
+    --rpc-url "$RPC_URL"
+    --gcp
+    --sender "$SENDER"
+    --broadcast
+    --slow
+    --legacy
+    --gas-limit 1000000000
+  )
+  return 0
+elif [ "$DEPLOY_SIGNER" != "keystore" ]; then
+  echo "DEPLOY_SIGNER must be keystore or gcp (got '$DEPLOY_SIGNER')" >&2
+  exit 1
+fi
 
 # Prompt for the keystore password when it has not been supplied by `.env` or
 # the shell. Reading once keeps the prompt to a single keystroke even though
@@ -108,3 +152,5 @@ FORGE_DEPLOY_ARGS=(
   --legacy
   --gas-limit 1000000000
 )
+# shellcheck disable=SC2034  # consumed by the sourcing scripts
+CAST_SIGNER_ARGS=(--account "$ACCOUNT_NAME" --password "$ACCOUNT_PASSWORD")

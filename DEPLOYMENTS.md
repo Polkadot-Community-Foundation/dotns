@@ -457,6 +457,36 @@ deployments/paseo-local/420420420.json
 
 A manifest holds exactly one address per contract, the current one. Each deploy overwrites the entries it produces, so the file always describes the latest deployment for that network and never a history of them. Previous address sets exist only in this repository's git history. Nothing else is in there either: no implementation addresses behind the UUPS proxies, and no record of which commit was deployed.
 
+## Production (Polkadot Asset Hub)
+
+Production is deployed by `.github/workflows/deploy-production.yml` (manual dispatch, environment `production`; `devnet` for `mode=devnet`) from one Cloud KMS secp256k1 key, `contract-deployer`. The same key later deploys AccountDataStore, so DotNS must go first: its CREATE3 factory has to be the key's nonce-0 transaction. The deployer only pays and writes; ownership ends with the `dotns-owner` pure proxy.
+
+Inputs: `mode` (`fork` default, `live`, or `devnet`), `new_owner` (the H160 of `dotns-owner`), `sweep_to` (optional), `confirm` (`deploy dotns to polkadot`, required for `live`). Polkadot Asset Hub has no public ETH-RPC, so the job runs the eth-rpc adapter itself: against `SUBSTRATE_WS_URL` in `live`, against a chopsticks fork of live Asset Hub started in the job in `fork` (the key's fallback account is funded with 40 DOT through `dev_setStorage`). The adapter is built from `./dockerfile` unless the `ETH_RPC_IMAGE` variable names an image.
+
+The job runs these scripts, all from the repo root:
+
+| Step | Script | What it does |
+| --- | --- | --- |
+| Preflight | `scripts/deploy/preflight.sh` | Refuses unless: chain id 420420419 (420420417 for `devnet`), sender nonce 0 (eth and Substrate views), free balance ≥ `MIN_BALANCE_DOT` (40; 50 PAS for `devnet`), `NEW_OWNER` set, not zero, without code, and no address of the expected set has code. |
+| Deploy | `scripts/deploy/deployall.sh` | Factory, then the five stages, with `DOTNS_TLD=dot`, `DOTNS_RELEASE_TAG=0.8.0`. One key for factory and pipeline. |
+| Handover | `scripts/deploy/handover.sh` | `transferOwnership(NEW_OWNER)` on every manifest contract the sender owns, `DotnsProtocolRegistry` last, `owner()` asserted after each. Plans first and refuses unless the plan covers exactly `EXPECTED_HANDOVER_COUNT` (14) contracts; contracts already owned by `NEW_OWNER` count as done, so a re-run resumes. Never renounces. |
+| Verify | `scripts/deploy/verify-production.sh` | Read-only: manifest equals the expected set for the deployer, code at every address, the 14 owners equal `NEW_OWNER`, beacons owned by `StoreFactory`, then `VerifyProduction.s.sol` re-runs the `WireDeployments` checks and asserts the release and the TLD. |
+| Sweep | `scripts/deploy/sweep.sh` | Sends the leftover (minus the existential deposit and the max fee) to `SWEEP_TO`, only if `SWEEP_TO` is mapped (`Revive.OriginalAccount`). The same key deploys AccountDataStore after DotNS, so sweep only after that deploy (leave `sweep_to` empty on the DotNS run). An eth transfer to an unmapped H160 lands on its `0xEE` fallback account, which nobody controls for a Substrate-derived H160. |
+
+Outputs: `deployments/polkadot/420420419.json` (live; fork runs write `deployments/polkadot-rehearsal/`, devnet runs `deployments/pcf-devnet-ci/420420417.json`), the broadcast files, the logs and a cost summary from the deployer's Substrate `System.Account` balance, kept 90 days as a workflow artifact.
+
+**Signer.** Every script takes `DEPLOY_SIGNER`: `keystore` (default, the Foundry keystore flow above) or `gcp` (`forge`/`cast --gcp` with `GCP_PROJECT_ID`, `GCP_LOCATION`, `GCP_KEY_RING`, `GCP_KEY_NAME`, `GCP_KEY_VERSION`; the sender is read from the key).
+
+**Mode/key/chain guard.** A fork keeps Polkadot's genesis and chain id, so a signature made on it is valid on mainnet. Every KMS path (and preflight, handover, sweep with any signer) requires `DEPLOY_MODE` and checks the chain before touching the key: `fork` accepts only `*-rehearsal` keys and only on a chopsticks fork (`SUBSTRATE_RPC_URL` serves `dev_newBlock`); `live` accepts neither `*-rehearsal` nor `*-devnet` keys, never the keystore signer, and only on chain id 420420419 that is not a fork; `devnet` accepts only `*-devnet` keys (or the keystore signer), only on chain id 420420417 that is not a fork. Everything else is refused.
+
+**Devnet CI run (`mode=devnet`).** Proves the KMS + workload identity path on a real chain before production. The job runs in the `devnet` environment (its variables carry the devnet `GCP_*` settings and `GCP_WORKLOAD_IDENTITY_PROVIDER`/`GCP_SERVICE_ACCOUNT`) and signs with `contract-deployer-devnet`. No eth-rpc container: `RPC_URL` is the public `https://eth-rpc-testnet.polkadot.io` (override with the `ETH_RPC_URL` variable), `SUBSTRATE_WS_URL` defaults to `wss://asset-hub-paseo-rpc.n.dwellir.com`. The manifest goes to `deployments/pcf-devnet-ci/420420417.json`, so the real devnet set (`deployments/pcf-devnet/`) is never touched; `DOTNS_TLD=dot` is safe because the run lands a separate registry under a fresh factory address that nothing on devnet points at. No `confirm` is needed. Fund the key's fallback account with at least 50 PAS (55 recommended): the devnet gas price is 1e12 wei against 8e11 on Polkadot, and 40 DOT × 1.25 covers the worst case where every cost scales with it (the earlier devnet DotNS deploy spent ~32 PAS).
+
+**One run per key version.** The CREATE3 factory must be the key's nonce-0 transaction and preflight refuses any other nonce, so each key version deploys DotNS exactly once, in every mode. A second devnet run needs a new version of `contract-deployer-devnet` (set `GCP_KEY_VERSION` on the `devnet` environment) and new funding.
+
+**Expected set.** `scripts/deploy/expected-set.sh <deployer>` prints the address set a fresh deploy from that key lands, without a chain: factory = the deployer's nonce-0 CREATE, every other address = Solady CREATE3 over the `BaseDeployer` salt, beacons = CREATEs of the `StoreFactory` proxy at nonces 2 and 4. It reproduces `deployments/expected.json` for the CI factory key.
+
+**Local rehearsal.** `scripts/deploy/rehearse-fork.sh` runs preflight, deploy, handover, verify and sweep on a local chopsticks fork (ports `CHOPSTICKS_PORT`, `ETH_RPC_PORT`), with a fresh throwaway keystore key by default or `DEPLOY_SIGNER=gcp` and the rehearsal key. It prints the cost per step and moves the manifest and broadcasts into its `WORK_DIR`. `scripts/deploy/substrate.py` carries the Substrate reads (balances, mapping) and the fork funding.
+
 ## Troubleshooting
 
 If the adapter is not responding, confirm Docker is running and that port 8545 is free. The compose health check uses eth_chainId against http://localhost:8545.
