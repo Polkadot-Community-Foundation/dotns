@@ -43,6 +43,10 @@
 #   DOTNS_RELEASE_TAG  Release the final stage declares on chain, bare semver.
 #                      Defaults to the tag the checkout sits exactly on;
 #                      required otherwise (see below).
+#   DEPLOY_STAGE_ATTEMPTS
+#                      Attempts per stage (default 3, see _retry.sh). A failed
+#                      attempt restores the manifest, waits for the RPC and
+#                      re-runs the stage, which adopts what already landed.
 #
 # Extra forge flags are forwarded verbatim to every stage, e.g.
 #   ./scripts/deploy/run.sh '--slow --timeout 1000'
@@ -54,6 +58,9 @@ set -euo pipefail
 # deploy so both use identical account handling.
 # shellcheck source=scripts/deploy/_account.sh
 . "$(dirname "$0")/_account.sh"
+# Stage-level retry (DEPLOY_STAGE_ATTEMPTS, default 3).
+# shellcheck source=scripts/deploy/_retry.sh
+. "$(dirname "$0")/_retry.sh"
 
 # Pipeline-only default; .env has already been loaded by _account.sh.
 
@@ -176,8 +183,13 @@ validate_manifest_contracts() {
   local failed=0
   while read -r name addr; do
     [ -n "$name" ] || continue
-    code=$(cast code "$addr" --rpc-url "$RPC_URL")
-    if [ "$code" = "0x" ]; then
+    # A read that fails is a failed check, not an empty answer: this function
+    # runs in an `if`, where errexit is off and an unchecked failure would leave
+    # `code` empty and pass.
+    if ! code=$(cast code "$addr" --rpc-url "$RPC_URL"); then
+      echo "Could not read code for $name=$addr" >&2
+      failed=1
+    elif [ "$code" = "0x" ]; then
       echo "Manifest address has no code: $name=$addr" >&2
       failed=1
     fi
@@ -212,18 +224,47 @@ stages=(
   WireDeployments
 )
 
+# One attempt of the current stage: the forge run, then the manifest check.
+attempt_started=0
+run_stage_once() {
+  attempt_started=$(date +%s)
+  # shellcheck disable=SC2086
+  forge script "scripts/deploy/${stage}.s.sol:${stage}" "${common[@]}" $extra || return 1
+  validate_manifest_contracts
+}
+
+# Between attempts the manifest goes back to what it was before the stage, so
+# the next attempt starts from the same input. A re-run is safe only when the
+# failed attempt broadcast nothing, or everything it broadcast was confirmed:
+# the stage then re-reads the chain and adopts what is there. An attempt that
+# died with transactions unconfirmed is not re-run: a UUPS implementation may
+# have landed without its proxy, which BaseDeployer refuses to adopt
+# (_broadcastDeployUups, "implementation address already occupied while its
+# proxy is absent"), and a plain re-run would fail every attempt. The recovery
+# there is `forge script --resume`, which sends the unsent transactions of the
+# saved broadcast, followed by a plain re-run of the stage for the manifest.
+rollback_stage() {
+  restore_manifest "$manifest_backup"
+  echo "Restored manifest after failed stage: $stage" >&2
+  local file="broadcast/${stage}.s.sol/${CHAIN_ID}/run-latest.json" txs receipts
+  [ -f "$file" ] || return 0
+  # Only a file written by this attempt counts; an older run's file is not ours.
+  [ "$(stat -c %Y "$file")" -ge "$attempt_started" ] || return 0
+  txs=$(jq '.transactions | length' "$file")
+  receipts=$(jq '.receipts | length' "$file")
+  [ "$txs" -gt "$receipts" ] || return 0
+  echo "$stage broadcast $txs transaction(s), $receipts confirmed; not re-running the stage." >&2
+  echo "Recovery: send the rest with" >&2
+  echo "  forge script scripts/deploy/${stage}.s.sol:${stage} <same flags> --resume" >&2
+  echo "then re-run this script (the stage adopts what landed and rebuilds the manifest)." >&2
+  return 1
+}
+
 for stage in "${stages[@]}"; do
   echo "=== Running $stage ==="
   manifest_backup=$(backup_manifest)
-  # shellcheck disable=SC2086
-  if ! forge script "scripts/deploy/${stage}.s.sol:${stage}" "${common[@]}" $extra; then
-    restore_manifest "$manifest_backup"
-    echo "Restored manifest after failed stage: $stage" >&2
-    exit 1
-  fi
-  if ! validate_manifest_contracts; then
-    restore_manifest "$manifest_backup"
-    echo "Restored manifest after invalid stage output: $stage" >&2
+  if ! run_with_attempts "$stage" rollback_stage run_stage_once; then
+    echo "Stage failed: $stage" >&2
     exit 1
   fi
   # Stage succeeded; drop its rollback backup so successful runs leave no temp files.

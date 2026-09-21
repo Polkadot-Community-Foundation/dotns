@@ -60,6 +60,14 @@ export ACCOUNT_NAME
 
 DEPLOY_SIGNER="${DEPLOY_SIGNER:-keystore}"
 
+# Request-level RPC retries. forge retries a request only on HTTP 429/503 (alloy's
+# retry policy; a 502 or a refused connection is never retried), and only the
+# simulation provider honours these flags: the broadcast provider keeps forge's
+# built-in 8 x 0.8 s. These widen the simulation's 503 tolerance to 8 x 3 s.
+# Everything else (502, connection reset, adapter restart) is covered by the
+# stage-level retry in run.sh and factory.sh (DEPLOY_STAGE_ATTEMPTS).
+FORGE_RPC_RETRY_ARGS=(--fork-retries 8 --fork-retry-backoff 3000)
+
 if [ "$DEPLOY_SIGNER" = "gcp" ]; then
   for _v in GCP_PROJECT_ID GCP_LOCATION GCP_KEY_RING GCP_KEY_NAME; do
     if [ -z "${!_v:-}" ]; then
@@ -88,6 +96,7 @@ if [ "$DEPLOY_SIGNER" = "gcp" ]; then
     --slow
     --legacy
     --gas-limit 1000000000
+    "${FORGE_RPC_RETRY_ARGS[@]}"
   )
   return 0
 elif [ "$DEPLOY_SIGNER" != "keystore" ]; then
@@ -151,6 +160,7 @@ FORGE_DEPLOY_ARGS=(
   --slow
   --legacy
   --gas-limit 1000000000
+  "${FORGE_RPC_RETRY_ARGS[@]}"
 )
 # shellcheck disable=SC2034  # consumed by the sourcing scripts
 CAST_SIGNER_ARGS=(--account "$ACCOUNT_NAME" --password "$ACCOUNT_PASSWORD")
