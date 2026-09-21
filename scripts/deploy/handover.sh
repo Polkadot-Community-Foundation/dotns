@@ -10,7 +10,7 @@
 # EXPECTED_HANDOVER_COUNT (default 14).
 #
 # Usage:
-#   DEPLOY_MODE=fork|live|devnet NEW_OWNER=0x... RPC_URL=... scripts/deploy/handover.sh
+#   DEPLOY_MODE=devnet|live|fork NEW_OWNER=0x... RPC_URL=... scripts/deploy/handover.sh
 #
 # Env vars:
 #   MANIFEST                  Default deployments/${DEPLOYMENT_NETWORK:-polkadot}/<chain id>.json.

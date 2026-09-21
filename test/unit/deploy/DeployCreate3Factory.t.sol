@@ -26,7 +26,7 @@ contract DeployCreate3FactoryTest is Test {
         vm.prank(deployer);
         vm.expectRevert(
             bytes(
-                "DeployCreate3Factory: deployer nonce is not 0; use a single-purpose key so the factory address is reproducible across chain resets"
+                "DeployCreate3Factory: deployer nonce is 5, expected FACTORY_NONCE=0; the factory address is nonce-derived, so use a single-purpose key at nonce 0 (or set FACTORY_NONCE to the key's current nonce)"
             )
         );
         script.run();

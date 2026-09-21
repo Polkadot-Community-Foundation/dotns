@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # One-command deploy. Ensures the CREATE3 factory exists (deployed once from the
-# factory key at nonce 0, a deterministic address), then runs the full pipeline
+# factory key at nonce FACTORY_NONCE, default 0, a deterministic address), then
+# runs the full pipeline
 # reusing that factory. Because every DotNS address derives from the factory
 # address, and the factory address is the same on every fresh chain, this
 # reproduces the same address set across resets and networks.
@@ -13,7 +14,9 @@
 # Everything is configured from .env (see .env.example). ACCOUNT_NAME is the
 # pipeline keystore; FACTORY_ACCOUNT is the factory keystore and defaults to
 # ACCOUNT_NAME (a single-key setup). Keep the factory key single-purpose so its
-# nonce stays 0 on each fresh chain.
+# nonce stays 0 on each fresh chain. FACTORY_NONCE (default 0) is the nonce the
+# factory deploys at; devnet runs from a used key set it to the key's current
+# nonce (preflight.sh prints it).
 #
 # Usage:
 #   bun run deploy:all
@@ -36,6 +39,10 @@ fi
 factory_account="${FACTORY_ACCOUNT:-${ACCOUNT_NAME:-dotns-factory}}"
 factory_password="${FACTORY_PASSWORD:-${ACCOUNT_PASSWORD:-}}"
 factory_private_key="${FACTORY_PRIVATE_KEY:-${PRIVATE_KEY:-}}"
+
+# Exported so factory.sh and DeployCreate3Factory (forge) read the same value,
+# whether it came from the shell or from .env.
+export FACTORY_NONCE="${FACTORY_NONCE:-0}"
 
 # 1. Deploy or confirm the CREATE3 factory, capturing its address.
 factory_out=$(mktemp "${TMPDIR:-/tmp}/dotns-factory.XXXXXX")

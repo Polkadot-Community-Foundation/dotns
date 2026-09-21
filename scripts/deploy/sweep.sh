@@ -11,7 +11,7 @@
 # set, must equal the mapped AccountId32.
 #
 # Usage:
-#   DEPLOY_MODE=fork|live|devnet SWEEP_TO=0x... SUBSTRATE_RPC_URL=... RPC_URL=... \
+#   DEPLOY_MODE=devnet|live|fork SWEEP_TO=0x... SUBSTRATE_RPC_URL=... RPC_URL=... \
 #     scripts/deploy/sweep.sh
 #
 # Env vars:
