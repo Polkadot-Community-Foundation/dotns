@@ -7,7 +7,8 @@
 # Plans before sending: a contract already owned by NEW_OWNER counts as done
 # (so a re-run resumes), one owned by the sender is transferred, anything else
 # is skipped. The run refuses unless done + to-transfer equals
-# EXPECTED_HANDOVER_COUNT (default 14).
+# EXPECTED_HANDOVER_COUNT (default 14). A set already handed over in full is a
+# success with nothing sent.
 #
 # Usage:
 #   DEPLOY_MODE=devnet|live|fork NEW_OWNER=0x... RPC_URL=... scripts/deploy/handover.sh
@@ -61,6 +62,10 @@ done
 total=$((done_count + ${#todo[@]}))
 [ "$total" = "$expected_count" ] \
   || die "plan covers $total owned contracts ($done_count done, ${#todo[@]} to transfer), expected $expected_count; refusing"
+if [ "${#todo[@]}" = "0" ]; then
+  echo "=== Handover already complete: all $done_count contracts owned by $NEW_OWNER, nothing to send ==="
+  exit 0
+fi
 
 for name in "${todo[@]}"; do
   addr=$(jq -r --arg n "$name" '.[$n]' "$MANIFEST")

@@ -4,8 +4,11 @@ name: Deploy Production (Polkadot Asset Hub)
 # set to devnet Asset Hub with the contract-deployer-devnet key (environment
 # devnet); mode=live deploys to Polkadot Asset Hub with contract-deployer
 # (environment production). No fork mode here: rehearse locally with
-# scripts/deploy/rehearse-fork.sh. See "Production (Polkadot Asset Hub)" in
-# DEPLOYMENTS.md.
+# scripts/deploy/rehearse-fork.sh. steps picks what one dispatch runs: all
+# (preflight, deploy, handover, verify, sweep when sweep_to is set) or one of
+# deploy, handover, verify, sweep; the standalone steps rebuild the set from
+# the key and factory_nonce and check it on chain first. See "Production
+# (Polkadot Asset Hub)" in DEPLOYMENTS.md.
 
 on:
   workflow_dispatch:
@@ -19,8 +22,18 @@ on:
         description: "H160 of the dotns-owner pure proxy; receives ownership of the 14 owned contracts"
         required: true
         type: string
+      steps:
+        description: "all (preflight, deploy, handover, verify, sweep if sweep_to) or one step: deploy (preflight, deploy, verify as deployer-owned), handover (handover, verify), verify, sweep"
+        type: choice
+        options: [all, deploy, handover, verify, sweep]
+        default: all
+      factory_nonce:
+        description: "Standalone steps only: the key nonce the factory was deployed at (the set is rebuilt from it). live accepts only 0"
+        required: false
+        type: string
+        default: "0"
       sweep_to:
-        description: "Optional mapped H160 for the leftover. Leave empty when AccountDataStore still deploys from this key after DotNS"
+        description: "Mapped H160 for the leftover; required for steps=sweep, optional otherwise. Leave empty when AccountDataStore still deploys from this key after DotNS"
         required: false
         type: string
         default: ""
@@ -56,6 +69,8 @@ jobs:
         shell: bash
     env:
       DEPLOY_MODE: ${{ inputs.mode }}
+      DEPLOY_STEPS: ${{ inputs.steps }}
+      FACTORY_NONCE_INPUT: ${{ inputs.factory_nonce }}
       DEPLOY_SIGNER: gcp
       NEW_OWNER: ${{ inputs.new_owner }}
       SWEEP_TO: ${{ inputs.sweep_to }}
@@ -90,6 +105,16 @@ jobs:
           fi
           if [ "$DEPLOY_MODE" = "live" ] && [ "$CONFIRM" != "deploy dotns to polkadot" ]; then
             fail 'mode=live requires confirm = "deploy dotns to polkadot"'
+          fi
+          [[ "$FACTORY_NONCE_INPUT" =~ ^[0-9]+$ ]] || fail "factory_nonce is not a non-negative integer"
+          if [ "$DEPLOY_MODE" = "live" ] && [ "$FACTORY_NONCE_INPUT" != "0" ]; then
+            fail "mode=live: the factory is the key's nonce-0 transaction, factory_nonce must be 0"
+          fi
+          if [ "$DEPLOY_STEPS" = "sweep" ] && [ -z "$SWEEP_TO" ]; then
+            fail "steps=sweep requires sweep_to"
+          fi
+          if [ "$DEPLOY_RESUME" = "1" ] && [ "$DEPLOY_STEPS" != "all" ] && [ "$DEPLOY_STEPS" != "deploy" ]; then
+            fail "resume applies to steps=all or deploy only"
           fi
           env_name=devnet
           if [ "$DEPLOY_MODE" = "live" ]; then env_name=production; fi
@@ -146,32 +171,69 @@ jobs:
           done
           echo "eth-rpc chain id $(cast chain-id --rpc-url "$RPC_URL")"
 
+      # Each step records its wall-clock time (logs/elapsed-<step>, bash SECONDS) for
+      # the summary, and the balance it ends with.
       - name: Preflight
+        if: inputs.steps == 'all' || inputs.steps == 'deploy'
         run: |
+          trap 'echo $SECONDS > logs/elapsed-preflight' EXIT
           python3 scripts/deploy/substrate.py account "$DEPLOYER" --rpc "$SUBSTRATE_RPC_URL" \
             | jq -r .free > logs/balance-before
           scripts/deploy/preflight.sh 2>&1 | tee logs/preflight.log
           # devnet may deploy from a used key: the factory sits at the key's current nonce.
           grep '^FACTORY_NONCE=' logs/preflight.log | tail -1 >> "$GITHUB_ENV"
 
-      - name: Deploy (factory + five stages)
+      # A standalone step has no manifest from the deploy run: rebuild the set from
+      # the key and factory_nonce, check the code on chain, write the manifest.
+      - name: Rebuild the manifest from the chain
+        if: inputs.steps == 'handover' || inputs.steps == 'verify' || inputs.steps == 'sweep'
+        env:
+          FACTORY_NONCE: ${{ inputs.factory_nonce }}
         run: |
-          scripts/deploy/deployall.sh > logs/deploy.log 2>&1 || { tail -80 logs/deploy.log; exit 1; }
+          trap 'echo $SECONDS > logs/elapsed-rebuild' EXIT
+          python3 scripts/deploy/substrate.py account "$DEPLOYER" --rpc "$SUBSTRATE_RPC_URL" \
+            | jq -r .free > logs/balance-before
+          scripts/deploy/rebuild-manifest.sh 2>&1 | tee logs/rebuild-manifest.log
+          echo "FACTORY_NONCE=$FACTORY_NONCE" >> "$GITHUB_ENV"
+
+      # The full forge output goes to logs/deploy.log; the job log gets the stage
+      # headers, estimates, errors and, from a watcher, every landed transaction
+      # plus a heartbeat (nonce, balance) every 30 s.
+      - name: Deploy (factory + five stages)
+        if: inputs.steps == 'all' || inputs.steps == 'deploy'
+        run: |
+          trap 'echo $SECONDS > logs/elapsed-deploy; kill "$watcher" 2>/dev/null; wait "$watcher" 2>/dev/null || true' EXIT
+          python3 scripts/deploy/progress.py watch --deployer "$DEPLOYER" --substrate-rpc "$SUBSTRATE_RPC_URL" \
+            --eth-rpc "$RPC_URL" --chain-id "$EXPECTED_CHAIN_ID" --unit "$NATIVE_UNIT" --since "$(date +%s)" &
+          watcher=$!
+          scripts/deploy/deployall.sh 2>&1 | tee logs/deploy.log | python3 scripts/deploy/progress.py filter \
+            || { tail -80 logs/deploy.log | cut -c1-400; exit 1; }
           python3 scripts/deploy/substrate.py account "$DEPLOYER" --rpc "$SUBSTRATE_RPC_URL" \
             | jq -r .free > logs/balance-deployed
 
       - name: Handover to dotns-owner
+        if: inputs.steps == 'all' || inputs.steps == 'handover'
         run: |
+          trap 'echo $SECONDS > logs/elapsed-handover; kill "$watcher" 2>/dev/null; wait "$watcher" 2>/dev/null || true' EXIT
+          python3 scripts/deploy/progress.py watch --deployer "$DEPLOYER" --substrate-rpc "$SUBSTRATE_RPC_URL" \
+            --eth-rpc "$RPC_URL" --chain-id "$EXPECTED_CHAIN_ID" --unit "$NATIVE_UNIT" --since "$(date +%s)" &
+          watcher=$!
           scripts/deploy/handover.sh 2>&1 | tee logs/handover.log
           python3 scripts/deploy/substrate.py account "$DEPLOYER" --rpc "$SUBSTRATE_RPC_URL" \
             | jq -r .free > logs/balance-handed-over
 
+      # steps=deploy verifies the set as the deployer still owns it.
       - name: Verify
-        run: scripts/deploy/verify-production.sh 2>&1 | tee logs/verify.log
+        if: inputs.steps != 'sweep'
+        run: |
+          trap 'echo $SECONDS > logs/elapsed-verify' EXIT
+          if [ "$DEPLOY_STEPS" = "deploy" ]; then export EXPECTED_OWNER="$DEPLOYER"; fi
+          scripts/deploy/verify-production.sh 2>&1 | tee logs/verify.log
 
       - name: Sweep
-        if: inputs.sweep_to != ''
+        if: (inputs.steps == 'all' && inputs.sweep_to != '') || inputs.steps == 'sweep'
         run: |
+          trap 'echo $SECONDS > logs/elapsed-sweep' EXIT
           scripts/deploy/sweep.sh 2>&1 | tee logs/sweep.log
           python3 scripts/deploy/substrate.py account "$DEPLOYER" --rpc "$SUBSTRATE_RPC_URL" \
             | jq -r .free > logs/balance-after
@@ -187,7 +249,7 @@ jobs:
           after=$(read_balance balance-after)
           manifest="deployments/$DEPLOYMENT_NETWORK/$EXPECTED_CHAIN_ID.json"
           {
-            echo "### DotNS $DEPLOY_MODE deploy"
+            echo "### DotNS $DEPLOY_MODE deploy (steps: $DEPLOY_STEPS)"
             echo ""
             echo "Deployer \`$DEPLOYER\` ($GCP_KEY_NAME, factory nonce ${FACTORY_NONCE:-?}$([ "$DEPLOY_RESUME" = "1" ] && echo ", resumed")), new owner \`$NEW_OWNER\`, chain $EXPECTED_CHAIN_ID, manifest \`$manifest\`."
             echo ""
@@ -195,8 +257,18 @@ jobs:
             echo "|---|---:|"
             if [ -n "$before" ]; then echo "| Balance before | $(dot "$before") |"; fi
             if [ -n "$deployed" ]; then echo "| Deploy spend | $(dot "$((before - deployed))") |"; fi
-            if [ -n "$handed" ]; then echo "| Handover spend | $(dot "$((deployed - handed))") |"; fi
+            # Standalone handover: the spend counts from the balance before the step.
+            if [ -n "$handed" ]; then echo "| Handover spend | $(dot "$((${deployed:-$before} - handed))") |"; fi
             if [ -n "$after" ]; then echo "| Balance after sweep | $(dot "$after") |"; fi
+            echo ""
+            echo "| Step | Time |"
+            echo "|---|---:|"
+            for step in preflight rebuild deploy handover verify sweep; do
+              if [ -s "logs/elapsed-$step" ]; then
+                s=$(cat "logs/elapsed-$step")
+                echo "| $step | $((s / 60))m $((s % 60))s |"
+              fi
+            done
             if [ -f "$manifest" ]; then
               echo ""
               echo "| Contract | Address |"
