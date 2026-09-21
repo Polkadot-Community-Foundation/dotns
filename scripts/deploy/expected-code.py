@@ -2,7 +2,7 @@
 """Checks occupied expected-set addresses against the code the pipeline deploys there.
 
 Usage:
-    expected-code.py --rpc <eth-rpc url> [--out <foundry out dir>] <expected-set json>
+    expected-code.py --rpc <eth-rpc url> [--out <foundry out dir>] [--ignore-metadata] <expected-set json>
 
 Reads the expected set (name -> address, the shape of expected-set.sh's output)
 and, for every address, compares the runtime code on chain with the artefact
@@ -13,6 +13,11 @@ both sides (an immutable holding an address differs on every honest deploy);
 everything else must match exactly. The stage that later adopts the address
 re-checks it against this run's constructor arguments (BaseDeployer), so this
 is the pre-screen and the stage is the authority.
+
+`--ignore-metadata` also masks the CBOR metadata trailer (the compiler's
+source and settings hash, which differs between build environments of the same
+sources, e.g. in the remappings a checkout auto-detects). The standalone steps
+use it to confirm a set is the pipeline's, where nothing adopts the code.
 
 Prints one line per address: `empty`, `ok` or `MISMATCH`. Exits 1 when any
 address holds code that is not the expected artefact.
@@ -40,7 +45,8 @@ def eth_get_code(rpc, address):
     body = json.dumps(
         {"jsonrpc": "2.0", "id": 1, "method": "eth_getCode", "params": [address, "latest"]}
     ).encode()
-    req = urllib.request.Request(rpc, body, {"content-type": "application/json"})
+    # The public devnet ETH-RPC answers 403 to urllib's default user agent.
+    req = urllib.request.Request(rpc, body, {"content-type": "application/json", "user-agent": "dotns-deploy"})
     with urllib.request.urlopen(req, timeout=60) as resp:
         reply = json.load(resp)
     if "error" in reply:
@@ -71,10 +77,19 @@ def masked(code, ranges):
     return bytes(code)
 
 
+def without_metadata(code):
+    """Runtime code with the CBOR metadata trailer zeroed (its length is the last two bytes)."""
+    length = int.from_bytes(code[-2:], "big") + 2
+    if length > len(code):
+        return code
+    return code[:-length] + bytes(length)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--rpc", required=True)
     parser.add_argument("--out", default="out")
+    parser.add_argument("--ignore-metadata", action="store_true")
     parser.add_argument("expected", help="expected-set JSON file, or - for stdin")
     args = parser.parse_args()
 
@@ -94,6 +109,12 @@ def main():
         reference, ranges = artefact_code(args.out, artefact)
         if len(onchain) == len(reference) and masked(onchain, ranges) == reference:
             print(f"ok        {name} {address} ({artefact})")
+        elif (
+            args.ignore_metadata
+            and len(onchain) == len(reference)
+            and without_metadata(masked(onchain, ranges)) == without_metadata(reference)
+        ):
+            print(f"ok        {name} {address} ({artefact}, metadata differs)")
         else:
             mismatches += 1
             print(

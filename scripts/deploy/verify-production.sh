@@ -5,7 +5,9 @@
 #     entry (so the check does not depend on the deployer's nonce after the
 #     run); with FACTORY_NONCE set, that factory is DEPLOYER's CREATE at it;
 #   - every manifest address has code;
-#   - the 14 owned contracts answer owner() == NEW_OWNER, none answers DEPLOYER;
+#   - the 14 owned contracts answer owner() == EXPECTED_OWNER (NEW_OWNER by
+#     default; DEPLOYER for a set deployed and not yet handed over), and none
+#     answers DEPLOYER unless it is the expected owner;
 #   - both store beacons are owned by StoreFactory;
 #   - VerifyProduction.s.sol re-runs WireDeployments' checks (owners,
 #     controllers, protocol-registry keys, declared codehashes, beacons and
@@ -16,6 +18,7 @@
 #
 # Env vars:
 #   MANIFEST            Default deployments/${DEPLOYMENT_NETWORK:-polkadot}/<chain id>.json.
+#   EXPECTED_OWNER      Owner the 14 contracts must answer; default NEW_OWNER.
 #   FACTORY_NONCE       Optional; the nonce DEPLOYER deployed the factory at.
 #   DOTNS_RELEASE_TAG   Default 0.8.0.
 #   DOTNS_TLD           Bare TLD label, default dot.
@@ -28,6 +31,8 @@ here="$(cd "$(dirname "$0")" && pwd)"
 
 require_h160 DEPLOYER "${DEPLOYER:-}"
 require_h160 NEW_OWNER "${NEW_OWNER:-}"
+EXPECTED_OWNER="${EXPECTED_OWNER:-$NEW_OWNER}"
+require_h160 EXPECTED_OWNER "$EXPECTED_OWNER"
 : "${RPC_URL:?RPC_URL is required}"
 release="${DOTNS_RELEASE_TAG:-0.8.0}"
 release="${release#v}"
@@ -43,7 +48,7 @@ fail() {
   failed=1
 }
 
-echo "=== Verify $MANIFEST (chain $chain_id) ==="
+echo "=== Verify $MANIFEST (chain $chain_id, expected owner $EXPECTED_OWNER) ==="
 
 addresses() {
   jq -S 'with_entries(select(.key | startswith("_") | not))' "$1"
@@ -72,14 +77,16 @@ for name in "${OWNED_CONTRACTS[@]}"; do
   addr=$(jq -r --arg n "$name" '.[$n] // empty' "$MANIFEST")
   [ -n "$addr" ] || { fail "manifest has no $name"; continue; }
   owner=$(owner_of "$addr")
-  same_address "$owner" "$NEW_OWNER" || fail "$name owner is $owner, expected $NEW_OWNER"
+  same_address "$owner" "$EXPECTED_OWNER" || fail "$name owner is $owner, expected $EXPECTED_OWNER"
 done
 echo "ok  owner() checked on ${#OWNED_CONTRACTS[@]} contracts"
 
-while read -r name addr; do
-  owner=$(owner_of "$addr")
-  ! same_address "$owner" "$DEPLOYER" || fail "$name is still owned by the deployer"
-done < <(addresses "$MANIFEST" | jq -r 'to_entries[] | "\(.key) \(.value)"')
+if ! same_address "$EXPECTED_OWNER" "$DEPLOYER"; then
+  while read -r name addr; do
+    owner=$(owner_of "$addr")
+    ! same_address "$owner" "$DEPLOYER" || fail "$name is still owned by the deployer"
+  done < <(addresses "$MANIFEST" | jq -r 'to_entries[] | "\(.key) \(.value)"')
+fi
 
 store_factory=$(jq -r .StoreFactory "$MANIFEST")
 for beacon in LabelStoreBeacon UserStoreBeacon; do
@@ -92,7 +99,7 @@ echo "ok  beacon owners checked"
 DEPLOYMENT_NETWORK="$(basename "$(dirname "$MANIFEST")")"
 export DEPLOYMENT_NETWORK
 if ! forge script scripts/deploy/VerifyProduction.s.sol:VerifyProduction \
-  --sig 'verify(address,string,string)' "$NEW_OWNER" "$release" ".$tld" \
+  --sig 'verify(address,string,string)' "$EXPECTED_OWNER" "$release" ".$tld" \
   --rpc-url "$RPC_URL" -vv; then
   fail "VerifyProduction.s.sol (WireDeployments checks, release $release, TLD .$tld)"
 fi

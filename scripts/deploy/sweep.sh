@@ -10,11 +10,15 @@
 # sweep therefore refuses an unmapped SWEEP_TO, and SWEEP_TO_ACCOUNT_ID, when
 # set, must equal the mapped AccountId32.
 #
+# Runs last: refuses while the sender still owns any of the manifest's owned
+# contracts (hand over first).
+#
 # Usage:
 #   DEPLOY_MODE=devnet|live|fork SWEEP_TO=0x... SUBSTRATE_RPC_URL=... RPC_URL=... \
 #     scripts/deploy/sweep.sh
 #
 # Env vars:
+#   MANIFEST              Default deployments/${DEPLOYMENT_NETWORK:-polkadot}/<chain id>.json.
 #   SWEEP_TO_ACCOUNT_ID   Optional 0x AccountId32 the mapping must resolve to.
 #   SWEEP_KEEP_PLANCK     Left on the deployer on top of the max fee. Default
 #                         100000000 (0.01 DOT, the Asset Hub existential deposit;
@@ -34,6 +38,22 @@ require_h160 SWEEP_TO "${SWEEP_TO:-}"
 . "$here/_account.sh"
 
 ! same_address "$SWEEP_TO" "$SENDER" || die "SWEEP_TO is the sender"
+
+# The sweep is the last step: the sender must not own the set any more.
+MANIFEST="${MANIFEST:-deployments/${DEPLOYMENT_NETWORK:-polkadot}/$CHAIN_ID.json}"
+[ -f "$MANIFEST" ] || die "manifest not found: $MANIFEST (needed to check the set was handed over)"
+still_owned=0
+for name in "${OWNED_CONTRACTS[@]}"; do
+  addr=$(jq -r --arg n "$name" '.[$n] // empty' "$MANIFEST")
+  [ -n "$addr" ] || die "manifest has no $name"
+  if same_address "$(owner_of "$addr")" "$SENDER"; then
+    echo "FAIL $name $addr is still owned by the sender" >&2
+    still_owned=$((still_owned + 1))
+  fi
+done
+[ "$still_owned" = "0" ] \
+  || die "the sender still owns $still_owned of ${#OWNED_CONTRACTS[@]} contracts: hand over first (handover.sh)"
+echo "ok  the sender owns none of the ${#OWNED_CONTRACTS[@]} owned contracts ($MANIFEST)"
 
 target_account=$(substrate_mapped "$SWEEP_TO")
 [ -n "$target_account" ] \
