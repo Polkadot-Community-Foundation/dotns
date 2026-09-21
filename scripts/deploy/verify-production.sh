@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 #
 # Read-only post-handover verification. Fails on any mismatch:
-#   - the manifest equals the expected set computed for DEPLOYER;
+#   - the manifest equals the expected set derived from its own Create3Factory
+#     entry (so the check does not depend on the deployer's nonce after the
+#     run); with FACTORY_NONCE set, that factory is DEPLOYER's CREATE at it;
 #   - every manifest address has code;
 #   - the 14 owned contracts answer owner() == NEW_OWNER, none answers DEPLOYER;
 #   - both store beacons are owned by StoreFactory;
@@ -14,6 +16,7 @@
 #
 # Env vars:
 #   MANIFEST            Default deployments/${DEPLOYMENT_NETWORK:-polkadot}/<chain id>.json.
+#   FACTORY_NONCE       Optional; the nonce DEPLOYER deployed the factory at.
 #   DOTNS_RELEASE_TAG   Default 0.8.0.
 #   DOTNS_TLD           Bare TLD label, default dot.
 
@@ -45,11 +48,18 @@ echo "=== Verify $MANIFEST (chain $chain_id) ==="
 addresses() {
   jq -S 'with_entries(select(.key | startswith("_") | not))' "$1"
 }
-expected=$("$here/expected-set.sh" "$DEPLOYER")
+factory=$(jq -r '.Create3Factory // empty' "$MANIFEST")
+[ -n "$factory" ] || die "manifest has no Create3Factory"
+if [ -n "${FACTORY_NONCE:-}" ]; then
+  from_deployer=$(cast compute-address --nonce "$FACTORY_NONCE" "$DEPLOYER" | awk '{print $NF}')
+  same_address "$factory" "$from_deployer" \
+    || fail "Create3Factory $factory is not $DEPLOYER's CREATE at nonce $FACTORY_NONCE ($from_deployer)"
+fi
+expected=$("$here/expected-set.sh" --factory "$factory")
 if diff <(jq -S . <<<"$expected") <(addresses "$MANIFEST") >/dev/null; then
-  echo "ok  manifest equals the expected set for $DEPLOYER"
+  echo "ok  manifest equals the expected set for factory $factory"
 else
-  fail "manifest differs from the expected set for $DEPLOYER:"
+  fail "manifest differs from the expected set for factory $factory:"
   diff <(jq -S . <<<"$expected") <(addresses "$MANIFEST") >&2 || true
 fi
 

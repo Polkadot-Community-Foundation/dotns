@@ -5,9 +5,10 @@
 # `set -euo pipefail` first.
 #
 # Env vars:
-#   DEPLOY_MODE        fork, live or devnet. Required.
+#   DEPLOY_MODE        devnet, live or fork. Required.
 #   DEPLOY_SIGNER      keystore (default) or gcp; see _account.sh.
 #   GCP_KEY_NAME       KMS key name, checked against DEPLOY_MODE and the chain.
+#   CHAIN_ID           Set by _account.sh; native_unit falls back to the mode.
 #   RPC_URL            ETH-RPC endpoint.
 #   SUBSTRATE_RPC_URL  Substrate endpoint of the same chain (http(s) or ws(s)).
 
@@ -16,6 +17,8 @@ export FOUNDRY_DISABLE_NIGHTLY_WARNING=1
 # shellcheck disable=SC2034  # consumed by the sourcing scripts
 POLKADOT_AH_CHAIN_ID=420420419
 DEVNET_AH_CHAIN_ID=420420417
+# The one KMS key that signs on Polkadot Asset Hub.
+PRODUCTION_KEY_NAME=contract-deployer
 ZERO_ADDRESS=0x0000000000000000000000000000000000000000
 
 # Manifest contracts whose owner() the deployer holds after WireDeployments.
@@ -48,18 +51,22 @@ require_h160() {
   ! same_address "$value" "$ZERO_ADDRESS" || die "$name is the zero address"
 }
 
-# D5/D8: a fork keeps Polkadot's genesis and eth chain id, so a signature made
-# there is valid on mainnet. Each KMS key class signs on one kind of chain only:
-# *-rehearsal on forks, *-devnet on devnet Asset Hub, any other key on Polkadot
-# Asset Hub. Keystore keys never sign live. Static part, no network.
+# A fork keeps its origin chain's genesis and eth chain id, so a signature made
+# there is valid on the live chain. Each KMS key signs on one chain only:
+# contract-deployer on Polkadot Asset Hub (mode=live), *-devnet keys on devnet
+# Asset Hub (mode=devnet); no KMS key ever signs on a fork, and no other key
+# name is accepted. The keystore signer rehearses (fork) and deploys to devnet,
+# never live. Static part, no network.
 guard_mode_key() {
   local signer="${DEPLOY_SIGNER:-keystore}" key="${GCP_KEY_NAME:-}"
+  case "$signer" in
+    keystore | gcp) ;;
+    *) die "DEPLOY_SIGNER must be keystore or gcp (got '$signer')" ;;
+  esac
   case "${DEPLOY_MODE:-}" in
     fork)
-      if [ "$signer" = "gcp" ]; then
-        [[ "$key" == *-rehearsal ]] \
-          || die "mode=fork refuses KMS key '$key': only *-rehearsal keys sign on a fork"
-      fi
+      [ "$signer" != "gcp" ] \
+        || die "mode=fork refuses the KMS signer (key '$key'): rehearse with the keystore signer"
       ;;
     devnet)
       if [ "$signer" = "gcp" ]; then
@@ -69,15 +76,25 @@ guard_mode_key() {
       ;;
     live)
       [ "$signer" = "gcp" ] || die "mode=live requires DEPLOY_SIGNER=gcp"
-      [ -n "$key" ] || die "mode=live requires GCP_KEY_NAME"
-      [[ "$key" != *-rehearsal && "$key" != *-devnet ]] || die "mode=live refuses key '$key'"
+      [ "$key" = "$PRODUCTION_KEY_NAME" ] \
+        || die "mode=live refuses KMS key '$key': only $PRODUCTION_KEY_NAME signs on Polkadot Asset Hub"
       ;;
-    *) die "DEPLOY_MODE must be fork, live or devnet (got '${DEPLOY_MODE:-}')" ;;
+    *) die "DEPLOY_MODE must be devnet, live or fork (got '${DEPLOY_MODE:-}')" ;;
   esac
 }
 
 expected_chain_id() {
   if [ "${DEPLOY_MODE:-}" = "devnet" ]; then echo "$DEVNET_AH_CHAIN_ID"; else echo "$POLKADOT_AH_CHAIN_ID"; fi
+}
+
+# Chain ids a mode accepts: live and devnet exactly one, fork either (a local
+# fork of Polkadot or of devnet Asset Hub).
+check_chain_id() {
+  local chain_id="$1"
+  case "${DEPLOY_MODE:-}" in
+    fork) [ "$chain_id" = "$POLKADOT_AH_CHAIN_ID" ] || [ "$chain_id" = "$DEVNET_AH_CHAIN_ID" ] ;;
+    *) [ "$chain_id" = "$(expected_chain_id)" ] ;;
+  esac
 }
 
 # chopsticks serves dev_newBlock; real nodes do not (they may serve other dev_*).
@@ -89,8 +106,8 @@ is_chopsticks() {
 }
 
 # guard_mode_key, then the chain itself, before any KMS or signing call: fork
-# mode needs a chopsticks fork; live needs Polkadot Asset Hub, devnet the
-# devnet Asset Hub, neither a fork.
+# mode needs a chopsticks fork of a known Asset Hub; live needs Polkadot Asset
+# Hub, devnet the devnet Asset Hub, neither a fork.
 guard_chain_key() {
   guard_mode_key
   require_substrate_rpc
@@ -101,10 +118,12 @@ guard_chain_key() {
   case "$DEPLOY_MODE" in
     fork)
       [ "$fork" = "1" ] || die "mode=fork but $SUBSTRATE_RPC_URL is not a chopsticks fork"
+      check_chain_id "$chain_id" \
+        || die "mode=fork refuses chain id $chain_id (expected $POLKADOT_AH_CHAIN_ID or $DEVNET_AH_CHAIN_ID)"
       ;;
     live | devnet)
       [ "$fork" = "0" ] || die "mode=$DEPLOY_MODE but $SUBSTRATE_RPC_URL is a chopsticks fork"
-      [ "$chain_id" = "$(expected_chain_id)" ] \
+      check_chain_id "$chain_id" \
         || die "mode=$DEPLOY_MODE refuses chain id $chain_id (expected $(expected_chain_id))"
       ;;
   esac
@@ -113,9 +132,10 @@ guard_chain_key() {
   python3 "$_deploy_dir/substrate.py" "${same[@]}" || die "$RPC_URL does not serve the chain behind $SUBSTRATE_RPC_URL"
 }
 
-# Native token symbol for messages.
+# Native token symbol for messages, by chain id (a devnet fork pays in PAS).
 native_unit() {
-  if [ "${DEPLOY_MODE:-}" = "devnet" ]; then echo PAS; else echo DOT; fi
+  local chain_id="${CHAIN_ID:-$(expected_chain_id)}"
+  if [ "$chain_id" = "$DEVNET_AH_CHAIN_ID" ]; then echo PAS; else echo DOT; fi
 }
 
 require_substrate_rpc() {

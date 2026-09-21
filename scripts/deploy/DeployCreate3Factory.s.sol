@@ -14,8 +14,9 @@ import {Create3Factory} from "../../contracts/deploy/Create3Factory.sol";
 ///      reset and shifts the whole address set with it. Deploy the factory from
 ///      a dedicated key that does nothing else, as its first transaction, then
 ///      pass the result to the pipeline as `CREATE3_FACTORY` so every run reuses
-///      it. The run asserts the deployer is at nonce 0 so a reused key cannot
-///      silently place the factory at the wrong address.
+///      it. The run asserts the deployer is at `FACTORY_NONCE` (default 0) so a
+///      reused key cannot silently place the factory at the wrong address; a
+///      devnet deploy from a used key sets it to the key's current nonce.
 /// @custom:security-contact admin@parity.io
 contract DeployCreate3Factory is Script {
     /// @notice Deploys the factory and prints the address to record as
@@ -23,9 +24,17 @@ contract DeployCreate3Factory is Script {
     /// @return factory Address of the deployed CREATE3 factory.
     function run() external returns (address factory) {
         address deployer = msg.sender;
+        uint256 expectedNonce = vm.envOr("FACTORY_NONCE", uint256(0));
+        uint64 nonce = vm.getNonce(deployer);
         require(
-            vm.getNonce(deployer) == 0,
-            "DeployCreate3Factory: deployer nonce is not 0; use a single-purpose key so the factory address is reproducible across chain resets"
+            nonce == expectedNonce,
+            string.concat(
+                "DeployCreate3Factory: deployer nonce is ",
+                vm.toString(nonce),
+                ", expected FACTORY_NONCE=",
+                vm.toString(expectedNonce),
+                "; the factory address is nonce-derived, so use a single-purpose key at nonce 0 (or set FACTORY_NONCE to the key's current nonce)"
+            )
         );
 
         vm.broadcast(deployer);

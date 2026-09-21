@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 #
-# End-to-end production rehearsal on a local chopsticks fork of live Polkadot
-# Asset Hub: preflight -> deployall -> handover -> verify -> sweep, with the
-# cost read from the deployer's Substrate System.Account.
+# End-to-end rehearsal on a local chopsticks fork of Polkadot Asset Hub (or,
+# with AH_ENDPOINTS, of devnet Asset Hub): preflight -> deployall -> handover
+# -> verify -> sweep, with the cost read from the deployer's Substrate
+# System.Account. Local tool only; the CI workflow has no fork mode.
 #
 # Starts chopsticks and an eth-rpc container on the given ports, funds the
 # deployer's fallback account through dev_setStorage, and tears both down on
-# exit. Everything runs with DEPLOY_MODE=fork, so the D5 guard refuses any KMS
-# key that is not a *-rehearsal key.
+# exit. Everything runs with DEPLOY_MODE=fork and the keystore signer: the
+# guard refuses every KMS key on a fork.
 #
 # Usage (from the repo root):
 #   scripts/deploy/rehearse-fork.sh                      # fresh throwaway keystore key
-#   DEPLOY_SIGNER=gcp GCP_KEY_NAME=contract-deployer-rehearsal ... scripts/deploy/rehearse-fork.sh
+#   USED_KEY_TXS=3 scripts/deploy/rehearse-fork.sh       # used key: factory at nonce 3
 #
 # Env vars:
 #   CHOPSTICKS_PORT       Default 8110.
@@ -19,14 +20,17 @@
 #   ETH_RPC_CONTAINER     Default dotns-pipeline-ethrpc.
 #   ETH_RPC_IMAGE         Default revive-eth-rpc:latest, built from ./dockerfile when absent.
 #   CHOPSTICKS_VERSION    Default 1.5.1.
-#   AH_ENDPOINTS          Space-separated wss endpoints of Polkadot Asset Hub.
+#   AH_ENDPOINTS          Space-separated wss endpoints of the Asset Hub to fork.
 #   FUND_DOT              Balance given to the deployer, default 40 (the production funding).
+#   USED_KEY_TXS          Value transfers sent from the key before preflight, default 0,
+#                         to rehearse a deploy from a used key (devnet allows it).
 #   NEW_OWNER             Handover target, default a fixed dummy H160 with no code.
 #   SWEEP_TO              Sweep target; default the first mapped H160 found on the fork.
 #                         SKIP_SWEEP=1 skips the sweep.
+#   DEPLOYMENT_NETWORK    Manifest folder, default polkadot-rehearsal; never a real one.
 #   WORK_DIR              Logs, config, cost summary, and (moved there on exit) the
-#                         deployments/polkadot-rehearsal manifest and the broadcast
-#                         files. Default a fresh temp dir.
+#                         rehearsal manifest and the broadcast files. Default a
+#                         fresh temp dir.
 #   ACCOUNT_NAME, ACCOUNT_PASSWORD, PRIVATE_KEY
 #                         Keystore signer as in _account.sh. With none set, a fresh
 #                         key is generated and its keystore removed on exit.
@@ -38,7 +42,7 @@ repo="$(cd "$here/../.." && pwd)"
 cd "$repo"
 
 export DEPLOY_MODE=fork
-export DEPLOY_SIGNER="${DEPLOY_SIGNER:-keystore}"
+export DEPLOY_SIGNER=keystore
 # shellcheck source=scripts/deploy/_production.sh
 . "$here/_production.sh"
 guard_mode_key
@@ -50,6 +54,8 @@ ETH_RPC_IMAGE="${ETH_RPC_IMAGE:-revive-eth-rpc:latest}"
 CHOPSTICKS_VERSION="${CHOPSTICKS_VERSION:-1.5.1}"
 AH_ENDPOINTS="${AH_ENDPOINTS:-wss://polkadot-asset-hub-rpc.polkadot.io wss://asset-hub-polkadot-rpc.n.dwellir.com}"
 FUND_DOT="${FUND_DOT:-40}"
+USED_KEY_TXS="${USED_KEY_TXS:-0}"
+[[ "$USED_KEY_TXS" =~ ^[0-9]+$ ]] || die "USED_KEY_TXS must be a non-negative integer"
 # keccak256("dotns-owner-rehearsal")[12..]: no key, no code.
 NEW_OWNER="${NEW_OWNER:-0x$(cast keccak "dotns-owner-rehearsal" | cut -c27-66)}"
 WORK_DIR="${WORK_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/dotns-rehearsal.XXXXXX")}"
@@ -64,12 +70,18 @@ done
 export SUBSTRATE_RPC_URL="http://127.0.0.1:$CHOPSTICKS_PORT"
 export RPC_URL="http://127.0.0.1:$ETH_RPC_PORT"
 export ENV_FILE="$WORK_DIR/no.env"
-# A fork manifest must never pass for the production one.
-export DOTNS_TLD=dot DOTNS_RELEASE_TAG=0.8.0 DEPLOYMENT_NETWORK=polkadot-rehearsal
+# A fork manifest must never pass for a real one.
+export DOTNS_TLD=dot DOTNS_RELEASE_TAG=0.8.0
+export DEPLOYMENT_NETWORK="${DEPLOYMENT_NETWORK:-polkadot-rehearsal}"
+case "$DEPLOYMENT_NETWORK" in
+  polkadot | pcf-devnet | pcf-devnet-ci) die "DEPLOYMENT_NETWORK=$DEPLOYMENT_NETWORK is a real manifest folder" ;;
+esac
 export NEW_OWNER
 
 chopsticks_pid=""
 created_keystore=""
+# Set once eth-rpc is up; until then no broadcast dir can have been written.
+CHAIN_ID=""
 cleanup() {
   # npx forks the chopsticks node process; stop the whole session.
   if [ -n "$chopsticks_pid" ]; then kill -- "-$chopsticks_pid" 2>/dev/null || true; fi
@@ -79,7 +91,8 @@ cleanup() {
     rm -rf "$WORK_DIR/deployments"
     mv "deployments/$DEPLOYMENT_NETWORK" "$WORK_DIR/deployments"
   fi
-  for d in broadcast/*/"$POLKADOT_AH_CHAIN_ID"; do
+  [ -n "$CHAIN_ID" ] || return 0
+  for d in broadcast/*/"$CHAIN_ID"; do
     [ -d "$d" ] || continue
     mkdir -p "$WORK_DIR/broadcast/$(basename "$(dirname "$d")")"
     mv "$d" "$WORK_DIR/broadcast/$(basename "$(dirname "$d")")/"
@@ -89,7 +102,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Fresh throwaway key for keystore rehearsals.
-if [ "$DEPLOY_SIGNER" = "keystore" ] && [ -z "${ACCOUNT_NAME:-}" ]; then
+if [ -z "${ACCOUNT_NAME:-}" ]; then
   export ACCOUNT_NAME
   ACCOUNT_NAME="dotns-rehearsal-$(date +%s)"
   export ACCOUNT_PASSWORD="rehearsal"
@@ -100,24 +113,12 @@ if [ "$DEPLOY_SIGNER" = "keystore" ] && [ -z "${ACCOUNT_NAME:-}" ]; then
   created_keystore="$HOME/.foundry/keystores/$ACCOUNT_NAME"
   unset PRIVATE_KEY
 fi
-if [ "$DEPLOY_SIGNER" = "gcp" ]; then
-  : "${GCP_KEY_VERSION:=1}"
-  export GCP_KEY_VERSION
-  deployer=$(cast wallet address --gcp)
-else
-  deployer=$(cast wallet address --account "$ACCOUNT_NAME" --password "$ACCOUNT_PASSWORD")
-fi
+deployer=$(cast wallet address --account "$ACCOUNT_NAME" --password "$ACCOUNT_PASSWORD")
 export DEPLOYER="$deployer"
 # Factory and pipeline share the one key.
 export FACTORY_ACCOUNT="${ACCOUNT_NAME:-}" FACTORY_PASSWORD="${ACCOUNT_PASSWORD:-}"
 echo "deployer $DEPLOYER, new owner $NEW_OWNER, work dir $WORK_DIR"
 
-# Earlier broadcasts for this chain id would pollute the tx count.
-for d in broadcast/*/"$POLKADOT_AH_CHAIN_ID"; do
-  [ -d "$d" ] || continue
-  mkdir -p "$WORK_DIR/broadcast-earlier/$(basename "$(dirname "$d")")"
-  mv "$d" "$WORK_DIR/broadcast-earlier/$(basename "$(dirname "$d")")/"
-done
 [ ! -e "deployments/$DEPLOYMENT_NETWORK" ] || die "deployments/$DEPLOYMENT_NETWORK exists; move it away first"
 
 # --- chopsticks fork of live Polkadot Asset Hub ---
@@ -161,15 +162,39 @@ for _ in $(seq 1 60); do
   if cast chain-id --rpc-url "$RPC_URL" >/dev/null 2>&1; then break; fi
   sleep 2
 done
-echo "eth-rpc up on $ETH_RPC_PORT, chain id $(cast chain-id --rpc-url "$RPC_URL")"
+CHAIN_ID=$(cast chain-id --rpc-url "$RPC_URL")
+unit=$(native_unit)
+echo "eth-rpc up on $ETH_RPC_PORT, chain id $CHAIN_ID"
 
+# Earlier broadcasts for this chain id would pollute the tx count.
+for d in broadcast/*/"$CHAIN_ID"; do
+  [ -d "$d" ] || continue
+  mkdir -p "$WORK_DIR/broadcast-earlier/$(basename "$(dirname "$d")")"
+  mv "$d" "$WORK_DIR/broadcast-earlier/$(basename "$(dirname "$d")")/"
+done
+
+# --- use the key first (rehearses a devnet deploy from a used key) ---
+# Explicit nonces, and a wait for the eth view to catch up with the instant
+# block, or the next transfer is rejected as stale.
+for ((i = 0; i < USED_KEY_TXS; i++)); do
+  cast send "$NEW_OWNER" --value 100000000000000000 --nonce "$i" --account "$ACCOUNT_NAME" \
+    --password "$ACCOUNT_PASSWORD" --rpc-url "$RPC_URL" --legacy --json | jq -r '"used-key tx \(.transactionHash) status \(.status)"'
+  for _ in $(seq 1 30); do
+    [ "$(cast nonce "$DEPLOYER" --rpc-url "$RPC_URL")" = "$((i + 1))" ] && break
+    sleep 1
+  done
+done
+[ "$USED_KEY_TXS" = "0" ] || echo "sender nonce now $(cast nonce "$DEPLOYER" --rpc-url "$RPC_URL")"
 
 balance() { substrate_free "$DEPLOYER"; }
 b0=$(balance)
-echo "funded $(planck_to_dot "$b0") DOT"
+echo "funded $(planck_to_dot "$b0") $unit"
 
 # --- 3. preflight ---
 "$here/preflight.sh" 2>&1 | tee "$WORK_DIR/preflight.log"
+FACTORY_NONCE=$(sed -n 's/^FACTORY_NONCE=//p' "$WORK_DIR/preflight.log" | tail -1)
+[ -n "$FACTORY_NONCE" ] || die "preflight printed no FACTORY_NONCE"
+export FACTORY_NONCE
 
 # --- 4. deploy ---
 "$here/deployall.sh" >"$WORK_DIR/deploy.log" 2>&1 || {
@@ -177,8 +202,8 @@ echo "funded $(planck_to_dot "$b0") DOT"
   die "deployall failed, see $WORK_DIR/deploy.log"
 }
 b1=$(balance)
-deploy_txs=$(cat broadcast/*/"$POLKADOT_AH_CHAIN_ID"/run-latest.json | jq -s '[.[].receipts | length] | add')
-echo "deploy: $deploy_txs txs, $(planck_to_dot "$((b0 - b1))") DOT"
+deploy_txs=$(cat broadcast/*/"$CHAIN_ID"/run-latest.json | jq -s '[.[].receipts | length] | add')
+echo "deploy: $deploy_txs txs, $(planck_to_dot "$((b0 - b1))") $unit"
 
 # --- 5. handover ---
 "$here/handover.sh" 2>&1 | tee "$WORK_DIR/handover.log"
@@ -210,14 +235,14 @@ if [ "${SKIP_SWEEP:-0}" != "1" ]; then
 fi
 
 {
-  echo "| Step | txs | DOT |"
+  echo "| Step | txs | $unit |"
   echo "|---|---:|---:|"
   echo "| Deploy (factory + 5 stages) | $deploy_txs | $(planck_to_dot "$((b0 - b1))") |"
   echo "| Handover | $handover_txs | $(planck_to_dot "$((b1 - b2))") |"
   echo "| Deploy + handover | $((deploy_txs + handover_txs)) | $(planck_to_dot "$((b0 - b2))") |"
   echo "| Sweep fee | $([ "$swept" = 0 ] && echo 0 || echo 1) | $(planck_to_dot "$((b2 - b3 - swept))") |"
   echo ""
-  echo "Funded $(planck_to_dot "$b0") DOT, swept $(planck_to_dot "$swept") DOT, left $(planck_to_dot "$b3") DOT."
-  echo "Fork head $((fork_head)), deployer $DEPLOYER, new owner $NEW_OWNER."
+  echo "Funded $(planck_to_dot "$b0") $unit, swept $(planck_to_dot "$swept") $unit, left $(planck_to_dot "$b3") $unit."
+  echo "Fork head $((fork_head)), chain $CHAIN_ID, deployer $DEPLOYER (factory nonce $FACTORY_NONCE), new owner $NEW_OWNER."
 } | tee "$WORK_DIR/cost.md"
 echo "=== Rehearsal passed ==="

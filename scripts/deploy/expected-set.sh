@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 #
 # Prints the address set a fresh deploy lands for a given deployer, without a
-# chain. The factory is the deployer's nonce-0 CREATE; every CREATE3 address is
+# chain. The factory is the deployer's CREATE at --nonce (default 0, the
+# production rule; a used devnet key deploys it at its current nonce); every
+# CREATE3 address is
 # Solady's (CREATE2 proxy from the factory, then that proxy's nonce-1 CREATE)
 # over the BaseDeployer salt; the beacons are CREATEs of the StoreFactory proxy
 # at nonces 2 and 4 (StoreFactory.initialize deploys LabelStore, its beacon,
 # UserStore, its beacon, in that order).
 #
 # Usage:
-#   scripts/deploy/expected-set.sh <deployer H160>
+#   scripts/deploy/expected-set.sh [--nonce N] <deployer H160>
 #   scripts/deploy/expected-set.sh --factory <factory H160>
 #
 # Honours DOTNS_SALT_VERSION like BaseDeployer._create3Salt. Output has the
@@ -18,18 +20,32 @@ set -euo pipefail
 export FOUNDRY_DISABLE_NIGHTLY_WARNING=1
 
 usage() {
-  echo "usage: $0 <deployer H160> | --factory <factory H160>" >&2
+  echo "usage: $0 [--nonce N] <deployer H160> | --factory <factory H160>" >&2
   exit 2
 }
 
-[ $# -ge 1 ] || usage
-if [ "$1" = "--factory" ]; then
-  [ $# -eq 2 ] || usage
-  factory=$(cast to-check-sum-address "$2")
-else
-  [ $# -eq 1 ] || usage
-  factory=$(cast compute-address --nonce 0 "$1" | awk '{print $NF}')
-fi
+nonce=0
+factory=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --nonce)
+      [ $# -ge 2 ] && [[ "$2" =~ ^[0-9]+$ ]] || usage
+      nonce="$2"
+      shift 2
+      ;;
+    --factory)
+      [ $# -eq 2 ] || usage
+      factory=$(cast to-check-sum-address "$2")
+      shift 2
+      ;;
+    *)
+      [ $# -eq 1 ] && [ -z "$factory" ] || usage
+      factory=$(cast compute-address --nonce "$nonce" "$1" | awk '{print $NF}')
+      shift
+      ;;
+  esac
+done
+[ -n "$factory" ] || usage
 
 # Solady CREATE3 proxy init code hash (lib/solady/src/utils/CREATE3.sol).
 PROXY_INITCODE_HASH=0x21c35dbe1b344a2488cf3321d6ce542f8e9f305544ff09e4993a62319a497c1f

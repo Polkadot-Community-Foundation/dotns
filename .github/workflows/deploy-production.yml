@@ -1,19 +1,20 @@
 name: Deploy Production (Polkadot Asset Hub)
 
-# DotNS production deploy from the contract-deployer Cloud KMS key.
-# mode=fork rehearses on a chopsticks fork of live Asset Hub with the
-# *-rehearsal key; mode=live deploys to Polkadot Asset Hub; mode=devnet deploys
-# a CI-only set to devnet Asset Hub with the *-devnet key (environment devnet).
-# See "Production (Polkadot Asset Hub)" in DEPLOYMENTS.md.
+# DotNS deploy from a Cloud KMS key. mode=devnet (default) deploys a CI-only
+# set to devnet Asset Hub with the contract-deployer-devnet key (environment
+# devnet); mode=live deploys to Polkadot Asset Hub with contract-deployer
+# (environment production). No fork mode here: rehearse locally with
+# scripts/deploy/rehearse-fork.sh. See "Production (Polkadot Asset Hub)" in
+# DEPLOYMENTS.md.
 
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "fork (chopsticks fork of live Asset Hub, rehearsal key), live, or devnet (devnet Asset Hub, devnet key)"
+        description: "devnet (devnet Asset Hub, contract-deployer-devnet) or live (Polkadot Asset Hub, contract-deployer)"
         type: choice
-        options: [fork, live, devnet]
-        default: fork
+        options: [devnet, live]
+        default: devnet
       new_owner:
         description: "H160 of the dotns-owner pure proxy; receives ownership of the 14 owned contracts"
         required: true
@@ -42,7 +43,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment:
-      name: ${{ inputs.mode == 'devnet' && 'devnet' || 'production' }}
+      name: ${{ inputs.mode == 'live' && 'production' || 'devnet' }}
     timeout-minutes: 120
     # pipefail: a script piped into tee must still fail its step.
     defaults:
@@ -57,20 +58,18 @@ jobs:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_LOCATION: ${{ vars.GCP_LOCATION }}
       GCP_KEY_RING: ${{ vars.GCP_KEY_RING }}
-      # D5/D8: the key follows the mode; the scripts refuse any other key/chain pairing.
-      GCP_KEY_NAME: ${{ inputs.mode == 'live' && 'contract-deployer' || inputs.mode == 'devnet' && 'contract-deployer-devnet' || 'contract-deployer-rehearsal' }}
+      # The key follows the mode; the scripts refuse any other key/chain pairing.
+      GCP_KEY_NAME: ${{ inputs.mode == 'live' && 'contract-deployer' || 'contract-deployer-devnet' }}
       GCP_KEY_VERSION: ${{ vars.GCP_KEY_VERSION || '1' }}
       DOTNS_TLD: dot
       DOTNS_RELEASE_TAG: "0.8.0"
-      # Fork and devnet runs never write the production manifest; devnet never the real devnet set.
-      DEPLOYMENT_NETWORK: ${{ inputs.mode == 'live' && 'polkadot' || inputs.mode == 'devnet' && 'pcf-devnet-ci' || 'polkadot-rehearsal' }}
-      EXPECTED_CHAIN_ID: ${{ inputs.mode == 'devnet' && '420420417' || '420420419' }}
-      NATIVE_UNIT: ${{ inputs.mode == 'devnet' && 'PAS' || 'DOT' }}
-      SUBSTRATE_WS_URL: ${{ vars.SUBSTRATE_WS_URL || (inputs.mode == 'devnet' && 'wss://asset-hub-paseo-rpc.n.dwellir.com' || 'wss://polkadot-asset-hub-rpc.polkadot.io') }}
-      CHOPSTICKS_VERSION: "1.5.1"
-      CHOPSTICKS_PORT: "8000"
-      # devnet has a public ETH-RPC; fork and live run eth-rpc in the job.
-      RPC_URL: ${{ inputs.mode == 'devnet' && (vars.ETH_RPC_URL || 'https://eth-rpc-testnet.polkadot.io') || 'http://127.0.0.1:8545' }}
+      # devnet runs never write the real devnet set.
+      DEPLOYMENT_NETWORK: ${{ inputs.mode == 'live' && 'polkadot' || 'pcf-devnet-ci' }}
+      EXPECTED_CHAIN_ID: ${{ inputs.mode == 'live' && '420420419' || '420420417' }}
+      NATIVE_UNIT: ${{ inputs.mode == 'live' && 'DOT' || 'PAS' }}
+      SUBSTRATE_RPC_URL: ${{ vars.SUBSTRATE_WS_URL || (inputs.mode == 'live' && 'wss://polkadot-asset-hub-rpc.polkadot.io' || 'wss://asset-hub-paseo-rpc.n.dwellir.com') }}
+      # devnet has a public ETH-RPC; live runs eth-rpc in the job.
+      RPC_URL: ${{ inputs.mode == 'live' && 'http://127.0.0.1:8545' || (vars.ETH_RPC_URL || 'https://eth-rpc-testnet.polkadot.io') }}
       # Empty = build ./dockerfile (eth-rpc binary pinned by sha256).
       ETH_RPC_IMAGE: ${{ vars.ETH_RPC_IMAGE }}
       FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
@@ -86,16 +85,11 @@ jobs:
           if [ "$DEPLOY_MODE" = "live" ] && [ "$CONFIRM" != "deploy dotns to polkadot" ]; then
             fail 'mode=live requires confirm = "deploy dotns to polkadot"'
           fi
-          env_name=production
-          if [ "$DEPLOY_MODE" = "devnet" ]; then env_name=devnet; fi
+          env_name=devnet
+          if [ "$DEPLOY_MODE" = "live" ]; then env_name=production; fi
           for v in GCP_PROJECT_ID GCP_LOCATION GCP_KEY_RING; do
             [ -n "${!v}" ] || fail "variable $v is not set on the $env_name environment"
           done
-          if [ "$DEPLOY_MODE" = "fork" ]; then
-            echo "SUBSTRATE_RPC_URL=ws://127.0.0.1:$CHOPSTICKS_PORT" >> "$GITHUB_ENV"
-          else
-            echo "SUBSTRATE_RPC_URL=$SUBSTRATE_WS_URL" >> "$GITHUB_ENV"
-          fi
 
       - name: Checkout repo (with submodules)
         uses: actions/checkout@v4
@@ -134,34 +128,8 @@ jobs:
           echo "DEPLOYER=$DEPLOYER" >> "$GITHUB_ENV"
           echo "Deployer $DEPLOYER ($GCP_KEY_NAME v$GCP_KEY_VERSION)"
 
-      - name: Start a chopsticks fork of live Asset Hub
-        if: inputs.mode == 'fork'
-        run: |
-          cat > chopsticks.yml <<EOF
-          endpoint:
-            - $SUBSTRATE_WS_URL
-            - wss://asset-hub-polkadot-rpc.n.dwellir.com
-          port: $CHOPSTICKS_PORT
-          build-block-mode: Instant
-          mock-signature-host: true
-          runtime-log-level: 0
-          EOF
-          nohup npx --yes "@acala-network/chopsticks@$CHOPSTICKS_VERSION" -c chopsticks.yml \
-            > logs/chopsticks.log 2>&1 &
-          for _ in $(seq 1 120); do
-            if cast rpc --rpc-url "http://127.0.0.1:$CHOPSTICKS_PORT" chain_getHeader >/dev/null 2>&1; then
-              break
-            fi
-            sleep 2
-          done
-          cast rpc --rpc-url "http://127.0.0.1:$CHOPSTICKS_PORT" chain_getHeader | jq -r '"fork head \(.number)"'
-          # Production funding for DotNS: 40 DOT on the key's fallback account.
-          python3 scripts/deploy/substrate.py fund "$DEPLOYER" 400000000000 \
-            --rpc "http://127.0.0.1:$CHOPSTICKS_PORT"
-          cast rpc --rpc-url "http://127.0.0.1:$CHOPSTICKS_PORT" dev_newBlock > /dev/null
-
       - name: Start eth-rpc
-        if: inputs.mode != 'devnet'
+        if: inputs.mode == 'live'
         run: |
           image="$ETH_RPC_IMAGE"
           if [ -z "$image" ]; then
@@ -183,6 +151,8 @@ jobs:
           python3 scripts/deploy/substrate.py account "$DEPLOYER" --rpc "$SUBSTRATE_RPC_URL" \
             | jq -r .free > logs/balance-before
           scripts/deploy/preflight.sh 2>&1 | tee logs/preflight.log
+          # devnet may deploy from a used key: the factory sits at the key's current nonce.
+          grep '^FACTORY_NONCE=' logs/preflight.log | tail -1 >> "$GITHUB_ENV"
 
       - name: Deploy (factory + five stages)
         run: |
@@ -219,7 +189,7 @@ jobs:
           {
             echo "### DotNS $DEPLOY_MODE deploy"
             echo ""
-            echo "Deployer \`$DEPLOYER\` ($GCP_KEY_NAME), new owner \`$NEW_OWNER\`, chain $EXPECTED_CHAIN_ID, manifest \`$manifest\`."
+            echo "Deployer \`$DEPLOYER\` ($GCP_KEY_NAME, factory nonce ${FACTORY_NONCE:-?}), new owner \`$NEW_OWNER\`, chain $EXPECTED_CHAIN_ID, manifest \`$manifest\`."
             echo ""
             echo "| Step | $NATIVE_UNIT |"
             echo "|---|---:|"
@@ -249,6 +219,4 @@ jobs:
 
       - name: Stop services
         if: always()
-        run: |
-          docker rm -f eth-rpc || true
-          pkill -f "@acala-network/chopsticks" || true
+        run: docker rm -f eth-rpc || true
