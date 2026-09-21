@@ -29,6 +29,11 @@ on:
         required: false
         type: string
         default: ""
+      resume:
+        description: "Resume a run that stopped part way: take the factory from the chain, adopt expected addresses that hold the expected code, deploy the rest (untested; rehearse on a fork first)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -55,6 +60,7 @@ jobs:
       NEW_OWNER: ${{ inputs.new_owner }}
       SWEEP_TO: ${{ inputs.sweep_to }}
       CONFIRM: ${{ inputs.confirm }}
+      DEPLOY_RESUME: ${{ inputs.resume && '1' || '0' }}
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_LOCATION: ${{ vars.GCP_LOCATION }}
       GCP_KEY_RING: ${{ vars.GCP_KEY_RING }}
@@ -70,8 +76,8 @@ jobs:
       SUBSTRATE_RPC_URL: ${{ vars.SUBSTRATE_WS_URL || (inputs.mode == 'live' && 'wss://polkadot-asset-hub-rpc.polkadot.io' || 'wss://asset-hub-paseo-rpc.n.dwellir.com') }}
       # devnet has a public ETH-RPC; live runs eth-rpc in the job.
       RPC_URL: ${{ inputs.mode == 'live' && 'http://127.0.0.1:8545' || (vars.ETH_RPC_URL || 'https://eth-rpc-testnet.polkadot.io') }}
-      # Empty = build ./dockerfile (eth-rpc binary pinned by sha256).
-      ETH_RPC_IMAGE: ${{ vars.ETH_RPC_IMAGE }}
+      # Pinned eth-rpc adapter (pallet-revive-eth-rpc 0.21.0); the variable overrides it.
+      ETH_RPC_IMAGE: ${{ vars.ETH_RPC_IMAGE || 'docker.io/parity/eth-rpc:v1.24.2@sha256:74ebf6671d93e6ab759de4f84454b4d00be011530845b8edaaa83dbfc64c40c9' }}
       FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
 
     steps:
@@ -131,14 +137,8 @@ jobs:
       - name: Start eth-rpc
         if: inputs.mode == 'live'
         run: |
-          image="$ETH_RPC_IMAGE"
-          if [ -z "$image" ]; then
-            image=revive-eth-rpc:ci
-            docker build -t "$image" -f dockerfile .
-          else
-            docker pull "$image"
-          fi
-          docker run -d --name eth-rpc --network host "$image" \
+          docker pull "$ETH_RPC_IMAGE"
+          docker run -d --name eth-rpc --network host "$ETH_RPC_IMAGE" \
             --node-rpc-url "$SUBSTRATE_RPC_URL" --rpc-port 8545 --eth-pruning 1
           for _ in $(seq 1 60); do
             if cast chain-id --rpc-url "$RPC_URL" >/dev/null 2>&1; then break; fi
@@ -189,7 +189,7 @@ jobs:
           {
             echo "### DotNS $DEPLOY_MODE deploy"
             echo ""
-            echo "Deployer \`$DEPLOYER\` ($GCP_KEY_NAME, factory nonce ${FACTORY_NONCE:-?}), new owner \`$NEW_OWNER\`, chain $EXPECTED_CHAIN_ID, manifest \`$manifest\`."
+            echo "Deployer \`$DEPLOYER\` ($GCP_KEY_NAME, factory nonce ${FACTORY_NONCE:-?}$([ "$DEPLOY_RESUME" = "1" ] && echo ", resumed")), new owner \`$NEW_OWNER\`, chain $EXPECTED_CHAIN_ID, manifest \`$manifest\`."
             echo ""
             echo "| Step | $NATIVE_UNIT |"
             echo "|---|---:|"

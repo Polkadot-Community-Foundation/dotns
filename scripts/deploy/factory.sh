@@ -30,6 +30,8 @@ set -euo pipefail
 
 # shellcheck source=scripts/deploy/_account.sh
 . "$(dirname "$0")/_account.sh"
+# shellcheck source=scripts/deploy/_retry.sh
+. "$(dirname "$0")/_retry.sh"
 
 # Forward every extra forge flag (word-split), not just the first token.
 extra="$*"
@@ -54,23 +56,30 @@ if [ -n "${EXPECTED_CREATE3_FACTORY:-}" ] \
 fi
 
 # Skip the deploy when the factory is already present. Distinguish an RPC error
-# (abort) from a genuinely empty account, so a network blip does not push a
-# key at the wrong nonce into the deploy path and trip its assertion.
-if ! existing_code=$(cast code "$FACTORY_ADDRESS" --rpc-url "$RPC_URL" 2>/dev/null); then
-  echo "Could not query code at $FACTORY_ADDRESS ($RPC_URL); aborting rather than risk a duplicate deploy." >&2
-  exit 1
-fi
-
-if [ "$existing_code" != "0x" ]; then
-  echo "Create3Factory already present at $FACTORY_ADDRESS on chain $CHAIN_ID (skipping deploy)"
-else
+# (a failed attempt) from a genuinely empty account, so a network blip does not
+# push a key at the wrong nonce into the deploy path and trip its assertion.
+# The check is part of every attempt: a deploy whose transaction landed while
+# the RPC was down is found present on the next attempt rather than resent
+# (which the nonce assertion in DeployCreate3Factory would refuse anyway).
+deploy_factory_once() {
+  local existing_code
+  if ! existing_code=$(cast code "$FACTORY_ADDRESS" --rpc-url "$RPC_URL" 2>/dev/null); then
+    echo "Could not query code at $FACTORY_ADDRESS ($RPC_URL); not deploying blind." >&2
+    return 1
+  fi
+  if [ "$existing_code" != "0x" ]; then
+    echo "Create3Factory already present at $FACTORY_ADDRESS on chain $CHAIN_ID (skipping deploy)"
+    return 0
+  fi
   echo "=== Deploying Create3Factory from '$ACCOUNT_NAME' ($SENDER, nonce $FACTORY_NONCE) on chain $CHAIN_ID ==="
   # Broadcast flags shared with the pipeline (defined in _account.sh).
   # shellcheck disable=SC2086
   forge script scripts/deploy/DeployCreate3Factory.s.sol:DeployCreate3Factory \
     "${FORGE_DEPLOY_ARGS[@]}" \
     -vvvv $extra
-fi
+}
+
+run_with_attempts "Create3Factory" "" deploy_factory_once || exit 1
 
 # Machine-parseable line consumed by deployall.sh.
 echo "CREATE3_FACTORY=$FACTORY_ADDRESS"
