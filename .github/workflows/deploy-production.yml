@@ -106,6 +106,11 @@ jobs:
           if [ "$DEPLOY_MODE" = "live" ] && [ "$CONFIRM" != "deploy dotns to polkadot" ]; then
             fail 'mode=live requires confirm = "deploy dotns to polkadot"'
           fi
+          # Live deploys run from a release tag, so the deployed commit has a permanent name.
+          if [ "$DEPLOY_MODE" = "live" ] && [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            fail "mode=live must be dispatched from a release tag, not $GITHUB_REF_TYPE $GITHUB_REF_NAME"
+          fi
+          echo "ref: $GITHUB_REF_TYPE $GITHUB_REF_NAME ($GITHUB_SHA)"
           [[ "$FACTORY_NONCE_INPUT" =~ ^[0-9]+$ ]] || fail "factory_nonce is not a non-negative integer"
           if [ "$DEPLOY_MODE" = "live" ] && [ "$FACTORY_NONCE_INPUT" != "0" ]; then
             fail "mode=live: the factory is the key's nonce-0 transaction, factory_nonce must be 0"
