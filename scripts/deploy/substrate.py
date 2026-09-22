@@ -6,9 +6,15 @@ mapping only exists on the Substrate side, so these read storage directly.
 Transport is `cast rpc`, so http(s) and ws(s) endpoints both work.
 
 Usage:
-  substrate.py account <H160|AccountId32> --rpc URL   System.Account as JSON
+  substrate.py account <H160|AccountId32> --rpc URL [--at HASH]   System.Account as JSON
   substrate.py mapped  <H160> --rpc URL               AccountId32 behind Revive.OriginalAccount, exit 1 if unmapped
   substrate.py fund    <H160> <planck> --rpc URL      chopsticks dev_setStorage of the H160's fallback account
+  substrate.py locate  <H160> <nonce> --rpc URL [--from N] [--lookback N]
+      The block where the sender's nonce passed <nonce> and the Revive.eth_transact
+      extrinsic in it that carries the sender's transaction with that nonce, as JSON.
+      Exit 2: the block was found but carries no such transaction (something else
+      consumed the nonce). Exit 3: the nonce passed before the searched window
+      (--from, else head - --lookback) or the state there is unavailable.
 """
 
 import argparse
@@ -108,11 +114,11 @@ def rpc(url, method, *params):
     return json.loads(out) if out else None
 
 
-def cmd_account(args):
-    acc = account_id(args.address)
+def account_info(url, addr, at=None):
+    acc = account_id(addr)
     key = "0x" + twox128("System") + twox128("Account")
     key += hashlib.blake2b(acc, digest_size=16).hexdigest() + acc.hex()
-    raw = rpc(args.rpc, "state_getStorage", key)
+    raw = rpc(url, "state_getStorage", key, *([at] if at else []))
     info = {"account_id": "0x" + acc.hex(), "nonce": 0, "free": 0, "reserved": 0, "frozen": 0}
     if raw:
         b = bytes.fromhex(raw[2:])
@@ -122,8 +128,130 @@ def cmd_account(args):
             reserved=int.from_bytes(b[32:48], "little"),
             frozen=int.from_bytes(b[48:64], "little"),
         )
+    return info
+
+
+def cmd_account(args):
+    info = account_info(args.rpc, args.address, args.at)
     # Big integers as strings so jq does not round them.
     print(json.dumps({k: str(v) if isinstance(v, int) else v for k, v in info.items()}))
+
+
+def compact_len(b, i):
+    """SCALE compact integer at b[i:]: (value, bytes consumed)."""
+    mode = b[i] & 3
+    if mode == 0:
+        return b[i] >> 2, 1
+    if mode == 1:
+        return int.from_bytes(b[i : i + 2], "little") >> 2, 2
+    if mode == 2:
+        return int.from_bytes(b[i : i + 4], "little") >> 2, 4
+    n = (b[i] >> 2) + 4
+    return int.from_bytes(b[i + 1 : i + 1 + n], "little"), 1 + n
+
+
+def eth_transact_payload(extrinsic_hex):
+    """The signed eth transaction inside a bare `Revive.eth_transact` extrinsic, else None.
+
+    Bare extrinsic = compact length, version byte (bit 7 clear), pallet index, call index,
+    then the call's one argument: a SCALE byte vector holding the RLP-encoded eth
+    transaction, which must end exactly where the extrinsic ends.
+    """
+    b = bytes.fromhex(extrinsic_hex[2:])
+    try:
+        length, used = compact_len(b, 0)
+        if length != len(b) - used or b[used] & 0x80:
+            return None
+        payload_len, n = compact_len(b, used + 3)
+        start = used + 3 + n
+        if start + payload_len != len(b) or payload_len < 2:
+            return None
+    except IndexError:
+        return None
+    payload = b[start:]
+    # Legacy transactions are an RLP list; typed ones start with the type byte.
+    if payload[0] < 0xC0 and payload[0] > 0x7F:
+        return None
+    return "0x" + payload.hex()
+
+
+def decode_eth_transaction(payload):
+    out = subprocess.run(
+        ["cast", "decode-transaction", payload], capture_output=True, text=True, check=False
+    ).stdout.strip()
+    if not out:
+        return None
+    try:
+        decoded = json.loads(out)
+        if isinstance(decoded, str):
+            decoded = json.loads(decoded)
+    except json.JSONDecodeError:
+        return None
+    return decoded if isinstance(decoded, dict) else None
+
+
+def cmd_locate(args):
+    """Locate the sender's transaction with a given nonce from Substrate alone."""
+    sender = "0x" + h160(args.address).hex()
+    head = int(rpc(args.rpc, "chain_getHeader")["number"], 16)
+    lo = args.from_block if args.from_block is not None else max(0, head - args.lookback)
+
+    def nonce_at(n):
+        try:
+            return account_info(args.rpc, sender, rpc(args.rpc, "chain_getBlockHash", str(n)))["nonce"]
+        except (subprocess.CalledProcessError, json.JSONDecodeError, TypeError):
+            return None
+
+    if nonce_at(head) is None or nonce_at(head) <= args.nonce:
+        sys.exit(f"nonce {args.nonce} of {sender} is not consumed at block {head}")
+    at_lo = nonce_at(lo)
+    if at_lo is None:
+        print(f"state at block {lo} unavailable; cannot locate nonce {args.nonce}", file=sys.stderr)
+        sys.exit(3)
+    if at_lo > args.nonce:
+        print(f"nonce {args.nonce} of {sender} passed before block {lo}; not located", file=sys.stderr)
+        sys.exit(3)
+    # First block in (lo, head] whose nonce is above args.nonce.
+    hi = head
+    while lo < hi:
+        mid = (lo + hi) // 2
+        n = nonce_at(mid)
+        if n is None:
+            print(f"state at block {mid} unavailable; cannot locate nonce {args.nonce}", file=sys.stderr)
+            sys.exit(3)
+        if n > args.nonce:
+            hi = mid
+        else:
+            lo = mid + 1
+    block_hash = rpc(args.rpc, "chain_getBlockHash", str(hi))
+    extrinsics = rpc(args.rpc, "chain_getBlock", block_hash)["block"]["extrinsics"]
+    for index, extrinsic in enumerate(extrinsics):
+        payload = eth_transact_payload(extrinsic)
+        if payload is None:
+            continue
+        tx = decode_eth_transaction(payload)
+        if not tx or tx.get("signer", "").lower() != sender or int(tx.get("nonce", "0x0"), 16) != args.nonce:
+            continue
+        print(
+            json.dumps(
+                {
+                    "block": hi,
+                    "block_hash": block_hash,
+                    "extrinsic_index": index,
+                    "extrinsic_hash": "0x" + hashlib.blake2b(bytes.fromhex(extrinsic[2:]), digest_size=32).hexdigest(),
+                    "tx_hash": tx.get("hash", "").lower(),
+                    "to": (tx.get("to") or "").lower(),
+                    "value": tx.get("value", "0x0"),
+                    "input": tx.get("input", "0x").lower(),
+                }
+            )
+        )
+        return
+    print(
+        f"block {hi} ({block_hash}) consumed nonce {args.nonce} of {sender} without a Revive.eth_transact from it",
+        file=sys.stderr,
+    )
+    sys.exit(2)
 
 
 def cmd_mapped(args):
@@ -186,7 +314,16 @@ def main():
         for e in extra:
             s.add_argument(e, type=int)
         s.add_argument("--rpc", required=True)
+        if name == "account":
+            s.add_argument("--at", default=None, help="block hash")
         s.set_defaults(fn=fn)
+    s = sub.add_parser("locate")
+    s.add_argument("address")
+    s.add_argument("nonce", type=int)
+    s.add_argument("--rpc", required=True)
+    s.add_argument("--from", dest="from_block", type=int, default=None, help="lowest block to search")
+    s.add_argument("--lookback", type=int, default=100000, help="blocks below head to search when --from is unset")
+    s.set_defaults(fn=cmd_locate)
     s = sub.add_parser("same-chain")
     s.add_argument("--rpc", required=True)
     s.add_argument("--eth", required=True)

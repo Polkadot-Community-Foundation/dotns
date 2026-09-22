@@ -47,6 +47,13 @@
 #                      Attempts per stage (default 3, see _retry.sh). A failed
 #                      attempt restores the manifest, waits for the RPC and
 #                      re-runs the stage, which adopts what already landed.
+#   DEPLOY_RESUME      1 resumes an interrupted deploy: a stage whose contracts
+#                      are all on chain runs without --broadcast (BaseDeployer
+#                      adopts each address after checking its code, the manifest
+#                      is written, nothing is sent) as long as the only calls it
+#                      would send are protocol-registry `set`s, which
+#                      WireDeployments repeats; otherwise it broadcasts as usual
+#                      and sends only what is missing. Needs CREATE3_FACTORY.
 #
 # Extra forge flags are forwarded verbatim to every stage, e.g.
 #   ./scripts/deploy/run.sh '--slow --timeout 1000'
@@ -224,10 +231,72 @@ stages=(
   WireDeployments
 )
 
+# Resume: the manifest names each stage lands (WireDeployments lands none and
+# always broadcasts). A stage with every one of them on chain is run without
+# --broadcast first: the simulation adopts each address (BaseDeployer checks
+# the code against this run's constructor arguments and the proxy's
+# implementation slot), writes the manifest and sends nothing. Its dry-run
+# broadcast then shows what a broadcast would have sent; only protocol-registry
+# `set` calls are acceptable to skip (WireDeployments sets every key again),
+# anything else (a cost-model registration, say) makes the stage broadcast
+# after all, which adopts the same way and sends only that.
+DEPLOY_RESUME="${DEPLOY_RESUME:-0}"
+declare -A stage_contracts=(
+  [DeployCore]="Create3Factory DotnsProtocolRegistry Multicall3 StoreFactory LabelStoreBeacon UserStoreBeacon DotnsRegistrar DotnsReverseResolver DotnsRegistry"
+  [DeployRecords]="DotnsResolver DotnsContentResolver DotnsCostModelRegistry DotnsFlatPricing PopRules"
+  [DeployPolicy]="DotnsNameEscrow DotnsNameWhitelist DotnsRegistrarController"
+  [DeployPopSystem]="DotnsPopResolver DotnsPopController DotnsPopLens"
+  [WireDeployments]=""
+)
+expected_set=""
+if [ "$DEPLOY_RESUME" = "1" ]; then
+  if [ -n "${CREATE3_FACTORY:-}" ]; then
+    expected_set=$("$(dirname "$0")/expected-set.sh" --factory "$CREATE3_FACTORY")
+  else
+    echo "DEPLOY_RESUME=1 without CREATE3_FACTORY: every stage broadcasts" >&2
+  fi
+fi
+REGISTRY_SET_SELECTOR=$(cast sig 'set(bytes32,address)')
+
+stage_all_present() {
+  local names="${stage_contracts[$stage]:-}" name addr code
+  [ -n "$expected_set" ] && [ -n "$names" ] || return 1
+  for name in $names; do
+    addr=$(jq -r --arg n "$name" '.[$n] // empty' <<<"$expected_set")
+    [ -n "$addr" ] || return 1
+    code=$(cast code "$addr" --rpc-url "$RPC_URL") || return 1
+    [ "$code" != "0x" ] || return 1
+  done
+}
+
+# True when the stage's dry-run broadcast holds nothing but registry set calls.
+dry_run_only_registry_sets() {
+  local file="broadcast/${stage}.s.sol/${CHAIN_ID}/dry-run/run-latest.json"
+  [ -f "$file" ] || return 0
+  [ "$(stat -c %Y "$file")" -ge "$attempt_started" ] || return 0
+  jq -e --arg sel "$REGISTRY_SET_SELECTOR" \
+    '[.transactions[] | select(.transactionType != "CALL" or ((.transaction.input // "")[0:10] | ascii_downcase) != $sel)] | length == 0' \
+    "$file" >/dev/null
+}
+
 # One attempt of the current stage: the forge run, then the manifest check.
 attempt_started=0
 run_stage_once() {
   attempt_started=$(date +%s)
+  if [ "$DEPLOY_RESUME" = "1" ] && stage_all_present; then
+    echo "=== $stage: every contract is on chain; adopting without broadcasting ==="
+    local simulate=()
+    local flag
+    for flag in "${common[@]}"; do [ "$flag" = "--broadcast" ] || simulate+=("$flag"); done
+    # shellcheck disable=SC2086
+    forge script "scripts/deploy/${stage}.s.sol:${stage}" "${simulate[@]}" $extra || return 1
+    if dry_run_only_registry_sets; then
+      validate_manifest_contracts
+      return
+    fi
+    echo "=== $stage: the simulation would send calls WireDeployments does not repeat; broadcasting ==="
+    restore_manifest "$manifest_backup"
+  fi
   # shellcheck disable=SC2086
   forge script "scripts/deploy/${stage}.s.sol:${stage}" "${common[@]}" $extra || return 1
   validate_manifest_contracts

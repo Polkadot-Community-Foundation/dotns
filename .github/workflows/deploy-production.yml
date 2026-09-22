@@ -7,8 +7,10 @@ name: Deploy Production (Polkadot Asset Hub)
 # scripts/deploy/rehearse-fork.sh. steps picks what one dispatch runs: all
 # (preflight, deploy, handover, verify, sweep when sweep_to is set) or one of
 # deploy, handover, verify, sweep; the standalone steps rebuild the set from
-# the key and factory_nonce and check it on chain first. See "Production
-# (Polkadot Asset Hub)" in DEPLOYMENTS.md.
+# the key and factory_nonce and check it on chain first. resume=true with
+# resume_run_id replays the unsent transactions of that run's broadcasts and
+# adopts what landed. See "Production (Polkadot Asset Hub)" and "Recovering an
+# interrupted deploy" in DEPLOYMENTS.md.
 
 on:
   workflow_dispatch:
@@ -43,14 +45,21 @@ on:
         type: string
         default: ""
       resume:
-        description: "Resume a run that stopped part way: take the factory from the chain, adopt expected addresses that hold the expected code, deploy the rest (untested; rehearse on a fork first)"
+        description: "Resume a run that stopped part way: take the factory from the chain, adopt expected addresses that hold the expected code, deploy the rest"
         required: false
         type: boolean
         default: false
+      resume_run_id:
+        description: "With resume: id of the interrupted run; its broadcast files are downloaded and every transaction they hold that never landed is sent (same nonce) before the deploy adopts the set"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
   id-token: write
+  # gh run download of the interrupted run's artifact (resume_run_id).
+  actions: read
 
 # One deployer key, one nonce: never two runs at once.
 concurrency:
@@ -76,6 +85,7 @@ jobs:
       SWEEP_TO: ${{ inputs.sweep_to }}
       CONFIRM: ${{ inputs.confirm }}
       DEPLOY_RESUME: ${{ inputs.resume && '1' || '0' }}
+      RESUME_RUN_ID: ${{ inputs.resume_run_id }}
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_LOCATION: ${{ vars.GCP_LOCATION }}
       GCP_KEY_RING: ${{ vars.GCP_KEY_RING }}
@@ -91,8 +101,9 @@ jobs:
       SUBSTRATE_RPC_URL: ${{ vars.SUBSTRATE_WS_URL || (inputs.mode == 'live' && 'wss://polkadot-asset-hub-rpc.polkadot.io' || 'wss://asset-hub-paseo-rpc.n.dwellir.com') }}
       # devnet has a public ETH-RPC; live runs eth-rpc in the job.
       RPC_URL: ${{ inputs.mode == 'live' && 'http://127.0.0.1:8545' || (vars.ETH_RPC_URL || 'https://eth-rpc-testnet.polkadot.io') }}
-      # Pinned eth-rpc adapter (pallet-revive-eth-rpc 0.21.0); the variable overrides it.
-      ETH_RPC_IMAGE: ${{ vars.ETH_RPC_IMAGE || 'docker.io/parity/eth-rpc:v1.24.2@sha256:74ebf6671d93e6ab759de4f84454b4d00be011530845b8edaaa83dbfc64c40c9' }}
+      # Pinned eth-rpc adapter; the variable overrides it. v1.24.2 could not decode
+      # live Asset Hub blocks (null receipts), v1.25.0-rc2 indexes every block.
+      ETH_RPC_IMAGE: ${{ vars.ETH_RPC_IMAGE || 'docker.io/parity/eth-rpc:v1.25.0-rc2@sha256:b39825a0d6fe8b3b457e85d0464d439abb58500ff915c3ef95b68848b23278c1' }}
       FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
 
     steps:
@@ -120,6 +131,11 @@ jobs:
           fi
           if [ "$DEPLOY_RESUME" = "1" ] && [ "$DEPLOY_STEPS" != "all" ] && [ "$DEPLOY_STEPS" != "deploy" ]; then
             fail "resume applies to steps=all or deploy only"
+          fi
+          if [ -n "$RESUME_RUN_ID" ]; then
+            [ "$DEPLOY_RESUME" = "1" ] || fail "resume_run_id requires resume=true"
+            [[ "$RESUME_RUN_ID" =~ ^[0-9]+$ ]] || fail "resume_run_id is not a run id"
+            [ "$RESUME_RUN_ID" != "$GITHUB_RUN_ID" ] || fail "resume_run_id is this run"
           fi
           env_name=devnet
           if [ "$DEPLOY_MODE" = "live" ]; then env_name=production; fi
@@ -168,13 +184,44 @@ jobs:
         if: inputs.mode == 'live'
         run: |
           docker pull "$ETH_RPC_IMAGE"
+          # Receipts of the last 4096 blocks stay served for the whole job.
           docker run -d --name eth-rpc --network host "$ETH_RPC_IMAGE" \
-            --node-rpc-url "$SUBSTRATE_RPC_URL" --rpc-port 8545 --eth-pruning 1
+            --node-rpc-url "$SUBSTRATE_RPC_URL" --rpc-port 8545 --eth-pruning 4096
           for _ in $(seq 1 60); do
             if cast chain-id --rpc-url "$RPC_URL" >/dev/null 2>&1; then break; fi
             sleep 2
           done
           echo "eth-rpc chain id $(cast chain-id --rpc-url "$RPC_URL")"
+
+      # Resume from an interrupted run: its artifact carries the forge broadcast
+      # files; every transaction in them without a receipt that has not landed is
+      # sent again at its recorded nonce, stage by stage in pipeline order, and
+      # confirmed on Substrate (scripts/deploy/replay-broadcast.sh). Then the
+      # preflight and the deploy adopt what is on chain.
+      - name: Download the broadcasts of the interrupted run
+        if: inputs.resume && inputs.resume_run_id != '' && (inputs.steps == 'all' || inputs.steps == 'deploy')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$RESUME_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "dotns-$DEPLOY_MODE-deploy-$RESUME_RUN_ID" --dir resume-artifact
+          ls -l resume-artifact/broadcast/*/"$EXPECTED_CHAIN_ID"/run-latest.json
+
+      - name: Replay the unsent transactions
+        if: inputs.resume && inputs.resume_run_id != '' && (inputs.steps == 'all' || inputs.steps == 'deploy')
+        run: |
+          trap 'echo $SECONDS > logs/elapsed-replay' EXIT
+          python3 scripts/deploy/substrate.py account "$DEPLOYER" --rpc "$SUBSTRATE_RPC_URL" \
+            | jq -r .free > logs/balance-before-replay
+          for stage in DeployCreate3Factory DeployCore DeployRecords DeployPolicy DeployPopSystem WireDeployments; do
+            file="resume-artifact/broadcast/$stage.s.sol/$EXPECTED_CHAIN_ID/run-latest.json"
+            [ -f "$file" ] || continue
+            if [ "$(jq '.transactions | length' "$file")" -le "$(jq '.receipts | length' "$file")" ]; then
+              echo "$stage: every transaction has a receipt; nothing to replay"
+              continue
+            fi
+            scripts/deploy/replay-broadcast.sh "$file" 2>&1 | tee -a logs/replay.log
+          done
 
       # Each step records its wall-clock time (logs/elapsed-<step>, bash SECONDS) for
       # the summary, and the balance it ends with.
@@ -248,6 +295,7 @@ jobs:
         run: |
           dot() { python3 -c "import sys; print(f'{int(sys.argv[1]) / 1e10:.4f}')" "$1"; }
           read_balance() { if [ -s "logs/$1" ]; then cat "logs/$1"; fi; }
+          before_replay=$(read_balance balance-before-replay)
           before=$(read_balance balance-before)
           deployed=$(read_balance balance-deployed)
           handed=$(read_balance balance-handed-over)
@@ -260,6 +308,8 @@ jobs:
             echo ""
             echo "| Step | $NATIVE_UNIT |"
             echo "|---|---:|"
+            if [ -n "$before_replay" ]; then echo "| Balance before replay | $(dot "$before_replay") |"; fi
+            if [ -n "$before_replay" ] && [ -n "$before" ]; then echo "| Replay spend (run $RESUME_RUN_ID) | $(dot "$((before_replay - before))") |"; fi
             if [ -n "$before" ]; then echo "| Balance before | $(dot "$before") |"; fi
             if [ -n "$deployed" ]; then echo "| Deploy spend | $(dot "$((before - deployed))") |"; fi
             # Standalone handover: the spend counts from the balance before the step.
@@ -268,7 +318,7 @@ jobs:
             echo ""
             echo "| Step | Time |"
             echo "|---|---:|"
-            for step in preflight rebuild deploy handover verify sweep; do
+            for step in replay preflight rebuild deploy handover verify sweep; do
               if [ -s "logs/elapsed-$step" ]; then
                 s=$(cat "logs/elapsed-$step")
                 echo "| $step | $((s / 60))m $((s % 60))s |"
