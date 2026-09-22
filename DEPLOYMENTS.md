@@ -523,6 +523,45 @@ Locally, on a fork or devnet: `DEPLOY_MODE=fork|devnet SUBSTRATE_RPC_URL=... RPC
 
 **Local rehearsal.** `scripts/deploy/rehearse-fork.sh` runs preflight, deploy, handover, verify and sweep with the keystore signer (`DEPLOY_MODE=fork`) on a local chopsticks fork of Polkadot Asset Hub (ports `CHOPSTICKS_PORT`, `ETH_RPC_PORT`; `AH_ENDPOINTS` for a devnet fork), with a fresh throwaway key by default. `USED_KEY_TXS=N` sends `N` transfers first to rehearse a used-key deploy. It prints the cost per step and moves the manifest and broadcasts into its `WORK_DIR`. `scripts/deploy/substrate.py` carries the Substrate reads (balances, mapping, same-chain check) and the fork funding.
 
+### Polkadot Asset Hub (production): live set
+
+Deployed 2026-09-22 from tag [`v0.8.0-pcf.2`](https://github.com/Polkadot-Community-Foundation/dotns/releases/tag/v0.8.0-pcf.2) (commit `579e99c2`, upstream v0.8.0 contracts unchanged) with `mode=live` on Polkadot Asset Hub (para 1000, chain id 420420419, runtime fellows v2.5.0, spec 2005000). Manifest: [`deployments/polkadot/420420419.json`](./deployments/polkadot/420420419.json); TLD `.dot`; `protocolVersion` 0.8.0.
+
+| | |
+| --- | --- |
+| Deployer | Cloud HSM `contract-deployer` v1 (ring `pcf-production-signing`), H160 `0xA07afA38c2e9aCDC38215c03BC486789e59f1B68`, SS58 `14dRCDsDeCv6Sx7iCskM7Y1hyxpEZcbuP168vK8p2wdmV887`; factory at nonce 0 |
+| Owner of the 14 owned contracts | pure proxy `13oaSihqaoZ8zprCpbnuqdQqi9zLw99rwkSk3zG2hbzxU3ke` = H160 `0xA5C4c241985D77A0296a0FB83E0FA5905e9E39De` (mapped) |
+| Beacons | owned by `StoreFactory` |
+| Ownerless | `Create3Factory`, `DotnsFlatPricing`, `DotnsPopLens`, `Multicall3` |
+| Deploy | run [35751225489](https://github.com/Polkadot-Community-Foundation/dotns/actions/runs/35751225489) (tag `v0.8.0-pcf.1`, stopped after 2 txs: eth-rpc v1.24.2 served null receipts) + run [35762597735](https://github.com/Polkadot-Community-Foundation/dotns/actions/runs/35762597735) (`resume=true`, replay of the 11 unsent `DeployCore` txs, then the pipeline): 67 txs, 33.26 DOT |
+| Handover | run [35770026656](https://github.com/Polkadot-Community-Foundation/dotns/actions/runs/35770026656): 14 txs, 0.02 DOT |
+| Sweep | run [35773331101](https://github.com/Polkadot-Community-Foundation/dotns/actions/runs/35773331101), after the AccountDataStore deploy at nonce 81; key nonce 83, owns nothing |
+
+| Contract | Address |
+| --- | --- |
+| Create3Factory | `0xFFaD13f4fE4198081240127Df30Bb80FB4A158e2` |
+| DotnsProtocolRegistry | `0x674659eDC7013B62A093527c8A9DBB1E9e8b2c84` |
+| DotnsRegistry | `0x8D1266E7d634CFE920F87f7AfB1c95Dbd63f1B0C` |
+| DotnsRegistrar | `0xA20db26B6B458739a113d45b8EF621CCf70afDff` |
+| DotnsRegistrarController | `0x8a998B6629743Ce5Ccf71C20C2E606E9A7720a59` |
+| DotnsResolver | `0x8489389c9Fcd0a6873026E0C433713464eC5ccDd` |
+| DotnsReverseResolver | `0xa8E628A81831764D54DD5142f9767F6D9254455a` |
+| DotnsContentResolver | `0x5ad43E86089D8ca606990FCB359028f5Ecc42e42` |
+| DotnsPopController | `0x9760f659C195a22998d6983662D1bc586A75C5E2` |
+| DotnsPopResolver | `0x078CF3141a526a5772a8F7202fa3130AfaE5EfcE` |
+| DotnsPopLens | `0x68FDD77c4D2ECD08B366f6621f2c36cEA7473996` |
+| PopRules | `0xee39CC19Efd229A9C355443848D4E578Da3ebd7C` |
+| DotnsNameWhitelist | `0x474A4c078Ea21A3eFC39033c05b9e23bf61eeF6d` |
+| DotnsNameEscrow | `0x044c8AA5cD91c0343FB89cAfeb027c5aC2Db3641` |
+| DotnsCostModelRegistry | `0xDf8CAeE46aF61Afb49699c2c9C6979f694CAD766` |
+| DotnsFlatPricing | `0x8Df2BDB0d0Ad7D0a2e9Ee3c0fCCfaeb711c51413` |
+| StoreFactory | `0x04D06944A50419dE0B5EF6fB6125f4A9fA924202` |
+| LabelStoreBeacon | `0xB4fbC1b8d110E2d2537b1A21F94B61674893F015` |
+| UserStoreBeacon | `0x05C068ca18ba3167Cb17B15bd5FE764BB086fd0e` |
+| Multicall3 | `0x35917CF0Cbd9cd4ef47eFa63CfC9A4782bDAF559` |
+
+This set is the deployer's nonce-0 set, not `deployments/expected.json` (the expected set of the pinned devnet factory). A second live deploy needs a new key version, so these addresses only move by a deliberate migration.
+
 ## Troubleshooting
 
 If the adapter is not responding, confirm Docker is running and that port 8545 is free. The compose health check uses eth_chainId against http://localhost:8545.
@@ -551,6 +590,7 @@ Every network deployed through the shared CREATE3 factory lands on the same addr
 | --- | --- |
 | Paseo Asset Hub Previewnet | `.testnet` |
 | Paseo Asset Hub Next V2 | `.paseo` |
+| Polkadot Asset Hub (production) | `.dot` |
 
 Each release also publishes the same addresses as `deployments.json`, attached to the release and at the root of `dotns-abis-<tag>.zip`, for consumers outside this repository. See [`RELEASE_ARTIFACTS.md`](./RELEASE_ARTIFACTS.md).
 
