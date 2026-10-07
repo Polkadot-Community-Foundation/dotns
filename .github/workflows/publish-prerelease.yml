@@ -1,5 +1,8 @@
 name: Publish Beta Package
 
+# Creating a `v*` tag is restricted to the dotns team by the `release tags` ruleset, and the
+# job below pauses on the `releases` environment for a reviewer, so a release takes two
+# distinct human actions: cutting the tag, and approving the run it starts.
 on:
   push:
     tags:
@@ -23,10 +26,13 @@ concurrency:
 jobs:
   beta-release:
     runs-on: ubuntu-latest
-    # Baked into the genesis registry, so it decides which networks the artifact suits.
-    # Job-level: five steps name the file derived from it and must not disagree.
+    # Gated: this job reads the genesis owner key, which lives only on the `releases`
+    # environment, so every run waits for a reviewer's approval there.
+    environment: releases
+    # One genesis per TLD, since the TLD is baked into the registry: `.testnet` for previewnet,
+    # `.paseo` for Paseo Asset Hub Next V2. Job-level: several steps name the files it yields.
     env:
-      DOTNS_TLD: dot
+      DOTNS_TLDS: dot
     steps:
       # On workflow_dispatch the tag does not exist yet; the release step creates it
       # from the branch this run was started on. Read through an env var rather than
@@ -87,6 +93,30 @@ jobs:
 
       - uses: ./.github/actions/setup-foundry
 
+      # The environment pairs the key (secret) with its address (variable). Deriving one from
+      # the other before the build turns a mistyped key into a failed run instead of a genesis
+      # owned by an address nobody holds. The address is public; the key is never printed.
+      - name: Check the owner key against its declared address
+        env:
+          DOTNS_ADMIN_KEY: ${{ secrets.DOTNS_ADMIN_KEY }}
+          DOTNS_ADMIN_ADDRESS: ${{ vars.DOTNS_ADMIN_ADDRESS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DOTNS_ADMIN_KEY" ]; then
+            echo "::error::DOTNS_ADMIN_KEY is not configured on the releases environment"
+            exit 1
+          fi
+          if [ -z "$DOTNS_ADMIN_ADDRESS" ]; then
+            echo "::error::DOTNS_ADMIN_ADDRESS is not configured on the releases environment"
+            exit 1
+          fi
+          DERIVED="$(cast wallet address --private-key "$DOTNS_ADMIN_KEY")"
+          if [ "$(printf '%s' "$DERIVED" | tr 'A-Z' 'a-z')" != "$(printf '%s' "$DOTNS_ADMIN_ADDRESS" | tr 'A-Z' 'a-z')" ]; then
+            echo "::error::DOTNS_ADMIN_KEY derives to $DERIVED, the environment declares $DOTNS_ADMIN_ADDRESS"
+            exit 1
+          fi
+          echo "Owner key derives to the declared address $DERIVED"
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.2.6"
@@ -125,8 +155,12 @@ jobs:
           FOUNDRY_DISABLE_NIGHTLY_WARNING: "1"
           FACTORY_DEPLOYER_KEY: ${{ secrets.FACTORY_DEPLOYER_KEY }}
           DOTNS_ADMIN_KEY: ${{ secrets.DOTNS_ADMIN_KEY }}
-          DOTNS_ADMIN_MNEMONIC: ${{ secrets.DOTNS_ADMIN_MNEMONIC }}
-        run: bash scripts/genesis/build-genesis.sh release
+        run: |
+          for tld in $DOTNS_TLDS; do
+            DOTNS_TLD="$tld" bash scripts/genesis/build-genesis.sh release
+          done
+          # The address set every genesis above carries, which the builder asserted.
+          cp deployments/expected.json release/dotns-genesis-addresses.json
 
       - name: Extract ABIs
         run: |
@@ -152,6 +186,11 @@ jobs:
           find release/abis -maxdepth 1 -type f -printf '%f\n' | sort > release/expected-assets.txt
           echo "Extracted $(wc -l < release/expected-assets.txt) ABIs"
 
+          # Record which published ABIs each contract inherits from, read from the same build.
+          # The ABI diff step uses it to list a change once, under the interface that declares
+          # it, even when the names do not match. Kept out of release/, since it is not an asset.
+          bun scripts/js/release-metadata.mjs bases --out "$RUNNER_TEMP/abi-bases.json"
+
       # No addresses: a pre-release is cut to be deployed, so the recorded addresses still
       # belong to the previous deployment of different code. Publishing them under this tag
       # would break the promise that a release's addresses and ABIs come from the same release.
@@ -165,7 +204,7 @@ jobs:
           TAG="$RELEASE_TAG"
           cd release
           zip -r "../dotns-abis-${TAG}.zip" abis/ release-manifest.json codehashes.json \
-            "dotns-genesis-${DOTNS_TLD}.json"
+            dotns-genesis-*.json
 
       - name: Generate release body
         env:
@@ -175,7 +214,7 @@ jobs:
           ASSET_BASE="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG"
 
           cat > release-body.md << 'ENDOFBODY'
-          ## DotNS ABI Package (Pre-release)
+          ## dotNS ABI Package (Pre-release)
 
           > **This is a pre-release.** ABIs may change before the stable release.
 
@@ -222,7 +261,12 @@ jobs:
             echo "not the previous live deployment's."
             echo ""
             echo "- **Release contents:** [release-manifest.json]($ASSET_BASE/release-manifest.json)"
-            echo "- [dotns-genesis-${DOTNS_TLD}.json]($ASSET_BASE/dotns-genesis-${DOTNS_TLD}.json) — pallet-revive genesis, \`.${DOTNS_TLD}\` TLD, for ${DOTNS_TLD} networks only."
+            for tld in $DOTNS_TLDS; do
+              echo "- [dotns-genesis-${tld}.json]($ASSET_BASE/dotns-genesis-${tld}.json) - pallet-revive genesis, \`.${tld}\` TLD, for .${tld} networks only."
+            done
+            echo "- [dotns-genesis-addresses.json]($ASSET_BASE/dotns-genesis-addresses.json) - the addresses those genesis files carry."
+            echo ""
+            echo "Previewnet uses \`.testnet\`, Paseo Asset Hub Next V2 uses \`.paseo\`."
           } >> release-body.md
 
       - name: ABI diff since previous release
@@ -241,7 +285,8 @@ jobs:
             prev_args=(--previous prev-abis/abis --previous-tag "$PREV")
           fi
           bun scripts/js/release-metadata.mjs abidiff --current release/abis \
-            "${prev_args[@]}" --json release/abi-diff.json >> release-body.md
+            "${prev_args[@]}" --bases "$RUNNER_TEMP/abi-bases.json" \
+            --json release/abi-diff.json >> release-body.md
 
       - name: Create draft pre-release with artifacts
         uses: softprops/action-gh-release@v2
@@ -256,7 +301,7 @@ jobs:
             release/release-manifest.json
             release/codehashes.json
             release/abi-diff.json
-            release/dotns-genesis-${{ env.DOTNS_TLD }}.json
+            release/dotns-genesis-*.json
           body_path: release-body.md
           draft: true
           prerelease: true
@@ -275,7 +320,8 @@ jobs:
             echo "release-manifest.json"
             echo "codehashes.json"
             echo "abi-diff.json"
-            echo "dotns-genesis-${DOTNS_TLD}.json"
+            echo "dotns-genesis-addresses.json"
+            for tld in $DOTNS_TLDS; do echo "dotns-genesis-${tld}.json"; done
           } | sort > "$RUNNER_TEMP/wanted-assets.txt"
           if ! diff -u "$RUNNER_TEMP/wanted-assets.txt" "$RUNNER_TEMP/actual-assets.txt"; then
             echo "::error::Draft pre-release $TAG does not match the expected asset set; delete the draft and re-run."
