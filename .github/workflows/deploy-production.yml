@@ -93,7 +93,7 @@ jobs:
       GCP_KEY_NAME: ${{ inputs.mode == 'live' && 'contract-deployer' || 'contract-deployer-devnet' }}
       GCP_KEY_VERSION: ${{ vars.GCP_KEY_VERSION || '1' }}
       DOTNS_TLD: dot
-      DOTNS_RELEASE_TAG: "0.8.0"
+      DOTNS_RELEASE_TAG: "1.0.0"
       # devnet runs never write the real devnet set.
       DEPLOYMENT_NETWORK: ${{ inputs.mode == 'live' && 'polkadot' || 'pcf-devnet-ci' }}
       EXPECTED_CHAIN_ID: ${{ inputs.mode == 'live' && '420420419' || '420420417' }}
