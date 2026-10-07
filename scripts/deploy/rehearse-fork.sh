@@ -71,7 +71,7 @@ export SUBSTRATE_RPC_URL="http://127.0.0.1:$CHOPSTICKS_PORT"
 export RPC_URL="http://127.0.0.1:$ETH_RPC_PORT"
 export ENV_FILE="$WORK_DIR/no.env"
 # A fork manifest must never pass for a real one.
-export DOTNS_TLD=dot DOTNS_RELEASE_TAG=0.8.0
+export DOTNS_TLD=dot DOTNS_RELEASE_TAG=1.0.0
 export DEPLOYMENT_NETWORK="${DEPLOYMENT_NETWORK:-polkadot-rehearsal}"
 case "$DEPLOYMENT_NETWORK" in
   polkadot | pcf-devnet | pcf-devnet-ci) die "DEPLOYMENT_NETWORK=$DEPLOYMENT_NETWORK is a real manifest folder" ;;

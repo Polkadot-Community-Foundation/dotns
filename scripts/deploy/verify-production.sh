@@ -20,7 +20,7 @@
 #   MANIFEST            Default deployments/${DEPLOYMENT_NETWORK:-polkadot}/<chain id>.json.
 #   EXPECTED_OWNER      Owner the 14 contracts must answer; default NEW_OWNER.
 #   FACTORY_NONCE       Optional; the nonce DEPLOYER deployed the factory at.
-#   DOTNS_RELEASE_TAG   Default 0.8.0.
+#   DOTNS_RELEASE_TAG   Required. Release the verified set declares, bare semver (1.0.0).
 #   DOTNS_TLD           Bare TLD label, default dot.
 
 set -euo pipefail
@@ -34,8 +34,8 @@ require_h160 NEW_OWNER "${NEW_OWNER:-}"
 EXPECTED_OWNER="${EXPECTED_OWNER:-$NEW_OWNER}"
 require_h160 EXPECTED_OWNER "$EXPECTED_OWNER"
 : "${RPC_URL:?RPC_URL is required}"
-release="${DOTNS_RELEASE_TAG:-0.8.0}"
-release="${release#v}"
+: "${DOTNS_RELEASE_TAG:?DOTNS_RELEASE_TAG is required}"
+release="${DOTNS_RELEASE_TAG#v}"
 tld="${DOTNS_TLD:-dot}"
 
 chain_id=$(cast chain-id --rpc-url "$RPC_URL")
