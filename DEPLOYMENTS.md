@@ -525,17 +525,45 @@ Locally, on a fork or devnet: `DEPLOY_MODE=fork|devnet SUBSTRATE_RPC_URL=... RPC
 
 ### Polkadot Asset Hub (production): live set
 
-Deployed 2026-09-22 from tag [`v0.8.0-pcf.2`](https://github.com/Polkadot-Community-Foundation/dotns/releases/tag/v0.8.0-pcf.2) (commit `579e99c2`, upstream v0.8.0 contracts unchanged) with `mode=live` on Polkadot Asset Hub (para 1000, chain id 420420419, runtime fellows v2.5.0, spec 2005000). Manifest: [`deployments/polkadot/420420419.json`](./deployments/polkadot/420420419.json); TLD `.dot`; `protocolVersion` 0.8.0.
+Deployed 2026-10-07 from tag [`v1.0.0-pcf.1`](https://github.com/Polkadot-Community-Foundation/dotns/releases/tag/v1.0.0-pcf.1) (commit `ed450c6a`, upstream v1.0.0 contracts unchanged) with `mode=live` on Polkadot Asset Hub (para 1000, chain id 420420419, runtime fellows v2.5.0, spec 2005000). Manifest: [`deployments/polkadot/420420419.json`](./deployments/polkadot/420420419.json); TLD `.dot`; `protocolVersion` 1.0.0.
 
 | | |
 | --- | --- |
-| Deployer | Cloud HSM `contract-deployer` v1 (ring `pcf-production-signing`), H160 `0xA07afA38c2e9aCDC38215c03BC486789e59f1B68`, SS58 `14dRCDsDeCv6Sx7iCskM7Y1hyxpEZcbuP168vK8p2wdmV887`; factory at nonce 0 |
+| Deployer | Cloud HSM `contract-deployer` v2 (ring `pcf-production-signing`), H160 `0x10AbB46b4c744254eC4cD1092Bc1e1a244Ce3b1a`, SS58 `1NrmqnkGQyJxT6J5RLVkNzZnrJwUTA9YspL3vJafUyMSv2J`; factory at nonce 0; version disabled after the run |
 | Owner of the 14 owned contracts | pure proxy `13oaSihqaoZ8zprCpbnuqdQqi9zLw99rwkSk3zG2hbzxU3ke` = H160 `0xA5C4c241985D77A0296a0FB83E0FA5905e9E39De` (mapped) |
 | Beacons | owned by `StoreFactory` |
 | Ownerless | `Create3Factory`, `DotnsFlatPricing`, `DotnsPopLens`, `Multicall3` |
-| Deploy | run [35751225489](https://github.com/Polkadot-Community-Foundation/dotns/actions/runs/35751225489) (tag `v0.8.0-pcf.1`, stopped after 2 txs: eth-rpc v1.24.2 served null receipts) + run [35762597735](https://github.com/Polkadot-Community-Foundation/dotns/actions/runs/35762597735) (`resume=true`, replay of the 11 unsent `DeployCore` txs, then the pipeline): 67 txs, 33.26 DOT |
-| Handover | run [35770026656](https://github.com/Polkadot-Community-Foundation/dotns/actions/runs/35770026656): 14 txs, 0.02 DOT |
-| Sweep | run [35773331101](https://github.com/Polkadot-Community-Foundation/dotns/actions/runs/35773331101), after the AccountDataStore deploy at nonce 81; key nonce 83, owns nothing |
+| Run | [37636464312](https://github.com/Polkadot-Community-Foundation/dotns/actions/runs/37636464312), `steps=all`: preflight, deploy (67 txs, 31.62 DOT, AH blocks 21543939–21544548), handover (14 txs, 0.02 DOT, to block 21544600), verify, sweep of 8.35 DOT to the PCF gas wallet; key nonce 82, owns nothing |
+| Rehearsals | `scripts/deploy/rehearse-fork.sh` on a fork of live Polkadot Asset Hub (32.88 DOT, same owner); `mode=devnet` run [37629381454](https://github.com/Polkadot-Community-Foundation/dotns/actions/runs/37629381454) + verify [37631828682](https://github.com/Polkadot-Community-Foundation/dotns/actions/runs/37631828682) |
+
+| Contract | Address |
+| --- | --- |
+| Create3Factory | `0x79718EA8c9517447Fc96229dcbd3F2FD9Ee8D2c2` |
+| DotnsProtocolRegistry | `0x371693bEeAD209FBb94E2Fe5a6E43C3C15fe376F` |
+| DotnsRegistry | `0x1Ae9a72865eC7092fC7036892f3349748d31A71e` |
+| DotnsRegistrar | `0x37442d086e282F7C497FC4Ffe00D0A06B84a1f81` |
+| DotnsRegistrarController | `0x76c19abE11404e43445670F13173AFA60BED53f8` |
+| DotnsResolver | `0x62060d4EBb7C375D151E21fDcAED0B9a71727975` |
+| DotnsReverseResolver | `0x194Bc50Ed31C0903E5761B37BC85fB7371A86e78` |
+| DotnsContentResolver | `0xF460c6406217E62A0d2717cD45D6385fe5832001` |
+| DotnsPopController | `0xA06d1CB1e3FedFF7b5dFa779b4Cc61703F8A46A1` |
+| DotnsPopResolver | `0x41a56012461efa8e3f62B4106240a9c2758D99D8` |
+| DotnsPopLens | `0xE98fE2437eEc5e867B232409D29dAE61A0255C31` |
+| PopRules | `0x088C8de68FD3c199E64C65153B3B628760413BD7` |
+| DotnsNameWhitelist | `0xEc2f4c007b51c35DEfa96bF654f357Fc850362Ab` |
+| DotnsNameEscrow | `0xd76134522FAF788F8dF110E1166441E4468d2c81` |
+| DotnsCostModelRegistry | `0xc6ef04dcD0f7d4F8E6d918d8101eC5f9D5a16198` |
+| DotnsFlatPricing | `0x1Ad2d2078adEd836eced1D1ac297Cb664Da8DE75` |
+| StoreFactory | `0xFe75036170a5c800a939DF476D756c3d8FF56A8A` |
+| LabelStoreBeacon | `0xED5B34280aE10D0519FdD21B9B98ABF559fC06ca` |
+| UserStoreBeacon | `0xCCD828e79b3fb56672FCB63AC80B45da966AaE62` |
+| Multicall3 | `0x7ba14c2dD9a8D95d7e6694b96763F0886d99309C` |
+
+This set is the nonce-0 set of `contract-deployer` v2, not `deployments/expected.json` (the expected set of the pinned devnet factory). Each manifest entry is wired on chain: the 16 `DotnsProtocolRegistry` keys, both beacons through `StoreFactory`, `DotnsFlatPricing` as `DotnsCostModelRegistry.current()`. A further live deploy needs another key version, so these addresses only move by a deliberate migration.
+
+### Polkadot Asset Hub (production): superseded v0.8.0 set
+
+Deployed 2026-09-22 from tag [`v0.8.0-pcf.2`](https://github.com/Polkadot-Community-Foundation/dotns/releases/tag/v0.8.0-pcf.2) by `contract-deployer` v1 (`0xA07afA38c2e9aCDC38215c03BC486789e59f1B68`, runs [35762597735](https://github.com/Polkadot-Community-Foundation/dotns/actions/runs/35762597735), [35770026656](https://github.com/Polkadot-Community-Foundation/dotns/actions/runs/35770026656), [35773331101](https://github.com/Polkadot-Community-Foundation/dotns/actions/runs/35773331101)), same owner pure. Superseded on 2026-10-07 before any name was registered; nothing reads it. Still on chain:
 
 | Contract | Address |
 | --- | --- |
@@ -559,8 +587,6 @@ Deployed 2026-09-22 from tag [`v0.8.0-pcf.2`](https://github.com/Polkadot-Commun
 | LabelStoreBeacon | `0xB4fbC1b8d110E2d2537b1A21F94B61674893F015` |
 | UserStoreBeacon | `0x05C068ca18ba3167Cb17B15bd5FE764BB086fd0e` |
 | Multicall3 | `0x35917CF0Cbd9cd4ef47eFa63CfC9A4782bDAF559` |
-
-This set is the deployer's nonce-0 set, not `deployments/expected.json` (the expected set of the pinned devnet factory). A second live deploy needs a new key version, so these addresses only move by a deliberate migration.
 
 ## Troubleshooting
 
