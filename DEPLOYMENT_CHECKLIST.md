@@ -151,9 +151,12 @@ Confirm these keys are present:
 - [ ] `DotnsPopLens`
 
 The wiring stage already asserts every protocol-registry binding, so a green deploy means they
-are set. One is worth confirming by hand, because it is the only key whose absence surfaces to
-users rather than to the pipeline: with `nameWhitelist` unset, `registerReserved` reverts
-`WhitelistNotConfigured` for every caller, Root included.
+are set. Two are worth confirming by hand, because their absence surfaces to users rather than
+to the pipeline. With `nameWhitelist` unset, `registerReserved` reverts `WhitelistNotConfigured`
+for every grant-backed caller; a Root dispatch skips the whitelist read and is unaffected. With
+`nameEscrow` unset it reverts `EscrowNotConfigured` for every caller, Root included, because the
+mint seeds the zero-amount release position that keeps a granted name inside the release
+lifecycle.
 
 ```bash
 cast call "$PROTOCOL_REGISTRY" "get(bytes32)(address)" \
@@ -176,6 +179,23 @@ node scripts/js/release-metadata.mjs verify --network <folder> --rpc "$RPC_URL" 
   `ok   protocolVersion <tag>`.
 
 Done. ✅
+
+## Before enabling the PoP gateway
+
+The gateway pallet calls `DotnsPopController` as Root under a fixed weight limit, and pallet-revive
+meters proof size pessimistically, so the first device name in a numeric container, which also
+mints the container, costs noticeably more than the ones after it. Mint all 100 containers before
+the gateway's dispatcher address is set. `prepareDeviceContainer` is permissionless, so any funded
+account can send it, and a container already minted is a no-op:
+
+```bash
+for n in $(seq -w 0 99); do
+  cast send "$POP_CONTROLLER" "prepareDeviceContainer(string)" "$n" \
+    --rpc-url "$RPC_URL" --private-key "$KEY"
+done
+```
+
+- [ ] Containers `00` to `99` exist and are owned by `DotnsPopController`.
 
 ## Upgrading a live network
 
