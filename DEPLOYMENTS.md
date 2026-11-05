@@ -4,7 +4,7 @@ Current deployment addresses and developer deployment notes for dotNS contracts.
 
 ## What this file is for
 
-This file is the operational companion to the README. It explains how to run the local ETH-RPC adapter, how to deploy dotNS, where deployment manifests are written, and which addresses are currently live on the supported Paseo environments.
+This file is the operational companion to the README. It explains how to run the local ETH-RPC adapter, how to deploy dotNS, where deployment manifests are written, and which addresses are currently live on each supported network.
 
 > For a short, do-this-in-order checklist (including how to target **any** Polkadot chain, not just the Paseo environments), see [`DEPLOYMENT_CHECKLIST.md`](./DEPLOYMENT_CHECKLIST.md).
 
@@ -294,6 +294,8 @@ Before deploying to a live network, diff its manifest against `deployments/expec
 ## Name grants (whitelisting)
 
 Reserved registration is gated on `DotnsNameWhitelist`. A grant binds one label to one beneficiary address and is single use: `registerReserved` requires a grant naming `registration.owner`, spends it on the mint, and refuses a second attempt. See the [README economics section](./README.md#economics) for what a grant does and does not confer; this section covers the mechanics.
+
+`registerReserved` also needs `nameEscrow` registered, and reverts with `EscrowNotConfigured` without it. The mint charges nothing, but it seeds a zero-amount escrow release position so the granted name stays inside the normal release lifecycle; a name minted without one could never be released and would leave circulation permanently. For the same reason the path reclaims from escrow instead of minting when the escrow still holds the token, which is how a released reserved-tier label is granted again.
 
 **Every admin action on the whitelist is a substrate Root dispatch.** Granting, revoking, accepting, rejecting, reserving, setting the request window and retuning the caps all require it. No signed account can do any of them, the contract owner included: the owner's authority is deployment and upgrade, not allocation. A signed call reverts with `NotGovernance`. There is no operator role and no address allowlist.
 
@@ -610,7 +612,7 @@ The deployment manifest for a network is the only place in this repository that 
 deployments/<network>/<chain-id>.json
 ```
 
-Every network deployed through the shared CREATE3 factory lands on the same address set, so those manifests agree with each other; a chain deployed through a different factory has its own set, and a chain id alone does not identify one, since several networks report the same id. Only the TLD differs per network among the networks below.
+Every network deployed through the shared CREATE3 factory lands on the same address set, so those manifests agree with each other; a chain deployed through a different factory has its own set, and a chain id alone does not identify one, since several networks report the same id. The Paseo networks below share one set and differ only in TLD. Polkadot Asset Hub was deployed through a different factory, so it has its own set.
 
 | Network | TLD |
 | --- | --- |
